@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { giaDb } from '@/lib/supabase/schemas';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { isGiaDomain } from '@/lib/constants/domains';
 import type { UserRole, AppDomain, DealFilters, DealWithRelations, Deal } from '@/lib/types/database';
@@ -63,7 +64,7 @@ export async function getDealsByRole(
   const pageSize = Math.max(1, Math.min(200, filters.pageSize ?? 50));
   const offset   = (page - 1) * pageSize;
 
-  let query = supabase
+  let query = giaDb(supabase)
     .from('deals')
     .select(
       '*, lead:leads!deals_lead_id_fkey(slug), assignee:profiles!deals_assigned_to_fkey(full_name)',
@@ -222,7 +223,7 @@ export async function getDealsSummary(
 export async function getLeadDeal(leadId: string): Promise<Deal | null> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
+  const { data, error } = await giaDb(supabase)
     .from('deals')
     .select('*')
     .eq('lead_id', leadId)

@@ -52,12 +52,12 @@ motion.div) · `AddDealButton` (`MotionButton`) + `NewDealModal` (on-intent dyna
 ## 6. Invariants
 
 Deep dive §11 — `won_at` immutable; `lead_id` nullable only for walk-ins; membership requires
-duration; deal writes admin-client-only; revenue always reads `public.deals` (never the
+duration; deal writes admin-member-only; revenue always reads `public.deals` (never the
 dropped `leads.deal_*`).
 
 ## 7. Open items
 
-`client_id` is a reserved column — FK lands with the future clients module (post-won flow).
+`member_id` is a reserved column — FK lands with the future members module (post-won flow).
 
 ---
 
@@ -106,7 +106,7 @@ to authenticated non-guest roles and opens `NewDealModal` for walk-in deal creat
 CREATE TABLE public.deals (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   lead_id       uuid NULL REFERENCES public.leads(id) ON DELETE SET NULL,
-  client_id     uuid NULL,        -- FK deferred to clients module; always null for now
+  member_id     uuid NULL,        -- FK deferred to members module; always null for now
   contact_name  text NOT NULL,
   contact_phone text NOT NULL,    -- E.164, normalised before insert
   contact_email text NULL,
@@ -134,14 +134,14 @@ CREATE TABLE public.deals (
 `src/lib/constants/deal-types.ts`): `onboarding → membership`, `shop → retail` (+ a required
 `deal_category`), `house`/`legacy` → `sale`. The type is set server-side in `recordDeal` (from the
 lead's domain) and `createWalkInDeal` (from the server-forced deal domain) via
-`resolveDealShapeForDomain`; a client-sent `deal_type` is ignored. The `deals_retail_category_check`
+`resolveDealShapeForDomain`; a member-sent `deal_type` is ignored. The `deals_retail_category_check`
 couples `retail ⇔ category`. The category filter on `/deals` surfaces only inside the `shop` slice.
 
 **Key column rules:**
 
 - `lead_id` is **nullable**. Walk-in deals have `lead_id = null`. Lead-sourced deals have it set.
   On `ON DELETE SET NULL` — deleting a lead nullifies the FK but preserves the deal row.
-- `client_id` is **always null** until the clients module is built. Column exists as the future FK hook.
+- `member_id` is **always null** until the members module is built. Column exists as the future FK hook.
 - `won_at` is **immutable** after insert, but no longer always `now()`. Lead-sourced deals
   (`recordDeal`) set it to insert time. Walk-in deals (`createWalkInDeal`) may supply a
   user-picked **Deal Date** (`NewDealModal` → `DatePicker`, capped at today); it falls back to
@@ -152,7 +152,7 @@ couples `retail ⇔ category`. The category filter on `/deals` surfaces only ins
   Same CHECK vocabulary as `LEAD_SOURCE_ENUM`.
 - `domain` lives **on the deal**, not derived from the lead. Walk-ins require it directly.
 - `contact_name/phone/email` are copied from the lead at insert time (lead-sourced) or provided
-  directly (walk-in). They are the future client join key.
+  directly (walk-in). They are the future member join key.
 
 **Business rules (same as before):**
 
@@ -200,7 +200,7 @@ deal_amount }` (no `deal_type`) to `recordDeal` from `src/lib/actions/leads.ts` 
 
 > **No `deal_type` field (2026-06-15).** The type is derived from the lead's domain via
 > `resolveDealShapeForDomain` (moved 2026-06-26 from `actions/deals.ts` to
-> `src/lib/constants/deal-types.ts`, alongside the `DealShape` types), never sent by the client.
+> `src/lib/constants/deal-types.ts`, alongside the `DealShape` types), never sent by the member.
 > The schema carries only the type-dependent extras (`deal_duration` for membership,
 > `deal_category` for retail); the core picks the right one for the resolved domain.
 
@@ -263,7 +263,7 @@ purely the picker chrome, same values committed).
 - Agent: `domain = caller.domain`, `assigned_to = caller.id` — always forced server-side.
 - Manager: `domain = caller.domain`; `assigned_to` may be any agent in their domain (verified).
 - Admin/founder: any Gia domain; assignee verified in chosen domain.
-- **`deal_type` is derived from the resolved domain** (`resolveDealShapeForDomain`) — a client-sent
+- **`deal_type` is derived from the resolved domain** (`resolveDealShapeForDomain`) — a member-sent
   type is ignored. `CreateWalkInDealSchema` carries no `deal_type` field, only the extras
   (`deal_duration`, `deal_category`), which are cross-validated against the domain's type.
 
@@ -278,7 +278,7 @@ param-bearing This-Month URL the page redirects to), so the new deal shows on th
 **File:** `src/lib/actions/deals.ts`
 **Schema:** `CreateWalkInDealSchema` in `src/lib/validations/deal-schema.ts`
 
-Inserts a single `deals` row with `lead_id = null`, `client_id = null`. No `leads`-row side-effects
+Inserts a single `deals` row with `lead_id = null`, `member_id = null`. No `leads`-row side-effects
 (no `updateLeadStatus`, no SLA, no activity log). `contact_phone` normalised to E.164 via
 `normalizeToE164()` (throws on invalid — caught, returns error). `source` is written from the
 optional picker (or null); `won_at` is the supplied Deal Date (`data.won_at`) or `now()` when
@@ -356,7 +356,7 @@ boundary. A tampered `filter_domain` in the URL cannot widen a manager's scope.
 
 **Defined in:** `src/lib/types/database.ts`
 
-First-class row type for `public.deals`. Key fields: `id`, `lead_id` (nullable), `client_id`
+First-class row type for `public.deals`. Key fields: `id`, `lead_id` (nullable), `member_id`
 (nullable), `contact_name`, `contact_phone`, `contact_email`, `domain`, `deal_amount`,
 `deal_type` (typed union), `deal_duration` (typed union or null), `assigned_to`,
 `source` (`string | null` — migration 0075), `won_at`, `archived_at`, `created_at`, `updated_at`.
@@ -438,7 +438,7 @@ export type DealsSummary = {
   in service), `search` ILIKE on `contact_name`, `contact_phone`, `contact_email`.
 - **Count:** `{ count: 'exact', head: false }` on the same query — never a second `COUNT(*)`.
 - **Pagination:** `.range(offset, offset + pageSize - 1)` always applied. Default `pageSize` 50, `page` min 1.
-- **Client:** Session client (`createClient()`); RLS still applies.
+- **Member:** Session member (`createClient()`); RLS still applies.
 - **Type cast:** `data as unknown as DealWithRelations[]` — `deals` table not yet in generated types.
 
 #### `getDealsSummary(role, userId, domain, filters)`
@@ -457,7 +457,7 @@ strip disagrees with the card list.
 
 - **Returns:** `Promise<Deal | null>` — the single non-archived `public.deals` row for a lead, or `null`.
 - **Query:** `SELECT * FROM deals WHERE lead_id = $1 AND archived_at IS NULL LIMIT 1` (`.maybeSingle()`).
-- **Client:** Session client (`createClient()`); RLS applies — an agent who doesn't own the deal gets `null` (correct, not a bug).
+- **Member:** Session member (`createClient()`); RLS applies — an agent who doesn't own the deal gets `null` (correct, not a bug).
 - **Type cast:** `data as unknown as Deal` — `deals` not yet in generated types.
 - **Never throws** — returns `null` on empty result or any Supabase error.
 - **Called by:** the lead dossier (`/leads/[id]`) to render `LeadDealCard`. Not used by `/deals`.
@@ -579,7 +579,7 @@ RPC summary uses explicit SQL role gates with server-verified `p_caller_domain`.
 
 **Write-policy gap is intentional (migration 0094):** `public.deals` has **no INSERT, UPDATE, or
 DELETE RLS policy**. All writes go through `recordDeal` / `createWalkInDeal` using the admin
-(service-role) client, which bypasses RLS. The application-layer access checks in those actions
+(service-role) member, which bypasses RLS. The application-layer access checks in those actions
 are the security equivalent. `COMMENT ON TABLE public.deals` documents this. Never add a
 user-scoped INSERT/DELETE policy for deals.
 
@@ -615,7 +615,7 @@ user-scoped INSERT/DELETE policy for deals.
     managers/admins/founders (after-wrapped, non-fatal, `notificationKey: 'deal_created'`). The
     lead → deal path does not fire it (its `lead_won` flip already notifies the same recipients).
 
-13. **`client_id` is always null** — FK deferred to clients module. Never populate it from application code until the clients migration runs.
+13. **`member_id` is always null** — FK deferred to members module. Never populate it from application code until the members migration runs.
 
 14. **`won_at` is immutable after insert** — never issue an UPDATE on this column.
 

@@ -8,8 +8,8 @@ import { nameMatchesFuzzy } from "@/lib/utils/fuzzy";
 import type { Database, Profile, UserRole, AppDomain } from "@/lib/types/database";
 import type { AssignableUser } from "@/lib/types";
 import { mapRows } from "@/lib/utils/rows";
-import { getQueendoms } from "@/lib/services/clients-service";
-import type { QueendomSummary } from "@/lib/types/client";
+import { getQueendoms } from "@/lib/services/members-service";
+import type { QueendomSummary } from "@/lib/types/member";
 import { isSiaRole, SIA_SINGLE_SEATS, type SiaRole } from "@/lib/constants/sia-roles";
 
 /**

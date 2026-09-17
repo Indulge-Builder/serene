@@ -4,7 +4,7 @@
 > groups, fields, SLA policies) and what the mirror is for.
 > **Audience:** engineers, and the founder for the go-live steps.
 > **Source-of-truth scope:** the connection, the sync, the page. The future Serene-native
-> ticketing lives in `../../client-ticket-plan.md`, not here.
+> ticketing lives in `../../member-ticket-plan.md`, not here.
 > **Last verified:** 2026-09-15 against the live account and migration 0193.
 
 ---
@@ -14,7 +14,7 @@
 Freshdesk is where the concierge team runs tickets today. Serene's own ticketing (the Sia module)
 replaces it later. Until then Serene learns from it: how a ticket moves and how long each stage
 takes, which WhatsApp group message became which ticket, which agent handles what. That needs the
-data in our database, joinable to `public.clients` and to `sia.wag_messages`, with a change
+data in our database, joinable to `public.members` and to `sia.wag_messages`, with a change
 history Freshdesk does not expose on its own. Serene never writes to Freshdesk.
 
 ## The account, as read on 2026-09-15
@@ -27,7 +27,7 @@ history Freshdesk does not expose on its own. Serene never writes to Freshdesk.
 | Tickets | #415 (2024-01-30) to #55054 (2026-09-14), about 55k; roughly 150 a day since September 2026; 75 open at the time of reading |
 | Groups | 12; three queendoms (Ananyshree's, Anishqa's, Sanika's) plus Bishop, Concierge, Finance and Billing, Global Events, Indulge Shop, Jokers, Management, Queendom, Retail |
 | Agents | 78 |
-| Statuses | 2 Open, 3 Pending, 4 Resolved, 5 Closed (customers see "Did not solve"), 6 Nudge Client, 7 Nudge Vendor, 8 Ongoing Delivery, 9 Invoice Due (Finance group only), 9000 Assigned to AI Agent |
+| Statuses | 2 Open, 3 Pending, 4 Resolved, 5 Closed (customers see "Did not solve"), 6 Nudge Member, 7 Nudge Vendor, 8 Ongoing Delivery, 9 Invoice Due (Finance group only), 9000 Assigned to AI Agent |
 | Category | `cf_category_of_request`, a required nested field: Travel (Flight > Tickets / Web Check-in, Hotel Booking, Car Transfer, Experiences, Airport Assistance, Visa), Dining, Retail (Bag, Watch, General, Gifting), Special Request, and more |
 | Type | 14 values the SLA policies key on: "Travel - Flight" … "Retail - Bags", "Gifting", "Events", "Special Requests", "Travel - Visa" |
 | SLA policies | 9: respond within 15 minutes and resolve within 8 business hours for most types; watches and bags 48 hours; a default of 24 hours first response. Business hours 09:00 to 20:00 IST |
@@ -39,9 +39,9 @@ history Freshdesk does not expose on its own. Serene never writes to Freshdesk.
 
 | Table | Posture | What |
 | --- | --- | --- |
-| `tickets` | current state, overwritten by the sync | every list field, `custom_fields` whole, `raw` whole, `status_label` resolved from `ticket_fields`, the requester's name and E.164 phone denormalised, `client_id` resolved by `freshdesk_contact_id` then phone, the `stats` timestamps, the thread bookkeeping |
+| `tickets` | current state, overwritten by the sync | every list field, `custom_fields` whole, `raw` whole, `status_label` resolved from `ticket_fields`, the requester's name and E.164 phone denormalised, `member_id` resolved by `freshdesk_contact_id` then phone, the `stats` timestamps, the thread bookkeeping |
 | `conversations` | current state | notes and replies, `private` and `incoming` flags, text and html, attachments as JSON (the urls expire) |
-| `contacts` | current state | identity, `phone_e164`, the preference fields whole, `client_id` |
+| `contacts` | current state | identity, `phone_e164`, the preference fields whole, `member_id` |
 | `agents`, `groups`, `ticket_fields`, `sla_policies` | reference, refreshed every 6 hours | `ticket_fields.choices` holds the status vocabulary and the category tree |
 | `ticket_changes` | **append-only** | one row per field flip the sync observed: status, priority, agent, group, type, category, subject, due dates, escalation, tags, and every `cf_*` as `cf.<name>`. `observed_at` is our clock (resolution = the sync cadence), `fd_updated_at` is Freshdesk's |
 | `webhook_events` | append-only | the raw automation payloads, with `processed_at` and `error` |
@@ -116,8 +116,8 @@ prints the backlog every ten minutes. Downloads are not API calls; only the thre
 "Sync now". The strip answers for the same filters as the table (0196 `freshdesk.ticket_overview`,
 one scan): the five tiles are the filtered set (the last one reads "Matching" instead of
 "Mirrored"), the by-status pills ignore only the status picks so they show the mix a pick would
-narrow to. Until 0196 is applied the same numbers come from parallel HEAD counts. `?client=<uuid>` scopes the whole page to one Serene client (exact `client_id`); the client page's "See tickets" link opens it. `/freshdesk/[id]`: the thread, the movement timeline, the summary card, a link to the
-client record when the requester is linked. Display-only; nothing here writes to Freshdesk.
+narrow to. Until 0196 is applied the same numbers come from parallel HEAD counts. `?member=<uuid>` scopes the whole page to one Serene member (exact `member_id`); the member page's "See tickets" link opens it. `/freshdesk/[id]`: the thread, the movement timeline, the summary card, a link to the
+member record when the requester is linked. Display-only; nothing here writes to Freshdesk.
 
 ## Go-live
 

@@ -47,6 +47,12 @@ import type { ElayaActionRow, ElayaChannel } from '@/lib/types/elaya';
 // lambda the same headroom a server-action mutation gets.
 export const maxDuration = 60;
 
+const LEGACY_TOOL_NAMES: Record<string, string> = {
+  get_client_overview: 'get_member_overview',
+  get_client_recent_messages: 'get_member_recent_messages',
+  search_client_history: 'search_member_history',
+};
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type BridgeBody = {
@@ -103,7 +109,9 @@ export async function POST(request: Request) {
     }
 
     if (body.op === 'execute_tool') {
-      const toolName = body.toolName;
+      // A Python brain deployed before the members rename (2026-09-17) still asks by the
+      // old names; answer them until the next Fargate deploy, then drop this map.
+      const toolName = body.toolName ? (LEGACY_TOOL_NAMES[body.toolName] ?? body.toolName) : body.toolName;
       if (
         !toolName ||
         !(WRITE_TOOL_REGISTRY.has(toolName) || BRIDGED_READ_TOOL_NAMES.has(toolName))

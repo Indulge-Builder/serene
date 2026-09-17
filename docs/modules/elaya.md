@@ -324,7 +324,7 @@ user turn ─► runElayaTurn
    one terminal `executed` row (`before: null`); state-changing → `proposed` → `executed`/`failed`/
    `dismissed`. One live proposal per conversation (supersede on new proposal). State-machine +
    audit row, not a pure append-only log (migration 0118 COMMENT; A-11 carve-out — resolve-once
-   admin-client UPDATE, no user write policy by design).
+   admin-member UPDATE, no user write policy by design).
 4. **Lead resolution for writes is stricter than reads.** Write tools take a **slug**, re-check
    access via `getLeadBySlug` + `canAccessLead(principal)`. The persona instructs `search_leads`
    first + ask-on-0/multiple; the tool layer is the hard backstop. Ambiguous name halts the write.
@@ -339,7 +339,7 @@ user turn ─► runElayaTurn
 `elaya_actions` was reserved empty in 0116; 0118 fills it for use. Adds the partial index
 `idx_elaya_actions_pending (conversation_id, created_at DESC) WHERE status='proposed'` (the
 resolver's per-turn query) and a `COMMENT ON TABLE` documenting the lifecycle. The `proposed →
-executed/failed/dismissed` status flip is a service-role admin-client UPDATE (RLS-bypassing) — no
+executed/failed/dismissed` status flip is a service-role admin-member UPDATE (RLS-bypassing) — no
 user UPDATE policy, by design.
 
 ## Phase 3 — task agentic writes (shipped 2026-06-15)
@@ -362,9 +362,9 @@ tasks: four execute inline, `delete_task` alone proposes and waits.
 TOOL LOOP (tasks)
   create_personal_task  → assignee-policy gate (manager+ to assign another) → core → INSERT executed
   create_group_task     → core (domain locked to actor unless admin/founder) → INSERT executed
-  update_task_status /   → admin-client fetch → canMutateTask(admin, principalCaller) → core → INSERT executed
+  update_task_status /   → admin-member fetch → canMutateTask(admin, principalCaller) → core → INSERT executed
     update_task
-  delete_task           → admin-client fetch → canMutateTask → supersede prior → INSERT proposed
+  delete_task           → admin-member fetch → canMutateTask → supersede prior → INSERT proposed
                           → "awaiting confirmation"  (NO delete this turn)
 
 RESOLVER PRE-STEP (delete_task on an affirmative)
@@ -377,7 +377,7 @@ RESOLVER PRE-STEP (delete_task on an affirmative)
 
 1. **Same core, same gate posture.** Each tool builds a `MutationActor` (`actorFromPrincipal`) and a
    `CallerProfile` (`callerFromPrincipal`) from the **principal**, never model output. `canMutateTask`
-   takes the **admin client** (the tool has no session) — safe, because it uses the client only for a
+   takes the **admin client** (the tool has no session) — safe, because it uses the member only for a
    read-only `task_groups` domain lookup and never reads `auth.uid()`/RLS; the `{id,role,domain}`
    caller object IS the identity. Create tools have no existing row to gate, so the policy is on the
    *assignee*: assigning a personal task to **another** user is manager+ (mirrors

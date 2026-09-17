@@ -87,7 +87,7 @@ It is the single periodic entry point the revival spec calls for — **not** a s
 
 **The sweep, per run:**
 
-1. Read the active `revival_policies` rows (admin-client, **per run — never module-cached**, the
+1. Read the active `revival_policies` rows (admin-member, **per run — never module-cached**, the
    `sla_policies` pattern). Each policy is keyed by `trigger_status` and carries a per-status
    `silence_days` threshold + a `daily_cap_per_agent`. Editable from `/settings`; empty → no-op.
 2. Per status: `findSilentLeadsForStatus(status, silence_days)` returns leads silent past the
@@ -129,7 +129,7 @@ A `schedules.task` (migration 0126) — the second cron family. It powers `/admi
 
 | Export | What it does |
 | ------ | ------------ |
-| `snapshotUsagePresenceTask` | `schedules.task`, `id: 'snapshot-usage-presence'`, cron `* * * * *` (every minute, no timezone — a minute-grain tick is timezone-agnostic), `maxDuration: 60`. Reads the **live Redis `presence:*` keys** (`listLivePresence` — the client heartbeat SETs them only while active: visible + recently interacted, 150s TTL) and appends one `usage_heartbeats` row per active user (`insertUsageHeartbeats`, admin client). Server-only deps via dynamic `import()` inside `run()` |
+| `snapshotUsagePresenceTask` | `schedules.task`, `id: 'snapshot-usage-presence'`, cron `* * * * *` (every minute, no timezone — a minute-grain tick is timezone-agnostic), `maxDuration: 60`. Reads the **live Redis `presence:*` keys** (`listLivePresence` — the member heartbeat SETs them only while active: visible + recently interacted, 150s TTL) and appends one `usage_heartbeats` row per active user (`insertUsageHeartbeats`, admin client). Server-only deps via dynamic `import()` inside `run()` |
 
 - **The ONLY writer of `usage_heartbeats`:** the request/heartbeat path never touches Postgres
   (that would be a write storm at 300 users; the hot path is one Redis SET). The rollup job turns

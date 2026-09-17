@@ -31,7 +31,7 @@ new → touched → in_discussion → won
 | `new` | arrived, not yet called | — |
 | `touched` | first call attempt made | auto-set on first call log |
 | `in_discussion` | active conversation | — |
-| `won` | converted to client | `recordDeal` inserts a `public.deals` row **before** the status flip (0072–0074; the old `leads.deal_*` columns are gone — 0097) |
+| `won` | converted to member | `recordDeal` inserts a `public.deals` row **before** the status flip (0072–0074; the old `leads.deal_*` columns are gone — 0097) |
 | `nurturing` | not ready now | auto-creates a Gia follow-up task (due +3 months) inside the same RPC transaction |
 | `lost` / `junk` | won't convert / invalid | requires a `resolution_reason` (0060) |
 
@@ -57,8 +57,8 @@ clearing `resolution_reason`. Terminal statuses cancel all SLA timers.
    kept for Elaya's `get_my_tasks` tool and the dossier path.)
 5. **Resolution** — Won: `WonDealModal` → `recordDeal` (deals row, then status flip; managers
    notified). Nurturing: auto follow-up task + SLA-04. Lost/Junk: reason required.
-6. **After won** — the deal lives on `/deals`; the future clients module takes over from
-   `deals.client_id` (reserved).
+6. **After won** — the deal lives on `/deals`; the future members module takes over from
+   `deals.member_id` (reserved).
 
 ## 4. The follow-up engine (SLA + cadence + task-due rules)
 
@@ -195,5 +195,5 @@ outbound media), SLA engine, notifications (+ Web Push), Redis caching, export, 
 revival (R1)** (`revival.md`). The **customer-facing** WhatsApp AI chatbot shipped 2026-06-26
 (migrations 0150/0151): the welcome blast plus a hard-capped prospect Elaya, wired into the
 lead pipeline via `elaya-customer.ts`, live-capable behind the approved Gupshup
-welcome-template id. Spec: `customer-welcome-blast.md`. In design/planned: client records
+welcome-template id. Spec: `customer-welcome-blast.md`. In design/planned: member records
 (post-won flow). (The Elaya **staff** WhatsApp channel is also live: `elaya.md`.)

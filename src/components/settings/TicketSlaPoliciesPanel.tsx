@@ -16,12 +16,12 @@ import { toast } from '@/lib/toast';
 import { deleteTicketSlaPolicyAction, upsertTicketSlaPolicyAction } from '@/lib/actions/ticket-settings';
 import { TICKET_CATEGORIES, TICKET_PRIORITIES, TICKET_SUB_CATEGORIES, type TicketCategory } from '@/lib/constants/tickets';
 import type { TicketSlaPolicyRow } from '@/lib/types/ticket';
-import type { QueendomSummary } from '@/lib/types/client';
+import type { QueendomSummary } from '@/lib/types/member';
 
 type Step = { after_min: number; to: 'bishop' | 'queen' | 'founder' };
 type Draft = {
   id: string | null; queendom_id: string | null; category: string | null; sub_category: string | null; priority: string | null;
-  first_response_min: number; update_cadence_min: number; vendor_silence_min: number; client_silence_min: number; resolve_target_min: number;
+  first_response_min: number; update_cadence_min: number; vendor_silence_min: number; member_silence_min: number; resolve_target_min: number;
   business_hours: boolean; escalation: Step[]; is_active: boolean;
 };
 
@@ -30,9 +30,9 @@ const NUM: React.CSSProperties = { ...SELECT, width: 90, fontFamily: 'var(--font
 
 function toDraft(p: TicketSlaPolicyRow): Draft {
   const esc = Array.isArray(p.escalation) ? (p.escalation as Step[]).filter((s) => s && typeof s.after_min === 'number') : [];
-  return { id: p.id, queendom_id: p.queendom_id, category: p.category, sub_category: p.sub_category, priority: p.priority, first_response_min: p.first_response_min, update_cadence_min: p.update_cadence_min, vendor_silence_min: p.vendor_silence_min, client_silence_min: p.client_silence_min, resolve_target_min: p.resolve_target_min, business_hours: p.business_hours, escalation: esc, is_active: p.is_active };
+  return { id: p.id, queendom_id: p.queendom_id, category: p.category, sub_category: p.sub_category, priority: p.priority, first_response_min: p.first_response_min, update_cadence_min: p.update_cadence_min, vendor_silence_min: p.vendor_silence_min, member_silence_min: p.member_silence_min, resolve_target_min: p.resolve_target_min, business_hours: p.business_hours, escalation: esc, is_active: p.is_active };
 }
-const NEW: Draft = { id: null, queendom_id: null, category: null, sub_category: null, priority: null, first_response_min: 15, update_cadence_min: 720, vendor_silence_min: 240, client_silence_min: 1440, resolve_target_min: 480, business_hours: true, escalation: [{ after_min: 15, to: 'bishop' }, { after_min: 60, to: 'queen' }], is_active: true };
+const NEW: Draft = { id: null, queendom_id: null, category: null, sub_category: null, priority: null, first_response_min: 15, update_cadence_min: 720, vendor_silence_min: 240, member_silence_min: 1440, resolve_target_min: 480, business_hours: true, escalation: [{ after_min: 15, to: 'bishop' }, { after_min: 60, to: 'queen' }], is_active: true };
 
 function scopeLine(d: Draft, queendoms: QueendomSummary[]): string {
   const parts = [
@@ -104,9 +104,9 @@ function PolicyCard({ initial, queendoms, onDone }: { initial: Draft; queendoms:
       </div>
       <div style={{ display: 'flex', gap: 'var(--space-5)', flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <Clock label="First response" value={d.first_response_min} onChange={(n) => set('first_response_min', n)} />
-        <Clock label="Update the client every" value={d.update_cadence_min} onChange={(n) => set('update_cadence_min', n)} />
+        <Clock label="Update the member every" value={d.update_cadence_min} onChange={(n) => set('update_cadence_min', n)} />
         <Clock label="Vendor silent" value={d.vendor_silence_min} onChange={(n) => set('vendor_silence_min', n)} />
-        <Clock label="Client silent" value={d.client_silence_min} onChange={(n) => set('client_silence_min', n)} />
+        <Clock label="Member silent" value={d.member_silence_min} onChange={(n) => set('member_silence_min', n)} />
         <Clock label="Resolve within" value={d.resolve_target_min} onChange={(n) => set('resolve_target_min', n)} />
         <Toggle size="sm" checked={d.business_hours} onChange={(v) => set('business_hours', v)} label="Business hours" description="Mon to Sat, 9 to 7 IST" />
       </div>

@@ -99,7 +99,7 @@ async function insertLeadBatches(
   let errors = 0;
   for (let i = 0; i < rows.length; i += BATCH) {
     const batch = rows.slice(i, i + BATCH);
-    const { data, error } = await supabase.from("leads").insert(batch).select("id, form_data");
+    const { data, error } = await supabase.schema('gia').from("leads").insert(batch).select("id, form_data");
     if (error) {
       console.error(`\n${label} batch ${Math.floor(i / BATCH) + 1} error:`, error.message);
       errors += batch.length;
@@ -120,7 +120,7 @@ async function insertNoteBatches(
   let errors = 0;
   for (let i = 0; i < rows.length; i += BATCH) {
     const batch = rows.slice(i, i + BATCH);
-    const { error } = await supabase.from("lead_notes").insert(batch);
+    const { error } = await supabase.schema('gia').from("lead_notes").insert(batch);
     if (error) {
       console.error(`\n${label} batch ${Math.floor(i / BATCH) + 1} error:`, error.message);
       errors += batch.length;
@@ -139,7 +139,7 @@ async function insertActivityBatches(
   let errors = 0;
   for (let i = 0; i < rows.length; i += BATCH) {
     const batch = rows.slice(i, i + BATCH);
-    const { error } = await supabase.from("lead_activities").insert(batch);
+    const { error } = await supabase.schema('gia').from("lead_activities").insert(batch);
     if (error) {
       console.error(`\n${label} batch ${Math.floor(i / BATCH) + 1} error:`, error.message);
       errors += batch.length;

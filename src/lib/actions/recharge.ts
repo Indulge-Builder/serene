@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { giaDb } from "@/lib/supabase/schemas";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireProfile } from "@/lib/actions/_auth";
 import { sanitizeText } from "@/lib/utils/sanitize";
@@ -55,7 +56,7 @@ export async function createRechargeAction(
   const cleanNote   = note ? sanitizeText(note) || null : null;
 
   const adminClient = createAdminClient();
-  const { data, error } = await adminClient
+  const { data, error } = await giaDb(adminClient)
     .from("ad_account_recharges")
     .insert({
       ad_account:   adAccount,

@@ -25,6 +25,7 @@
 // take-over switch: when an agent replies, bot_active flips off and Elaya stops auto-replying.
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { giaDb } from '@/lib/supabase/schemas';
 import { sanitizeText } from '@/lib/utils/sanitize';
 import { markdownToWhatsApp, truncateWhatsAppText } from '@/lib/utils/whatsapp-format';
 import { transcribeAudio } from '@/lib/services/transcription-service';
@@ -83,7 +84,7 @@ export async function maybeSendCustomerWelcome(lead: Lead): Promise<void> {
     // already stamped (welcomed_at NOT NULL) — or a concurrent first message that won the
     // stamp — returns zero rows → we stop. The stamp is NEVER cleared, so even a failed
     // send cannot re-arm the gate and double-welcome.
-    const { data: won } = await admin
+    const { data: won } = await giaDb(admin)
       .from('leads')
       .update({ welcomed_at: new Date().toISOString() })
       .eq('id', lead.id)
@@ -130,7 +131,7 @@ export async function handleCustomerReply(args: {
     const admin = createAdminClient();
 
     // Recent thread history (both directions) for context — oldest→newest.
-    const { data: rows } = await admin
+    const { data: rows } = await giaDb(admin)
       .from('whatsapp_messages')
       .select('direction, content, created_at')
       .eq('conversation_id', conversationId)
@@ -225,7 +226,7 @@ async function sendTurnMedia(
         asset.title || undefined,
         type === 'document' ? `${asset.title || 'document'}` : undefined,
       );
-      await admin.from('whatsapp_messages').insert({
+      await giaDb(admin).from('whatsapp_messages').insert({
         conversation_id: conversationId,
         lead_id:         leadId,
         direction:       'outbound',
@@ -255,7 +256,7 @@ async function recordBotMessage(
   text: string,
 ): Promise<void> {
   try {
-    await admin.from('whatsapp_messages').insert({
+    await giaDb(admin).from('whatsapp_messages').insert({
       conversation_id: conversationId,
       lead_id:         leadId,
       direction:       'outbound',
@@ -270,7 +271,7 @@ async function recordBotMessage(
       status_at:       null,
       is_bot:          true,
     });
-    await admin
+    await giaDb(admin)
       .from('whatsapp_conversations')
       .update({ last_message_at: new Date().toISOString() })
       .eq('id', conversationId);

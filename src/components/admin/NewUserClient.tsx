@@ -5,7 +5,7 @@ import { KeyRound, Mail, ShieldCheck } from "lucide-react";
 import { TabSelector, type TabItem } from "@/components/ui/TabSelector";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { CreateUserForm, type CreateUserMode } from "./CreateUserForm";
-import type { QueendomSummary } from "@/lib/types/client";
+import type { QueendomSummary } from "@/lib/types/member";
 
 const MODE_TABS: TabItem[] = [
   { id: "password", label: "Set password"     },

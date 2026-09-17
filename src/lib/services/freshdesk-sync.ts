@@ -7,7 +7,7 @@
 //
 // The movement history: on every upsert the tracked fields of the stored row are diffed
 // against the incoming object and each flip becomes a freshdesk.ticket_changes row. That
-// table is why the mirror exists (client-ticket-plan.md section 2.2).
+// table is why the mirror exists (member-ticket-plan.md section 2.2).
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -199,7 +199,7 @@ function normalizeTicket(
     product_id: t.product_id ?? null,
     requester_name: t.requester?.name ?? null,
     requester_phone_e164: safeE164(requesterPhone),
-    client_id: clientId,
+    member_id: clientId,
     due_by: t.due_by ?? null,
     fr_due_by: t.fr_due_by ?? null,
     is_escalated: Boolean(t.is_escalated),
@@ -224,14 +224,14 @@ function normalizeTicket(
   };
 }
 
-// ─── Client linking (the spine join) ─────────────────────────────────────────
+// ─── Member linking (the spine join) ─────────────────────────────────────────
 
 /**
- * Resolve public.clients ids for a batch: by freshdesk_contact_id first (the spine
+ * Resolve public.members ids for a batch: by freshdesk_contact_id first (the spine
  * carries it), then by E.164 phone (primary or alt). Returns contactId → clientId and
  * phone → clientId maps in one pass.
  */
-async function resolveClientLinks(
+async function resolveMemberLinks(
   contactIds: number[],
   phones: string[],
 ): Promise<{ byContact: Map<number, string>; byPhone: Map<string, string> }> {
@@ -242,17 +242,17 @@ async function resolveClientLinks(
   const phoneList = Array.from(new Set(phones));
 
   if (idStrs.length) {
-    const { data } = await admin.from("clients").select("id, freshdesk_contact_id").in("freshdesk_contact_id", idStrs);
+    const { data } = await admin.from("members").select("id, freshdesk_contact_id").in("freshdesk_contact_id", idStrs);
     for (const r of (data ?? []) as { id: string; freshdesk_contact_id: string | null }[]) {
       if (r.freshdesk_contact_id) byContact.set(Number(r.freshdesk_contact_id), r.id);
     }
   }
   if (phoneList.length) {
-    const { data: prim } = await admin.from("clients").select("id, primary_phone").in("primary_phone", phoneList);
+    const { data: prim } = await admin.from("members").select("id, primary_phone").in("primary_phone", phoneList);
     for (const r of (prim ?? []) as { id: string; primary_phone: string | null }[]) {
       if (r.primary_phone) byPhone.set(r.primary_phone, r.id);
     }
-    const { data: alt } = await admin.from("clients").select("id, alt_phones").overlaps("alt_phones", phoneList);
+    const { data: alt } = await admin.from("members").select("id, alt_phones").overlaps("alt_phones", phoneList);
     for (const r of (alt ?? []) as { id: string; alt_phones: string[] }[]) {
       for (const p of r.alt_phones ?? []) if (phoneList.includes(p) && !byPhone.has(p)) byPhone.set(p, r.id);
     }
@@ -318,10 +318,10 @@ export async function upsertTickets(
   const ids = apiTickets.map((t) => t.id);
   const { data: existingRows, error: readErr } = await db
     .from("tickets")
-    .select([...FD_TRACKED_FIELDS, "id", "custom_fields", "fd_updated_at", "client_id", "conversations_synced_at", "conversation_count"].join(","))
+    .select([...FD_TRACKED_FIELDS, "id", "custom_fields", "fd_updated_at", "member_id", "conversations_synced_at", "conversation_count"].join(","))
     .in("id", ids);
   if (readErr) throw new Error(`[freshdesk-sync] read existing tickets failed: ${readErr.message}`);
-  type Existing = TrackedSnapshot & { id: number; client_id: string | null; conversations_synced_at: string | null; conversation_count: number };
+  type Existing = TrackedSnapshot & { id: number; member_id: string | null; conversations_synced_at: string | null; conversation_count: number };
   const existing = new Map<number, Existing>();
   for (const r of (existingRows ?? []) as unknown as Existing[]) {
     existing.set(r.id, r);
@@ -330,7 +330,7 @@ export async function upsertTickets(
   const phones = apiTickets
     .map((t) => safeE164(t.requester?.mobile ?? t.requester?.phone ?? null))
     .filter((p): p is string => Boolean(p));
-  const links = await resolveClientLinks(apiTickets.map((t) => t.requester_id), phones);
+  const links = await resolveMemberLinks(apiTickets.map((t) => t.requester_id), phones);
 
   const rows: TicketInsert[] = [];
   const changes: ReturnType<typeof diffTicket> = [];
@@ -339,7 +339,7 @@ export async function upsertTickets(
     const prev = existing.get(t.id);
     const phone = safeE164(t.requester?.mobile ?? t.requester?.phone ?? null);
     const clientId =
-      links.byContact.get(t.requester_id) ?? (phone ? links.byPhone.get(phone) : undefined) ?? prev?.client_id ?? null;
+      links.byContact.get(t.requester_id) ?? (phone ? links.byPhone.get(phone) : undefined) ?? prev?.member_id ?? null;
     const row = normalizeTicket(t, statusLabels, clientId);
     if (prev) {
       // Keep the thread bookkeeping the row already has (the upsert would zero it), except
@@ -593,7 +593,7 @@ function normalizeContact(c: FdApiContact, clientId: string | null) {
     custom_fields: cf,
     tags: Array.isArray(c.tags) ? c.tags.map(String) : [],
     description: c.description ?? null,
-    client_id: clientId,
+    member_id: clientId,
     raw: c as unknown as Record<string, unknown>,
     fd_created_at: c.created_at ?? null,
     fd_updated_at: c.updated_at ?? null,
@@ -612,7 +612,7 @@ export async function runContactsStep(budget: FdBudget, maxPages = 5): Promise<F
       const { contacts, hasNext } = await listContactsUpdatedSince(state.watermark, state.page, budget);
       if (contacts.length) {
         const phones = contacts.map((c) => safeE164(c.mobile ?? c.phone ?? null)).filter((p): p is string => Boolean(p));
-        const links = await resolveClientLinks(contacts.map((c) => c.id), phones);
+        const links = await resolveMemberLinks(contacts.map((c) => c.id), phones);
         const rows = contacts.map((c) => {
           const phone = safeE164(c.mobile ?? c.phone ?? null);
           const clientId = links.byContact.get(c.id) ?? (phone ? links.byPhone.get(phone) : undefined) ?? null;

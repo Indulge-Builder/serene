@@ -145,7 +145,7 @@ async function insertLeadBatches(
   for (let i = 0; i < rows.length; i += BATCH) {
     const batch = rows.slice(i, i + BATCH);
     const { data, error } = await supabase
-      .from("leads")
+      .schema('gia').from("leads")
       .insert(batch)
       .select("id, form_data");
     if (error) {
@@ -165,7 +165,7 @@ async function insertNoteBatches(rows: object[]): Promise<number> {
   let errors = 0;
   for (let i = 0; i < rows.length; i += BATCH) {
     const batch = rows.slice(i, i + BATCH);
-    const { error } = await supabase.from("lead_notes").insert(batch);
+    const { error } = await supabase.schema('gia').from("lead_notes").insert(batch);
     if (error) {
       console.error(`\n  Note batch ${Math.floor(i / BATCH) + 1} error:`, error.message);
       errors += batch.length;
@@ -296,7 +296,7 @@ async function deleteShop(leadIds: string[]): Promise<void> {
     const CHUNK = 200;
     for (let i = 0; i < leadIds.length; i += CHUNK) {
       const { error } = await supabase
-        .from("whatsapp_notification_logs")
+        .schema('gia').from("whatsapp_notification_logs")
         .update({ lead_id: null })
         .in("lead_id", leadIds.slice(i, i + CHUNK));
       if (error) throw new Error(`detach whatsapp_notification_logs: ${error.message}`);

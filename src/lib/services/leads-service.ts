@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { giaDb } from "@/lib/supabase/schemas";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isGiaDomain, type GiaDomain } from "@/lib/constants/domains";
@@ -59,7 +60,7 @@ export async function getLeadById(
   }
 
   const supabase = await createClient();
-  const { data, error } = await supabase
+  const { data, error } = await giaDb(supabase)
     .from("leads")
     .select("*, assignee:profiles!leads_assigned_to_fkey(full_name)")
     .eq("id", leadId)
@@ -67,7 +68,9 @@ export async function getLeadById(
     .single();
 
   if (error || !data) return null;
-  const result = data as LeadWithAssignee;
+  // `profiles` is embedded across schemas (gia → public): PostgREST resolves it, the typed
+  // client cannot see it from the gia block, so the result carries its declared type.
+  const result = data as unknown as LeadWithAssignee;
   try {
     await redis.setex(key, REDIS_TTL.LEAD_ROW, result);
   } catch {
@@ -92,7 +95,7 @@ export async function getLeadBySlug(
   }
 
   const supabase = await createClient();
-  const { data, error } = await supabase
+  const { data, error } = await giaDb(supabase)
     .from("leads")
     .select("*, assignee:profiles!leads_assigned_to_fkey(full_name)")
     .eq("slug", slug)
@@ -100,7 +103,7 @@ export async function getLeadBySlug(
     .single();
 
   if (error || !data) return null;
-  const result = data as LeadWithAssignee;
+  const result = data as unknown as LeadWithAssignee;
   try {
     await redis.setex(key, REDIS_TTL.LEAD_ROW, result);
   } catch {
@@ -120,7 +123,7 @@ async function getLatestNotesForLeads(
 ): Promise<Map<string, LatestNote>> {
   if (leadIds.length === 0) return new Map();
 
-  const { data } = await supabase
+  const { data } = await giaDb(supabase)
     .from("lead_notes")
     .select("lead_id, content, created_at, author:profiles!lead_notes_author_id_fkey(full_name)")
     .in("lead_id", leadIds)
@@ -131,7 +134,7 @@ async function getLatestNotesForLeads(
 
   for (const row of data) {
     if (map.has(row.lead_id)) continue; // first occurrence = latest (DESC order)
-    const author = row.author as { full_name: string } | null;
+    const author = row.author as unknown as { full_name: string } | null;
     map.set(row.lead_id, {
       content:    row.content,
       created_at: row.created_at,
@@ -255,7 +258,7 @@ export async function getLeadsByRole(
 
   // totalCount comes from the status-counts RPC (one predicate scan) — never
   // re-add { count: 'exact' } here, it forces a second full scan per load (C-1)
-  let query = supabase
+  let query = giaDb(supabase)
     .from("leads")
     .select(
       `id, slug, first_name, last_name, phone, email, domain, assigned_to,
@@ -403,7 +406,7 @@ export async function getLeadsByRole(
   const leadIds = (data as { id: string }[]).map((l) => l.id);
   const notesMap = await getLatestNotesForLeads(leadIds, supabase);
 
-  const leads = (data as (Omit<LeadListItemWithAssignee, 'latest_note'> & { assignee: { full_name: string } | null })[]).map(
+  const leads = (data as unknown as (Omit<LeadListItemWithAssignee, 'latest_note'> & { assignee: { full_name: string } | null })[]).map(
     (l) => ({ ...l, latest_note: notesMap.get(l.id) ?? null }),
   );
 
@@ -450,7 +453,7 @@ async function getRevivalCandidateLeads(
   // Resolve the visible open-candidate lead_ids (RLS-scoped). Bounded — the review
   // tab is a small surface; the partial index idx_revival_candidates_open serves it.
   // RLS scopes the rows on the session client (the review-tab access boundary).
-  const { data: candidateRows, error: candErr } = await supabase
+  const { data: candidateRows, error: candErr } = await giaDb(supabase)
     .from("revival_candidates")
     .select("lead_id")
     .eq("status", "open")
@@ -498,7 +501,7 @@ async function fetchLeadsByIds(
 
   const supabase = await createClient();
 
-  let query = supabase
+  let query = giaDb(supabase)
     .from("leads")
     .select(
       `id, slug, first_name, last_name, phone, email, domain, assigned_to,
@@ -519,7 +522,7 @@ async function fetchLeadsByIds(
 
   const fetchedIds = (data as { id: string }[]).map((l) => l.id);
   const notesMap = await getLatestNotesForLeads(fetchedIds, supabase);
-  return (data as (Omit<LeadListItemWithAssignee, "latest_note"> & {
+  return (data as unknown as (Omit<LeadListItemWithAssignee, "latest_note"> & {
     assignee: { full_name: string } | null;
   })[]).map((l) => ({ ...l, latest_note: notesMap.get(l.id) ?? null }));
 }
@@ -569,7 +572,7 @@ export async function getLeadFilterOptions(
   const supabase = await createClient();
 
   // Distinct campaign names — uses idx_leads_utm_campaign partial index
-  let campaignQuery = supabase
+  let campaignQuery = giaDb(supabase)
     .from("leads")
     .select("utm_campaign")
     .is("archived_at", null)
@@ -639,14 +642,14 @@ export async function getLeadNotesFull(
   }
 
   const supabase = await createClient();
-  const { data, error } = await supabase
+  const { data, error } = await giaDb(supabase)
     .from("lead_notes")
     .select("*, author:profiles!lead_notes_author_id_fkey(full_name)")
     .eq("lead_id", leadId)
     .order("created_at", { ascending: false });
 
   if (error || !data) return [];
-  const result = data as LeadNoteWithAuthor[];
+  const result = data as unknown as LeadNoteWithAuthor[];
   try {
     await redis.setex(key, REDIS_TTL.LEAD_NOTES, result);
   } catch {
@@ -670,14 +673,14 @@ export async function getLeadActivitiesFull(
   }
 
   const supabase = await createClient();
-  const { data, error } = await supabase
+  const { data, error } = await giaDb(supabase)
     .from("lead_activities")
     .select("*, actor:profiles!lead_activities_actor_id_fkey(full_name)")
     .eq("lead_id", leadId)
     .order("created_at", { ascending: false });
 
   if (error || !data) return [];
-  const result = data as LeadActivityWithActor[];
+  const result = data as unknown as LeadActivityWithActor[];
   try {
     await redis.setex(key, REDIS_TTL.LEAD_ACTIVITIES, result);
   } catch {
@@ -721,7 +724,7 @@ export async function searchLeadsForElaya(
   const pageSize = Math.max(1, Math.min(50, opts.pageSize));
   const offset = (page - 1) * pageSize;
 
-  let query = admin
+  let query = giaDb(admin)
     .from("leads")
     .select(
       `id, slug, first_name, last_name, phone, email, domain, assigned_to,
@@ -757,7 +760,7 @@ export async function searchLeadsForElaya(
   // as the page query above, so the count always matches what the user can see.
   // Bounded Elaya path (not the hot /leads list), so a one-column full-set scan is
   // cheap and exact — page.length was reported as the total before this.
-  let countQuery = admin
+  let countQuery = giaDb(admin)
     .from("leads")
     .select("status")
     .is("archived_at", null);
@@ -813,7 +816,7 @@ export async function getLeadByRefForElaya(ref: string): Promise<LeadWithAssigne
   const isUuid =
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed);
 
-  const { data, error } = await admin
+  const { data, error } = await giaDb(admin)
     .from("leads")
     .select("*, assignee:profiles!leads_assigned_to_fkey(full_name)")
     .eq(isUuid ? "id" : "slug", trimmed)
@@ -842,7 +845,7 @@ export async function findDomainLeadOwners(
   search: string,
 ): Promise<{ name: string; owner: string }[]> {
   const admin = createAdminClient();
-  const { data, error } = await admin
+  const { data, error } = await giaDb(admin)
     .from("leads")
     .select(
       "first_name, last_name, assignee:profiles!leads_assigned_to_fkey(full_name)",
@@ -866,13 +869,13 @@ export async function findDomainLeadOwners(
  */
 export async function getLeadNotesFullForElaya(leadId: string): Promise<LeadNoteWithAuthor[]> {
   const admin = createAdminClient();
-  const { data, error } = await admin
+  const { data, error } = await giaDb(admin)
     .from("lead_notes")
     .select("*, author:profiles!lead_notes_author_id_fkey(full_name)")
     .eq("lead_id", leadId)
     .order("created_at", { ascending: false });
   if (error || !data) return [];
-  return data as LeadNoteWithAuthor[];
+  return data as unknown as LeadNoteWithAuthor[];
 }
 
 // ─────────────────────────────────────────────
@@ -880,7 +883,7 @@ export async function getLeadNotesFullForElaya(leadId: string): Promise<LeadNote
 // ─────────────────────────────────────────────
 export async function getErroredPayloads(): Promise<LeadRawPayload[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase
+  const { data, error } = await giaDb(supabase)
     .from("lead_raw_payloads")
     .select("*")
     .not("ingestion_error", "is", null)
@@ -1159,7 +1162,7 @@ async function getNextRoundRobinAgentFallback(
 
   const agentIds = agents.map((a) => a.id);
 
-  const { data: routingConfigs } = await supabase
+  const { data: routingConfigs } = await giaDb(supabase)
     .from("agent_routing_config")
     .select("agent_id")
     .in("agent_id", agentIds)
@@ -1170,7 +1173,7 @@ async function getNextRoundRobinAgentFallback(
   const eligibleAgents = agentIds.filter((id) => activeAgentIds.has(id));
   if (eligibleAgents.length === 0) return null;
 
-  const { data: recentLeads } = await supabase
+  const { data: recentLeads } = await giaDb(supabase)
     .from("leads")
     .select("assigned_to, assigned_at")
     .in("assigned_to", eligibleAgents)
@@ -1232,7 +1235,7 @@ export async function getLeadsForExport(
 ): Promise<ExportResult> {
   const supabase = await createClient();
 
-  let query = supabase
+  let query = giaDb(supabase)
     .from("leads")
     .select(
       `id, slug, first_name, last_name, phone, email, domain, assigned_to,
@@ -1322,7 +1325,7 @@ export async function getLeadsForExport(
   if (error || !data) return { leads: [], totalCount: 0 };
 
   return {
-    leads: data as LeadExportItem[],
+    leads: data as unknown as LeadExportItem[],
     totalCount: count ?? 0,
   };
 }
@@ -1345,12 +1348,12 @@ export async function getActivitiesAndNotesForExport(
   const supabase = await createClient();
 
   const [activitiesResult, notesResult] = await Promise.all([
-    supabase
+    giaDb(supabase)
       .from("lead_activities")
       .select("*, actor:profiles!lead_activities_actor_id_fkey(full_name)")
       .in("lead_id", leadIds)
       .order("created_at", { ascending: true }),
-    supabase
+    giaDb(supabase)
       .from("lead_notes")
       .select("*, author:profiles!lead_notes_author_id_fkey(full_name)")
       .in("lead_id", leadIds)
@@ -1358,7 +1361,7 @@ export async function getActivitiesAndNotesForExport(
   ]);
 
   return {
-    activities: (activitiesResult.data ?? []) as LeadActivityWithActor[],
-    notes: (notesResult.data ?? []) as LeadNoteWithAuthor[],
+    activities: (activitiesResult.data ?? []) as unknown as LeadActivityWithActor[],
+    notes: (notesResult.data ?? []) as unknown as LeadNoteWithAuthor[],
   };
 }

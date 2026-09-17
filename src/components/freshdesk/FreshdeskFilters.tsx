@@ -21,10 +21,10 @@ export function FreshdeskFilters({ vocab }: { vocab: FdFilterVocab }) {
   const priority = params.get('priority');
   const dateFrom = params.get('date_from');
   const dateTo = params.get('date_to');
-  const client = params.get('client');
+  const member = params.get('member');
 
   const activeCount =
-    (client ? 1 : 0) +
+    (member ? 1 : 0) +
     (params.get('search') ? 1 : 0) +
     (statuses.length ? 1 : 0) +
     (group ? 1 : 0) +
@@ -38,7 +38,7 @@ export function FreshdeskFilters({ vocab }: { vocab: FdFilterVocab }) {
     <FilterBar
       searchValue={url.searchInput}
       onSearchChange={url.setSearchInput}
-      searchPlaceholder="Search subject, client or #id"
+      searchPlaceholder="Search subject, member or #id"
       searchAriaLabel="Search Freshdesk tickets"
       searchStyle={{ flex: '1 1 240px', minWidth: '180px' }}
       activeCount={activeCount}

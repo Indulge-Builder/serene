@@ -2,7 +2,7 @@
 
 Status: **BUILT (phases 0–5, 2026-07-06)** — see the changelog entry of that date for the full
 file map. Owner-facing. This document is the build contract for the `/m` mobile layer. Read it
-before writing a line of code in `src/components/mobile/` or `src/app/(client)/`.
+before writing a line of code in `src/components/mobile/` or `src/app/(member)/`.
 
 > **Apply-to-prod note:** migrations `20260706000159_activity_events.sql` and
 > `20260706000160_get_domain_task_summary.sql` were **applied + verified 2026-07-06**
@@ -112,7 +112,7 @@ getMobileRooms(role): MobileRoom[]                     // the resolver
 - **manager:** stubbed (same four is a fine v1 default; refine in a later phase)
 - **agent:** stubbed (agent-relevant four — e.g. My Leads · My Tasks · (Elaya) · Activity — later phase)
 
-`MobileTabBar` becomes: read the caller's role (threaded down from the `(client)/layout.tsx` profile
+`MobileTabBar` becomes: read the caller's role (threaded down from the `(member)/layout.tsx` profile
 — see Section 5), call `getMobileRooms(role)`, render the 2 + knob + 2 layout it already has. The
 **exactly-4 contract holds** — the registry is validated to 4 entries per role. The Elaya knob stays
 hardcoded center (it is not a room).
@@ -124,14 +124,14 @@ Constraint kept: **never a fifth tab.** The registry enforces length 4; a type-l
 
 ## 5. Threading identity into the shell
 
-`(client)/layout.tsx` already fetches `getCurrentProfile()` for the auth gate but drops it. We lift
-it into a client context so the tab bar (role) and every screen (role + domain scope) can read it
+`(member)/layout.tsx` already fetches `getCurrentProfile()` for the auth gate but drops it. We lift
+it into a member context so the tab bar (role) and every screen (role + domain scope) can read it
 without re-fetching.
 
 **New:** `src/components/mobile/MobileSessionProvider.tsx` (`'use client'`) — a tiny context holding
 `{ id, role, domain, full_name }` (the same `callerProfile` shape `AddLeadModal` already uses).
-`(client)/layout.tsx` (RSC) fetches the profile once and wraps children in the provider. `useMobileSession()`
-is the hook. No new fetch; no service import in a client file (the RSC does the read).
+`(member)/layout.tsx` (RSC) fetches the profile once and wraps children in the provider. `useMobileSession()`
+is the hook. No new fetch; no service import in a member file (the RSC does the read).
 
 This is also where **admin/founder domain scope** resolves: admin sees all domains (the swipe pages
 through all four); a future manager is pinned to their own domain (the carousel collapses to one).
@@ -185,7 +185,7 @@ presentation + one action per screen that batches these (a `getMobileDashboardAc
 
 | Widget | Source |
 | ------ | ------ |
-| Domain counts: created / completed / overdue | **NEW RPC** `get_domain_task_summary(p_domain)` — admin-client, Q-13 scope-param pattern (mirrors `get_group_task_summaries`). **No migration** — `tasks.assigned_to/status/due_at` + `task_groups.domain` already exist. Overdue = `due_at < now()` in SQL. |
+| Domain counts: created / completed / overdue | **NEW RPC** `get_domain_task_summary(p_domain)` — admin-member, Q-13 scope-param pattern (mirrors `get_group_task_summaries`). **No migration** — `tasks.assigned_to/status/due_at` + `task_groups.domain` already exist. Overdue = `due_at < now()` in SQL. |
 | Per-agent breakdown (tap → detail) | Same RPC emits per-agent buckets (mirror `AgentStatusBreakdown` shape for tasks). New service fn `getDomainTaskSummary`. |
 | Tap agent → full detail (route change) | New light route `/m/tasks/[agentId]` reusing `getPersonalTasks`/`getGiaTasksForUser` filtered by assignee. Reuses existing reads; only the mobile view is new. |
 
@@ -240,12 +240,12 @@ activity_events
   created_at    timestamptz default now()
   indexes: (domain, created_at desc), (subject_id, created_at desc)
   RLS: manager+ SELECT (agent sees own via actor_id/subject scope — mirror lead_activities);
-       NO insert/update/delete policy ever (A-11) — admin-client emit only
+       NO insert/update/delete policy ever (A-11) — admin-member emit only
   publication: ALTER PUBLICATION supabase_realtime ADD TABLE activity_events
 ```
 
 **The emit seam** (`src/lib/services/activity-events.ts`) — `emitActivityEvent(input)`, best-effort,
-admin-client, exactly like `emitTaskEvent`. We call it beside the writes that already exist — the
+admin-member, exactly like `emitTaskEvent`. We call it beside the writes that already exist — the
 mutation **cores** are the single chokepoints, so this is a handful of one-line additions, never a
 scattering:
 
@@ -258,7 +258,7 @@ scattering:
 - `recordDeal` / `createWalkInDeal` → `deal_logged`.
 
 **The read** (`src/lib/services/activity-service.ts`) — `getActivityFeed(domain, cursor?)`, keyset
-(`created_at, id`) reverse-chronological, admin-client (Q-13), domain-scoped. One bounded read.
+(`created_at, id`) reverse-chronological, admin-member (Q-13), domain-scoped. One bounded read.
 
 **The live layer** — the mobile Activity screen subscribes to `activity_events` filtered
 `domain=eq.<x>` (the `OversightRail` subscription, copied), prepending INSERTs. Domain swipe = swap
@@ -303,7 +303,7 @@ Do **not** fork a second Elaya transport. The shared body is `EmbeddedElayaChat`
 Each phase is independently shippable and lands a changelog entry.
 
 **Phase 0 — Infrastructure (unblocks all rooms)**
-1. `MobileSessionProvider` + `useMobileSession` (Section 5); `(client)/layout.tsx` threads the profile.
+1. `MobileSessionProvider` + `useMobileSession` (Section 5); `(member)/layout.tsx` threads the profile.
 2. `mobile-rooms.ts` registry + `getMobileRooms(role)` + `DOMAIN_VERTICALS` lookup (Sections 4, 9).
 3. `MobileTabBar` → data-driven off the registry (keeps exactly-4 + knob).
 4. `DomainSwiper` composing `Carousel` with `hideDots` + neu indicator (Section 6).

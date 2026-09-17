@@ -30,6 +30,7 @@
 //     a context that already keeps the lambda alive).
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { giaDb } from "@/lib/supabase/schemas";
 import { redis } from "@/lib/redis";
 import { REDIS_KEYS } from "@/lib/constants/redis-keys";
 import { invalidateLeadCaches } from "@/lib/services/lead-cache";
@@ -357,7 +358,7 @@ export async function reviveLeadCore(
   // follow-up task rather than orphaning the revive.
   try {
     await admin.from("tasks").update({ title: REVIVED_TASK_TITLE }).eq("id", created.task.id);
-    await admin
+    await giaDb(admin)
       .from("task_gia_meta")
       .update({ call_outcome: REVIVAL_TASK_MARKER })
       .eq("task_id", created.task.id);
@@ -571,7 +572,7 @@ export async function recordDealCore(
     [lead.first_name, lead.last_name].filter(Boolean).join(" ").trim() || "Unknown";
 
   // Step 1: insert the deal (must succeed before the status flip).
-  const { data: inserted, error: insertError } = await admin
+  const { data: inserted, error: insertError } = await giaDb(admin)
     .from("deals")
     .insert({
       lead_id:       lead.id,
@@ -680,7 +681,7 @@ export async function assignLeadCore(
   const admin = createAdminClient();
   const assignedAt = new Date().toISOString();
 
-  await admin
+  await giaDb(admin)
     .from("leads")
     .update({
       assigned_to: input.agentId,
@@ -690,7 +691,7 @@ export async function assignLeadCore(
     })
     .eq("id", input.leadId);
 
-  await admin.from("lead_activities").insert({
+  await giaDb(admin).from("lead_activities").insert({
     lead_id: input.leadId,
     actor_id: actor.userId,
     action_type: "agent_assigned",

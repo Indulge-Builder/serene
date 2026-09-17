@@ -4,7 +4,7 @@
 // (R-01). Every state change goes through the two RPCs (sia.create_ticket /
 // sia.apply_ticket_change) on the admin client, so the ticket row and its event are one
 // transaction and the state machine (constants/tickets.ts) is enforced here, once. The caller
-// checks access (canAccessClient) before a core runs.
+// checks access (canAccessMember) before a core runs.
 
 import { createNotification } from "@/lib/services/notifications-service";
 import { ticketsAdminDb, resolveSlaPolicy } from "@/lib/services/tickets-service";
@@ -52,9 +52,9 @@ function dueStamps(policy: TicketSlaPolicyRow | null, from: Date, status: Ticket
 
 export async function createTicketCore(input: CreateTicketInput, actor: MutationActor, opts: { proposed?: boolean; actorKind?: "human" | "elaya" | "intake" } = {}): Promise<TicketMutationResult<TicketRow>> {
   const admin = createAdminClient();
-  const { data: client } = await admin.from("clients").select("id, queendom_id, tier").eq("id", input.client_id).maybeSingle();
-  if (!client) return fail("That client does not exist.");
-  const queendomId = (client as { queendom_id: string | null }).queendom_id;
+  const { data: member } = await admin.from("members").select("id, queendom_id, tier").eq("id", input.member_id).maybeSingle();
+  if (!member) return fail("That member does not exist.");
+  const queendomId = (member as { queendom_id: string | null }).queendom_id;
   const status: TicketStatus = opts.proposed ? "proposed" : "open";
   const policy = await resolveSlaPolicy({ queendom_id: queendomId, category: input.category, sub_category: input.sub_category, priority: input.priority });
   const now = new Date();
@@ -63,7 +63,7 @@ export async function createTicketCore(input: CreateTicketInput, actor: Mutation
   const db = ticketsAdminDb();
   const { data, error } = await db.rpc("create_ticket", {
     p_ticket: {
-      client_id: input.client_id, queendom_id: queendomId, origin: input.origin, origin_ref: input.message_links[0] ?? {},
+      member_id: input.member_id, queendom_id: queendomId, origin: input.origin, origin_ref: input.message_links[0] ?? {},
       group_jid: input.group_jid, category: input.category, sub_category: input.sub_category, title: input.title,
       brief: input.brief, checklist: checklistForCategory(input.category), priority: input.priority,
       // A human creating by hand approves the priority in the same breath; a proposal waits for the bishop.
@@ -185,10 +185,10 @@ export async function tickChecklistCore(ticketId: string, index: number, done: b
 
 export async function addTicketNoteCore(ticketId: string, body: string, actor: MutationActor): Promise<TicketMutationResult<{ id: string }>> {
   const db = ticketsAdminDb();
-  const { data: cur } = await db.from("tickets").select("id, client_id, queendom_id, first_responded_at").eq("id", ticketId).maybeSingle();
+  const { data: cur } = await db.from("tickets").select("id, member_id, queendom_id, first_responded_at").eq("id", ticketId).maybeSingle();
   if (!cur) return fail("Ticket not found.");
-  const t = cur as Pick<TicketRow, "id" | "client_id" | "queendom_id" | "first_responded_at">;
-  const { data, error } = await db.from("ticket_events").insert({ ticket_id: t.id, client_id: t.client_id, queendom_id: t.queendom_id, actor_kind: "human", actor_id: actor.userId, event_type: "note", body, meta: {}, run_id: null }).select("id").single();
+  const t = cur as Pick<TicketRow, "id" | "member_id" | "queendom_id" | "first_responded_at">;
+  const { data, error } = await db.from("ticket_events").insert({ ticket_id: t.id, member_id: t.member_id, queendom_id: t.queendom_id, actor_kind: "human", actor_id: actor.userId, event_type: "note", body, meta: {}, run_id: null }).select("id").single();
   if (error || !data) return fail("Could not add the note.", error);
   // The first note from a human counts as the first response (the sentinel refines this in T2).
   if (!t.first_responded_at) {
@@ -199,12 +199,12 @@ export async function addTicketNoteCore(ticketId: string, body: string, actor: M
 
 export async function linkTicketMessagesCore(ticketId: string, messages: { chat_jid: string; wa_message_id: string; sender_jid: string; link_kind: TicketMessageLinkRow["link_kind"] }[], actor: MutationActor): Promise<TicketMutationResult<{ linked: number }>> {
   const db = ticketsAdminDb();
-  const { data: cur } = await db.from("tickets").select("id, client_id, queendom_id").eq("id", ticketId).maybeSingle();
+  const { data: cur } = await db.from("tickets").select("id, member_id, queendom_id").eq("id", ticketId).maybeSingle();
   if (!cur) return fail("Ticket not found.");
-  const t = cur as Pick<TicketRow, "id" | "client_id" | "queendom_id">;
+  const t = cur as Pick<TicketRow, "id" | "member_id" | "queendom_id">;
   const { error } = await db.from("ticket_message_links").insert(messages.map((m) => ({ ticket_id: t.id, freshdesk_id: null, ...m, confidence: 1, created_by: actor.userId })));
   if (error) return fail("Could not link those messages.", error);
-  await db.from("ticket_events").insert({ ticket_id: t.id, client_id: t.client_id, queendom_id: t.queendom_id, actor_kind: "human", actor_id: actor.userId, event_type: "client_message_linked", body: null, meta: { count: messages.length }, run_id: null });
+  await db.from("ticket_events").insert({ ticket_id: t.id, member_id: t.member_id, queendom_id: t.queendom_id, actor_kind: "human", actor_id: actor.userId, event_type: "member_message_linked", body: null, meta: { count: messages.length }, run_id: null });
   return { data: { linked: messages.length }, error: null };
 }
 
@@ -258,9 +258,9 @@ export async function createTicketTaskCore(
   actor: MutationActor,
 ): Promise<TicketMutationResult<{ taskId: string }>> {
   const db = ticketsAdminDb();
-  const { data: cur } = await db.from("tickets").select("id, ticket_no, client_id, queendom_id, title").eq("id", input.ticket_id).maybeSingle();
+  const { data: cur } = await db.from("tickets").select("id, ticket_no, member_id, queendom_id, title").eq("id", input.ticket_id).maybeSingle();
   if (!cur) return fail("Ticket not found.");
-  const t = cur as Pick<TicketRow, "id" | "ticket_no" | "client_id" | "queendom_id" | "title">;
+  const t = cur as Pick<TicketRow, "id" | "ticket_no" | "member_id" | "queendom_id" | "title">;
   const core = await createPersonalTaskCore(actor, {
     title: input.title, description: `${t.ticket_no} · ${t.title}`, priority: input.priority, dueAt: input.due_at, assignedTo: input.assigned_to, tags: ["ticket"],
   });
@@ -269,7 +269,7 @@ export async function createTicketTaskCore(
   const { error: metaErr } = await admin.from("task_ticket_meta").insert({ task_id: core.taskId, ticket_id: t.id });
   if (metaErr) console.warn("[ticket-mutations] task_ticket_meta insert failed", metaErr.message);
   await db.from("ticket_events").insert({
-    ticket_id: t.id, client_id: t.client_id, queendom_id: t.queendom_id, actor_kind: "human", actor_id: actor.userId,
+    ticket_id: t.id, member_id: t.member_id, queendom_id: t.queendom_id, actor_kind: "human", actor_id: actor.userId,
     event_type: "subtask_created", body: input.title, meta: { task_id: core.taskId, assigned_to: core.assignedTo, due_at: input.due_at }, run_id: null,
   });
   return { data: { taskId: core.taskId }, error: null };

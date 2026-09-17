@@ -922,7 +922,7 @@ TOOLS: dict[str, Tool] = {
             description=(
                 "Find a COLLEAGUE (a staff member / teammate) by name — NOT a customer or lead. Use "
                 'this whenever you need a person to ASSIGN work to: "create a task for Arfam", '
-                '"remind Pawani to call the client". It returns each match with their userId — the '
+                '"remind Pawani to call the member". It returns each match with their userId — the '
                 "handle task tools need for assigneeId. NEVER use search_leads to find a person to "
                 "assign work to — that searches customers/prospects, not staff. If the name matches "
                 "no teammate, or more than one, ask the user which person — never guess."
@@ -1085,9 +1085,9 @@ def write_tools_for_role(role: str) -> frozenset[str]:
 
 BRIDGED_READ_TOOL_NAMES: frozenset[str] = frozenset({
     "find_vendors", "get_vendor_details", "list_tickets", "get_ticket",
-    # Clients (2026-09-16): a member's WhatsApp history, raw. The sia archive and the
-    # queendom gate (canAccessClient) live in Node; this brain decides WHEN to read.
-    "get_client_overview", "get_client_recent_messages", "search_client_history",
+    # Members (2026-09-16): a member's WhatsApp history, raw. The sia archive and the
+    # queendom gate (canAccessMember) live in Node; this brain decides WHEN to read.
+    "get_member_overview", "get_member_recent_messages", "search_member_history",
 })
 
 # The ticket pair (2026-09-15) is bridged for the same reason: the sentinel's ledger and the
@@ -1098,10 +1098,10 @@ _BRIDGED_READ_ROLES: dict[str, frozenset[str]] = {
     "get_vendor_details": _FOUNDER_UP,
     "list_tickets": frozenset({"agent", "manager", "admin", "founder"}),
     "get_ticket": frozenset({"agent", "manager", "admin", "founder"}),
-    # Every staff role may carry the client tools; Node scopes rows to the reader's queendom.
-    "get_client_overview": frozenset({"agent", "manager", "admin", "founder"}),
-    "get_client_recent_messages": frozenset({"agent", "manager", "admin", "founder"}),
-    "search_client_history": frozenset({"agent", "manager", "admin", "founder"}),
+    # Every staff role may carry the member tools; Node scopes rows to the reader's queendom.
+    "get_member_overview": frozenset({"agent", "manager", "admin", "founder"}),
+    "get_member_recent_messages": frozenset({"agent", "manager", "admin", "founder"}),
+    "search_member_history": frozenset({"agent", "manager", "admin", "founder"}),
 }
 
 

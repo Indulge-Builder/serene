@@ -29,7 +29,7 @@ export type FdTicketRow = {
   product_id: number | null;
   requester_name: string | null;
   requester_phone_e164: string | null;
-  client_id: string | null;
+  member_id: string | null;
   due_by: string | null;
   fr_due_by: string | null;
   is_escalated: boolean;
@@ -90,7 +90,7 @@ export type FdContactRow = {
   custom_fields: Record<string, unknown>;
   tags: string[];
   description: string | null;
-  client_id: string | null;
+  member_id: string | null;
   raw: Record<string, unknown>;
   fd_created_at: string | null;
   fd_updated_at: string | null;
@@ -237,7 +237,7 @@ export type FreshdeskDatabase = {
           p_from?: string | null;
           p_to?: string | null;
           p_search?: string | null;
-          p_client?: string | null;
+          p_member?: string | null;
           p_today_start?: string | null;
         };
         Returns: FdOverviewRpcResult;
@@ -413,7 +413,7 @@ export type FdApiSlaPolicy = {
 export type FdTicketListItem = Pick<
   FdTicketRow,
   | "id" | "subject" | "status" | "status_label" | "priority" | "source" | "ticket_type"
-  | "category" | "sub_category" | "group_id" | "responder_id" | "requester_name" | "client_id"
+  | "category" | "sub_category" | "group_id" | "responder_id" | "requester_name" | "member_id"
   | "due_by" | "is_escalated" | "fd_created_at" | "fd_updated_at" | "resolved_at" | "conversation_count"
 > & {
   group_name: string | null;
@@ -429,8 +429,8 @@ export type FdTicketListFilters = {
   priority: number | null;
   dateFrom: string | null;   // ISO date (created)
   dateTo: string | null;
-  /** Scope to one Serene client (the client page's "See tickets"); exact `client_id`. */
-  client: string | null;
+  /** Scope to one Serene member (the member page's "See tickets"); exact `member_id`. */
+  member: string | null;
   page: number;
 };
 
@@ -443,7 +443,7 @@ export type FdTicketDetail = {
   group: FdGroupRow | null;
   /** id → name for every agent that appears in the thread. */
   agentNames: Record<number, string>;
-  client: { id: string; full_name: string } | null;
+  member: { id: string; full_name: string } | null;
 };
 
 /** What `freshdesk.ticket_overview` (0196) returns: one jsonb object. */

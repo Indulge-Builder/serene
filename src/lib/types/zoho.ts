@@ -20,7 +20,7 @@ export type ZbInvoice = {
   reference_number?: string;
   last_payment_date?: string;
   payment_expected_date?: string;
-  is_viewed_by_client?: boolean;
+  is_viewed_by_member?: boolean;
   cf_queendon?: string;
 };
 
@@ -154,7 +154,7 @@ export type BooksOverview = {
   dailyRemaining: number | null;
 };
 
-export type ClientFinance = {
+export type MemberFinance = {
   contact: ZbContact | null;
   invoices: ZbInvoice[];
   payments: ZbPayment[];

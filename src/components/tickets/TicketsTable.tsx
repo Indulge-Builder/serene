@@ -25,7 +25,7 @@ export function TicketsTable({ tickets, hasFilters, labels }: { tickets: TicketL
   if (tickets.length === 0) {
     return (
       <div style={{ background: 'var(--theme-paper)', border: '1px solid var(--theme-paper-border)', borderRadius: 'var(--neu-radius-card)', boxShadow: 'var(--shadow-1)', padding: 'var(--space-12) var(--space-6)' }}>
-        <EmptyState icon={ClipboardList} title={hasFilters ? 'No tickets match.' : 'Nothing open.'} description={hasFilters ? 'Try clearing a filter.' : 'Create a ticket from a client\'s messages in Sia, or by hand with New ticket.'} />
+        <EmptyState icon={ClipboardList} title={hasFilters ? 'No tickets match.' : 'Nothing open.'} description={hasFilters ? 'Try clearing a filter.' : 'Create a ticket from a member\'s messages in Sia, or by hand with New ticket.'} />
       </div>
     );
   }
@@ -63,7 +63,7 @@ const Row = memo(function Row({ t, label }: { t: TicketListItem; label?: string 
       <td style={{ ...CELL, ...rc, fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)', whiteSpace: 'nowrap' }}>{t.ticket_no}</td>
       <td style={{ ...CELL, ...rc, minWidth: 260 }}>
         <span style={{ display: 'block', fontWeight: 'var(--weight-medium)', color: 'var(--theme-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 420 }}>{t.title}</span>
-        <span style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>{t.client_name} · {TICKET_CATEGORIES.labels[t.category] ?? t.category}{t.queendom_name ? ` · ${t.queendom_name.replace(' Queendom', '')}` : ''}</span>
+        <span style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>{t.member_name} · {TICKET_CATEGORIES.labels[t.category] ?? t.category}{t.queendom_name ? ` · ${t.queendom_name.replace(' Queendom', '')}` : ''}</span>
       </td>
       <td style={{ ...CELL, ...rc }}><TicketStatusPill status={t.status} label={label} /></td>
       <td style={{ ...CELL, ...rc }}><PriorityDot priority={t.priority} approved={Boolean(t.priority_approved_at)} /></td>

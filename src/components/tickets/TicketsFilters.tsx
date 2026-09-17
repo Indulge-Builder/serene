@@ -7,7 +7,7 @@ import { FilterBar } from '@/components/ui/FilterBar';
 import { FilterDropdown } from '@/components/ui/FilterDropdown';
 import { useUrlFilters, useMultiSelectUrlParam } from '@/hooks/useUrlFilters';
 import { TICKET_STATUSES, TICKET_CATEGORIES } from '@/lib/constants/tickets';
-import type { QueendomSummary } from '@/lib/types/client';
+import type { QueendomSummary } from '@/lib/types/member';
 import type { StaffOption } from '@/lib/types/ticket';
 
 export function TicketsFilters({ queendoms, staff, tags = [], labels }: { queendoms: QueendomSummary[]; staff: StaffOption[]; tags?: string[]; labels?: Record<string, string> }) {

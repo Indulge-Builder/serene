@@ -50,7 +50,7 @@ operation×role matrix + RLS notes: Deep dive §20.
 
 ## 4. Components
 
-`TasksShell` + `TasksAsync` (RSC seed) · `TasksFilters` (client-state `<FilterBar>`) · two tabs:
+`TasksShell` + `TasksAsync` (RSC seed) · `TasksFilters` (member-state `<FilterBar>`) · two tabs:
 `MyTasksCalendarView` (the personal view) + `GroupTasksTab` ·
 `GroupTaskWorkspace` (`/tasks/[id]`, list/board, Realtime) · `SubTaskModal` (two-zone) +
 `TaskRemarksPanel` + `AssigneePickerModal` + `TaskStatusIcon` · create modals
@@ -149,7 +149,7 @@ design-audit L-02), no JS sort on `getPersonalTasks` output, channel nonces.
 
 > **0088 InitPlan note:** all five policies above wrap `get_user_role()` in `(SELECT public.get_user_role())` so the STABLE function runs once per statement, not per row. Logic is identical to the pre-0088 form — only the scalar-subquery wrapping changed.
 
-**INSERT/DELETE RLS now exists (0094) but app writes still bypass it.** `tasks_insert` covers only personal self-assigned rows; lead-follow-up and group-subtask inserts have **no** direct policy and are blocked by default — created only via SECURITY DEFINER RPCs (`create_lead_gia_task`, `update_lead_status`) or `adminClient`. (`tasks_insert` checks `task_category = 'personal'` and is unaffected by the gia-category collapse — a lead follow-up *is* a `personal` row; what blocks a direct-client lead-task insert is the absence of any policy that can also write the coupled `task_gia_meta` row + `module='gia'`, which only the RPC does.) Mutations from server actions continue to use `adminClient` with `canMutateTask` / delete rules; the RLS policies are defence-in-depth for any direct client access, not the primary enforcement path.
+**INSERT/DELETE RLS now exists (0094) but app writes still bypass it.** `tasks_insert` covers only personal self-assigned rows; lead-follow-up and group-subtask inserts have **no** direct policy and are blocked by default — created only via SECURITY DEFINER RPCs (`create_lead_gia_task`, `update_lead_status`) or `adminClient`. (`tasks_insert` checks `task_category = 'personal'` and is unaffected by the gia-category collapse — a lead follow-up *is* a `personal` row; what blocks a direct-member lead-task insert is the absence of any policy that can also write the coupled `task_gia_meta` row + `module='gia'`, which only the RPC does.) Mutations from server actions continue to use `adminClient` with `canMutateTask` / delete rules; the RLS policies are defence-in-depth for any direct member access, not the primary enforcement path.
 
 ---
 
@@ -443,7 +443,7 @@ describe what the **core** performs.
 policies in 0094 but they cover only personal self-assigned rows (lead-follow-up / group-subtask
 creation is blocked by default and goes through RPCs). All task writes still run via `adminClient`
 and bypass RLS — but the write itself now lives in a `task-mutations.ts` **core** (direct
-admin-client insert/update/delete, no RPC), with the action enforcing the rules RLS would
+admin-member insert/update/delete, no RPC), with the action enforcing the rules RLS would
 (`canMutateTask`, role checks, view = post gate) **before** calling the core. The cores stay
 ungated (Q-13) — the caller is the trust boundary.
 
@@ -492,7 +492,7 @@ shape:
 
 ---
 
-### 7. Client Filter Util — `task-client-filters.ts`
+### 7. Member Filter Util — `task-member-filters.ts`
 
 #### Exported functions
 
@@ -1046,7 +1046,7 @@ dashboard widget, lead dossier task cards (`getAllLeadTasks`); also readable via
 | 0094 | `20260608000094_explicit_insert_delete_policies.sql` | **Adds explicit task INSERT/DELETE RLS** (defence-in-depth — app writes still use `adminClient`): `tasks_insert` (`created_by = auth.uid() AND assigned_to = auth.uid() AND task_category = 'personal'`); `tasks_delete` (agent: personal, self-owned, status IN `to_do`/`in_progress`); `tasks_delete_privileged` (manager/admin/founder: any). Lead-follow-up and group-subtask inserts have **no** direct policy — blocked by default, created only via SECURITY DEFINER RPCs or `adminClient`. |
 | `20260617000138` | `20260617000138_collapse_gia_category_module_enum.sql` | **Gia-category collapse (applied to prod).** Drops `gia_followup` from `task_category` (now `personal` \| `group_subtask` — structure only); converts `tasks.module` from free `text` to the native `task_module` enum (`gia` \| `sia` \| `core`); establishes the single-writer invariant — a lead follow-up is a `personal` task with a `task_gia_meta` row + `module='gia'`, written only by `create_lead_gia_task` / `update_lead_status`. Deletes the Gia tab + `GiaTasksTab`/`GiaTaskRow`/`GiaDaySection`/`CreateGiaTaskModal`. **Not** related to `sla_policies.trigger_value='gia_followup'` (a different column — the SLA "task due" rule catalog, retained). |
 | `20260624000142` | `20260624000142_task_agent_reminder_log_types.sql` | Three new `whatsapp_notification_logs.type` values for the lead-agnostic task reminders: `task_due_soon` (TASK-01A agent ping, 30 min before), `task_overdue_agent` (at the deadline), `task_overdue_manager_generic` (TASK-01B non-lead manager escalation). Log types only, no new gate categories. |
-| `20260624000144` | `20260624000144_oversight_task_events.sql` | `task_events` append-only stream + the 3 oversight read RPCs (see §1 prose and `docs/oversight.md`). Event rows are inserted by the task-mutation cores (service-role only), never from a client. |
+| `20260624000144` | `20260624000144_oversight_task_events.sql` | `task_events` append-only stream + the 3 oversight read RPCs (see §1 prose and `docs/oversight.md`). Event rows are inserted by the task-mutation cores (service-role only), never from a member. |
 | `20260625000145` | `20260625000145_personal_tasks_lead_identity.sql` | Widens `get_personal_tasks` to return the full `tasks` row + four nullable lead-identity columns (LEFT JOIN `task_gia_meta` → `leads`) so My Tasks shows the linked lead's name on follow-ups. WHERE/cursor/ORDER byte-identical to 0026. |
 | `20260626000153` | `20260626000153_task_assigned_log_type.sql` | Adds `task_assigned` to the `whatsapp_notification_logs.type` CHECK: the log type for the WhatsApp "assigned to you" template ping (`sendTaskAssignedNotification`). Rides the existing `task_assigned` control-plane key (0133), not a new gate category. |
 
@@ -1056,7 +1056,7 @@ dashboard widget, lead dossier task cards (`getAllLeadTasks`); also readable via
 
 1. **`page.tsx` rule:** Zero data-fetching calls in the page component body. Only `getCurrentProfile()` and `searchParams` parse. If violated, the Suspense boundary is broken and the skeleton never renders.
 
-2. **`TasksAsync` prop boundary:** Returns serialisable plain objects to `TasksShell` — no service references, no Promises, no class instances cross the server→client boundary.
+2. **`TasksAsync` prop boundary:** Returns serialisable plain objects to `TasksShell` — no service references, no Promises, no class instances cross the server→member boundary.
 
 3. **`getPersonalTasks` sort:** Priority sort (urgent → high → normal) is done at the DB level via `get_personal_tasks` RPC on every page. JS `.sort()` is intentionally absent.
 
@@ -1064,7 +1064,7 @@ dashboard widget, lead dossier task cards (`getAllLeadTasks`); also readable via
 
 5. **`getGroupTasks` cache:** Uses React `cache()` for per-request memoisation + Redis 120s (key `task:group-list:{userId}`, unfiltered calls only). Cannot use `unstable_cache` because `createClient()` calls `cookies()`, which Next.js forbids inside `unstable_cache` closures. Cache key is user-scoped since migration 0058 (visibility is creator OR subtask assignee — two users in the same domain see different sets). `createGroupTaskAction` awaits `redis.del(task:group-list:{callerId})`; `createSubtaskAction` awaits del for both `callerId` and `assignedTo`. Both also call `revalidatePath('/tasks')`.
 
-6. **Client-side filtering:** All filtering is client-side via `src/lib/utils/task-client-filters.ts`. Never add server refetches for filter changes.
+6. **Client-side filtering:** All filtering is client-side via `src/lib/utils/task-member-filters.ts`. Never add server refetches for filter changes.
 
 7. **Separate filter state:** `personalFilters` / `groupFilters` in `TasksShell` — switching tabs preserves each tab's filters.
 
@@ -1080,7 +1080,7 @@ dashboard widget, lead dossier task cards (`getAllLeadTasks`); also readable via
 
 13. **View = post (remarks):** `addTaskRemarkAction` runs a user-scoped `tasks` SELECT first; only if RLS returns the row does it call `add_task_remark_with_status` with `adminClient`. Agents see tasks they created or are assigned to (`tasks_agent_select`).
 
-14. **`adminClient` justification:** No INSERT/UPDATE RLS on `task_groups`, and the `tasks` INSERT/DELETE policies added in 0094 cover only personal self-assigned rows (lead-follow-up / group-subtask inserts have no policy and are blocked by default — a lead follow-up needs the coupled `task_gia_meta` row + `module='gia'` that only `create_lead_gia_task` writes). `adminClient` bypasses RLS for all task mutations so the application layer must enforce the same access rules RLS would (`canMutateTask`, role checks, view = post gate). The 0094 policies are defence-in-depth for direct client access — they are **not** the path server actions take. Never skip the pre-write auth fetch.
+14. **`adminClient` justification:** No INSERT/UPDATE RLS on `task_groups`, and the `tasks` INSERT/DELETE policies added in 0094 cover only personal self-assigned rows (lead-follow-up / group-subtask inserts have no policy and are blocked by default — a lead follow-up needs the coupled `task_gia_meta` row + `module='gia'` that only `create_lead_gia_task` writes). `adminClient` bypasses RLS for all task mutations so the application layer must enforce the same access rules RLS would (`canMutateTask`, role checks, view = post gate). The 0094 policies are defence-in-depth for direct member access — they are **not** the path server actions take. Never skip the pre-write auth fetch.
 
 15. **`deleteTaskAction`:** Cancel Trigger.dev reminder **before** DB delete. If cancel throws, the delete is aborted.
 

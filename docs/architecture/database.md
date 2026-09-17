@@ -134,7 +134,7 @@ row** — that meta row *is* the task→lead link.
   profiles, `task_title` snapshot, `meta jsonb`; FK → `tasks` CASCADE; indexes `(domain, created_at
   DESC)` + `(subject_id, created_at DESC)`; Realtime enabled. **manager+ SELECT, NO INSERT/UPDATE/
   DELETE policy ever** — written ONLY by the task-mutation cores + the overdue job via the admin
-  client (so Elaya's write tools emit it for free). Feeds the three oversight RPCs + the live rails.
+  member (so Elaya's write tools emit it for free). Feeds the three oversight RPCs + the live rails.
   (Migration 0144 was applied to prod and verified 2026-06-24.)
 
 ## WhatsApp (4 tables)
@@ -162,13 +162,13 @@ row** — that meta row *is* the task→lead link.
 
 First-class closed-deal record (0072–0074; reversed the earlier "deals = won leads" model).
 `lead_id` **nullable** — walk-in sales have no lead. `contact_name`/`contact_phone` denormalised
-at close. **`deal_type` is domain-derived, never client-picked** (0122b + decision-log 2026-06-15):
+at close. **`deal_type` is domain-derived, never member-picked** (0122b + decision-log 2026-06-15):
 `onboarding → membership` (requires `deal_duration`: `3_months | 6_months | 1_year`),
 `shop → retail` (requires `deal_category`), `house`/`legacy` → `sale`. One source
 `DOMAIN_DEAL_CONFIG`; set server-side; the 0122b CHECKs (`deals_deal_type_check` admits `sale`,
 `deals_deal_category_check`, `deals_retail_category_check` coupling retail⇔category) are the
 backstop. `deal_amount numeric(12,2)` CHECK 0–100M. `won_at` immutable after insert. `source`
-carries attribution onto the deal (0075). `client_id` is reserved for the future clients module.
+carries attribution onto the deal (0075). `member_id` is reserved for the future members module.
 **No INSERT/UPDATE/DELETE RLS policies by design** — all writes go through the admin client in
 `recordDeal`/`createWalkInDeal` (0094 comment), and now also via Elaya's `log_deal` tool through the
 shared `recordDealCore` (R-01).
@@ -255,7 +255,7 @@ A layer *over* leads — Revival **never mutates the leads row**.
   `idx_revival_candidates_one_open (lead_id) WHERE status='open'` is the structural one-open-candidate
   guard. **A-11 carve-out** (the `elaya_actions` precedent): **SELECT-only RLS** scoped by role/domain
   via an `EXISTS` subquery on `leads`; **no user INSERT/UPDATE/DELETE** — all writes are service-role;
-  the `open → actioned/dismissed` flip is a resolve-once admin-client UPDATE (column restriction
+  the `open → actioned/dismissed` flip is a resolve-once admin-member UPDATE (column restriction
   enforced in `revival-service`, not SQL).
 
 ## Call Intelligence (2 tables, 0110)
@@ -336,7 +336,7 @@ before/after snapshots), `status` proposed→approved/dismissed/executed/failed,
 affirmative human turn. `action_type` has **no DB CHECK**, so a new tool type (e.g. `log_deal`) needs
 no migration. **State-machine table, NOT append-only** (an A-11 carve-out — it doubles as the
 trust-and-rollback audit trail): the `proposed → executed/failed/dismissed` flip is a resolve-once
-service-role admin-client UPDATE (same posture as `whatsapp_messages` delivery receipts). 0118 adds
+service-role admin-member UPDATE (same posture as `whatsapp_messages` delivery receipts). 0118 adds
 the partial `idx_elaya_actions_pending (conversation_id, created_at DESC) WHERE status='proposed'`
 (the per-turn confirmation-resolver read) and a lifecycle `COMMENT ON TABLE`. **Never add a user
 UPDATE policy.** Self SELECT only; all writes service-role.
@@ -344,7 +344,7 @@ UPDATE policy.** Self SELECT only; all writes service-role.
 ### `llm_providers`
 
 Job-type → provider+model config (the `sla_policies` pattern: read per request via the admin
-client, never module-cached — a model switch applies on the next message with no deploy).
+member, never module-cached — a model switch applies on the next message with no deploy).
 `job_type` PK CHECK (`routing` | `reasoning`), `provider` CHECK (`anthropic` | `google` |
 `openai`), `model`, `max_tokens`, `active`. Seeded `routing → claude-haiku-4-5`,
 `reasoning → claude-sonnet-4-6`. RLS admin/founder SELECT; writes service-role.
@@ -386,7 +386,7 @@ can never widen access (the Golden Rule).
 
 Measures how much **active** time each member spends in Serene (per agent, per domain, today and
 historically) — an admin/founder adoption tool. "Active" = tab visible AND a real interaction in
-the last ~2 min, NOT merely logged in. Three-job architecture: the client SETs a Redis
+the last ~2 min, NOT merely logged in. Three-job architecture: the member SETs a Redis
 `presence:{userId}` key every 60s while active (hot path, **no DB write**); a 1-min snapshot job
 appends the live presence keys into `usage_heartbeats` (admin client); a rollup job re-rolls today
 every 15 min + the prior IST day nightly into `usage_daily`. Both tables **RLS-enabled with NO
@@ -399,8 +399,8 @@ lives in the service layer, never the RPC).
 
 **Append-only (A-11)** raw active-presence ticks — one row per active user per snapshot-job run
 (`user_id`, `domain app_domain`, `captured_at`). The ONLY writer is the snapshot job (admin
-client); `usage_heartbeats_user_time_idx (user_id, captured_at)`. Never read by the dashboard;
-pruned after 30 days by the nightly rollup (admin-client maintenance, not a user mutation).
+member); `usage_heartbeats_user_time_idx (user_id, captured_at)`. Never read by the dashboard;
+pruned after 30 days by the nightly rollup (admin-member maintenance, not a user mutation).
 
 ### `usage_daily`
 
@@ -454,7 +454,7 @@ private `suggestions` storage bucket (0135 — see Storage buckets).
 
 ## RPC inventory
 
-~40 SECURITY DEFINER functions (the scope-param class has client EXECUTE revoked — 0102/0123/0144/
+~40 SECURITY DEFINER functions (the scope-param class has member EXECUTE revoked — 0102/0123/0144/
 0149; the self-scoped class keeps the `authenticated` GRANT). The load-bearing ones:
 `get_user_role`/`get_user_domain` (RLS helpers) · `get_next_round_robin_agent` (0007) ·
 `get_active_lead_by_phone` (0008/0090) · `generate_lead_slug` (0046, fixed 0147) ·

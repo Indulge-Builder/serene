@@ -15,7 +15,7 @@ What it writes (idempotent upserts on Freshdesk's own ids, the same shape the AP
 It writes NO ticket_changes: the export has no history, only current state.
 
 Reads .env.local for NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY (or the env).
-Same REST posture as scripts/import-clients-and-map-groups.py (urllib, Content-Profile).
+Same REST posture as scripts/import-members-and-map-groups.py (urllib, Content-Profile).
 
 Usage:
   python3 scripts/freshdesk/load-export.py --dir cleint-data/tickets-freshdesk-export           # dry run: parse + counts
@@ -36,7 +36,7 @@ import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
 ACCOUNT_SUFFIX = re.compile(r"_\d{7}$")  # cf_category_of_request_2986625 → cf_category_of_request
-STATUS_LABELS = {2: "Open", 3: "Pending", 4: "Resolved", 5: "Closed", 6: "Nudge Client", 7: "Nudge Vendor",
+STATUS_LABELS = {2: "Open", 3: "Pending", 4: "Resolved", 5: "Closed", 6: "Nudge Member", 7: "Nudge Vendor",
                  8: "Ongoing Delivery", 9: "Invoice Due", 9000: "Assigned to AI Agent"}
 
 
@@ -166,11 +166,11 @@ def custom_fields(e: ET.Element, strip_cf: bool = False) -> dict:
     return out
 
 
-# ─── client linking (the spine join) ────────────────────────────────────────
+# ─── member linking (the spine join) ────────────────────────────────────────
 
-def load_client_index() -> tuple[dict[str, str], dict[str, str]]:
+def load_member_index() -> tuple[dict[str, str], dict[str, str]]:
     by_contact, by_phone = {}, {}
-    rows = rest("GET", "clients?select=id,primary_phone,alt_phones,freshdesk_contact_id&limit=5000", schema="public") or []
+    rows = rest("GET", "members?select=id,primary_phone,alt_phones,freshdesk_contact_id&limit=5000", schema="public") or []
     for r in rows:
         if r.get("freshdesk_contact_id"):
             by_contact[str(r["freshdesk_contact_id"]).strip()] = r["id"]
@@ -226,7 +226,7 @@ def parse_contacts(path: str, by_contact, by_phone) -> list[dict]:
             "active": boolean(u, "active"), "company_id": integer(u, "company-id"),
             "category": cf.get("category") if isinstance(cf.get("category"), str) else None,
             "custom_fields": cf, "tags": [], "description": text(u, "description"),
-            "client_id": by_contact.get(str(cid)) or (by_phone.get(phone) if phone else None),
+            "member_id": by_contact.get(str(cid)) or (by_phone.get(phone) if phone else None),
             "raw": {c.tag: (c.text or "").strip() for c in u if len(c) == 0},
             "fd_created_at": ts(u, "created-at"), "fd_updated_at": ts(u, "updated-at"),
         })
@@ -244,7 +244,7 @@ def parse_tickets(path: str, by_contact, by_phone, requester_phones: dict[int, s
         status = integer(t, "status") or 2
         requester_id = integer(t, "requester-id") or 0
         phone = requester_phones.get(requester_id)
-        client_id = by_contact.get(str(requester_id)) or (by_phone.get(phone) if phone else None)
+        member_id = by_contact.get(str(requester_id)) or (by_phone.get(phone) if phone else None)
         tags = []
         tg = t.find("tags")
         if tg is not None:
@@ -291,7 +291,7 @@ def parse_tickets(path: str, by_contact, by_phone, requester_phones: dict[int, s
             "tags": tags, "group_id": integer(t, "group-id"), "responder_id": integer(t, "responder-id"),
             "internal_group_id": integer(t, "internal-group-id"), "internal_agent_id": integer(t, "internal-agent-id"),
             "requester_id": requester_id, "company_id": None, "product_id": integer(t, "product-id"),
-            "requester_name": text(t, "requester-name"), "requester_phone_e164": phone, "client_id": client_id,
+            "requester_name": text(t, "requester-name"), "requester_phone_e164": phone, "member_id": member_id,
             "due_by": ts(t, "due-by"), "fr_due_by": ts(t, "frDueBy"),
             "is_escalated": boolean(t, "isescalated"), "fr_escalated": boolean(t, "fr-escalated"),
             "spam": boolean(t, "spam"), "deleted": boolean(t, "deleted"),
@@ -321,8 +321,8 @@ def main():
     BASE, KEY = load_env()
 
     d = args.dir.rstrip("/")
-    by_contact, by_phone = load_client_index() if args.apply or True else ({}, {})
-    print(f"client index: {len(by_contact)} by Freshdesk contact id, {len(by_phone)} by phone")
+    by_contact, by_phone = load_member_index() if args.apply or True else ({}, {})
+    print(f"member index: {len(by_contact)} by Freshdesk contact id, {len(by_phone)} by phone")
 
     # Contacts first (they give the requester phones for ticket linking).
     contacts: list[dict] = []
@@ -330,8 +330,8 @@ def main():
         for f in sorted(glob.glob(f"{d}/Users*.xml")):
             contacts.extend(parse_contacts(f, by_contact, by_phone))
     requester_phones = {c["id"]: c["phone_e164"] for c in contacts if c["phone_e164"]}
-    linked_contacts = sum(1 for c in contacts if c["client_id"])
-    print(f"contacts: {len(contacts)} parsed, {len(requester_phones)} with phone, {linked_contacts} linked to a client")
+    linked_contacts = sum(1 for c in contacts if c["member_id"])
+    print(f"contacts: {len(contacts)} parsed, {len(requester_phones)} with phone, {linked_contacts} linked to a member")
 
     groups = parse_groups(f"{d}/Groups.xml") if args.only in (None, "groups") and os.path.exists(f"{d}/Groups.xml") else []
     agents = parse_agents(f"{d}/AllAgents0.xml") if args.only in (None, "agents") and os.path.exists(f"{d}/AllAgents0.xml") else []
@@ -358,7 +358,7 @@ def main():
         tickets, notes = parse_tickets(f, by_contact, by_phone, requester_phones)
         tot_t += len(tickets)
         tot_n += len(notes)
-        linked += sum(1 for t in tickets if t["client_id"])
+        linked += sum(1 for t in tickets if t["member_id"])
         for t in tickets:
             if t["fd_updated_at"] and t["fd_updated_at"] > max_updated:
                 max_updated = t["fd_updated_at"]
@@ -368,7 +368,7 @@ def main():
                 upsert("conversations", notes, 500)
         print(f"[{i}/{len(files)}] {os.path.basename(f)}: {len(tickets)} tickets, {len(notes)} notes "
               f"({'written' if args.apply else 'parsed'}) · {int(time.time() - t0)}s", flush=True)
-    print(f"TOTAL tickets {tot_t} · notes {tot_n} · linked to a client {linked} · latest updated-at {max_updated}")
+    print(f"TOTAL tickets {tot_t} · notes {tot_n} · linked to a member {linked} · latest updated-at {max_updated}")
 
     if args.apply and not args.files and max_updated:
         now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")

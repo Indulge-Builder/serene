@@ -15,6 +15,7 @@
 
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { giaDb } from "@/lib/supabase/schemas";
 import { mapRows } from "@/lib/utils/rows";
 import { toISTMidnight } from "@/lib/utils/ist";
 import {
@@ -38,7 +39,7 @@ import type { Task } from "@/lib/types/database";
 /** Active revival policies (one per trigger status). Admin client — no session. */
 export async function getActiveRevivalPolicies(): Promise<RevivalPolicyRow[]> {
   const admin = createAdminClient();
-  const { data, error } = await admin
+  const { data, error } = await giaDb(admin)
     .from("revival_policies")
     .select("*")
     .eq("active", true);
@@ -91,7 +92,7 @@ export async function getOpenRevivedTask(leadId: string): Promise<Task | null> {
 /** All revival policies (incl. inactive) for the settings panel. Admin client. */
 export async function getAllRevivalPolicies(): Promise<RevivalPolicyRow[]> {
   const admin = createAdminClient();
-  const { data, error } = await admin
+  const { data, error } = await giaDb(admin)
     .from("revival_policies")
     .select("*")
     .order("trigger_status", { ascending: true });
@@ -114,7 +115,7 @@ export async function updateRevivalPolicy(
   patch: { silence_days?: number; daily_cap_per_agent?: number; active?: boolean },
 ): Promise<RevivalPolicyRow | null> {
   const admin = createAdminClient();
-  const { data, error } = await admin
+  const { data, error } = await giaDb(admin)
     .from("revival_policies")
     .update(patch)
     .eq("trigger_status", triggerStatus)
@@ -220,7 +221,7 @@ export async function countAutoRevivesToday(agentId: string): Promise<number> {
   const admin = createAdminClient();
   const istMidnight = toISTMidnight(new Date()).toISOString();
 
-  const { count, error } = await admin
+  const { count, error } = await giaDb(admin)
     .from("revival_candidates")
     .select("id", { count: "exact", head: true })
     .eq("status", "actioned")
@@ -261,7 +262,7 @@ export async function insertRevivalCandidate(input: {
   resolvedAt?: string | null;
 }): Promise<RevivalCandidateRow | null> {
   const admin = createAdminClient();
-  const { data, error } = await admin
+  const { data, error } = await giaDb(admin)
     .from("revival_candidates")
     .insert({
       lead_id: input.leadId,
@@ -302,7 +303,7 @@ export async function markCandidateResolved(
   resolvedBy: string,
 ): Promise<boolean> {
   const admin = createAdminClient();
-  const { data, error } = await admin
+  const { data, error } = await giaDb(admin)
     .from("revival_candidates")
     .update({ status, resolved_at: new Date().toISOString(), resolved_by: resolvedBy })
     .eq("id", candidateId)
@@ -322,7 +323,7 @@ export async function getOpenCandidateForLead(
   leadId: string,
 ): Promise<RevivalCandidateRow | null> {
   const admin = createAdminClient();
-  const { data, error } = await admin
+  const { data, error } = await giaDb(admin)
     .from("revival_candidates")
     .select("*")
     .eq("lead_id", leadId)
@@ -362,7 +363,7 @@ export async function getOpenCandidatesForCaller(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   sessionClient: any,
 ): Promise<Map<string, OpenCandidateLite>> {
-  const { data, error } = await sessionClient
+  const { data, error } = await giaDb(sessionClient)
     .from("revival_candidates")
     .select("id, lead_id, verdict, ai_reasoning, suggested_revive_at, created_at")
     .eq("status", "open")

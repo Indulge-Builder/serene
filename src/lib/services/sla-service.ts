@@ -8,6 +8,7 @@
  */
 
 import { createClient }      from '@/lib/supabase/server';
+import { giaDb } from '@/lib/supabase/schemas';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDomainDecisionMakers } from '@/lib/services/profiles-service';
 import { mapRows }           from '@/lib/utils/rows';
@@ -26,7 +27,7 @@ import type { LeadSlaTimer, Profile, Task, AppDomain, SlaPolicy, SlaHoursMode, S
 /** All active policies. Returns [] on error — callers treat that as "no rules". */
 export async function getSlaPolicies(): Promise<SlaPolicy[]> {
   const admin = createAdminClient();
-  const { data, error } = await admin
+  const { data, error } = await giaDb(admin)
     .from('sla_policies')
     .select('*')
     .eq('active', true);
@@ -45,7 +46,7 @@ export async function getSlaPolicies(): Promise<SlaPolicy[]> {
  */
 export async function getAllSlaPolicies(): Promise<SlaPolicy[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase
+  const { data, error } = await giaDb(supabase)
     .from('sla_policies')
     .select('*')
     .order('code', { ascending: true });
@@ -77,7 +78,7 @@ export async function updateSlaPolicy(
   patch: SlaPolicyPatch,
 ): Promise<SlaPolicy | null> {
   const admin = createAdminClient();
-  const { data, error } = await admin
+  const { data, error } = await giaDb(admin)
     .from('sla_policies')
     .update(patch)
     .eq('code', code)
@@ -114,7 +115,7 @@ export interface NewSlaPolicy {
  */
 export async function createSlaPolicy(policy: NewSlaPolicy): Promise<SlaPolicy | null> {
   const admin = createAdminClient();
-  const { data, error } = await admin
+  const { data, error } = await giaDb(admin)
     .from('sla_policies')
     .insert(policy)
     .select()
@@ -130,7 +131,7 @@ export async function createSlaPolicy(policy: NewSlaPolicy): Promise<SlaPolicy |
 /** Single policy by code — includes inactive rows (caller checks .active). */
 export async function getSlaPolicy(code: string): Promise<SlaPolicy | null> {
   const admin = createAdminClient();
-  const { data, error } = await admin
+  const { data, error } = await giaDb(admin)
     .from('sla_policies')
     .select('*')
     .eq('code', code)
@@ -154,7 +155,7 @@ export async function getSlaTimerForLeadAndRule(
   ruleCode: string,
 ): Promise<LeadSlaTimer | null> {
   const admin = createAdminClient();
-  const { data, error } = await admin
+  const { data, error } = await giaDb(admin)
     .from('lead_sla_timers')
     .select('*')
     .eq('lead_id', leadId)
@@ -290,7 +291,7 @@ export async function getTaskWithGiaContext(taskId: string): Promise<TaskGiaCont
     return null;
   }
 
-  const { data: meta } = await admin
+  const { data: meta } = await giaDb(admin)
     .from('task_gia_meta')
     .select('lead_id, leads(id, first_name, last_name, phone, domain, assigned_to)')
     .eq('task_id', taskId)
@@ -415,7 +416,7 @@ export async function markTaskOverdueOnce(taskId: string, at: Date): Promise<boo
  */
 export async function hasLeadActivityAfter(leadId: string, after: string): Promise<boolean> {
   const admin = createAdminClient();
-  const { data, error } = await admin
+  const { data, error } = await giaDb(admin)
     .from('lead_activities')
     .select('id')
     .eq('lead_id', leadId)
@@ -441,7 +442,7 @@ export async function createSlaTimer(
   scheduledFireAt:  Date,
 ): Promise<LeadSlaTimer | null> {
   const admin = createAdminClient();
-  const { data, error } = await admin
+  const { data, error } = await giaDb(admin)
     .from('lead_sla_timers')
     .insert({
       lead_id:           leadId,
@@ -467,7 +468,7 @@ export async function updateSlaTimerRunId(
   runId:   string,
 ): Promise<void> {
   const admin = createAdminClient();
-  await admin
+  await giaDb(admin)
     .from('lead_sla_timers')
     .update({ trigger_run_id: runId })
     .eq('id', timerId);
@@ -479,7 +480,7 @@ export async function updateSlaTimerRunId(
  */
 export async function cancelSlaTimersForLeadInDb(leadId: string): Promise<void> {
   const admin = createAdminClient();
-  await admin
+  await giaDb(admin)
     .from('lead_sla_timers')
     .update({
       status:       'cancelled' as const,
@@ -495,7 +496,7 @@ export async function cancelSlaTimersForLeadInDb(leadId: string): Promise<void> 
  */
 export async function markSlaTimerFired(leadId: string, ruleCode: string): Promise<void> {
   const admin = createAdminClient();
-  await admin
+  await giaDb(admin)
     .from('lead_sla_timers')
     .update({
       status:   'fired' as const,
@@ -583,7 +584,7 @@ export async function getEscalatedLeads(
   const nowIso = new Date().toISOString();
   const windowStart = new Date(Date.now() - ESCALATION_WINDOW_DAYS * 86_400_000).toISOString();
 
-  let query = admin
+  let query = giaDb(admin)
     .from('lead_sla_timers')
     .select(
       `lead_id, rule_code, status, fired_at, scheduled_fire_at,
@@ -826,7 +827,7 @@ export async function getGoingColdLeads(
   const admin = createAdminClient();
   const threshold = goingColdCutoff();
 
-  let query = admin
+  let query = giaDb(admin)
     .from('leads')
     .select(
       `id, slug, first_name, last_name, phone, domain, status, last_activity_at,

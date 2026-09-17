@@ -10,12 +10,12 @@ import { hashString } from "@/lib/utils/strings";
 import type { SiaGroupKind, SiaGroupRow, SiaMessageRow } from "@/lib/services/sia-service";
 
 export const KIND_LABEL: Record<SiaGroupKind, string> = {
-  client: "Client",
+  member: "Member",
   vendor: "Vendor",
   internal: "Internal",
   unmapped: "Unmapped",
 };
-export const KIND_ORDER: SiaGroupKind[] = ["client", "vendor", "internal", "unmapped"];
+export const KIND_ORDER: SiaGroupKind[] = ["member", "vendor", "internal", "unmapped"];
 
 export function groupTitle(g: Pick<SiaGroupRow, "subject" | "group_jid">): string {
   return g.subject ?? g.group_jid.split("@")[0];

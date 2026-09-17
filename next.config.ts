@@ -14,6 +14,11 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "4mb",
     },
   },
+  // /clients became /members on 2026-09-17 (migration 0202); old links and bookmarks still land.
+  async redirects() {
+    return [{ source: "/clients", destination: "/members", permanent: true },
+            { source: "/clients/:path*", destination: "/members/:path*", permanent: true }];
+  },
   async headers() {
     return [
       {

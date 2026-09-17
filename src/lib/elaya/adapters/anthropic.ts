@@ -24,7 +24,7 @@ const ELAYA_REQUEST_TIMEOUT_MS = 30_000;
 
 let client: Anthropic | null = null;
 
-function getClient(): Anthropic {
+function getMember(): Anthropic {
   if (!client) {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) throw new Error('[elaya-anthropic] ANTHROPIC_API_KEY is not set');
@@ -109,7 +109,7 @@ export const anthropicAdapter: LlmProviderAdapter = {
         ? [{ type: 'text', text: req.system, cache_control: { type: 'ephemeral' } }]
         : req.system;
 
-    const stream = getClient().messages.stream(
+    const stream = getMember().messages.stream(
       {
         model: req.model,
         max_tokens: req.maxTokens,

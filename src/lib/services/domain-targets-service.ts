@@ -5,6 +5,7 @@
 // second).
 
 import { createClient } from "@/lib/supabase/server";
+import { giaDb } from "@/lib/supabase/schemas";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { mapRows } from "@/lib/utils/rows";
 import type { DomainTarget } from "@/lib/types/index";
@@ -21,7 +22,7 @@ type DomainTargetRow = {
 export async function getDomainTargets(): Promise<DomainTarget[]> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
+  const { data, error } = await giaDb(supabase)
     .from("domain_targets")
     .select("domain, metric, target_value, period")
     .eq("metric", "deals_closed")
@@ -50,7 +51,7 @@ export async function upsertDomainTarget(
 ): Promise<{ ok: boolean }> {
   const adminClient = createAdminClient();
 
-  const { error } = await adminClient
+  const { error } = await giaDb(adminClient)
     .from("domain_targets")
     .upsert(
       {

@@ -1,5 +1,5 @@
 /**
- * ticket-sentinel.ts — the sentinel pool's heartbeat (migration 0199, client-ticket-plan.md 7.6).
+ * ticket-sentinel.ts — the sentinel pool's heartbeat (migration 0199, member-ticket-plan.md 7.6).
  *
  * Every minute: claim the tickets whose alarm has rung (claim_sentinel_wakes, leased so a second
  * worker never takes the same one) and run one wake each — the rule pass, the reading pass when

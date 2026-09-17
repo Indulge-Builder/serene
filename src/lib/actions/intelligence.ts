@@ -11,6 +11,7 @@
 // sibling of upsertServiceCaseAction if a hooks UI ships.)
 
 import { revalidatePath } from 'next/cache';
+import { giaDb } from '@/lib/supabase/schemas';
 import { z } from 'zod';
 import { requireProfile } from '@/lib/actions/_auth';
 import { parseActionInput } from '@/lib/actions/_validation';
@@ -95,7 +96,7 @@ export async function upsertServiceCaseAction(
   // old shelf until its 1hr TTL (audit #7). Read the prior domain first.
   let priorDomain: string | null = null;
   if (v.id) {
-    const { data: existing } = await supabase
+    const { data: existing } = await giaDb(supabase)
       .from('service_cases')
       .select('domain')
       .eq('id', v.id)
@@ -104,8 +105,8 @@ export async function upsertServiceCaseAction(
   }
 
   const query = v.id
-    ? supabase.from('service_cases').update(row).eq('id', v.id)
-    : supabase.from('service_cases').insert({ ...row, created_by: auth.profile.id });
+    ? giaDb(supabase).from('service_cases').update(row).eq('id', v.id)
+    : giaDb(supabase).from('service_cases').insert({ ...row, created_by: auth.profile.id });
 
   const { data, error } = await query
     .select('id, domain, category, tags, title, summary, outcome_note, city, country, is_featured, sort_order')

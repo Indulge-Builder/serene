@@ -35,7 +35,7 @@ function Card({ t, dragging = false }: { t: TicketListItem; dragging?: boolean }
         <PriorityDot priority={t.priority} approved={Boolean(t.priority_approved_at)} />
       </div>
       <a href={`${TICKETS_PATH}/${t.id}`} onClick={(e) => e.stopPropagation()} style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', color: 'var(--theme-text-primary)', lineHeight: 1.35, textDecoration: 'none' }}>{t.title}</a>
-      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--theme-text-secondary)' }}>{t.client_name} · {TICKET_CATEGORIES.labels[t.category] ?? t.category}</span>
+      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--theme-text-secondary)' }}>{t.member_name} · {TICKET_CATEGORIES.labels[t.category] ?? t.category}</span>
       {t.tags?.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
           {t.tags.map((tag) => <span key={tag} style={{ fontSize: 'var(--text-2xs)', padding: '1px var(--space-2)', borderRadius: 'var(--radius-full)', background: 'var(--theme-accent-surface)', color: 'var(--neu-accent-deep)' }}>{tag}</span>)}

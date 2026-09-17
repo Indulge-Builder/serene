@@ -429,7 +429,7 @@ Performance indexes on related tables: `idx_lead_activities_actor_status`, `idx_
 | `getCampaignMetrics` | `role`, `callerDomain`, `filters` | `Promise<CampaignMetrics[]>` | RPC `get_campaign_metrics` | Campaigns list |
 | `getCampaignDetailMetrics` | `campaignName`, `filters` | `Promise<CampaignDetailMetrics \| null>` | RPC | Campaign detail |
 | `getCampaignAgentDistribution` | `campaignName`, `filters` | `Promise<AgentDistributionRow[]>` | RPC | Campaign detail |
-| `getNextRoundRobinAgent` | `domain` | `Promise<string \| null>` | Admin client: agents + routing + last assignment sort | `lead-ingestion.ts` |
+| `getNextRoundRobinAgent` | `domain` | `Promise<string \| null>` | Admin member: agents + routing + last assignment sort | `lead-ingestion.ts` |
 | `searchLeadsForTask` | `query`, `role`, `domain`, `userId` | `Promise<LeadSearchResult[]>` | `search_text ILIKE` (name/phone/email/city), limit 8, role-scoped | `searchLeadsAction` |
 
 **Types exported from service:**

@@ -26,14 +26,14 @@ It cannot answer the questions that matter more as the concierge work moves into
 - Which agent prefers which vendor, and which agent should avoid one.
 - What a vendor does and does not do. A travel vendor may be great for visas and useless for
   ticket booking. Some vendors refuse whole ticket types.
-- The vision in the Concierge doc: a match score for this vendor against this specific client,
+- The vision in the Concierge doc: a match score for this vendor against this specific member,
   with a reason, and the top three alternatives.
 
 A row that bakes counts into the vendor can only describe the past and only changes when the
 import is rerun. The rule for this module: **facts are rows, scores are computed.** Every
 number a person sees is derived from an event ledger, never hand maintained on the vendor row.
 
-This is the same shape the clients spine set in migration 0181: a thin identity table, the raw
+This is the same shape the members spine set in migration 0181: a thin identity table, the raw
 import kept untouched in `import_raw`, and the dynamic layer hanging off it in its own tables.
 
 ## The shape in one picture
@@ -70,7 +70,7 @@ Migrations 0183–0192, all dated 2026-09-11 and all applied to prod. (0182 was 
 | `contacts` | `jsonb` not null default `[]`, CHECK `jsonb_typeof = 'array'` | `[{ name: string \| null, phones: string[], emails: string[] }]`. Phones are **E.164** (Rule 06, `normalizeToE164()` in the loader). A null name is the vendor's general line, keep that. |
 | `primary_phone` | `text` | E.164, nullable. Partial index. This is how Sia matches a WhatsApp contact to a vendor. |
 | `home_city` | `text` | Where the vendor is based. Cities served come from engagements and capabilities, not from here. |
-| `identity_status` | `text` not null default `unverified` CHECK `unverified` / `verified` | Same meaning as clients. The merged names from the Freshdesk clean-up stay unverified until a human confirms. |
+| `identity_status` | `text` not null default `unverified` CHECK `unverified` / `verified` | Same meaning as members. The merged names from the Freshdesk clean-up stay unverified until a human confirms. |
 | `sources` | `text[]` not null default `{}` | `freshdesk`, `sia`, `manual`. |
 | `import_raw` | `jsonb` not null default `{}` | **PR #3's computed row goes here untouched**: `ticket_categories`, `service_cities`, `agents`, `invoices`, `times_used`, `first_used`, `last_used`, `invoice_count`. It stays as the audit trail of the import. Nothing reads it for ranking once engagements are loaded. |
 | `notes` | `text` | Free text about the vendor. |
@@ -113,7 +113,7 @@ One row per ticket or job we did with a vendor. This is the table every score re
 | --- | --- | --- |
 | `id` | `uuid` PK | |
 | `vendor_id` | `uuid` FK `vendors` not null, **on delete restrict** | **Built:** a vendor with history is never hard-deleted (blacklist it); a merge script re-points rows first. |
-| `client_id` | `uuid` FK `clients` on delete set null | The human this job was for. This is what makes the client-vs-vendor match score possible later. Null when the Freshdesk contact did not map to a client. |
+| `member_id` | `uuid` FK `members` on delete set null | The human this job was for. This is what makes the member-vs-vendor match score possible later. Null when the Freshdesk contact did not map to a member. |
 | `lead_id` | `uuid` FK `leads` on delete set null | Gia-side hook for pre-won work. Usually null. |
 | `agent_id` | `uuid` FK `profiles` on delete set null | The staff member who ran the job. Resolved from the Freshdesk agent name against `profiles.full_name` at load time. |
 | `agent_name_raw` | `text` | The name as Freshdesk had it, kept when no profile matched (ex-staff). Never shown as a person, only as history. |
@@ -134,7 +134,7 @@ One row per ticket or job we did with a vendor. This is the table every score re
 **Built:** `response_hours` and `on_time` were dropped — Freshdesk never recorded either, so
 they would only ever have been null. Speed and reliability are manual review dimensions.
 
-Indexes: `(vendor_id, started_at desc)`, `(client_id) where client_id is not null`,
+Indexes: `(vendor_id, started_at desc)`, `(member_id) where member_id is not null`,
 `(agent_id) where agent_id is not null`, `(category, city)`.
 
 **Append-only (Rule 08, A-11).** No user UPDATE or DELETE policy. One carve-out, logged in the
@@ -173,19 +173,19 @@ via `setAgentPreferenceCore`. On the vendor page: "Your take" in the score card.
 ### `vendor-invoices` bucket (0184)
 
 Keep PR #3's migration nearly as is: private bucket, provisioned in SQL, flat paths keyed on the
-Freshdesk `attachment_id`, no write policy (service-role only), reads via admin-client signed
+Freshdesk `attachment_id`, no write policy (service-role only), reads via admin-member signed
 URLs. Two changes: the number, and the SELECT policy narrows to the vendor audience below.
 
 ## Access and RLS
 
 Vendor contacts are business data, but the invoices carry pricing and the engagement ledger
-carries client ids. The clients spine chose admin/founder only. Vendors need a wider floor,
+carries member ids. The members spine chose admin/founder only. Vendors need a wider floor,
 because the concierge and shop teams are the ones picking vendors all day.
 
 **Decided 2026-09-05 (founder): admin/founder only, for now.**
 
 - SELECT on all five tables and the bucket: `(SELECT get_user_role()) IN ('admin','founder')`
-  (the 0181 clients posture). The concierge / shop floor widens this with the Sia UI — one
+  (the 0181 members posture). The concierge / shop floor widens this with the Sia UI — one
   migration on the five policies + one line (`VENDOR_ROLES`) in `actions/vendors.ts`.
 - The service layer reads on the **admin client** (the ranker also serves sessionless Elaya
   turns), so the gated action / Elaya principal is the trust boundary; RLS is its mirror.
@@ -224,9 +224,9 @@ sidebar ("8.5, matches budget and route preference; note: chose a different oper
 Weights live in `SCORE_WEIGHTS` in `lib/constants/vendors.ts` for Phase 1; they move to a config
 table (the `revival_policies` pattern) the day someone wants to tune them without a deploy.
 
-**Client match score (the vision, Phase 2):** the same function takes an optional `clientId` and
-adds that client's own history with the vendor: engagements, outcomes, complaints in reviews.
-Nothing new is stored for this; it is why `vendor_engagements.client_id` exists from day one.
+**Member match score (the vision, Phase 2):** the same function takes an optional `clientId` and
+adds that member's own history with the vendor: engagements, outcomes, complaints in reviews.
+Nothing new is stored for this; it is why `vendor_engagements.member_id` exists from day one.
 
 ## The ranker: "best vendor for this ticket"
 
@@ -267,10 +267,10 @@ same function in `lib/services/vendor-mutations.ts`.
 ## How data gets in, and stays fresh
 
 1. **Backfill (Ethan's loader).** The stage scripts move into `scripts/vendors/` so the import is
-   reproducible in the repo, like `import-clients-and-map-groups.py`. Each Freshdesk ticket that
+   reproducible in the repo, like `import-members-and-map-groups.py`. Each Freshdesk ticket that
    used a vendor becomes one `vendor_engagements` row (`source = 'freshdesk'`,
-   `source_ref = ticket id`, agent resolved against `profiles`, client resolved against
-   `clients.freshdesk_contact_id`, every invoice attachment on `invoice_paths`). Capabilities are
+   `source_ref = ticket id`, agent resolved against `profiles`, member resolved against
+   `members.freshdesk_contact_id`, every invoice attachment on `invoice_paths`). Capabilities are
    seeded from the per-category counts. The computed row goes to `import_raw`.
 2. **Sia.** When a vendor WhatsApp group is mapped (`wag_groups.vendor_id`), the group mapper
    fills `primary_phone` and contacts. Later, Sia's meaning layer emits engagements with
@@ -293,7 +293,7 @@ supabase db push                                                                
 npx tsx scripts/vendors/load-vendors.ts --yes-write-to-production              # 2. the data (insert-only on rerun)
 npx tsx scripts/vendors/dedupe-vendors.ts --yes-write-to-production --replay scripts/vendors/vendor-merges.csv
 npx tsx scripts/vendors/dedupe-vendors.ts --yes-write-to-production --purge-junk        # 3. IN THIS ORDER —
-npx tsx scripts/vendors/dedupe-vendors.ts --yes-write-to-production --purge-clients     #    merges before purges
+npx tsx scripts/vendors/dedupe-vendors.ts --yes-write-to-production --purge-members     #    merges before purges
 npx tsx scripts/vendors/upload-vendor-invoices.ts --yes-write-to-production --skip-existing   # 4. the PDFs
 ```
 
@@ -301,7 +301,7 @@ Merges before purges: two rows the merge list names as survivors are themselves 
 first and those merges find no survivor. The loader is insert-only after the first load (existing
 rows untouched, merged-away spellings mapped to their survivor), so rerunning it is safe; a rerun
 re-inserts only the rows the cleanup removed by label, and the cleanup removes them again — run the
-three cleanup commands after every load. A true rebuild is `--wipe`. `client_id` is NULL on every imported row — the archive never carried the
+three cleanup commands after every load. A true rebuild is `--wipe`. `member_id` is NULL on every imported row — the archive never carried the
 requester's identity.
 
 ## File map (built 2026-09-05 → 2026-09-11, live on prod 2026-09-11, on main 2026-09-12)

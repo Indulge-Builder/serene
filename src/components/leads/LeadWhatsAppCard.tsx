@@ -85,7 +85,7 @@ export function LeadWhatsAppCard({
         "postgres_changes",
         {
           event:  "*",
-          schema: "public",
+          schema: "gia",
           table:  "whatsapp_messages",
           filter: `conversation_id=eq.${conversationId}`,
         },

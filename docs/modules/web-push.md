@@ -40,7 +40,7 @@ event site → createNotification → [notificationKey? recipient muted in_app �
 
 | Layer | File | Role |
 | ----- | ---- | ---- |
-| Service (server + Node only) | `src/lib/services/push-service.ts` | `dispatchPush` — reads the recipient's devices via the **admin** client (cross-user), sends in parallel via `web-push`, **prunes** dead endpoints. VAPID configured once, lazily. |
+| Service (server + Node only) | `src/lib/services/push-service.ts` | `dispatchPush` — reads the recipient's devices via the **admin** member (cross-user), sends in parallel via `web-push`, **prunes** dead endpoints. VAPID configured once, lazily. |
 | Fan-out call site | `src/lib/services/notifications-service.ts` | `createNotification` calls `dispatchPush` after the row insert. |
 | Subscribe hook | `src/hooks/usePushSubscription.ts` | Gesture-gated `Notification.requestPermission()` + `pushManager.subscribe`; iOS standalone detection. |
 | Actions | `src/lib/actions/push.ts` | `savePushSubscriptionAction` (upsert) / `removePushSubscriptionAction` — Zod → `requireProfile`, session client, owner-only RLS. |
@@ -86,7 +86,7 @@ event site → createNotification → [notificationKey? recipient muted in_app �
 ## Env
 
 `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` (server-only), `NEXT_PUBLIC_VAPID_PUBLIC_KEY`
-(client). Deps: `web-push@3.6.7` + `@types/web-push@3.6.4`. See `../operations/environments.md`.
+(member). Deps: `web-push@3.6.7` + `@types/web-push@3.6.4`. See `../operations/environments.md`.
 
 ## Related
 

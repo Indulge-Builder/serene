@@ -58,7 +58,7 @@ async function fetchCurrentShopLeadIds(): Promise<string[]> {
   const PAGE = 1000;
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await supabase
-      .from("leads")
+      .schema('gia').from("leads")
       .select("id")
       .eq("domain", DOMAIN)
       .range(from, from + PAGE - 1);
@@ -132,7 +132,7 @@ async function main() {
       const CHUNK = 200;
       for (let i = 0; i < currentIds.length; i += CHUNK) {
         await supabase
-          .from("whatsapp_notification_logs")
+          .schema('gia').from("whatsapp_notification_logs")
           .update({ lead_id: null })
           .in("lead_id", currentIds.slice(i, i + CHUNK));
       }
@@ -156,7 +156,7 @@ async function main() {
       const leadId = row.lead_id as string | null;
       if (!id || !leadId) continue;
       const { error } = await supabase
-        .from("whatsapp_notification_logs")
+        .schema('gia').from("whatsapp_notification_logs")
         .update({ lead_id: leadId })
         .eq("id", id);
       if (!error) restored++;

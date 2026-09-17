@@ -5,7 +5,7 @@ import { updateUserAuthorization } from "@/lib/actions/profiles";
 import { Button, type ButtonStatus } from "@/components/ui/Button";
 import { RoleDomainFields } from "@/components/admin/RoleDomainFields";
 import type { Profile } from "@/lib/types/database";
-import type { QueendomSummary } from "@/lib/types/client";
+import type { QueendomSummary } from "@/lib/types/member";
 import type { ActionResult } from "@/lib/types";
 
 type Props = { user: Profile; queendoms: QueendomSummary[] };

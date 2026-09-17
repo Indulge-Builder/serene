@@ -76,7 +76,7 @@ async def run_turn(
 ) -> TurnResult:
     # One round of concurrent reads, the brain.ts shape: model config, PII depth,
     # the per-user persona (style prefs + learned blurb) and the user's notes —
-    # the last two are admin-client + code-scoped so they fold identically on
+    # the last two are admin-member + code-scoped so they fold identically on
     # both channels, and '' for a user who has set nothing.
     llm, depth, (persona, learned), notes = await asyncio.gather(
         registry.resolve(specialist.job),

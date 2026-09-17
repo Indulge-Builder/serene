@@ -43,7 +43,7 @@ page-level action CTA.
 
 | Layer | Key items |
 | ----- | --------- |
-| Service | `sla-service.ts` — `getEscalatedLeads(domain\|null, assignedTo?)`, `getOverdueGiaTasks(domain\|null, assignedTo?)`, `getGoingColdLeads(scope?: { domain?; assignedTo? })`. **All three carry an optional agent self-scope** (`assignedTo`): the page passes `profile.id` for agents (own slipped leads/tasks), `null` for manager+; `getGoingColdLeads`'s scope object also serves the Elaya `get_cold_leads` tool (added 2026-06-20). Admin client with **session-derived** scope args (the gated page is the trust boundary, `getAgentRosterByDomain` pattern); `mapRows` typed boundary |
+| Service | `sla-service.ts` — `getEscalatedLeads(domain\|null, assignedTo?)`, `getOverdueGiaTasks(domain\|null, assignedTo?)`, `getGoingColdLeads(scope?: { domain?; assignedTo? })`. **All three carry an optional agent self-scope** (`assignedTo`): the page passes `profile.id` for agents (own slipped leads/tasks), `null` for manager+; `getGoingColdLeads`'s scope object also serves the Elaya `get_cold_leads` tool (added 2026-06-20). Admin member with **session-derived** scope args (the gated page is the trust boundary, `getAgentRosterByDomain` pattern); `mapRows` typed boundary |
 | Cache | **None, deliberately** — an escalation surface must never show stale breaches |
 | RSC | `page.tsx` role-gates, then `EscalationsAsync` runs the three reads in `Promise.all` inside `Suspense` |
 
@@ -68,7 +68,7 @@ Semantics:
 
 ## 4. Components
 
-`EscalationSections.tsx` (`src/components/escalations/`) — three client section cards
+`EscalationSections.tsx` (`src/components/escalations/`) — three member section cards
 (`EscalatedLeadsSection`, `OverdueTasksSection`, `GoingColdSection`), each a paper card
 header (label-micro title + count pill) wrapping `Table<T>` (the sanctioned secondary
 table). Rows navigate to the lead dossier (`/leads/${slug ?? id}`). Summary strip: three

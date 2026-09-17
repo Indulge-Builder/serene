@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
 import { hasElevatedPageAccess } from "@/lib/utils/route-access";
-import { getQueendoms } from "@/lib/services/clients-service";
+import { getQueendoms } from "@/lib/services/members-service";
 import { NewUserClient } from "@/components/admin/NewUserClient";
 import { BackButton } from "@/components/ui/BackButton";
 

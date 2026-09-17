@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import type { SearchParams } from 'next/dist/server/request/search-params';
 import { Plus, LayoutGrid } from 'lucide-react';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
-import { getQueendoms } from '@/lib/services/clients-service';
+import { getQueendoms } from '@/lib/services/members-service';
 import { listTickets, listQueendomStaff, getTicketSettings } from '@/lib/services/tickets-service';
 import { TicketsFilters } from '@/components/tickets/TicketsFilters';
 import { TicketsTable } from '@/components/tickets/TicketsTable';

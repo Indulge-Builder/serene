@@ -17,6 +17,7 @@
 // changing the range produces a new key, so no cross-range bleed.
 
 import { cache } from 'react';
+import { giaDb } from '@/lib/supabase/schemas';
 import { formatDate } from '@/lib/utils/dates';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -397,7 +398,7 @@ async function fetchVolumeLeads(
   let offset = 0;
 
   while (true) {
-    let query = supabase
+    let query = giaDb(supabase)
       .from('leads')
       .select('created_at, domain')
       .is('archived_at', null)

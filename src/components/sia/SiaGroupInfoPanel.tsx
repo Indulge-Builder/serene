@@ -24,9 +24,9 @@ import { formatDate, formatRelativeTime } from "@/lib/utils/dates";
 import { SPRING_CONFIG, FAST_DURATION, EASE_IN_OUT } from "@/lib/constants/motion";
 import Link from "next/link";
 import { getSiaGroupInfoAction, updateSiaGroupMappingAction } from "@/lib/actions/sia";
-import { searchClientsAction } from "@/lib/actions/clients";
+import { searchMembersAction } from "@/lib/actions/members";
 import { CLIENTS_PATH } from "@/lib/constants/sia-roles";
-import type { ClientPickerHit } from "@/lib/types/client";
+import type { MemberPickerHit } from "@/lib/types/member";
 import { groupTitle, KIND_LABEL, KindPillRow } from "./sia-shared";
 import type { SiaGroupInfo, SiaGroupKind, SiaGroupRow, SiaMemberRow } from "@/lib/services/sia-service";
 
@@ -100,29 +100,29 @@ export function SiaGroupInfoPanel({
     [group.group_jid, onPatchGroup],
   );
 
-  // The client link (0194): search the spine, pick, and the group becomes that client's.
-  const [clientQuery, setClientQuery] = useState("");
-  const [clientHits, setClientHits] = useState<ClientPickerHit[]>([]);
+  // The member link (0194): search the spine, pick, and the group becomes that member's.
+  const [memberQuery, setMemberQuery] = useState("");
+  const [memberHits, setMemberHits] = useState<MemberPickerHit[]>([]);
   useEffect(() => {
-    const q = clientQuery.trim();
-    if (q.length < 2) { setClientHits([]); return; }
+    const q = memberQuery.trim();
+    if (q.length < 2) { setMemberHits([]); return; }
     let alive = true;
     const t = setTimeout(async () => {
-      const res = await searchClientsAction({ q, limit: 8 });
-      if (alive && res.data) setClientHits(res.data);
+      const res = await searchMembersAction({ q, limit: 8 });
+      if (alive && res.data) setMemberHits(res.data);
     }, 250);
     return () => { alive = false; clearTimeout(t); };
-  }, [clientQuery]);
+  }, [memberQuery]);
 
-  const setClient = useCallback(
-    async (client: { id: string; full_name: string } | null) => {
+  const setMember = useCallback(
+    async (member: { id: string; full_name: string } | null) => {
       setSaving(true);
-      const res = await updateSiaGroupMappingAction(group.group_jid, { client_id: client?.id ?? null });
+      const res = await updateSiaGroupMappingAction(group.group_jid, { member_id: member?.id ?? null });
       if (res.data) {
-        onPatchGroup(group.group_jid, { group_kind: client ? "client" : "unmapped" });
-        setInfo((prev) => (prev ? { ...prev, client } : prev));
-        setClientQuery("");
-        setClientHits([]);
+        onPatchGroup(group.group_jid, { group_kind: member ? "member" : "unmapped" });
+        setInfo((prev) => (prev ? { ...prev, member } : prev));
+        setMemberQuery("");
+        setMemberHits([]);
       }
       setSaving(false);
     },
@@ -186,15 +186,15 @@ export function SiaGroupInfoPanel({
             <span className="type-caption text-(--theme-text-secondary)">Visible in the rail</span>
             <Toggle checked={group.is_active} onChange={setVisible} size="sm" disabled={saving} />
           </div>
-          {/* The client link: who this group belongs to (the same link the client page sets). */}
+          {/* The member link: who this group belongs to (the same link the member page sets). */}
           <div className="flex flex-col gap-2">
-            <span className="label-micro" style={{ color: "var(--theme-text-tertiary)" }}>Linked client</span>
-            {info?.client ? (
+            <span className="label-micro" style={{ color: "var(--theme-text-tertiary)" }}>Linked member</span>
+            {info?.member ? (
               <div className="flex items-center justify-between gap-2">
-                <Link href={`${CLIENTS_PATH}/${info.client.id}`} className="type-body-sm" style={{ color: "var(--neu-accent-deep)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {info.client.full_name}
+                <Link href={`${CLIENTS_PATH}/${info.member.id}`} className="type-body-sm" style={{ color: "var(--neu-accent-deep)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {info.member.full_name}
                 </Link>
-                <button type="button" onClick={() => setClient(null)} disabled={saving} className="type-caption serene-pressable" style={{ background: "none", border: 0, cursor: "pointer", color: "var(--theme-text-tertiary)" }}>
+                <button type="button" onClick={() => setMember(null)} disabled={saving} className="type-caption serene-pressable" style={{ background: "none", border: 0, cursor: "pointer", color: "var(--theme-text-tertiary)" }}>
                   Unlink
                 </button>
               </div>
@@ -202,18 +202,18 @@ export function SiaGroupInfoPanel({
               <>
                 <input
                   className="serene-input neu-input"
-                  value={clientQuery}
-                  onChange={(e) => setClientQuery(e.target.value)}
-                  placeholder="Search a client to link"
+                  value={memberQuery}
+                  onChange={(e) => setMemberQuery(e.target.value)}
+                  placeholder="Search a member to link"
                   disabled={saving || !info}
                 />
-                {clientHits.length > 0 && (
+                {memberHits.length > 0 && (
                   <ul className="m-0 p-0 flex flex-col gap-1" style={{ listStyle: "none" }}>
-                    {clientHits.map((c) => (
+                    {memberHits.map((c) => (
                       <li key={c.id}>
                         <button
                           type="button"
-                          onClick={() => setClient({ id: c.id, full_name: c.full_name })}
+                          onClick={() => setMember({ id: c.id, full_name: c.full_name })}
                           disabled={saving}
                           className="serene-pressable type-body-sm w-full text-left"
                           style={{ background: "none", border: "1px solid var(--theme-paper-border)", borderRadius: "var(--radius-sm)", padding: "var(--space-2) var(--space-3)", cursor: "pointer", color: "var(--theme-text-primary)" }}
@@ -376,7 +376,7 @@ export function SiaGroupInfoPanel({
 // ─────────────────────────────────────────────
 
 const SIDE_LABEL: Record<SiaGroupKind, string | null> = {
-  client: "Client",
+  member: "Member",
   vendor: "Vendor",
   internal: "External",
   unmapped: null,

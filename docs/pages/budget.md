@@ -46,7 +46,7 @@ the two layers (A-09), and no manager-facing surface reads these tables.
 | ----- | --------- |
 | Spend table | `ad_spend_daily` (migration 0104) — day grain, `UNIQUE(campaign_key, spend_date, source)`, RLS manager+ read / admin+founder write. **No account column** — account is derived (§4b). |
 | Recharge table | `ad_account_recharges` (migration 0139) — finance ledger, mirrors `ad_spend_daily`'s table/RLS/trigger pattern. `ad_account` `CHECK IN ('april','gmr','dubai')` (SQL mirror of `AD_ACCOUNT_KEY_VALUES`), `amount numeric(12,2) CHECK (amount > 0)`, `currency` (default `'INR'`), `recharged_at date`, `done_by → profiles`, free-text `method`/`note` with a `no_card_pan` CHECK. RLS manager+ read, admin/founder write/update/**delete** (hard DELETE permitted — recharges are an editable money figure, mirrors `ad_spend_daily`). |
-| RPC | `get_budget_summary(p_date_from, p_date_to)` (0106) — spend per campaign LEFT-joined to lead counts (`created_at` cohort) and deals (count/revenue by `won_at` via `deals.lead_id`); EXECUTE revoked (Q-13), admin-client only. |
+| RPC | `get_budget_summary(p_date_from, p_date_to)` (0106) — spend per campaign LEFT-joined to lead counts (`created_at` cohort) and deals (count/revenue by `won_at` via `deals.lead_id`); EXECUTE revoked (Q-13), admin-member only. |
 | Service | `src/lib/services/ad-spend-service.ts` — `getBudgetSummary` (CPL/CPD computed here, `null` at zero denominators), `getExistingSpendKeys` (inserted-vs-updated counting, **hard-filtered to `.eq('source','meta_csv')`** — the count is scoped to Meta-CSV rows), `getAccountRecharges(from,to)` (date-portion window, joins recharger name), and `buildAccountReport(campaignRows, recharges)` (**pure, no IO** — the per-account report). **No Redis** — always live, like `/campaigns`. |
 | Attribution | `src/lib/constants/ad-accounts.ts` — `AD_ACCOUNTS` (the 3 live accounts), `resolveAccountFromCampaign(key)`, `UNATTRIBUTED_ACCOUNT_KEY`, `accountLabel()`. See §4b. |
 | Parser | `src/lib/utils/ad-spend-parse.ts` — `parseMetaSpendFile`, CLIENT-SIDE ONLY (dynamic `xlsx`, same rule as `export.ts`). See §5. |
@@ -121,7 +121,7 @@ duplicate (campaign, day) rows merged before upsert. A file of all-zero rows is 
 Both CTAs are admin/founder-only, both load-on-intent (`next/dynamic` + `useMountOnFirstOpen`,
 keeping their bundles out of the initial `/budget` chunk).
 
-**Upload Spend** — `AdSpendUploadButton` → `AdSpendUploadModal` → file picker → client parse
+**Upload Spend** — `AdSpendUploadButton` → `AdSpendUploadModal` → file picker → member parse
 (`parseMetaSpendFile`) → preview (row count, date range, skipped count) → `uploadAdSpendAction` →
 `{ inserted, updated, skipped }` toast → `router.refresh()`.
 
@@ -146,7 +146,7 @@ Canonical list-page layout: title row (+ Add Recharge + Upload Spend CTAs) → `
 strip (search + Range/Dates + the Accounts|Campaigns `TabSelector` in its `tabSlot`) →
 `Suspense`-wrapped `BudgetAsync`. The whole strip + content sits inside `BudgetTabProvider`
 (`budget-tab-context.tsx`) so the tab switcher in the bar and the content switch in
-`BudgetWorkspace` share one client state across the Suspense boundary. `BudgetAsync` fetches
+`BudgetWorkspace` share one member state across the Suspense boundary. `BudgetAsync` fetches
 `getBudgetSummary` and `getAccountRecharges` in parallel, then:
 
 - **Empty state** — `BudgetEmptyState` (wraps `EmptyState` with the Wallet icon) renders **only**
@@ -159,7 +159,7 @@ strip (search + Range/Dates + the Accounts|Campaigns `TabSelector` in its `tabSl
 - **Attribution caption**: under the totals strip, `BudgetAsync` renders an italic caption stating
   that leads, deals and revenue are attributed to Meta campaigns only; referral, Google and walk-in
   deals are excluded.
-- **`BudgetWorkspace`** (client; reads the active tab from `useBudgetTab()`, the `TabSelector`
+- **`BudgetWorkspace`** (member; reads the active tab from `useBudgetTab()`, the `TabSelector`
   itself lives in `BudgetFilterBar`; default **Accounts**). Campaign search (`?search=`) filters
   client-side: the Campaigns-tab rows and each account block's expandable campaign list only.
   Account totals and the recharge history are deliberately never search-filtered (recharges are

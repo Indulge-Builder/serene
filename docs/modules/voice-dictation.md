@@ -21,7 +21,7 @@ any future voice surface (Elaya voice turns, voice-first task entry) plugs into 
 | Layer | File | Role |
 | ----- | ---- | ---- |
 | Service (server-only) | `src/lib/services/transcription-service.ts` | `transcribeAudio()` — **THE only Deepgram call site** (`import server-only`). Nova-2, `hi-Latn` (Hinglish / Roman-script Hindi). |
-| Action | `src/lib/actions/transcription.ts` | `transcribeAudioAction` — the client entry; Zod-validates the blob (`transcription-schema.ts`) then calls the service. |
+| Action | `src/lib/actions/transcription.ts` | `transcribeAudioAction` — the member entry; Zod-validates the blob (`transcription-schema.ts`) then calls the service. |
 | Validation | `src/lib/validations/transcription-schema.ts` | `MAX_VOICE_NOTE_BYTES = 3 MB`; rejects empty / oversized audio. |
 | Recorder hook | `src/hooks/useAudioRecorder.ts` | **THE** MediaRecorder plumbing — codec negotiation, 2-min auto-stop (`DEFAULT_MAX_RECORDING_MS = 120000`), mic-track release, unmount discard. Never re-implement inline. |
 | Component | `src/components/ui/DictationButton.tsx` | **THE** mic→transcribe→`onTranscript(text)` cluster (record/stop/cancel buttons + `m:ss` counter + Transcribing… spinner). `variant="composer"` (32px pill, mounts as a `<MessageBar leadingSlot>`) or `variant="inline"` (28px bordered, form footer). Renders `null` when MediaRecorder is unsupported. |

@@ -2,7 +2,7 @@
 
 > **Purpose:** the whole system in one read — what Serene is, the stack, how the services connect, what happens on a request, and where every code-layer concept is documented.
 > **Audience:** engineers (new-engineer entry point; non-technical readers start at `../00-for-the-board.md`).
-> **Source-of-truth scope:** topology, request flow, cross-page shell features, Realtime registry, client-pattern/hook index, service-file → home-doc map.
+> **Source-of-truth scope:** topology, request flow, cross-page shell features, Realtime registry, member-pattern/hook index, service-file → home-doc map.
 > **Last verified:** 2026-07-02 (tool counts, theme system, customer channel, service map, hook index refreshed; verified against `src/lib/elaya/*`, `src/lib/elaya/tools/*`, `src/lib/constants/themes.ts`, `src/app/layout.tsx`, `src/lib/services/`, `src/hooks/`).
 
 ---
@@ -47,7 +47,7 @@ base layer.
 | Package manager | pnpm | — |
 
 **Not dependencies (never assume them):** React Query / @tanstack, Sentry, any virtualization
-library. Data fetching is Server-Components-first with Server-Action-in-`useEffect` for client
+library. Data fetching is Server-Components-first with Server-Action-in-`useEffect` for member
 widgets (P-01/Q-15); logging is `[module]`-prefixed `console.warn`/`error`; big lists paginate
 server-side (P-03).
 
@@ -76,7 +76,7 @@ server-side (P-03).
 ```
 
 - **One direction of truth:** Postgres is the source of truth; Redis only caches reads; Realtime
-  pushes inserts/updates to subscribed clients; Trigger.dev calls back into server actions.
+  pushes inserts/updates to subscribed members; Trigger.dev calls back into server actions.
 - **No API routes** except the two webhooks, the auth callback, and two sanctioned carve-outs —
   `/api/elaya/chat` (SSE streaming) and `/api/manifest` (dynamic PWA manifest) (P-02) — all
   mutations are Server Actions.
@@ -101,7 +101,7 @@ server-side (P-03).
    theming happens one level up: the ROOT layout (`src/app/layout.tsx`) reads the
    `serene-theme` cookie server-side and stamps `data-theme` on `<html>`. There is no inline
    theme script.
-3. **Page (RSC):** thin orchestrator — list pages render the filter bar (client) + a
+3. **Page (RSC):** thin orchestrator — list pages render the filter bar (member) + a
    `<Suspense>`-wrapped async server child that calls `lib/services/` (Redis-first where
    cached). The dossier/dashboard use page-level `Promise.all` + streamed sections.
 4. **Interaction:** client components mutate via Server Actions (`Zod → requireProfile →

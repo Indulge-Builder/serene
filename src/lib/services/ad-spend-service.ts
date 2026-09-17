@@ -5,6 +5,7 @@
 // (see docs/architecture/caching.md §2). Do not add cache-aside here.
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { giaDb } from "@/lib/supabase/schemas";
 import { mapRows } from "@/lib/utils/rows";
 import { resolveDomainFromCampaign } from "@/lib/constants/campaign-domain-map";
 import {
@@ -117,7 +118,7 @@ export async function getExistingSpendKeys(
   if (campaignKeys.length === 0) return new Set();
   const supabase = createAdminClient();
 
-  const { data, error } = await supabase
+  const { data, error } = await giaDb(supabase)
     .from("ad_spend_daily")
     .select("campaign_key, spend_date")
     .eq("source", "meta_csv")
@@ -175,7 +176,7 @@ export async function getAccountRecharges(
   const fromDate = dateFrom.slice(0, 10);
   const toDate   = dateTo.slice(0, 10);
 
-  const { data, error } = await supabase
+  const { data, error } = await giaDb(supabase)
     .from("ad_account_recharges")
     // Explicit FK-constraint embed (the leads/deals service convention) — the
     // bare `profiles:done_by(...)` shorthand can be ambiguous to PostgREST.

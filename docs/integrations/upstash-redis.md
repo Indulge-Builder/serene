@@ -8,9 +8,9 @@
 
 ## Connection
 
-- **Client:** `src/lib/redis.ts` exports `redis`, a lazy Proxy over a memoised
+- **Member:** `src/lib/redis.ts` exports `redis`, a lazy Proxy over a memoised
   `Redis.fromEnv()` singleton (`@upstash/redis`, REST transport). Still the only Upstash
-  client instance in the app; never instantiate another. Construction, and the
+  member instance in the app; never instantiate another. Construction, and the
   missing-env-var throw, is deferred to first method access rather than import, so the
   Trigger.dev build scan can import redis-dependent modules without runtime secrets present.
   Operationally: a misconfigured deploy surfaces at the first Redis use, not at boot.

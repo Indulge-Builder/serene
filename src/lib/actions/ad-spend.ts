@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { giaDb } from "@/lib/supabase/schemas";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireProfile } from "@/lib/actions/_auth";
 import { sanitizeText } from "@/lib/utils/sanitize";
@@ -60,7 +61,7 @@ export async function uploadAdSpendAction(
   );
 
   const adminClient = createAdminClient();
-  const { error } = await adminClient
+  const { error } = await giaDb(adminClient)
     .from("ad_spend_daily")
     .upsert(rows, { onConflict: "campaign_key,spend_date,source" });
 

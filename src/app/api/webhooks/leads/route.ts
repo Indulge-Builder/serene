@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse, after } from 'next/server';
+import { giaDb } from '@/lib/supabase/schemas';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createRateLimiter, getClientIp, readJsonBody, safeSecretCompare } from '@/lib/utils/webhook';
 import { ingestLead, sanitizeRawPayload } from '@/lib/services/lead-ingestion';
@@ -26,7 +27,7 @@ async function logRawPayload(
 ): Promise<string | null> {
   try {
     const supabase = createAdminClient();
-    const { data, error } = await supabase
+    const { data, error } = await giaDb(supabase)
       .from('lead_raw_payloads')
       .insert({
         source,
@@ -105,7 +106,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // Payload is already logged — mark it so it's distinguishable from a success
     if (rawPayloadId) {
       const supabase = createAdminClient();
-      await supabase
+      await giaDb(supabase)
         .from('lead_raw_payloads')
         .update({ ingestion_error: 'unauthorized' })
         .eq('id', rawPayloadId);

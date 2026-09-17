@@ -28,7 +28,7 @@ function describe(e: TicketDetail['events'][number]): string {
     case 'priority_changed': return `Priority ${m.from} → ${m.to}${m.approved ? ', approved' : ''}`;
     case 'brief_updated': return 'Brief updated';
     case 'checklist_ticked': return `${m.done ? 'Ticked' : 'Unticked'}: ${e.body ?? ''}`;
-    case 'client_message_linked': return `${m.count ?? 1} message(s) linked`;
+    case 'member_message_linked': return `${m.count ?? 1} message(s) linked`;
     case 'quote_added': return e.actor_kind === 'sentinel' && e.body ? `Money read from the notes: ${e.body}` : 'Money updated';
     case 'note': return 'Note';
     case 'sla_warning': return 'Deadline near';
@@ -83,7 +83,7 @@ export function TicketTimeline({ ticketId, events }: { ticketId: string; events:
         <textarea value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submit(); }} maxLength={4000} rows={3}
           placeholder="What happened, what the vendor said, what to remember." className="serene-input neu-input" style={{ resize: 'vertical', fontFamily: 'inherit' }} />
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--space-3)' }}>
-          <span style={{ fontSize: 'var(--text-xs)', color: error ? 'var(--color-danger-text)' : 'var(--theme-text-tertiary)' }}>{error ?? 'Internal note; the client never sees it.'}</span>
+          <span style={{ fontSize: 'var(--text-xs)', color: error ? 'var(--color-danger-text)' : 'var(--theme-text-tertiary)' }}>{error ?? 'Internal note; the member never sees it.'}</span>
           <Button size="sm" onClick={submit} loading={pending} disabled={!draft.trim()}>Add note</Button>
         </div>
       </div>

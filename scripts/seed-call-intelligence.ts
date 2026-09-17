@@ -119,8 +119,8 @@ console.log(
 async function main() {
   // Idempotency guard — never double-seed.
   const [{ count: caseCount, error: ce }, { count: hookCount, error: he }] = await Promise.all([
-    supabase.from("service_cases").select("id", { count: "exact", head: true }).eq("domain", DOMAIN),
-    supabase.from("conversation_hooks").select("id", { count: "exact", head: true }).eq("domain", DOMAIN),
+    supabase.schema('gia').from("service_cases").select("id", { count: "exact", head: true }).eq("domain", DOMAIN),
+    supabase.schema('gia').from("conversation_hooks").select("id", { count: "exact", head: true }).eq("domain", DOMAIN),
   ]);
   if (ce || he) throw ce ?? he;
 
@@ -134,8 +134,8 @@ async function main() {
     }
     console.log(`--force: deleting ${caseCount} cases and ${hookCount} hooks for '${DOMAIN}'…`);
     const [dc, dh] = await Promise.all([
-      supabase.from("service_cases").delete().eq("domain", DOMAIN),
-      supabase.from("conversation_hooks").delete().eq("domain", DOMAIN),
+      supabase.schema('gia').from("service_cases").delete().eq("domain", DOMAIN),
+      supabase.schema('gia').from("conversation_hooks").delete().eq("domain", DOMAIN),
     ]);
     if (dc.error || dh.error) throw dc.error ?? dh.error;
   }
@@ -147,12 +147,12 @@ async function main() {
 
   for (let i = 0; i < caseRows.length; i += 50) {
     const batch = caseRows.slice(i, i + 50);
-    const { error } = await supabase.from("service_cases").insert(batch);
+    const { error } = await supabase.schema('gia').from("service_cases").insert(batch);
     if (error) throw new Error(`service_cases batch at ${i}: ${error.message}`);
     console.log(`  service_cases: inserted ${Math.min(i + 50, caseRows.length)}/${caseRows.length}`);
   }
 
-  const { error: hookErr } = await supabase.from("conversation_hooks").insert(hookRows);
+  const { error: hookErr } = await supabase.schema('gia').from("conversation_hooks").insert(hookRows);
   if (hookErr) throw new Error(`conversation_hooks insert: ${hookErr.message}`);
   console.log(`  conversation_hooks: inserted ${hookRows.length}/${hookRows.length}`);
 
@@ -171,8 +171,8 @@ async function main() {
 
   // Verify.
   const [{ count: fc }, { count: fh }] = await Promise.all([
-    supabase.from("service_cases").select("id", { count: "exact", head: true }).eq("domain", DOMAIN),
-    supabase.from("conversation_hooks").select("id", { count: "exact", head: true }).eq("domain", DOMAIN),
+    supabase.schema('gia').from("service_cases").select("id", { count: "exact", head: true }).eq("domain", DOMAIN),
+    supabase.schema('gia').from("conversation_hooks").select("id", { count: "exact", head: true }).eq("domain", DOMAIN),
   ]);
   console.log(`Done. DB now holds ${fc} cases and ${fh} hooks for '${DOMAIN}'.`);
 }

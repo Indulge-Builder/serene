@@ -29,7 +29,7 @@ table: Deep dive §1/§12.
 
 ## 4. Components
 
-`UsersTable` (card-list mode, client filter/search) · `CreateUserForm` / `NewUserClient`
+`UsersTable` (card-list mode, member filter/search) · `CreateUserForm` / `NewUserClient`
 (password vs invite tabs) · `EditProfileForm` · `EditAuthorizationForm` (privileged only) ·
 `UserStatusControls` · composed on `SectionCard` + `BackButton` (the canonical detail-page
 primitives — Deep dive §11).
@@ -409,21 +409,21 @@ No app-layer INSERT (trigger only). No DELETE.
 | **RLS policies** (all migrations) | Yes | Primary consumer — every domain/role gate |
 | **`profiles-service.ts`** | No | Uses `createClient()` + direct `profiles` queries; auth via RLS + page/action gates |
 | **Server actions** | No | `requireProfile(roles?)` (A-18) → `getCurrentProfile()` → `getProfileById(auth user id)` |
-| **Client components** | **Must never** | Would bundle server-only code; use server actions |
+| **Member components** | **Must never** | Would bundle server-only code; use server actions |
 
 `requireProfile()` (which wraps `getCurrentProfile()`) is the application-layer equivalent: reads `profiles` for `auth.uid()` once per action, returns `formErrors.unauthorized` on no-session or denied-role, never trusts JWT role claims.
 
 #### Why never from client components
 
-Helper functions are SQL executed in Postgres. Client components must not import `profiles-service` or call Supabase RPCs that embed authorization without re-validation. All mutations go through server actions that call `requireProfile()` first (Rule A-09 two-layer: action check + RLS).
+Helper functions are SQL executed in Postgres. Member components must not import `profiles-service` or call Supabase RPCs that embed authorization without re-validation. All mutations go through server actions that call `requireProfile()` first (Rule A-09 two-layer: action check + RLS).
 
 ---
 
 ### 5. Services — profiles-service.ts
 
-All use **`createClient()`** from `src/lib/supabase/server.ts` (session/cookie client) unless noted.
+All use **`createClient()`** from `src/lib/supabase/server.ts` (session/cookie member) unless noted.
 
-| Function | Parameters | Return | Client | Called by |
+| Function | Parameters | Return | Member | Called by |
 | -------- | ----------- | ------ | ------ | --------- |
 | `getProfileById` | `id: string` | `Profile \| null` | session | Detail page, `getCurrentProfile`, others |
 | `getAllProfiles` | — | `Profile[]` | session | `/admin/users` page |
@@ -439,7 +439,7 @@ All use **`createClient()`** from `src/lib/supabase/server.ts` (session/cookie c
 
 **Note on `updateProfileFields` allow-list:** the `Pick` includes `is_on_leave`, but no user-management UI writes it today (the `is_on_leave` flag is set elsewhere / reserved). The `updateProfile` action maps `full_name`, `username`, `job_title`, `phone`, `theme`, `app_icon`, `timezone` into the field set — never `is_on_leave`, `avatar_url` (avatar has its own action), or auth fields. (`app_icon` rides this existing action — the PWA icon picker on `/profile` persists `profiles.app_icon` exactly like `theme`; no new persist action.)
 
-**Admin client in profiles-service is limited to the three cross-user reads above** (`getActiveProfileByPhone`, `searchTeammatesForElaya`, `getDomainDecisionMakers`: all fan-out or sessionless-channel reads that RLS would scope to the caller). Every other function uses the session client. User **creation** uses `createAdminClient()` only inside `src/lib/actions/profiles.ts` for the Auth Admin API.
+**Admin member in profiles-service is limited to the three cross-user reads above** (`getActiveProfileByPhone`, `searchTeammatesForElaya`, `getDomainDecisionMakers`: all fan-out or sessionless-channel reads that RLS would scope to the caller). Every other function uses the session client. User **creation** uses `createAdminClient()` only inside `src/lib/actions/profiles.ts` for the Auth Admin API.
 
 **Deleted 2026-07-02 (dead-code purge):** `getProfilesByDomain`, `getProfilesByRole`, `getActiveAgentsByDomain` no longer exist. Do not grep for them; scoped pickers go through `getAssignableUsers`.
 

@@ -33,7 +33,7 @@ export function TicketMoneyCard({ ticket }: { ticket: TicketRow }) {
       <div style={{ padding: 'var(--space-4) var(--space-6) var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
         {!editing ? (
           <>
-            <InfoRow label="Quote" value={inr(m.quote_inr)} /><InfoRow label="Cost" value={inr(m.cost_inr)} /><InfoRow label="Price to client" value={inr(m.price_inr)} />
+            <InfoRow label="Quote" value={inr(m.quote_inr)} /><InfoRow label="Cost" value={inr(m.cost_inr)} /><InfoRow label="Price to member" value={inr(m.price_inr)} />
             <InfoRow label="Payment" value={(m.payment_status ?? 'not started').replace(/_/g, ' ')} />{m.invoice_no && <InfoRow label="Invoice" value={m.invoice_no} />}
           </>
         ) : (

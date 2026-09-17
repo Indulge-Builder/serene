@@ -1,10 +1,10 @@
 // zoho-service.ts — ALL Zoho Books reads the pages use (server-only). Two shapes:
 //   getBooksOverview()   — the organisation-wide money picture for /books (admin/founder),
 //                          ~14 API calls, served from Redis for five minutes; Refresh busts it.
-//   getClientFinance(id) — one client's ledger for /clients/[id]/finance, keyed by the Zoho
+//   getMemberFinance(id) — one member's ledger for /members/[id]/finance, keyed by the Zoho
 //                          customer id on the spine; 4 calls, cached a minute.
 // Zoho is the ledger and stays so: nothing here is written back, nothing is copied into
-// Postgres (client-ticket-plan.md: never cached balances beyond a short TTL).
+// Postgres (member-ticket-plan.md: never cached balances beyond a short TTL).
 
 import "server-only";
 import { withRedisCache } from "@/lib/services/cache-helpers";
@@ -27,7 +27,7 @@ import {
   reportTotal,
   zbAmount,
 } from "@/lib/services/zoho-api";
-import type { BooksOverview, ClientFinance, ZbBankAccount, ZbContact } from "@/lib/types/zoho";
+import type { BooksOverview, MemberFinance, ZbBankAccount, ZbContact } from "@/lib/types/zoho";
 
 const LOG = "[zoho-service]";
 
@@ -127,9 +127,9 @@ export async function invalidateBooksOverview(): Promise<void> {
   }
 }
 
-// ─── One client ──────────────────────────────────────────────────────────────
+// ─── One member ──────────────────────────────────────────────────────────────
 
-async function fetchClientFinance(zohoCustomerId: string): Promise<ClientFinance> {
+async function fetchMemberFinance(zohoCustomerId: string): Promise<MemberFinance> {
   const budget = createZbBudget(8);
   const [contactRes, invoices, payments, creditNotes] = await Promise.all([
     getContact(zohoCustomerId, budget).catch((e) => { console.warn(`${LOG} contact read failed`, e instanceof Error ? e.message : e); return null as ZbContact | null; }),
@@ -155,17 +155,17 @@ async function fetchClientFinance(zohoCustomerId: string): Promise<ClientFinance
   };
 }
 
-/** The finance page's live read for one client. Null when Zoho is not configured. */
-export async function getClientFinance(zohoCustomerId: string): Promise<ClientFinance | null> {
+/** The finance page's live read for one member. Null when Zoho is not configured. */
+export async function getMemberFinance(zohoCustomerId: string): Promise<MemberFinance | null> {
   if (!isZohoConfigured()) return null;
-  return withRedisCache(ZOHO_REDIS_KEYS.client(zohoCustomerId), ZOHO_CACHE_TTL.CLIENT, () => fetchClientFinance(zohoCustomerId));
+  return withRedisCache(ZOHO_REDIS_KEYS.member(zohoCustomerId), ZOHO_CACHE_TTL.CLIENT, () => fetchMemberFinance(zohoCustomerId));
 }
 
-export async function invalidateClientFinance(zohoCustomerId: string): Promise<void> {
+export async function invalidateMemberFinance(zohoCustomerId: string): Promise<void> {
   try {
-    await redis.del(ZOHO_REDIS_KEYS.client(zohoCustomerId));
+    await redis.del(ZOHO_REDIS_KEYS.member(zohoCustomerId));
   } catch (e) {
-    console.warn(`${LOG} client cache del failed`, e instanceof Error ? e.message : e);
+    console.warn(`${LOG} member cache del failed`, e instanceof Error ? e.message : e);
   }
 }
 

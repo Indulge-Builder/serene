@@ -2,7 +2,7 @@
 
 // The Sia console — everything operational, tucked behind the header gear so the
 // two chat panes stay pure: watcher health (is the ear alive) + the group
-// mapping manager (classify client/vendor/internal, hide noise). Composes the
+// mapping manager (classify member/vendor/internal, hide noise). Composes the
 // core Modal + StatTile + SearchBar + Avatar + Toggle primitives (R-01 — the
 // earlier bespoke HealthStat/TabButton/avatar-tint expressions are deleted).
 

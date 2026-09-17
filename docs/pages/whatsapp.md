@@ -179,7 +179,7 @@ CREATE UNIQUE INDEX idx_wa_messages_wa_message_id
   WHERE wa_message_id IS NOT NULL;
 ```
 
-A column-level `UNIQUE` constraint would reject multiple explicit NULLs in some client patterns and confuse optimistic outbound rows: optimistic UI rows use `wa_message_id: null` until the server row arrives. Multiple concurrent optimistic rows may carry `NULL` without conflicting. Inbound rows always set `wa_message_id` from the provider for dedup.
+A column-level `UNIQUE` constraint would reject multiple explicit NULLs in some member patterns and confuse optimistic outbound rows: optimistic UI rows use `wa_message_id: null` until the server row arrives. Multiple concurrent optimistic rows may carry `NULL` without conflicting. Inbound rows always set `wa_message_id` from the provider for dedup.
 
 **RLS:**
 
@@ -329,7 +329,7 @@ Per-row unread dots in `ConversationRow` use `conversation.unread_count` on the 
 
 These four files are **not** interchangeable. Trust model, Supabase client, and error contracts differ.
 
-| File | Client | RLS | Throws to caller? | Import from `'use client'`? |
+| File | Member | RLS | Throws to caller? | Import from `'use client'`? |
 | --- | --- | --- | --- | --- |
 | `whatsapp-service.ts` | Session (`createClient()` server) | **Yes** — access enforced by DB | Returns empty/null on error | **No** — use actions |
 | `whatsapp-api.ts` | None (HTTP) + admin for logs | Bypass for logs only | Templates: **never**. `sendLeadInitiationMessage`/`sendTextMessage`/`sendGupshupMediaMessage`: **can throw** | **Never** |
@@ -421,7 +421,7 @@ try {
 
 **No longer "fire-and-forget at the call site":** The template send functions still swallow their own errors internally (except `sendLeadInitiationMessage`, which re-throws). But callers no longer use bare `void fn()`. Lead-assignment paths route through `notifyLeadAssigned` (§4d), which **awaits** the sends and is itself wrapped in `after()`. SLA breach sends are awaited inside the SLA handler. See §6 / §7 for call sites.
 
-**Import restriction:** File reads secrets at module load and uses `createAdminClient`. Importing in a client bundle would expose env expectations and pull server-only code — **hard failure**. Client components must use `sendWhatsAppMessage` / `initiateWhatsAppConversationAction` actions instead.
+**Import restriction:** File reads secrets at module load and uses `createAdminClient`. Importing in a client bundle would expose env expectations and pull server-only code — **hard failure**. Member components must use `sendWhatsAppMessage` / `initiateWhatsAppConversationAction` actions instead.
 
 ---
 
@@ -469,7 +469,7 @@ PostgREST insert does not expose `ON CONFLICT DO NOTHING` cleanly; re-SELECT is 
 
 #### 4d. `whatsapp-media.ts` — SERVER ONLY, media durability (migration 0141)
 
-Gupshup delivers (and accepts) media as a direct, **time-limited** CDN url. Storing that url means old media 404s once the link expires, so this module downloads the bytes and re-hosts them in the **private `whatsapp-media` Supabase Storage bucket** — `whatsapp_messages.media_url` then holds a durable **storage PATH**, never a url. All operations use the **admin (service-role) client** (the inbound webhook has no session; signed-url minting on read is gated by the page/action role layer, mirroring the `whatsapp_messages` RLS posture). Never throws — every function returns `null` on failure so the caller can fall back.
+Gupshup delivers (and accepts) media as a direct, **time-limited** CDN url. Storing that url means old media 404s once the link expires, so this module downloads the bytes and re-hosts them in the **private `whatsapp-media` Supabase Storage bucket** — `whatsapp_messages.media_url` then holds a durable **storage PATH**, never a url. All operations use the **admin (service-role) member** (the inbound webhook has no session; signed-url minting on read is gated by the page/action role layer, mirroring the `whatsapp_messages` RLS posture). Never throws — every function returns `null` on failure so the caller can fall back.
 
 | Export | Purpose |
 | --- | --- |
@@ -510,8 +510,8 @@ All session-based actions begin with `requireProfile()` from `lib/actions/_auth.
 
 | Action | Schema / validation | Auth | Service / writes | Return |
 | --- | --- | --- | --- | --- |
-| `sendWhatsAppMessage` | Inline `SendMessageSchema` (uuid + content 1–4096, `sanitizeText` transform) | `requireProfile()` | `getConversation` → `sendTextMessage` → **session-client** insert outbound text row → update `last_message_at` | `ActionResult<WhatsAppMessage>` |
-| `sendWhatsAppMediaMessage` | `SendMediaMessageSchema` (uuid + optional caption ≤1024 + `file` Blob: non-empty, ≤16MB, MIME on the outbound allowlist via `resolveOutboundMediaType`) | `requireProfile()` | `getConversation` → `storeOutboundMedia` (durable path) → `signMediaPath` → `sendGupshupMediaMessage` (by signed url) → **session-client** insert outbound media row (`media_url` = PATH) → update `last_message_at`; returns the row with a signed url for optimistic display | `ActionResult<WhatsAppMessage>` |
+| `sendWhatsAppMessage` | Inline `SendMessageSchema` (uuid + content 1–4096, `sanitizeText` transform) | `requireProfile()` | `getConversation` → `sendTextMessage` → **session-member** insert outbound text row → update `last_message_at` | `ActionResult<WhatsAppMessage>` |
+| `sendWhatsAppMediaMessage` | `SendMediaMessageSchema` (uuid + optional caption ≤1024 + `file` Blob: non-empty, ≤16MB, MIME on the outbound allowlist via `resolveOutboundMediaType`) | `requireProfile()` | `getConversation` → `storeOutboundMedia` (durable path) → `signMediaPath` → `sendGupshupMediaMessage` (by signed url) → **session-member** insert outbound media row (`media_url` = PATH) → update `last_message_at`; returns the row with a signed url for optimistic display | `ActionResult<WhatsAppMessage>` |
 | `signWhatsAppMediaAction` | non-empty string path | `requireProfile()` | `signMediaPath(path)` — signs a media path arriving via Realtime while the panel is open | `{ url: string \| null }` |
 | `markConversationAsRead` | `ConversationIdSchema` | `requireProfile()` | `markConversationRead()` | `ActionResult<null>` |
 | `getConversationsAction` | `WhatsAppListFilterSchema` | `requireProfile()` | `getConversations()` | `{ conversations, nextCursor }` |
@@ -538,7 +538,7 @@ All session-based actions begin with `requireProfile()` from `lib/actions/_auth.
 2. `resolveOutboundMediaType(file.type)` → reject unsupported MIME.
 3. `storeOutboundMedia(bytes, …)` → durable bucket PATH; `signMediaPath(path)` → a signed url Gupshup can fetch during the send window.
 4. `sendGupshupMediaMessage(wa_id, type, signedUrl, caption?, filename?)` — throws on HTTP error (caught → user-facing error).
-5. **Session-client** insert the outbound row with `media_url = path` (the PATH is canonical; the read side signs it), bump `last_message_at`, and return the row carrying the signed url for the composer's optimistic bubble.
+5. **Session-member** insert the outbound row with `media_url = path` (the PATH is canonical; the read side signs it), bump `last_message_at`, and return the row carrying the signed url for the composer's optimistic bubble.
 
 There is no role allow-list to keep in sync any more — the Resolve/Reopen actions that duplicated `['manager','admin','founder']` inline were removed 2026-06-20.
 
@@ -653,7 +653,7 @@ Right-pane default when no conversation is selected. Motion `opacity 0→1`, `y 
 
 **Realtime:** channel `wa-messages-${conversationId}-${mountId}`, gated on **state** `conversation?.id` (not the prop) — auto-subscribes after initiation with no extra wiring. `seenIds` seeded from `initialMessages`; `optimisticIds` tracks pending sends; cleanup via `supabase.removeChannel(channel)`.
 
-**Invariant:** imports ONLY from `lib/actions/whatsapp.ts` — never `whatsapp-service.ts` (server-client restriction).
+**Invariant:** imports ONLY from `lib/actions/whatsapp.ts` — never `whatsapp-service.ts` (server-member restriction).
 
 **Dossier page wiring** (`src/app/(dashboard)/leads/[id]/page.tsx`): fetches the conversation via `getConversationByLeadId` and its messages on the server, passing both as `initialConversation` / `initialMessages`.
 
@@ -741,7 +741,7 @@ There is no resolve/reopen capability (removed 2026-06-20). Every accessible thr
 | --- | --- |
 | List/message visibility | RLS + `can_access_wa_conversation(lead_id)` on conversations/messages |
 | Outbound INSERT (inbox, text + media) | RLS policy `wa_messages_outbound_insert` + action loads conversation via session client |
-| Conversation creation (initiate) | Session-client lead SELECT (RLS access gate) → adminClient INSERT |
+| Conversation creation (initiate) | Session-member lead SELECT (RLS access gate) → adminClient INSERT |
 | Inbound webhook writes | Service-role only (`whatsapp-ingestion`) |
 | Media storage (read/write) | Service-role admin client (`whatsapp-media`, private bucket); the page/action role layer is the trust boundary |
 | Template notifications | `whatsapp-api` adminClient; no user-facing permission |
@@ -764,7 +764,7 @@ There is no resolve/reopen capability (removed 2026-06-20). Every accessible thr
 
 7. **Webhook async work runs inside Vercel `after()`** with `maxDuration = 180` (raised from 60 to cover the Elaya brain turn + customer-channel work) so the HTTP response returns immediately while ingestion + the notification chain complete on the same invocation.
 
-8. **Client components must not import `whatsapp-api.ts` or `whatsapp-ingestion.ts`** — server-only secrets and adminClient. Use `src/lib/actions/whatsapp.ts` wrappers.
+8. **Member components must not import `whatsapp-api.ts` or `whatsapp-ingestion.ts`** — server-only secrets and adminClient. Use `src/lib/actions/whatsapp.ts` wrappers.
 
 9. **Keyset pagination on nullable sort columns requires a composite cursor** — `getConversations` uses a single-column `last_message_at` cursor today; safe for period-filtered lists (which exclude null timestamps) but not guaranteed for unfiltered lists with never-messaged conversations. Adopt the four-branch `.or()` pattern (reference: `getPersonalTasks`) if that edge case matters.
 

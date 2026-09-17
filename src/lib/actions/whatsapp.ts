@@ -1,6 +1,7 @@
 "use server";
 
 import { z } from "zod";
+import { giaDb } from "@/lib/supabase/schemas";
 import { requireProfile } from "@/lib/actions/_auth";
 import { parseActionInput } from "@/lib/actions/_validation";
 import { sendTextMessage, sendLeadInitiationMessage, sendGupshupMediaMessage } from "@/lib/services/whatsapp-api";
@@ -69,7 +70,7 @@ export async function sendWhatsAppMessage(
 
   // Persist to DB
   const supabase = await createClient();
-  const { data: row, error: insertError } = await supabase
+  const { data: row, error: insertError } = await giaDb(supabase)
     .from("whatsapp_messages")
     .insert({
       conversation_id: conversationId,
@@ -117,7 +118,7 @@ export async function sendWhatsAppMessage(
   // gated on bot_active) stops auto-replying over the human. bot_paused_by/at record who
   // took over and when. Harmless for staff/non-customer conversations (Elaya never
   // auto-replies on those anyway — the customer layer only engages Gia-domain prospects).
-  await supabase
+  await giaDb(supabase)
     .from("whatsapp_conversations")
     .update({
       last_message_at: new Date().toISOString(),
@@ -191,7 +192,7 @@ export async function sendWhatsAppMediaMessage(
 
   // 4. Persist the outbound row — media_url holds the PATH (read signs it).
   const supabase = await createClient();
-  const { data: row, error: insertError } = await supabase
+  const { data: row, error: insertError } = await giaDb(supabase)
     .from("whatsapp_messages")
     .insert({
       conversation_id: conversationId,
@@ -219,7 +220,7 @@ export async function sendWhatsAppMediaMessage(
   // 5. Bump conversation timestamp + STAND ELAYA DOWN (agent take-over — same as the
   //    text path: an agent sending media is taking over, so the customer-Elaya layer
   //    stops auto-replying). Non-fatal.
-  await supabase
+  await giaDb(supabase)
     .from("whatsapp_conversations")
     .update({
       last_message_at: new Date().toISOString(),
@@ -333,7 +334,7 @@ export async function initiateWhatsAppConversationAction(
 
   // Access check via RLS — session client SELECT will return null if caller lacks access
   const supabase = await createClient();
-  const { data: lead } = await supabase
+  const { data: lead } = await giaDb(supabase)
     .from("leads")
     .select(`
       id,
@@ -376,13 +377,13 @@ export async function initiateWhatsAppConversationAction(
   }
 
   const waId      = lead.phone.replace('+', '');
-  const agentName = (lead.assignee as { full_name: string } | null)?.full_name ?? profile.full_name;
+  const agentName = (lead.assignee as unknown as { full_name: string } | null)?.full_name ?? profile.full_name;
   const leadName  = [lead.first_name as string, lead.last_name as string | null].filter(Boolean).join(' ');
 
   // adminClient INSERT — no app-user INSERT policy on whatsapp_conversations
   const admin = createAdminClient();
 
-  const { data: convRow, error: convError } = await admin
+  const { data: convRow, error: convError } = await giaDb(admin)
     .from("whatsapp_conversations")
     .insert({ lead_id: leadId, wa_id: waId, phone: lead.phone, status: "open" })
     .select("*")
@@ -425,7 +426,7 @@ export async function initiateWhatsAppConversationAction(
   const now = new Date().toISOString();
   const messageContent = `Hello ${leadName}, this is ${agentName} from Indulge Global.`;
 
-  const { data: msgRow, error: msgError } = await admin
+  const { data: msgRow, error: msgError } = await giaDb(admin)
     .from("whatsapp_messages")
     .insert({
       conversation_id: conversation.id,
@@ -448,7 +449,7 @@ export async function initiateWhatsAppConversationAction(
   }
 
   // Update last_message_at on the conversation
-  await admin
+  await giaDb(admin)
     .from("whatsapp_conversations")
     .update({ last_message_at: now, updated_at: now })
     .eq("id", conversation.id);

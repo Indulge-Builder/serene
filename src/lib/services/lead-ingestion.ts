@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { giaDb } from '@/lib/supabase/schemas';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { selectAdapter } from '@/lib/leads/adapters';
 import { resolveDomainFromCampaign, DEFAULT_LEAD_DOMAIN } from '@/lib/constants/campaign-domain-map';
@@ -16,7 +17,7 @@ import type { Database, AppDomain, JsonValue } from '@/lib/types/database';
 // the race returns the existing active lead instead of erroring (audit #1/#2).
 const PG_UNIQUE_VIOLATION = '23505';
 
-type LeadInsert = Database['public']['Tables']['leads']['Insert'];
+type LeadInsert = Database['gia']['Tables']['leads']['Insert'];
 
 // Keys inside Pabbly multi-step envelopes that must never be persisted.
 // res2 from Meta payloads contains a live Facebook page access token.
@@ -139,7 +140,7 @@ async function markIngestionError(rawPayloadId: string | null, reason: string): 
   if (!rawPayloadId) return;
   try {
     const supabase = createAdminClient();
-    await supabase
+    await giaDb(supabase)
       .from('lead_raw_payloads')
       .update({ ingestion_error: reason })
       .eq('id', rawPayloadId);
@@ -262,7 +263,7 @@ export async function ingestLead(
         // payload up to 3 times, and three identical timeline rows for one enquiry is
         // noise, not history.
         if (enquiry !== 'duplicate') {
-          const { error: dupActivityError } = await supabase.from('lead_activities').insert({
+          const { error: dupActivityError } = await giaDb(supabase).from('lead_activities').insert({
             lead_id:     existing.id,
             actor_id:    null,
             action_type: 'duplicate_submission',
@@ -283,7 +284,7 @@ export async function ingestLead(
         }
 
         if (rawPayloadId) {
-          await supabase
+          await giaDb(supabase)
             .from('lead_raw_payloads')
             .update({ lead_id: existing.id })
             .eq('id', rawPayloadId);
@@ -372,7 +373,7 @@ export async function ingestLead(
     archived_at:        null,
   };
 
-  const { data: inserted, error: insertError } = await supabase
+  const { data: inserted, error: insertError } = await giaDb(supabase)
     .from('leads')
     .insert(leadInsert)
     .select('id')
@@ -395,7 +396,7 @@ export async function ingestLead(
           racedEnquiry = recorded.ok ? (recorded.duplicate ? 'duplicate' : 'new') : 'failed';
         }
         if (rawPayloadId) {
-          await supabase.from('lead_raw_payloads').update({ lead_id: existing.id }).eq('id', rawPayloadId);
+          await giaDb(supabase).from('lead_raw_payloads').update({ lead_id: existing.id }).eq('id', rawPayloadId);
         }
         return {
           success:      true,
@@ -421,7 +422,7 @@ export async function ingestLead(
 
   // 7. Backfill lead_id on the raw payload log now that the lead row exists
   if (rawPayloadId) {
-    await supabase
+    await giaDb(supabase)
       .from('lead_raw_payloads')
       .update({ lead_id: leadId })
       .eq('id', rawPayloadId);
@@ -442,7 +443,7 @@ export async function ingestLead(
   // 8. Log lead_created activity — error-checked so a missing creation event in
   //    the dossier timeline is surfaced, not silent (audit #9/#10/#11). Non-fatal:
   //    the lead row is the source of truth and must stand even if the log fails.
-  const { error: createdActivityError } = await supabase.from('lead_activities').insert({
+  const { error: createdActivityError } = await giaDb(supabase).from('lead_activities').insert({
     lead_id:     leadId,
     actor_id:    null,
     action_type: 'lead_created',
@@ -460,7 +461,7 @@ export async function ingestLead(
 
   // 9. Log agent_assigned activity if an agent was found
   if (assignedTo) {
-    const { error: assignedActivityError } = await supabase.from('lead_activities').insert({
+    const { error: assignedActivityError } = await giaDb(supabase).from('lead_activities').insert({
       lead_id:     leadId,
       actor_id:    null,
       action_type: 'agent_assigned',
@@ -542,7 +543,7 @@ export async function createLeadFromWhatsApp(
   const first_name = (nameParts[0]?.trim() || canonicalPhone || phone);
   const last_name  = nameParts.slice(1).join(' ').trim() || null;
 
-  const { data: inserted, error } = await supabase
+  const { data: inserted, error } = await giaDb(supabase)
     .from('leads')
     .insert({
       first_name,
@@ -583,7 +584,7 @@ export async function createLeadFromWhatsApp(
 
   const leadId = inserted.id;
 
-  const { error: createdActivityError } = await supabase.from('lead_activities').insert({
+  const { error: createdActivityError } = await giaDb(supabase).from('lead_activities').insert({
     lead_id:     leadId,
     actor_id:    null,
     action_type: 'lead_created',
@@ -594,7 +595,7 @@ export async function createLeadFromWhatsApp(
   }
 
   if (assignedTo) {
-    const { error: assignedActivityError } = await supabase.from('lead_activities').insert({
+    const { error: assignedActivityError } = await giaDb(supabase).from('lead_activities').insert({
       lead_id:     leadId,
       actor_id:    null,
       action_type: 'agent_assigned',

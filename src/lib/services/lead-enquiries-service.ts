@@ -13,6 +13,7 @@
  */
 
 import { createClient } from "@/lib/supabase/server";
+import { giaDb } from "@/lib/supabase/schemas";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { ProductEnquiryPayload } from "@/lib/leads/adapters";
 import type { LeadProductEnquiry } from "@/lib/types/database";
@@ -47,7 +48,7 @@ export async function recordProductEnquiry(
 ): Promise<RecordEnquiryResult> {
   const supabase = createAdminClient();
 
-  const { error } = await supabase.from("lead_product_enquiries").insert({
+  const { error } = await giaDb(supabase).from("lead_product_enquiries").insert({
     lead_id:           leadId,
     external_lead_id:  enquiry.external_id,
     source,
@@ -94,7 +95,7 @@ export async function getLeadProductEnquiries(
 ): Promise<LeadProductEnquiry[]> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
+  const { data, error } = await giaDb(supabase)
     .from("lead_product_enquiries")
     .select("*")
     .eq("lead_id", leadId)

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { giaDb } from "@/lib/supabase/schemas";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireProfile } from "@/lib/actions/_auth";
 import { sanitizeText } from "@/lib/utils/sanitize";
@@ -58,7 +59,7 @@ export async function upsertAdCreative(
   const adminClient = createAdminClient();
 
   if (id) {
-    const { data, error } = await adminClient
+    const { data, error } = await giaDb(adminClient)
       .from("ad_creatives")
       .update({ ...row, updated_at: new Date().toISOString() })
       .eq("id", id)
@@ -72,7 +73,7 @@ export async function upsertAdCreative(
     return { data: data as AdCreative, error: null };
   }
 
-  const { data, error } = await adminClient
+  const { data, error } = await giaDb(adminClient)
     .from("ad_creatives")
     .insert(row)
     .select("*")
@@ -112,7 +113,7 @@ export async function deleteAdCreative(
   if (!auth.ok) return auth.result;
 
   const adminClient = createAdminClient();
-  const { data: deleted, error } = await adminClient
+  const { data: deleted, error } = await giaDb(adminClient)
     .from("ad_creatives")
     .delete()
     .eq("id", parsed.data.id)

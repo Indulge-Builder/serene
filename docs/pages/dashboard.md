@@ -475,7 +475,7 @@ type StoredLayout = { placements: WidgetPlacement[] };
    - admin/founder with **no** pick → `getLeadVolumeByDomains([...GIA_DOMAINS], dateRange)`, else `null`
    - admin/founder → `getBudgetSummary(dateRange.from, dateRange.to)` (budgetRows), else `null`
    - admin/founder → `getAccountRecharges(dateRange.from, dateRange.to)` (budgetRecharges, fuel gauge), else `null`
-6. `initialData = { ...rpcData, agent_tasks ?? [], agent_activity: recentLeads ?? [], campaigns ?? [], lead_volume: isManager ? managerVolume : adminSingleVolume, lead_volume_multi: adminMultiVolume, budget_summary, budget_gauge }`. `budget_summary` is pre-filtered server-side to `scopeDomain ?? null` (full rows for the all-domains view) via `filterBudgetRowsByDomain` **before it reaches the client**. `budget_gauge = buildBudgetGaugeSummary(budgetRows, budgetRecharges ?? [])` and is ALWAYS org-wide, never domain-filtered (recharges carry no domain). Managers seed neither key (2026-06-25 - the `isAdminFounder` gate).
+6. `initialData = { ...rpcData, agent_tasks ?? [], agent_activity: recentLeads ?? [], campaigns ?? [], lead_volume: isManager ? managerVolume : adminSingleVolume, lead_volume_multi: adminMultiVolume, budget_summary, budget_gauge }`. `budget_summary` is pre-filtered server-side to `scopeDomain ?? null` (full rows for the all-domains view) via `filterBudgetRowsByDomain` **before it reaches the member**. `budget_gauge = buildBudgetGaugeSummary(budgetRows, budgetRecharges ?? [])` and is ALWAYS org-wide, never domain-filtered (recharges carry no domain). Managers seed neither key (2026-06-25 - the `isAdminFounder` gate).
 7. `greeting = pickDashboardGreeting()`; `firstName` = first token of `profile.full_name`.
 8. Render `<DashboardCanvas greeting firstName userId role domain scopeDomain initialData activePreset fromParam toParam dateRange notificationsPromise />` inside `<main className="flex-1 p-4 sm:p-6 lg:p-8">`. `notificationsPromise = TOP_BAR_ENABLED ? getNotifications(profile.id) : undefined` (streamed seed for the header bell).
 
@@ -645,7 +645,7 @@ The slot calls `useWidgetDensity<HTMLDivElement>()` → `{ ref, tier, measured }
 **Active statuses:** `to_do`, `in_progress`, `in_review`. **Priority chip:** only `urgent`/`high`. **Context label:** italic tertiary after the title (lead name for a lead task, group title for a `group_subtask`).
 **Sort order (server):** overdue → priority → `due_at`. **Row limit:** 30.
 **Links:** `lead_id` → `/leads/{id}`; else `/tasks`.
-**Refresh service:** `getAgentTasksSummary(profile.id)` — re-verifies `profile.id` server-side (ignores client `userId`). **Redis cache-aside** (`dashboard:agent-tasks:{userId}`, 30s TTL).
+**Refresh service:** `getAgentTasksSummary(profile.id)` — re-verifies `profile.id` server-side (ignores member `userId`). **Redis cache-aside** (`dashboard:agent-tasks:{userId}`, 30s TTL).
 **Date filter:** does not apply (tasks are always live).
 
 ---
@@ -668,7 +668,7 @@ The whole card is a `Link` to `/leads/{lead.lead_slug}` (a slug-less lead render
 
 **Mine / Team scope toggle:** a bespoke two-segment pill in the header, **rendered only for `manager`/`admin`/`founder`** (default **Team**). Agents see no toggle (always own leads) and get a "Live" pill instead.
 
-**Lifecycle:** `useWidgetData({ seed: initialData.agent_activity, fetcher: getAgentRecentActivityAction(userId, scopeDomain ?? undefined, scope), deps: [userId] })`. The RSC seed lands as the `'team'` view; flipping to `'mine'` is a client fetch. A **global domain pick** round-trips the page and re-seeds — a `scopeDomain`-keyed `useEffect` re-applies the fresh scoped seed (so it never fights a Mine/Team refetch).
+**Lifecycle:** `useWidgetData({ seed: initialData.agent_activity, fetcher: getAgentRecentActivityAction(userId, scopeDomain ?? undefined, scope), deps: [userId] })`. The RSC seed lands as the `'team'` view; flipping to `'mine'` is a member fetch. A **global domain pick** round-trips the page and re-seeds — a `scopeDomain`-keyed `useEffect` re-applies the fresh scoped seed (so it never fights a Mine/Team refetch).
 
 **Data scope (via the rollup RPC, §2c):**
 
@@ -709,7 +709,7 @@ The whole card is a `Link` to `/leads/{lead.lead_slug}` (a slug-less lead render
 
 **Driven by the global date range** — no local period toggle. Bucket granularity is inferred from the range span in the service layer. **`isMultiMode = !isManager && scopeDomain == null`** picks the seed: `lead_volume_multi` (multi-line) when no domain is picked, else `lead_volume` (single line).
 
-**No mount fetch:** the widget seeds entirely from `initialData` and a domain pick re-seeds via the page round-trip. The volume actions (`getLeadVolumeByDomainsAction` / `getLeadVolumeForDomainAction`) still exist for client refresh paths but are not fired on mount; `useDashboardCohortSync` keeps it aligned with the active cohort.
+**No mount fetch:** the widget seeds entirely from `initialData` and a domain pick re-seeds via the page round-trip. The volume actions (`getLeadVolumeByDomainsAction` / `getLeadVolumeForDomainAction`) still exist for member refresh paths but are not fired on mount; `useDashboardCohortSync` keeps it aligned with the active cohort.
 
 **Chart:** Recharts `LineChart` in `ResponsiveContainer` inside a `position:relative; flex:1; minHeight:0` region (the absolute-inset wrapper avoids the RGL `-1` measure). Colours via `useChartTokens()` / `DOMAIN_LINE_COLORS` resolved with `resolveColorMap` — no hex in chart props.
 **Empty state:** Playfair italic *"No leads in this period."*
@@ -801,7 +801,7 @@ Data is the `/budget` pipeline rolled into one gauge by `buildBudgetGaugeSummary
 
 ### 10. Server Actions — `dashboard.ts`
 
-All return `{ data, error }`. All guard via `requireProfile()` first — **client-supplied `role` / `domain` / `userId` are never trusted** for authorization. Date params validated via Zod (`WidgetScopeSchema` / `VolumeScopeSchema` / `DomainsVolumeSchema` / `BudgetScopeSchema` — collapsed from six near-identical schemas in dry-audit H-5) — inverted ranges rejected; managers are locked to `profile.domain` regardless of the requested domain via the single `effectiveWidgetDomain()` helper.
+All return `{ data, error }`. All guard via `requireProfile()` first — **member-supplied `role` / `domain` / `userId` are never trusted** for authorization. Date params validated via Zod (`WidgetScopeSchema` / `VolumeScopeSchema` / `DomainsVolumeSchema` / `BudgetScopeSchema` — collapsed from six near-identical schemas in dry-audit H-5) — inverted ranges rejected; managers are locked to `profile.domain` regardless of the requested domain via the single `effectiveWidgetDomain()` helper.
 
 | Action | Service / RPC | Role guard | Return shape |
 | ------ | ------------- | ---------- | ------------ |
@@ -864,10 +864,10 @@ Sound is owned by the **notifications** pipeline, not the dashboard:
 2. **Dashboard summary data is RSC + cached.** Do not split `getDashboardSummary` back into individual server-action calls for summary data.
 3. **PRIMARY ENTRY POINTS:** `getDashboardSummary()` (single cached RPC) + `getAgentRecentActivity()` (the rollup seed) — both per request, both via the admin client with session-derived args.
 4. **Uses React `cache()` (not `unstable_cache`)** for per-request dedup; any function reading `cookies()` still cannot be wrapped in `unstable_cache` (P-09).
-5. **Individual service functions are NOT used for initial page load** except the volume seeders + the rollup seed — refresh buttons / client range changes only.
+5. **Individual service functions are NOT used for initial page load** except the volume seeders + the rollup seed — refresh buttons / member range changes only.
 6. **All dashboard data goes through `src/lib/services/dashboard-service.ts` — never `leads-service.ts`.**
 7. **All client-side fetches go through server actions in `src/lib/actions/dashboard.ts`.**
-8. **Server actions always call `requireProfile()` and use the verified profile** — never trust client-supplied role/domain/userId; scope args to the revoked RPCs stay session-derived (Q-13).
+8. **Server actions always call `requireProfile()` and use the verified profile** — never trust member-supplied role/domain/userId; scope args to the revoked RPCs stay session-derived (Q-13).
 9. **Widgets receive `userId`, `role`, `domain`, `dateRange`, `scopeDomain` as props** — but server actions re-verify via `requireProfile()`.
 10. **`DashboardWidgetSlot` uses a static map of `React.lazy()` calls.** Never `require()` from a string. Never compute the import path dynamically.
 11. **Widget registry `id` is a stable localStorage key — NEVER rename after shipping.**
@@ -911,7 +911,7 @@ Dashboard widgets mostly use inline durations or Framer defaults; the spatial-gr
 | `20260604000069_dashboard_date_filter.sql` | 6-param; date filter on the CTEs |
 | `20260604000070_fix_pipeline_agent_total.sql` | `COUNT(*)` → `SUM(cnt)` totals fix |
 | `20260606000081_dashboard_cold_leads.sql` | `cold_leads_count` key (regressed the 0070 SUM totals — fixed in 0115) |
-| `20260611000102_revoke_scope_param_rpcs.sql` | REVOKE EXECUTE from `authenticated` on the scope-param RPCs (incl. `get_recent_lead_activity`) → admin-client only |
+| `20260611000102_revoke_scope_param_rpcs.sql` | REVOKE EXECUTE from `authenticated` on the scope-param RPCs (incl. `get_recent_lead_activity`) → admin-member only |
 | `20260612000115_dashboard_agent_snapshot_counts.sql` | `pending_calls_count` + `new_leads_count` keys; SUM(cnt) totals restored |
 | `20260617000129_manager_pipeline_full_roster.sql` | `lead_status.byAgent` for managers = full domain roster LEFT JOINed to the cohort |
 | `20260617000132_recent_lead_activity_rollup.sql` | `get_recent_lead_activity` lead-rollup RPC (Recent Leads); `p_scope` mine/team |

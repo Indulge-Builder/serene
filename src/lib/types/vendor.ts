@@ -62,7 +62,7 @@ export type VendorCapabilityRow = {
 export type VendorEngagementRow = {
   id: string;
   vendor_id: string;
-  client_id: string | null;
+  member_id: string | null;
   lead_id: string | null;
   agent_id: string | null;
   agent_name_raw: string | null;

@@ -4,7 +4,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
 import { hasElevatedPageAccess } from "@/lib/utils/route-access";
-import { getQueendoms } from "@/lib/services/clients-service";
+import { getQueendoms } from "@/lib/services/members-service";
 import { getTicketSettings, listTicketSlaPolicies } from "@/lib/services/tickets-service";
 import { BackButton } from "@/components/ui/BackButton";
 import { TicketSlaPoliciesPanel } from "@/components/settings/TicketSlaPoliciesPanel";

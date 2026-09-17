@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { giaDb } from '@/lib/supabase/schemas';
 import type { AdCreative } from '@/lib/types/database';
 
 // ─────────────────────────────────────────────
@@ -17,7 +18,7 @@ export async function getAdCreativesForCampaign(
 
   try {
     const supabase = await createClient();
-    const { data, error } = await supabase
+    const { data, error } = await giaDb(supabase)
       .from('ad_creatives')
       .select('*')
       .eq('campaign_key', normalised)
@@ -38,7 +39,7 @@ export async function getAdCreativesForCampaign(
 export async function getAllAdCreatives(): Promise<AdCreative[]> {
   try {
     const supabase = await createClient();
-    const { data, error } = await supabase
+    const { data, error } = await giaDb(supabase)
       .from('ad_creatives')
       .select('*')
       .order('created_at', { ascending: false });

@@ -17,6 +17,7 @@
 //     anyone else, never a staff field). Lets the human agent pick up warm.
 
 import { z } from "zod";
+import { giaDb } from "@/lib/supabase/schemas";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sanitizeText } from "@/lib/utils/sanitize";
 import { getTrainingAssetsForBlast } from "@/lib/services/elaya-training-service";
@@ -142,7 +143,7 @@ const noteCustomerInterest: CustomerTool = {
 
     const admin = createAdminClient();
     // Read → merge → write, scoped to THIS lead only (principal.leadId, never model-supplied).
-    const { data: lead } = await admin
+    const { data: lead } = await giaDb(admin)
       .from("leads")
       .select("service_interests")
       .eq("id", principal.leadId)
@@ -153,7 +154,7 @@ const noteCustomerInterest: CustomerTool = {
     const merged = Array.from(new Set([...existing, ...resolved]));
     // Error-checked: if the write fails (transient), don't tell the model it was recorded —
     // the human agent must not be shown an interest that never persisted.
-    const { error } = await admin
+    const { error } = await giaDb(admin)
       .from("leads")
       .update({ service_interests: merged })
       .eq("id", principal.leadId);

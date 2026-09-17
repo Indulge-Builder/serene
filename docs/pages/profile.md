@@ -20,7 +20,7 @@ themselves; there is no user switcher here.
 
 | Layer | Key items |
 | ----- | --------- |
-| Actions | `profiles.ts` — `updateProfile` (self fields), `updateProfileAvatar` (2 MB client-validated upload → `avatars` bucket) |
+| Actions | `profiles.ts` — `updateProfile` (self fields), `updateProfileAvatar` (2 MB member-validated upload → `avatars` bucket) |
 | Client-side | `PasswordChangeForm` uses the **browser** Supabase client directly (documented exception — Supabase auth API, not a DB write) |
 | Theme | saved to `profiles.theme`; `ThemeSelector` writes `data-theme` instantly and mirrors the pick into the `serene-theme` cookie (`persistThemeCookie`). Zero-flash is server-side: the ROOT layout reads the cookie and stamps `data-theme` on `<html>` from the first byte; `ThemeInitializer` only re-syncs a missing/stale cookie against the DB truth |
 | Elaya persona | `getMyElayaPersona(profile.id)` (`elaya-service.ts`) seeds `ElayaPersonaSettings`; saved via `updateElayaPersonaAction` (`lib/actions/elaya.ts`) |
@@ -129,7 +129,7 @@ Notification-sound preference lives in localStorage (`serene:notifications:sound
 | ---- | ------ |
 | **Re-auth** | `getUser()` → `signInWithPassword({ email: user.email, password: current })` **before** `updateUser({ password: next })` |
 | **Why re-auth** | Supabase requires proving knowledge of the current password for sensitive session changes; server actions cannot replace this flow |
-| **Client** | `createClient()` from `src/lib/supabase/client.ts` only — **no** server action for password change |
+| **Member** | `createClient()` from `src/lib/supabase/member.ts` only — **no** server action for password change |
 | **Fields** | Current, new, confirm — Eye/EyeOff toggles (`lucide-react`, 15×15 stroke 1.5) |
 | **Strength** | Renders the shared `<PasswordStrengthBar password={next} />` (`src/components/ui/PasswordStrengthBar.tsx`) under the new-password field — the **same** component used on `/update-password`. Not a bespoke scorer |
 | **Errors** | Wrong current → "Current password is incorrect."; mismatch, too short, same-as-current — inline messages; Supabase update errors surfaced as generic or message text |
@@ -140,7 +140,7 @@ Notification-sound preference lives in localStorage (`serene:notifications:sound
 | ---- | ------ |
 | **Tile** | 96×96, `--radius-md`, `--shadow-1`, hover camera overlay, `Spinner` while uploading |
 | **Flow** | `createClient()` → Storage `avatars` bucket → `upload(profile.id, file, { upsert: true })` → `getPublicUrl` → cache-bust `?t=${Date.now()}` → `updateProfileAvatar` action |
-| **Validation** | Client: `image/*` only, **max 2 MB** before upload starts |
+| **Validation** | Member: `image/*` only, **max 2 MB** before upload starts |
 | **Fallback** | Initials from `full_name` on `--theme-accent-surface` when `avatar_url` null |
 | **Storage contract** | Bucket `avatars`; path = `{user_id}`; public read + authenticated write (project RLS) |
 
@@ -195,7 +195,7 @@ Web-push opt-in (VAPID, `web-push` lib, no SaaS; migration 0120).
 | **Actions** | `src/lib/actions/push.ts` — `savePushSubscriptionAction` (upsert) / `removePushSubscriptionAction`; Zod → `requireProfile`; session client, owner-only |
 | **Table** | `push_subscriptions` `(id, profile_id FK, endpoint UNIQUE, p256dh, auth, user_agent, created_at)` — one row per device, many per user. Owner-only RLS (`profile_id = auth.uid()`, SELECT/INSERT/DELETE, no UPDATE); `idx_push_subscriptions_profile` |
 | **Fan-out seam** | Inside `createNotification` (`notifications-service.ts`): after the in-app row insert it calls `dispatchPush(recipient_id, {title,body,url})` — **zero** call-site edits, so every existing caller (lead-assignment-notify, lead-mutations, sla, tasks, task-reminders) gets push free |
-| **Server seam** | `src/lib/services/push-service.ts` (server + Node only — `web-push` throws on Edge): `dispatchPush` reads subscriptions via the **admin** client, sends to all devices in parallel, and **prunes** endpoints answering 404/410 in one batched delete. Non-fatal: it **never throws** — the in-app row is the source of truth. VAPID configured once lazily; absent keys → logged no-op |
+| **Server seam** | `src/lib/services/push-service.ts` (server + Node only — `web-push` throws on Edge): `dispatchPush` reads subscriptions via the **admin** member, sends to all devices in parallel, and **prunes** endpoints answering 404/410 in one batched delete. Non-fatal: it **never throws** — the in-app row is the source of truth. VAPID configured once lazily; absent keys → logged no-op |
 | **Service worker** | `public/sw.js` gained `push` + `notificationclick` handlers (additive; offline-shell bytes unchanged, `CACHE_VERSION` not bumped) |
 | **Env** | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` (server-only, S-11) + `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (browser). `web-push@3.6.7` + `@types/web-push@3.6.4` — all already in `.env.example` |
 
@@ -245,7 +245,7 @@ talks to you.") between Notifications and Security.
 ```
 
 - **Action:** `signOutUser` in `src/lib/actions/profiles.ts` — `signOut()` then `redirect("/login")`
-- **No LogOut icon:** Page is a **server component**; Lucide icons cannot be passed into the server-action form boundary without a client wrapper. Text-only button is intentional.
+- **No LogOut icon:** Page is a **server component**; Lucide icons cannot be passed into the server-action form boundary without a member wrapper. Text-only button is intentional.
 - **The only sign-out:** the duplicate `signOut()` in `src/lib/actions/auth.ts` was deleted in the 2026-07-02 dead-code purge; `signOutUser` is now the single sign-out action.
 
 ---

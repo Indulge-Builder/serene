@@ -281,7 +281,7 @@ export async function rankVendorsAction(input: unknown): Promise<ActionResult<Ra
     category: parsed.data.category,
     service: parsed.data.service,
     city: parsed.data.city,
-    clientId: parsed.data.client_id,
+    clientId: parsed.data.member_id,
     // The caller's own sticky notes shape their answer (0191) — never a
     // client-supplied id, so nobody can ask "what would Anisha see".
     agentId: auth.profile.id,

@@ -25,7 +25,7 @@ export const ZOHO_PAGE_SIZE = 200;
 export const ZOHO_CACHE_TTL = {
   /** The org-wide /books overview: ~14 calls; five minutes keeps a busy day under 4k calls. */
   OVERVIEW: 300,
-  /** One client's money on the finance page: 4 calls. */
+  /** One member's money on the finance page: 4 calls. */
   CLIENT: 60,
   /** The OAuth access token (Zoho issues 3600 s; we keep 60 s of slack). */
   TOKEN: 3540,
@@ -34,7 +34,7 @@ export const ZOHO_CACHE_TTL = {
 export const ZOHO_REDIS_KEYS = {
   token: "zoho:books:token:v1",
   overview: "zoho:books:overview:v1",
-  client: (zohoCustomerId: string) => `zoho:books:client:${zohoCustomerId}:v1`,
+  member: (zohoCustomerId: string) => `zoho:books:client:${zohoCustomerId}:v1`,
 } as const;
 
 /** Invoice statuses Zoho returns on the list, with the tone the pill takes. */

@@ -97,7 +97,7 @@ function mentions(haystack: string, needle: string): boolean {
 }
 
 /**
- * Cities that are also ordinary English words. "Something nice for a client's
+ * Cities that are also ordinary English words. "Something nice for a member's
  * wife" was read as the city NICE, France — and then narrowed the whole search
  * to vendors serving the French Riviera.
  *
@@ -137,7 +137,7 @@ function parseRequest(text: string, cities: string[]): Parsed {
   const claimed = service ? [...service.split(/[-_\s]+/), ...(SERVICE_WORDS[service] ?? [])] : [];
   const rest = claimed.reduce((t, w) => t.replace(new RegExp(`\\b${w}(?:e?s)?\\b`, 'g'), ' '), q);
   const city =
-    // length >= 3: a stray letter from an apostrophe ("client's" -> "s") was
+    // length >= 3: a stray letter from an apostrophe ("member's" -> "s") was
     // matching a one-character city and filtering the search to nothing.
     cities.find(
       (c) => c.length >= 3 && mentions(rest, c) && (!AMBIGUOUS_CITIES.has(c) || precededByPlace(rest, c)),

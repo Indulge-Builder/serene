@@ -10,6 +10,7 @@
 // the answer size, not the lead count.
 
 import { cache } from "react";
+import { giaDb } from "@/lib/supabase/schemas";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { callAdminRpc } from "@/lib/services/rpc-helpers";
@@ -566,7 +567,7 @@ export async function getAgentDetailMetrics(
     callNotesData,
   ] = await Promise.all([
     // Cohort: leads created in the period — drives totalLeads and pipeline breakdown
-    supabase
+    giaDb(supabase)
       .from("leads")
       .select("id, status")
       .eq("assigned_to", agentId)
@@ -576,7 +577,7 @@ export async function getAgentDetailMetrics(
 
     // Won deals closed in the period — from public.deals filtered by won_at.
     // deal_type lives on the deal row directly (no form_data needed).
-    supabase
+    giaDb(supabase)
       .from("deals")
       .select("deal_amount, deal_type")
       .eq("assigned_to", agentId)
@@ -585,7 +586,7 @@ export async function getAgentDetailMetrics(
       .lte("won_at", dateTo),
 
     // Cohort leads — same date filter, drives totalCallsMade (SUM of call_count)
-    supabase
+    giaDb(supabase)
       .from("leads")
       .select("call_count")
       .eq("assigned_to", agentId)
@@ -602,7 +603,7 @@ export async function getAgentDetailMetrics(
     // breakdown. The old path counted leads.last_call_outcome — the LATEST
     // outcome per lead over a created_at cohort — which decoupled outcome from
     // the period and silently diverged from every other call surface.)
-    supabase
+    giaDb(supabase)
       .from("lead_notes")
       .select("call_outcome, lead:leads!inner(assigned_to)")
       .eq("lead.assigned_to", agentId)
@@ -911,7 +912,7 @@ export async function getAgentLeadActivityPage(
 ): Promise<AgentLeadActivityPage> {
   const supabase = await createClient();
 
-  let query = supabase
+  let query = giaDb(supabase)
     .from("lead_activities")
     .select(
       "id, lead_id, action_type, details, created_at, lead:leads!inner(first_name, last_name, slug, phone, assigned_to)",
@@ -972,7 +973,7 @@ export async function getAgentLeadActivityPage(
   const exactNote = new Map<string, string>();   // `${lead_id}|${created_at}` -> content
   const latestNote = new Map<string, string>();  // lead_id -> content (newest first)
   if (noteLeadIds.length > 0) {
-    const { data: notes } = await supabase
+    const { data: notes } = await giaDb(supabase)
       .from("lead_notes")
       .select("lead_id, content, created_at")
       .in("lead_id", noteLeadIds)
@@ -1046,7 +1047,7 @@ export async function getAgentCallsPageForManager(
 ): Promise<AgentCallsPage> {
   const supabase = await createClient();
 
-  let query = supabase
+  let query = giaDb(supabase)
     .from("lead_notes")
     .select(
       "id, lead_id, content, call_outcome, created_at, lead:leads!inner(first_name, last_name, slug, phone, assigned_to)",

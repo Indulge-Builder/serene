@@ -148,6 +148,28 @@ const eslintConfig = [
       ],
     },
   },
+  // Schema restructure (2026-09-17, docs/architecture/schema-restructure-plan.md): a table
+  // that moved out of `public` must be read through its schema helper (giaDb) — an
+  // unscoped `.from('leads')` would hit public.leads, which no longer exists, at runtime.
+  // The table list mirrors GIA_TABLES in src/lib/supabase/schemas.ts. Receivers that pass:
+  // giaDb(...), freshdeskDb(...), anything.schema(...).
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    // freshdesk-sync.ts reads the MIRROR's own `sla_policies` (schema freshdesk) through
+    // freshdeskDb() held in a local — same name as the Gia table, different schema.
+    ignores: ['src/lib/services/freshdesk-sync.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            "CallExpression[callee.property.name='from'][arguments.0.value=/^(leads|lead_activities|lead_notes|lead_raw_payloads|lead_sla_timers|lead_product_enquiries|deals|sla_policies|agent_routing_config|revival_candidates|revival_policies|domain_targets|ad_creatives|ad_spend_daily|ad_account_recharges|task_gia_meta|whatsapp_conversations|whatsapp_messages|whatsapp_conversation_reads|whatsapp_notification_logs|service_cases|conversation_hooks)$/]:not([callee.object.callee.name=/^(giaDb|freshdeskDb)$/]):not([callee.object.callee.property.name='schema'])",
+          message:
+            'This table lives in the gia schema — query it through giaDb(client).from(…) (src/lib/supabase/schemas.ts), never an unscoped .from().',
+        },
+      ],
+    },
+  },
   // The Anthropic adapter keeps the supabase restriction but may import the SDK.
   {
     files: ['src/lib/elaya/adapters/anthropic.ts'],

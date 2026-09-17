@@ -24,11 +24,11 @@ import {
 import { formErrors } from "@/lib/validations/form-errors";
 import type { ActionResult } from "@/lib/types";
 
-// Sia is admin/founder only (client conversations — the most sensitive data Indulge
+// Sia is admin/founder only (member conversations — the most sensitive data Indulge
 // holds). Every action here gates on that role; identity comes from the verified
-// profile, never the client (A-01).
+// profile, never the member (A-01).
 const SIA_ROLES = ["admin", "founder"] as const;
-const GROUP_KINDS: readonly SiaGroupKind[] = ["client", "vendor", "internal", "unmapped"];
+const GROUP_KINDS: readonly SiaGroupKind[] = ["member", "vendor", "internal", "unmapped"];
 
 function isGroupJid(v: unknown): v is string {
   return typeof v === "string" && v.endsWith("@g.us");
@@ -207,17 +207,17 @@ export async function requestSiaRepairAction(): Promise<ActionResult<{ requested
 // ── updateSiaGroupMappingAction — classify a group + hide/show it ──
 export async function updateSiaGroupMappingAction(
   groupJid: string,
-  patch: { group_kind?: SiaGroupKind; is_active?: boolean; client_id?: string | null },
+  patch: { group_kind?: SiaGroupKind; is_active?: boolean; member_id?: string | null },
 ): Promise<ActionResult<{ saved: true }>> {
   const auth = await requireProfile(SIA_ROLES);
   if (!auth.ok) return auth.result;
   if (!isGroupJid(groupJid)) return { data: null, error: formErrors.generic };
 
-  const clean: { group_kind?: SiaGroupKind; is_active?: boolean; client_id?: string | null } = {};
-  if (patch.client_id !== undefined) {
-    if (patch.client_id !== null && !/^[0-9a-f-]{36}$/i.test(patch.client_id)) return { data: null, error: formErrors.generic };
-    clean.client_id = patch.client_id;
-    clean.group_kind = patch.client_id ? "client" : "unmapped";
+  const clean: { group_kind?: SiaGroupKind; is_active?: boolean; member_id?: string | null } = {};
+  if (patch.member_id !== undefined) {
+    if (patch.member_id !== null && !/^[0-9a-f-]{36}$/i.test(patch.member_id)) return { data: null, error: formErrors.generic };
+    clean.member_id = patch.member_id;
+    clean.group_kind = patch.member_id ? "member" : "unmapped";
   }
   if (patch.group_kind !== undefined) {
     if (!GROUP_KINDS.includes(patch.group_kind)) return { data: null, error: formErrors.generic };

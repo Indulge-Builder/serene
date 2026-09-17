@@ -26,7 +26,7 @@ Full matrix: Deep dive §8.
 
 | Layer | Key items |
 | ----- | --------- |
-| RPCs | `get_campaign_metrics` (0014), `get_campaign_detail_metrics` (0015/0087), `get_campaign_agent_distribution` (0015) — SECURITY DEFINER; client EXECUTE revoked (0102); always live, **no Redis** |
+| RPCs | `get_campaign_metrics` (0014), `get_campaign_detail_metrics` (0015/0087), `get_campaign_agent_distribution` (0015) — SECURITY DEFINER; member EXECUTE revoked (0102); always live, **no Redis** |
 | Service | campaign functions live in `leads-service.ts` (campaign data derives from `leads` — logged decision); detail leads table via `getLeadsByRoleCached` |
 | Spend | `getBudgetSummary(from, to)` (`ad-spend-service.ts`) — reused from `/budget`, no new query, always-live (admin client, no Redis). **List:** one batched fetch in `CampaignListAsync`, mapped onto cards by normalised key, skipped when no range. **Detail:** the same fetch runs in `CampaignMetricsAsync`'s `Promise.all`, matched on `normalizeCampaignKey(campaignName)` → the Amount Spent / Cost-per-Lead tiles. |
 | Decoration | None — campaign names display RAW (the `beautifyCampaignTitle` decorator was deleted 2026-06-23; never reintroduce a title beautifier) |
@@ -270,7 +270,7 @@ All three functions use `createClient()` from `src/lib/supabase/server.ts` and c
 ```text
 <main>
   <h1>Campaigns.</h1>
-  <CampaignFiltersBar role showDomainFilter />   ← stable (client)
+  <CampaignFiltersBar role showDomainFilter />   ← stable (member)
   <Suspense fallback={<CampaignListSkeleton />}>
     <CampaignListAsync role callerDomain filters />
   </Suspense>
@@ -444,7 +444,7 @@ const [metrics, distribution, spendRows] = await Promise.all([
 
 #### 6d. `AgentDistributionBar`
 
-- **Client component** (`'use client'`).
+- **Member component** (`'use client'`).
 - **Stacked bar:** height **8px**, `borderRadius: var(--radius-full)`, `overflow: hidden`, track `var(--theme-paper-subtle)`.
 - **Segments:** static `flex: 0 0 ${pct}%` slices (`pct = lead_count / total * 100`) — they are **not**
   individually animated. The entrance is a **single** `motion.div` wrapper (`transformOrigin: left center`)
@@ -611,13 +611,13 @@ Sidebar hides the Campaigns link from agent/guest (UI); direct URL still hits pa
 
 | File | Role |
 | ---- | ---- |
-| `CampaignFilters.tsx` | List filter bar (client, URL-only) |
+| `CampaignFilters.tsx` | List filter bar (member, URL-only) |
 | `CampaignListAsync.tsx` | List data + cards (async server) |
 | `CampaignListSkeleton.tsx` | List Suspense fallback |
-| `CampaignCard.tsx` | List row card — a `MotionLink` navigating straight to the detail page (client) |
+| `CampaignCard.tsx` | List row card — a `MotionLink` navigating straight to the detail page (member) |
 | `CampaignMetricsStrip.tsx` | Detail stat cards — 8 tiles (server) |
 | `CampaignMetricsStripSkeleton.tsx` | Detail metrics Suspense fallback (8 placeholders) |
-| `AgentDistributionBar.tsx` | Stacked agent bar — `--domain-*` palette, single `scaleX` entrance (client) |
+| `AgentDistributionBar.tsx` | Stacked agent bar — `--domain-*` palette, single `scaleX` entrance (member) |
 | `CampaignAdPanel.tsx` | Detail ad carousel / add-a-video panel (left column) |
 | `AdCreativeCarousel.tsx` | Multi-video carousel |
 | `AdCreativePlayer.tsx` | Single native video player |

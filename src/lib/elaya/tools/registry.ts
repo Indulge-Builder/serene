@@ -30,7 +30,7 @@ import {
 } from '@/lib/elaya/tools/write-registry';
 // THE single data seam for every Elaya read (Phase 1 parity rule, see
 // src/lib/elaya/CLAUDE.md). Tools call elayaData.* ONLY — never a *-service.ts function
-// directly — so every read is principal-scoped + admin-client + channel-agnostic by
+// directly — so every read is principal-scoped + admin-member + channel-agnostic by
 // construction. A tool that reaches past this module can re-introduce a login-session
 // dependency that blanks on WhatsApp; do not do it.
 import * as elayaData from '@/lib/elaya/elaya-data';
@@ -70,10 +70,10 @@ export type ElayaReadToolName =
   | 'get_ticket'
   | 'find_vendors'
   | 'get_vendor_details'
-  // Clients (0181/0194) — a member's WhatsApp history, raw, queendom-scoped in code
-  | 'get_client_overview'
-  | 'get_client_recent_messages'
-  | 'search_client_history';
+  // Members (0181/0194) — a member's WhatsApp history, raw, queendom-scoped in code
+  | 'get_member_overview'
+  | 'get_member_recent_messages'
+  | 'search_member_history';
 
 /** Every tool name the principal may carry — read tools (this file) + write tools. */
 export type ElayaToolName = ElayaReadToolName | ElayaWriteToolName;
@@ -269,7 +269,7 @@ const getLeadDetails: ElayaTool = {
   },
   run: async (principal, input) => {
     const { leadId } = input as { leadId: string };
-    // Admin-client read (works in the sessionless WhatsApp context); the
+    // Admin-member read (works in the sessionless WhatsApp context); the
     // canAccessLead gate below is the per-resource trust boundary — it re-checks
     // role/domain/assignment on the principal, so the broad read is safe. The ref
     // is a UUID or a slug (getLeadByRefForElaya resolves both).
@@ -316,7 +316,7 @@ const getMyTasks: ElayaTool = {
   schema: z.object({}),
   jsonSchema: { type: 'object', properties: {}, additionalProperties: false },
   run: async (principal) => {
-    // All three reads go through the Elaya data layer → admin-client + principal-scoped,
+    // All three reads go through the Elaya data layer → admin-member + principal-scoped,
     // so they return real data on BOTH in-app and WhatsApp (parity rule). The old
     // WhatsApp "group tasks not available, open the app" fallback is gone — group tasks
     // now work everywhere via the explicit-param twin (migration 0149).
@@ -380,7 +380,7 @@ const findTeammate: ElayaTool = {
   description:
     'Find a COLLEAGUE (a staff member / teammate) by name — NOT a customer or lead. Use this ' +
     'whenever you need a person to ASSIGN work to: "create a task for Arfam", "remind Pawani to call ' +
-    'the client", "assign this to the onboarding manager". It returns each match with their userId — ' +
+    'the member", "assign this to the onboarding manager". It returns each match with their userId — ' +
     'the handle the task tools (create_personal_task, update_task) need for `assigneeId`. Resolve the ' +
     'teammate with THIS tool first, then create/assign the task with their userId. NEVER use ' +
     'search_leads to find a person to assign work to — that searches customers/prospects, not staff. ' +
@@ -398,7 +398,7 @@ const findTeammate: ElayaTool = {
   },
   run: async (principal, input) => {
     const { search } = input as { search: string };
-    // Staff identity via the data seam — admin-client + principal-scoped, so it works
+    // Staff identity via the data seam — admin-member + principal-scoped, so it works
     // on BOTH channels. This is the name→userId lookup that keeps "create a task for
     // <person>" off search_leads. When the exact/substring lookup finds nothing, the
     // service falls back to SOUND-ALIKE matching (voice-transcription artifacts:
@@ -506,7 +506,7 @@ const getPerformanceSnapshot: ElayaTool = {
   run: async (principal, input) => {
     const period = ((input as { period?: (typeof PERIODS)[number] }).period) ?? 'this_week';
 
-    // Through the Elaya data layer (admin-client explicit-param twins, migration 0149)
+    // Through the Elaya data layer (admin-member explicit-param twins, migration 0149)
     // → real numbers on BOTH in-app and WhatsApp. The old WhatsApp "open the app"
     // fallback is gone — the pulse + roster work everywhere now (parity rule).
     if (principal.role === 'agent') {
@@ -868,133 +868,133 @@ const getVendorDetails: ElayaTool = {
   },
 };
 
-// ── Clients (2026-09-16) — a member's WhatsApp group, read raw for Elaya ──
+// ── Members (2026-09-16) — a member's WhatsApp group, read raw for Elaya ──
 // No profile layer in between: the tools hand the model REAL message rows (date,
 // who, text) and the descriptions bind it to answer only from them. All staff may
-// carry the tools; the CODE gate is the queendom (canAccessClient inside
-// elaya-data) — admin/founder see every client, everyone else their queendom's.
+// carry the tools; the CODE gate is the queendom (canAccessMember inside
+// elaya-data) — admin/founder see every member, everyone else their queendom's.
 // Both brains run these here (bridged), so WhatsApp and in-app answer alike.
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const getClientOverview: ElayaTool = {
-  name: 'get_client_overview',
+const getMemberOverview: ElayaTool = {
+  name: 'get_member_overview',
   description:
-    'Find a member client and their WhatsApp concierge group. Pass `client` as the name the user ' +
-    'said (or a client id). Returns tier, membership status, queendom and the group with its message ' +
-    'count and last activity, plus the client_id the other client tools need — call this FIRST. If ' +
-    'several clients match you get a `candidates` list: ask the user which one, never pick. If none ' +
-    'match, say you could not find that client; never describe a client you did not get back.',
-  schema: z.object({ client: z.string().trim().min(2).max(120) }),
+    'Find a member member and their WhatsApp concierge group. Pass `member` as the name the user ' +
+    'said (or a member id). Returns tier, membership status, queendom and the group with its message ' +
+    'count and last activity, plus the member_id the other member tools need — call this FIRST. If ' +
+    'several members match you get a `candidates` list: ask the user which one, never pick. If none ' +
+    'match, say you could not find that member; never describe a member you did not get back.',
+  schema: z.object({ member: z.string().trim().min(2).max(120) }),
   jsonSchema: {
     type: 'object',
-    properties: { client: { type: 'string', description: "The client's name as the user said it, or a client id" } },
-    required: ['client'],
+    properties: { member: { type: 'string', description: "The member's name as the user said it, or a member id" } },
+    required: ['member'],
     additionalProperties: false,
   },
   run: async (principal, input) => {
-    const { client } = input as { client: string };
-    let match: Awaited<ReturnType<typeof elayaData.getClientBriefFor>> = null;
-    if (UUID_RE.test(client)) {
-      match = await elayaData.getClientBriefFor(principal, client);
-      if (!match) return { found: false, note: 'No client with that id that you can see.' };
+    const { member } = input as { member: string };
+    let match: Awaited<ReturnType<typeof elayaData.getMemberBriefFor>> = null;
+    if (UUID_RE.test(member)) {
+      match = await elayaData.getMemberBriefFor(principal, member);
+      if (!match) return { found: false, note: 'No member with that id that you can see.' };
     } else {
-      const hits = await elayaData.findClientsFor(principal, client);
+      const hits = await elayaData.findMembersFor(principal, member);
       if (hits.length === 0) {
-        return { found: false, note: `No client matching "${client}". Say so; do not describe anyone.` };
+        return { found: false, note: `No member matching "${member}". Say so; do not describe anyone.` };
       }
       if (hits.length > 1) {
         return {
           found: false,
-          candidates: hits.map((c) => ({ client_id: c.id, name: c.full_name, tier: c.tier, status: c.membership_status })),
-          note: 'Several clients match. Ask the user which one they mean.',
+          candidates: hits.map((c) => ({ member_id: c.id, name: c.full_name, tier: c.tier, status: c.membership_status })),
+          note: 'Several members match. Ask the user which one they mean.',
         };
       }
-      match = await elayaData.getClientBriefFor(principal, hits[0].id);
-      if (!match) return { found: false, note: 'That client is outside what you can see.' };
+      match = await elayaData.getMemberBriefFor(principal, hits[0].id);
+      if (!match) return { found: false, note: 'That member is outside what you can see.' };
     }
-    const { client: c, group } = match;
+    const { member: c, group } = match;
     return {
       found: true,
-      client_id: c.id,
+      member_id: c.id,
       name: c.full_name,
       tier: c.tier,
       membership: { type: c.membership_type, status: c.membership_status, ends: c.membership_end },
       whatsapp_group: group
         ? { subject: group.subject, members: group.member_count, messages: group.message_count, last_message_at: group.last_message_at }
         : null,
-      note: group ? undefined : 'No WhatsApp group is mapped to this client yet, so there is no chat history to read.',
+      note: group ? undefined : 'No WhatsApp group is mapped to this member yet, so there is no chat history to read.',
     };
   },
 };
 
-const getClientRecentMessages: ElayaTool = {
-  name: 'get_client_recent_messages',
+const getMemberRecentMessages: ElayaTool = {
+  name: 'get_member_recent_messages',
   description:
-    "The latest messages from the client's WhatsApp concierge group, oldest to newest, each with " +
-    'its date, who sent it (client / staff) and the text. Use for "what has X asked for lately", ' +
+    "The latest messages from the member's WhatsApp concierge group, oldest to newest, each with " +
+    'its date, who sent it (member / staff) and the text. Use for "what has X asked for lately", ' +
     '"what is going on with X", "summarise X\'s chat". Answer ONLY from these messages and mention ' +
     'the dates you rely on; if the list is empty say there are no messages, never fill the gap. ' +
-    'Pass `before` (the `oldest_at` you were given) to read the page before it. Needs client_id ' +
-    'from get_client_overview.',
-  schema: z.object({ client_id: z.string().uuid(), before: z.string().datetime({ offset: true }).optional() }),
+    'Pass `before` (the `oldest_at` you were given) to read the page before it. Needs member_id ' +
+    'from get_member_overview.',
+  schema: z.object({ member_id: z.string().uuid(), before: z.string().datetime({ offset: true }).optional() }),
   jsonSchema: {
     type: 'object',
     properties: {
-      client_id: { type: 'string', description: 'The client_id from get_client_overview' },
+      member_id: { type: 'string', description: 'The member_id from get_member_overview' },
       before: { type: 'string', description: 'Optional ISO timestamp: return the page of messages before this moment' },
     },
-    required: ['client_id'],
+    required: ['member_id'],
     additionalProperties: false,
   },
   run: async (principal, input) => {
-    const { client_id, before } = input as { client_id: string; before?: string };
-    const page = await elayaData.getClientMessagesFor(principal, client_id, { before });
-    if (!page) return { error: 'No such client, or outside what you can see.' };
+    const { member_id, before } = input as { member_id: string; before?: string };
+    const page = await elayaData.getMemberMessagesFor(principal, member_id, { before });
+    if (!page) return { error: 'No such member, or outside what you can see.' };
     return {
-      client: page.client.full_name,
+      member: page.member.full_name,
       group: page.group_subject,
       messages: page.messages,
       has_more: page.has_more,
       oldest_at: page.oldest_at,
       note:
         page.messages.length === 0
-          ? 'No messages on record for this client. Say exactly that.'
+          ? 'No messages on record for this member. Say exactly that.'
           : 'Ground every statement in these messages and cite the date. Nothing here means nothing is known.',
     };
   },
 };
 
-const searchClientHistory: ElayaTool = {
-  name: 'search_client_history',
+const searchMemberHistory: ElayaTool = {
+  name: 'search_member_history',
   description:
-    "Search a client's whole WhatsApp history for a word or topic (villa, goa, birthday, refund). " +
+    "Search a member's whole WhatsApp history for a word or topic (villa, goa, birthday, refund). " +
     'Exact word matching over the real messages: returns the matching messages with dates and ' +
     'senders, newest first. Use for "did X ever mention…", "when did X ask about…", "find the time ' +
     'X talked about…". If it returns no hits, say nothing was found about that; never guess or ' +
-    'infer. Needs client_id from get_client_overview.',
-  schema: z.object({ client_id: z.string().uuid(), query: z.string().trim().min(2).max(120) }),
+    'infer. Needs member_id from get_member_overview.',
+  schema: z.object({ member_id: z.string().uuid(), query: z.string().trim().min(2).max(120) }),
   jsonSchema: {
     type: 'object',
     properties: {
-      client_id: { type: 'string', description: 'The client_id from get_client_overview' },
+      member_id: { type: 'string', description: 'The member_id from get_member_overview' },
       query: { type: 'string', description: 'The word or short phrase to look for, e.g. goa, birthday, villa' },
     },
-    required: ['client_id', 'query'],
+    required: ['member_id', 'query'],
     additionalProperties: false,
   },
   run: async (principal, input) => {
-    const { client_id, query } = input as { client_id: string; query: string };
-    const res = await elayaData.searchClientHistoryFor(principal, client_id, query);
-    if (!res) return { error: 'No such client, or outside what you can see.' };
+    const { member_id, query } = input as { member_id: string; query: string };
+    const res = await elayaData.searchMemberHistoryFor(principal, member_id, query);
+    if (!res) return { error: 'No such member, or outside what you can see.' };
     return {
-      client: res.client.full_name,
+      member: res.member.full_name,
       group: res.group_subject,
       query,
       hits: res.hits,
       note:
         res.hits.length === 0
-          ? `Nothing in this client's chat matches "${query}". Say so plainly.`
+          ? `Nothing in this member's chat matches "${query}". Say so plainly.`
           : 'Quote the matching message and its date; do not extend beyond what these hits say.',
     };
   },
@@ -1014,10 +1014,10 @@ export const BRIDGED_READ_TOOL_NAMES: ReadonlySet<string> = new Set([
   // Tickets: the sentinel's ledger lives in Node with its cores; the Python brain reads it here.
   'list_tickets',
   'get_ticket',
-  // Clients: the member's WhatsApp history lives in the sia schema Node already reads.
-  'get_client_overview',
-  'get_client_recent_messages',
-  'search_client_history',
+  // Members: the member's WhatsApp history lives in the sia schema Node already reads.
+  'get_member_overview',
+  'get_member_recent_messages',
+  'search_member_history',
 ]);
 
 // ── Tickets (Sia, 0195/0199/0200) — the genie's queue and one ticket's whole story ──
@@ -1028,8 +1028,8 @@ export const BRIDGED_READ_TOOL_NAMES: ReadonlySet<string> = new Set([
 const listTickets: ElayaTool = {
   name: 'list_tickets',
   description:
-    'Sia tickets: the live client requests in the user’s queendom (admin/founder: every queendom). ' +
-    'Call when the user asks what is open, what is on their plate, what is late, what a client is waiting on, ' +
+    'Sia tickets: the live member requests in the user’s queendom (admin/founder: every queendom). ' +
+    'Call when the user asks what is open, what is on their plate, what is late, what a member is waiting on, ' +
     'or to find a ticket by words in its title. Returns ticket numbers (T-000042) to use with get_ticket, ' +
     'add_ticket_note and move_ticket_status.',
   schema: z.object({
@@ -1056,7 +1056,7 @@ const listTickets: ElayaTool = {
         ticketNo: t.ticket_no,
         ticketId: t.id,
         title: t.title,
-        client: t.client_name,
+        member: t.member_name,
         status: t.status,
         priority: t.priority,
         category: t.sub_category ? `${t.category} / ${t.sub_category}` : t.category,
@@ -1095,7 +1095,7 @@ const getTicket: ElayaTool = {
       ticketNo: t.ticket_no,
       ticketId: t.id,
       title: t.title,
-      client: d.client_name,
+      member: d.member_name,
       status: t.status,
       allowedMoves: TICKET_TRANSITIONS[t.status],
       priority: t.priority,
@@ -1133,9 +1133,9 @@ const ALL_TOOLS = [
   getVendorDetails,
   listTickets,
   getTicket,
-  getClientOverview,
-  getClientRecentMessages,
-  searchClientHistory,
+  getMemberOverview,
+  getMemberRecentMessages,
+  searchMemberHistory,
 ] as const;
 
 const TOOL_REGISTRY = new Map<string, ElayaTool>(ALL_TOOLS.map((t) => [t.name, t]));

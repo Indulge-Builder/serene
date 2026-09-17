@@ -33,7 +33,7 @@ Indulge Global exists for a simple but underserved reality: **the ultra-wealthy 
 - High-net-worth and ultra-high-net-worth individuals (HNIs/UHNIs) have wealth, but **managing access and the operations around it is a hassle** — last-minute reservations, sold-out event tickets, rare product sourcing, travel logistics across time zones.
 - Personal assistants are limited: they handle local errands but can't get **Wimbledon tickets on 48 hours' notice**, don't work weekends, and lack global brand relationships. Indulge positions itself as the global, always-on alternative — 24/7/365.
 - Post-COVID, founder Karan Bhangay noticed a behavioural shift: affluent consumers stopped wanting phone calls, apps, and long processes. They wanted **speed, familiarity, and simplicity** — which is why the service runs primarily on WhatsApp. One message, infinite reach.
-- Privacy and discretion are core requirements for this clientele, baked into the service model.
+- Privacy and discretion are core requirements for this memberele, baked into the service model.
 
 **The origin was organic:** clients of Bhangay's earlier luxury businesses began messaging him on WhatsApp for help with reservations, travel, and sourcing. The volume of inbound requests revealed a structural gap, and a dedicated product was built around it.
 

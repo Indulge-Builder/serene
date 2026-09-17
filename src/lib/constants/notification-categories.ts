@@ -110,7 +110,7 @@ export const NOTIFICATION_CATEGORIES = [
     roles:       ['manager', 'admin', 'founder'],
   },
   // ── Tickets (Sia, migration 0195) ──────────────────────────────────────────
-  // ticket_assigned and ticket_client_replied are TRANSACTIONAL: deliberately absent here.
+  // ticket_assigned and ticket_member_replied are TRANSACTIONAL: deliberately absent here.
   {
     key:         'ticket_proposed_for_approval',
     label:       'A ticket waits for my approval',
@@ -133,9 +133,9 @@ export const NOTIFICATION_CATEGORIES = [
     roles:       ['manager', 'admin', 'founder'],
   },
   {
-    key:         'ticket_client_unhappy',
-    label:       'A client sounds unhappy',
-    description: 'When a client message on a ticket reads as frustrated or angry.',
+    key:         'ticket_member_unhappy',
+    label:       'A member sounds unhappy',
+    description: 'When a member message on a ticket reads as frustrated or angry.',
     channels:    ['in_app', 'whatsapp'],
     roles:       ['manager', 'admin', 'founder'],
   },

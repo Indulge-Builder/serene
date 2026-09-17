@@ -39,7 +39,7 @@ SPECIALISTS: dict[str, Specialist] = {
         id="leads",
         description=(
             "lead lookups, HOW MANY leads / lead counts, lead status/details/notes, cold or "
-            "stale leads, client/prospect questions, talking points or case studies for pitching, "
+            "stale leads, member/prospect questions, talking points or case studies for pitching, "
             "logging a call on a lead, adding a note to a lead, changing a lead's status, "
             "reassigning a lead, recording/closing a deal, creating a follow-up or reminder for a "
             "lead — including mixed asks like 'note this on the lead and remind me tomorrow'"
@@ -67,7 +67,7 @@ SPECIALISTS: dict[str, Specialist] = {
             "the user's tasks, to-dos, follow-ups, deadlines, reminders, what's due, "
             "creating/assigning/delegating a task or reminder, marking a task done, updating or "
             "deleting a task, team/group tasks, finding a teammate/colleague by name (BUT a "
-            "note/call/reminder ABOUT A LEAD or after talking to a lead/client belongs to the "
+            "note/call/reminder ABOUT A LEAD or after talking to a lead/member belongs to the "
             "leads category, even when it also asks for a reminder)"
         ),
         focus=("Focus for this conversation: the user's TASKS and follow-ups — open work, "
@@ -109,7 +109,7 @@ SPECIALISTS: dict[str, Specialist] = {
         id="vendors",
         description=(
             "suppliers and vendors: who do we use for something (a cake, a florist, a car, a "
-            "visa, a hotel), the best vendor or supplier for a client request, a vendor's "
+            "visa, a hotel), the best vendor or supplier for a member request, a vendor's "
             "details, contacts, past jobs, score or rating, what a vendor offers or refuses"
         ),
         focus=("Focus for this conversation: VENDORS — who the team has used for a kind of "
@@ -123,32 +123,32 @@ SPECIALISTS: dict[str, Specialist] = {
     "tickets": Specialist(
         id="tickets",
         description=(
-            "Sia tickets and client requests: what is open, what is late, where a ticket stands, "
+            "Sia tickets and member requests: what is open, what is late, where a ticket stands, "
             "a ticket number like T-000042, adding a note to a ticket, moving a ticket to another "
-            "status (sourcing, awaiting client, awaiting vendor, in delivery, resolved), what the "
-            "sentinel said, a client's pending requests"
+            "status (sourcing, awaiting member, awaiting vendor, in delivery, resolved), what the "
+            "sentinel said, a member's pending requests"
         ),
         focus=("Focus for this conversation: TICKETS — the genie's queue and one ticket's story. "
                "Read with list_tickets / get_ticket before answering; a status move is a proposal "
                "the user confirms with a yes, never a done deed until the system says so."),
         toolset=["list_tickets", "get_ticket", "add_ticket_note", "move_ticket_status", "find_teammate"],
     ),
-    "clients": Specialist(
-        id="clients",
+    "members": Specialist(
+        id="members",
         description=(
-            "a member client and their WhatsApp group chat: what a client asked for lately, what is "
-            "going on with a client, summarise a client's chat, did a client ever mention something, "
-            "when did a client talk about a topic, a client's tier or membership, which group a client is in"
+            "a member member and their WhatsApp group chat: what a member asked for lately, what is "
+            "going on with a member, summarise a member's chat, did a member ever mention something, "
+            "when did a member talk about a topic, a member's tier or membership, which group a member is in"
         ),
         focus=("Focus for this conversation: CLIENTS — one member's story, read from their real "
-               "WhatsApp group messages. Always call get_client_overview first to find the client and "
-               "their client_id, then get_client_recent_messages or search_client_history. Every "
-               "statement about the client must come from a returned message and carry its date; if a "
+               "WhatsApp group messages. Always call get_member_overview first to find the member and "
+               "their member_id, then get_member_recent_messages or search_member_history. Every "
+               "statement about the member must come from a returned message and carry its date; if a "
                "tool returns nothing, say that nothing is on record — never fill the gap from memory, "
-               "and never describe a client the tool did not return. Several matching clients means "
+               "and never describe a member the tool did not return. Several matching members means "
                "ask which one."),
         # All three run in Node through the bridge; Node scopes rows to the reader's queendom.
-        toolset=["get_client_overview", "get_client_recent_messages", "search_client_history", "find_teammate"],
+        toolset=["get_member_overview", "get_member_recent_messages", "search_member_history", "find_teammate"],
     ),
     "general": Specialist(
         id="general",
@@ -162,9 +162,9 @@ SPECIALISTS: dict[str, Specialist] = {
             "find_teammate",
             "get_helpdesk_content",
             "search_leads",
-            "get_client_overview",
-            "get_client_recent_messages",
-            "search_client_history",
+            "get_member_overview",
+            "get_member_recent_messages",
+            "search_member_history",
             "add_lead_note",
             "log_call",
             "create_lead_task",

@@ -1,4 +1,4 @@
-// ticket-sentinel.ts — THE sentinel: one small watcher per ticket (client-ticket-plan.md 7.6,
+// ticket-sentinel.ts — THE sentinel: one small watcher per ticket (member-ticket-plan.md 7.6,
 // migration 0199). Not a process per ticket: an actor whose identity is the ticket row, whose
 // memory is sentinel_state, whose mailbox is ticket_events + ticket_message_links (a trigger
 // sets next_wake_at on every arrival) and whose alarm clock is next_wake_at. A shared pool
@@ -6,15 +6,15 @@
 //
 // A wake, in order:
 //   1. the RULE pass, no model — pure code over the ticket, its policy row and the clock:
-//      first response due, update cadence due, vendor or client silent too long, requested time
+//      first response due, update cadence due, vendor or member silent too long, requested time
 //      passed, resolution target near or past, the 48-hour close window, a stale proposal. Each
 //      rule fires ONCE per key (state.fired remembers); a fire = a ticket event + notifications
 //      through the catalog, and the state is written in the SAME transaction as the event, before
 //      any notification leaves, so a duplicate fire is impossible by construction.
-//   2. the READING pass, routing tier, only when there is new text (a human note, a linked client
+//   2. the READING pass, routing tier, only when there is new text (a human note, a linked member
 //      message) and the ticket's token budget allows: a refreshed summary, checklist items the note
-//      completed, money figures, a changed request (proposed, never applied), the client's tone,
-//      "the client says delivered" (proposed). Fails closed to rules only.
+//      completed, money figures, a changed request (proposed, never applied), the member's tone,
+//      "the member says delivered" (proposed). Fails closed to rules only.
 //   3. SLEEP: the next alarm is the earliest deadline ahead, never longer than SENTINEL_MAX_SLEEP.
 //
 // Every write goes through the two RPCs (apply_ticket_change for anything with an event,
@@ -65,7 +65,7 @@ export type SentinelRecipient = "assignee" | "bishop" | "queen" | "founder";
 export type SentinelNotify = { to: SentinelRecipient; type: NotificationType; key?: string; title: string; body: string };
 export type SentinelFire = { key: string; event_type: string; body: string; meta: Record<string, unknown>; notify: SentinelNotify[] };
 
-export type LinkedText = { link: TicketMessageLinkRow; text: string | null; at: string | null; from_client: boolean };
+export type LinkedText = { link: TicketMessageLinkRow; text: string | null; at: string | null; from_member: boolean };
 
 export type WakeInput = {
   ticket: TicketRow;
@@ -88,7 +88,7 @@ export type WakePlan = {
   /** Close the ticket (resolved and quiet for the window). */
   autoClose: boolean;
   /** What the reading pass should look at; null when nothing new was said. */
-  readInput: { notes: string[]; clientMessages: string[]; staffMessages: string[] } | null;
+  readInput: { notes: string[]; memberMessages: string[]; staffMessages: string[] } | null;
 };
 
 const MIN = 60_000;
@@ -125,8 +125,8 @@ export function planWake(input: WakeInput): WakePlan {
 
   // ── What arrived since the last wake ─────────────────────────────────────
   const humanNotes = newEvents.filter((e) => e.event_type === "note" && e.actor_kind === "human" && e.body);
-  const clientLinks = newLinks.filter((l) => l.from_client);
-  const staffLinks = newLinks.filter((l) => !l.from_client && l.link.link_kind === "staff_reply");
+  const memberLinks = newLinks.filter((l) => l.from_member);
+  const staffLinks = newLinks.filter((l) => !l.from_member && l.link.link_kind === "staff_reply");
   if (newEvents.length) state.last_event_at = newEvents[newEvents.length - 1].created_at;
   if (newLinks.length) state.last_link_at = newLinks[newLinks.length - 1].link.created_at;
 
@@ -138,12 +138,12 @@ export function planWake(input: WakeInput): WakePlan {
       fire("first_response", "observation", "First response recorded.", { at: first }, []);
     }
   }
-  // A client reply: stamp it and tell the assignee (transactional, never muted).
-  if (clientLinks.length) {
-    const last = clientLinks[clientLinks.length - 1];
-    patch.last_client_update_at = last.at ?? last.link.created_at;
-    fire(`client_reply:${last.link.id}`, "observation", `Client replied${clientLinks.length > 1 ? ` (${clientLinks.length} messages)` : ""}.`, { links: clientLinks.map((l) => l.link.id) }, [
-      { to: "assignee", type: "ticket_client_replied", title: `Client replied on ${t.ticket_no}`, body: (last.text ?? "").slice(0, 140) || label },
+  // A member reply: stamp it and tell the assignee (transactional, never muted).
+  if (memberLinks.length) {
+    const last = memberLinks[memberLinks.length - 1];
+    patch.last_member_update_at = last.at ?? last.link.created_at;
+    fire(`member_reply:${last.link.id}`, "observation", `Member replied${memberLinks.length > 1 ? ` (${memberLinks.length} messages)` : ""}.`, { links: memberLinks.map((l) => l.link.id) }, [
+      { to: "assignee", type: "ticket_member_replied", title: `Member replied on ${t.ticket_no}`, body: (last.text ?? "").slice(0, 140) || label },
     ]);
   }
 
@@ -185,7 +185,7 @@ export function planWake(input: WakeInput): WakePlan {
     const due = new Date(t.next_update_due_at);
     if (now >= due) {
       const quiet = elapsedMin(t.next_update_due_at, now, bh) + policy.update_cadence_min;
-      if (fire(`update:${t.next_update_due_at}`, "reminder_sent", `No update for about ${hours(Math.round(quiet))}; the client deserves a line.`, { which: "update", due: t.next_update_due_at }, [
+      if (fire(`update:${t.next_update_due_at}`, "reminder_sent", `No update for about ${hours(Math.round(quiet))}; the member deserves a line.`, { which: "update", due: t.next_update_due_at }, [
         { to: "assignee", type: "ticket_sla_warning", key: "ticket_sla_warning", title: `${t.ticket_no}: no update for ${hours(Math.round(quiet))}`, body: label },
       ])) {
         patch.next_update_due_at = ticketDeadline(now, policy.update_cadence_min, bh);
@@ -205,15 +205,15 @@ export function planWake(input: WakeInput): WakePlan {
         ]);
       } else consider(new Date(ticketDeadline(new Date(lastActivity), policy.vendor_silence_min, bh)));
     }
-    // Client silent: we asked, they have not answered.
-    if (t.status === "awaiting_client") {
-      const since = (patch.last_client_update_at as string | undefined) ?? t.last_client_update_at ?? t.updated_at;
+    // Member silent: we asked, they have not answered.
+    if (t.status === "awaiting_member") {
+      const since = (patch.last_member_update_at as string | undefined) ?? t.last_member_update_at ?? t.updated_at;
       const silent = elapsedMin(since, now, bh);
-      if (silent >= policy.client_silence_min) {
-        fire(`client_silent:${since}`, "reminder_sent", `The client has not answered for ${hours(Math.round(silent))}; a gentle nudge is due.`, { which: "client_silence", since }, [
-          { to: "assignee", type: "ticket_sla_warning", key: "ticket_sla_warning", title: `${t.ticket_no}: client quiet for ${hours(Math.round(silent))}`, body: label },
+      if (silent >= policy.member_silence_min) {
+        fire(`member_silent:${since}`, "reminder_sent", `The member has not answered for ${hours(Math.round(silent))}; a gentle nudge is due.`, { which: "member_silence", since }, [
+          { to: "assignee", type: "ticket_sla_warning", key: "ticket_sla_warning", title: `${t.ticket_no}: member quiet for ${hours(Math.round(silent))}`, body: label },
         ]);
-      } else consider(new Date(ticketDeadline(new Date(since), policy.client_silence_min, bh)));
+      } else consider(new Date(ticketDeadline(new Date(since), policy.member_silence_min, bh)));
     }
     // The requested time came and went.
     if (t.requested_for && !["in_delivery", "payment_due"].includes(t.status)) {
@@ -249,11 +249,11 @@ export function planWake(input: WakeInput): WakePlan {
     }
   }
 
-  // Resolved and quiet for the window → closed. A client reply in the window keeps it open.
+  // Resolved and quiet for the window → closed. A member reply in the window keeps it open.
   let autoClose = false;
   if (t.status === "resolved" && t.closed_at) {
     const closeAt = plus(new Date(t.closed_at), SENTINEL_CLOSE_AFTER_MIN);
-    const repliedSince = clientLinks.some((l) => (l.at ?? l.link.created_at) > t.closed_at!);
+    const repliedSince = memberLinks.some((l) => (l.at ?? l.link.created_at) > t.closed_at!);
     if (now >= closeAt && !repliedSince) autoClose = true;
     else consider(closeAt);
   }
@@ -268,9 +268,9 @@ export function planWake(input: WakeInput): WakePlan {
   state.last_wake_at = iso(now);
 
   const notes = humanNotes.map((e) => e.body!);
-  const clientMessages = clientLinks.map((l) => l.text ?? "").filter(Boolean);
+  const memberMessages = memberLinks.map((l) => l.text ?? "").filter(Boolean);
   const staffMessages = staffLinks.map((l) => l.text ?? "").filter(Boolean);
-  const readInput = notes.length || clientMessages.length ? { notes, clientMessages, staffMessages } : null;
+  const readInput = notes.length || memberMessages.length ? { notes, memberMessages, staffMessages } : null;
 
   return { fires, patch, state, nextWakeAt, wakeReason, autoClose, readInput };
 }
@@ -288,20 +288,20 @@ type Reading = {
   observation: string | null;
 };
 
-const READ_SYSTEM = `You are the sentinel on ONE concierge ticket at Indulge (luxury concierge for wealthy members). New text arrived: internal notes by the team and/or WhatsApp messages from the client. Read it against the ticket and answer ONLY a JSON object, no prose, no code fence:
+const READ_SYSTEM = `You are the sentinel on ONE concierge ticket at Indulge (luxury concierge for wealthy members). New text arrived: internal notes by the team and/or WhatsApp messages from the member. Read it against the ticket and answer ONLY a JSON object, no prose, no code fence:
 
 {
   "summary": 2 to 4 plain sentences on where the ticket stands now (what was asked, what has been done, what is next), or null if nothing changed,
   "checklist_done": [indexes of checklist items the new text clearly shows as completed],
-  "tone": one of [praise, neutral, frustrated, angry, none] — the CLIENT's tone in their messages; none when the client said nothing,
-  "asks_status": true when the client asks where things stand,
+  "tone": one of [praise, neutral, frustrated, angry, none] — the CLIENT's tone in their messages; none when the member said nothing,
+  "asks_status": true when the member asks where things stand,
   "brief_changes": { field: new value } for details the CLIENT changed (a new date, a different count, a cancellation); {} when nothing changed. Never invent.
   "money": { "cost_inr": number, "price_inr": number, "quote_inr": number, "payment_status": "unpaid"|"partial"|"paid" } — only the fields the notes state plainly (e.g. "Cost 8250, selling 9500, paid via card"); {} otherwise,
-  "delivered": true only when the client confirms they received or enjoyed the thing,
+  "delivered": true only when the member confirms they received or enjoyed the thing,
   "observation": one short line worth keeping in the diary, or null
 }
 
-Rules: quote the notes, never guess; a note about another ticket is ignored; a team note does not carry the client's tone.`;
+Rules: quote the notes, never guess; a note about another ticket is ignored; a team note does not carry the member's tone.`;
 
 function parseReading(raw: string, checklistLen: number): Reading | null {
   const fenced = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
@@ -329,8 +329,8 @@ function parseReading(raw: string, checklistLen: number): Reading | null {
 async function readNewText(t: TicketRow, input: NonNullable<WakePlan["readInput"]>, state: SentinelState): Promise<{ reading: Reading | null; runId: string | null }> {
   const admin = createAdminClient();
   const { data: runRow } = await admin.schema("sia").from("extraction_runs").insert({
-    kind: "sentinel", client_id: t.client_id, prompt_version: SENTINEL_PROMPT_VERSION,
-    input_ref: { ticket_id: t.id, notes: input.notes.length, client_messages: input.clientMessages.length },
+    kind: "sentinel", member_id: t.member_id, prompt_version: SENTINEL_PROMPT_VERSION,
+    input_ref: { ticket_id: t.id, notes: input.notes.length, member_messages: input.memberMessages.length },
   }).select("id").single();
   const runId = (runRow as { id: string } | null)?.id ?? null;
   const finish = (ok: boolean, patch: Record<string, unknown>) => runId ? admin.schema("sia").from("extraction_runs").update({ finished_at: new Date().toISOString(), ok, ...patch }).eq("id", runId) : Promise.resolve();
@@ -339,7 +339,7 @@ async function readNewText(t: TicketRow, input: NonNullable<WakePlan["readInput"
     const clip = (xs: string[]) => xs.join("\n---\n").slice(-SENTINEL_READ_MAX_CHARS);
     const checklist = t.checklist.map((c, i) => `${i}. [${c.done_at ? "x" : " "}] ${c.label}`).join("\n");
     const user = maskPii(
-      `Ticket ${t.ticket_no}: ${t.title}\nCategory: ${t.category}${t.sub_category ? ` / ${t.sub_category}` : ""} · status ${t.status} · priority ${t.priority}\nRequested for: ${t.requested_for ?? "not set"}\nBrief: ${JSON.stringify(t.brief)}\nMoney so far: ${JSON.stringify(t.money)}\nChecklist:\n${checklist || "(none)"}\nSummary so far: ${t.summary ?? "(none)"}\n\nNEW TEAM NOTES:\n${clip(input.notes) || "(none)"}\n\nNEW CLIENT MESSAGES:\n${clip(input.clientMessages) || "(none)"}\n\nNEW STAFF REPLIES TO THE CLIENT:\n${clip(input.staffMessages) || "(none)"}\n\nReturn the JSON.`,
+      `Ticket ${t.ticket_no}: ${t.title}\nCategory: ${t.category}${t.sub_category ? ` / ${t.sub_category}` : ""} · status ${t.status} · priority ${t.priority}\nRequested for: ${t.requested_for ?? "not set"}\nBrief: ${JSON.stringify(t.brief)}\nMoney so far: ${JSON.stringify(t.money)}\nChecklist:\n${checklist || "(none)"}\nSummary so far: ${t.summary ?? "(none)"}\n\nNEW TEAM NOTES:\n${clip(input.notes) || "(none)"}\n\nNEW CLIENT MESSAGES:\n${clip(input.memberMessages) || "(none)"}\n\nNEW STAFF REPLIES TO THE CLIENT:\n${clip(input.staffMessages) || "(none)"}\n\nReturn the JSON.`,
       depth,
     );
     const result = await llm.adapter.complete({ model: llm.model, maxTokens: Math.min(llm.maxTokens, 700), system: READ_SYSTEM, messages: [{ role: "user", content: user }], cachePrefix: true });
@@ -401,8 +401,8 @@ async function loadMailbox(t: TicketRow, state: SentinelState): Promise<{ newEve
     mapRows<{ chat_jid: string; wa_message_id: string; text: string | null; wa_timestamp: string; from_me: boolean }, void>(msgs, (m) => { byId.set(`${m.chat_jid}|${m.wa_message_id}`, m); });
     for (const l of linkRows) {
       const m = byId.get(`${l.chat_jid}|${l.wa_message_id}`);
-      const fromClient = l.link_kind === "client_reply" || (l.link_kind !== "staff_reply" && m ? !m.from_me : l.link_kind === "update" || l.link_kind === "origin");
-      newLinks.push({ link: l, text: m?.text ?? null, at: m?.wa_timestamp ?? null, from_client: fromClient });
+      const fromMember = l.link_kind === "member_reply" || (l.link_kind !== "staff_reply" && m ? !m.from_me : l.link_kind === "update" || l.link_kind === "origin");
+      newLinks.push({ link: l, text: m?.text ?? null, at: m?.wa_timestamp ?? null, from_member: fromMember });
     }
   }
   return { newEvents: mapRows<TicketEventRow, TicketEventRow>(events, (r) => r), newLinks };
@@ -461,21 +461,21 @@ export async function wakeTicket(t: TicketRow): Promise<WakeOutcome> {
         if (Object.keys(reading.brief_changes).length) {
           plan.state.proposed_brief = reading.brief_changes;
           const line = Object.entries(reading.brief_changes).map(([k, v]) => `${k.replace(/_/g, " ")} → ${String(v)}`).join(", ");
-          events.push({ event_type: "observation", body: `The client seems to have changed the request: ${line}. Confirm and update the brief.`, meta: { proposed_brief: reading.brief_changes }, notify: [
-            { to: "assignee", type: "ticket_client_replied", title: `${t.ticket_no}: the request changed`, body: line },
+          events.push({ event_type: "observation", body: `The member seems to have changed the request: ${line}. Confirm and update the brief.`, meta: { proposed_brief: reading.brief_changes }, notify: [
+            { to: "assignee", type: "ticket_member_replied", title: `${t.ticket_no}: the request changed`, body: line },
           ] });
         }
         if (reading.tone === "frustrated" || reading.tone === "angry") {
           plan.state.last_tone = reading.tone;
-          events.push({ event_type: "observation", body: `The client sounds ${reading.tone}.`, meta: { tone: reading.tone }, notify: [
-            { to: "bishop", type: "ticket_client_unhappy", key: "ticket_client_unhappy", title: `A client sounds ${reading.tone} on ${t.ticket_no}`, body: `${t.title} · ${(plan.readInput.clientMessages.at(-1) ?? "").slice(0, 120)}` },
+          events.push({ event_type: "observation", body: `The member sounds ${reading.tone}.`, meta: { tone: reading.tone }, notify: [
+            { to: "bishop", type: "ticket_member_unhappy", key: "ticket_member_unhappy", title: `A member sounds ${reading.tone} on ${t.ticket_no}`, body: `${t.title} · ${(plan.readInput.memberMessages.at(-1) ?? "").slice(0, 120)}` },
           ] });
         } else if (reading.tone !== "none") plan.state.last_tone = reading.tone;
-        if (reading.asks_status) events.push({ event_type: "reminder_sent", body: "The client is asking where things stand.", meta: { which: "client_asks_status" }, notify: [
-          { to: "assignee", type: "ticket_client_replied", title: `${t.ticket_no}: the client asks for an update`, body: t.title },
+        if (reading.asks_status) events.push({ event_type: "reminder_sent", body: "The member is asking where things stand.", meta: { which: "member_asks_status" }, notify: [
+          { to: "assignee", type: "ticket_member_replied", title: `${t.ticket_no}: the member asks for an update`, body: t.title },
         ] });
-        if (reading.delivered && TICKET_ACTIVE_STATUSES.includes(t.status)) events.push({ event_type: "observation", body: "The client says it was delivered. Mark the ticket resolved if so.", meta: { proposal: "resolved" }, notify: [
-          { to: "assignee", type: "ticket_client_replied", title: `${t.ticket_no}: the client says delivered`, body: "Mark it resolved if so." },
+        if (reading.delivered && TICKET_ACTIVE_STATUSES.includes(t.status)) events.push({ event_type: "observation", body: "The member says it was delivered. Mark the ticket resolved if so.", meta: { proposal: "resolved" }, notify: [
+          { to: "assignee", type: "ticket_member_replied", title: `${t.ticket_no}: the member says delivered`, body: "Mark it resolved if so." },
         ] });
         if (reading.observation) events.push({ event_type: "observation", body: reading.observation, meta: { run_id: runId }, notify: [] });
         if (events.length === 0) events.push({ event_type: "observation", body: "Read the new text; nothing to change.", meta: { run_id: runId }, notify: [] });

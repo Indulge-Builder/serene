@@ -33,7 +33,7 @@ non-JSON body is trusted as delivered. Delivered = `res.ok` AND body not `status
 
 ## 2. Service-file boundaries (five files, never blur them)
 
-| File | Client | Role |
+| File | Member | Role |
 | ---- | ------ | ---- |
 | `whatsapp-service.ts` | session (RLS applies) | UI-facing queries only — conversations, messages, unread, read-marks, search |
 | `whatsapp-api.ts` | HTTP → Gupshup | **SERVER ONLY.** Outbound sends + notification logging. Never import in client components |

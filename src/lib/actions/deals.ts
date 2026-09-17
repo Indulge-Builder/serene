@@ -1,6 +1,7 @@
 "use server";
 
 import { after } from "next/server";
+import { giaDb } from "@/lib/supabase/schemas";
 import { revalidatePath } from "next/cache";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireProfile } from "@/lib/actions/_auth";
@@ -81,7 +82,7 @@ export async function recordDeal(
   const admin = createAdminClient();
 
   // Fetch lead for access check + contact data
-  const { data: lead } = await admin
+  const { data: lead } = await giaDb(admin)
     .from("leads")
     .select("id, status, assigned_to, domain, first_name, last_name, phone, email, slug")
     .eq("id", leadId)
@@ -219,11 +220,11 @@ export async function createWalkInDeal(
 
   const admin = createAdminClient();
 
-  const { data: inserted, error: insertError } = await admin
+  const { data: inserted, error: insertError } = await giaDb(admin)
     .from("deals")
     .insert({
       lead_id:       null,
-      client_id:     null,
+      member_id:     null,
       contact_name:  data.contact_name,
       contact_phone: normalizedPhone,
       contact_email: data.contact_email ?? null,

@@ -125,7 +125,7 @@ export function WhatsAppShell({
         "postgres_changes",
         {
           event: "*",
-          schema: "public",
+          schema: "gia",
           table: "whatsapp_conversations",
         },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

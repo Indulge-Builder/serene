@@ -27,7 +27,7 @@ import { formatSystemText, groupTitle, KIND_LABEL, TYPE_PREVIEW } from "./sia-sh
 import type { SiaGroupKind, SiaGroupRow, SiaHealth, SiaMessageRow } from "@/lib/services/sia-service";
 
 type KindFilter = "all" | SiaGroupKind;
-const FILTERS: KindFilter[] = ["all", "client", "vendor", "internal", "unmapped"];
+const FILTERS: KindFilter[] = ["all", "member", "vendor", "internal", "unmapped"];
 
 const RAIL_REFRESH_MS = 60_000;
 const HEALTH_REFRESH_MS = 60_000;
@@ -117,7 +117,7 @@ export function SiaWorkspace({ groups: initialGroups }: { groups: SiaGroupRow[] 
   }, [groups, filter, debouncedRailSearch]);
 
   const counts = useMemo(() => {
-    const c: Record<KindFilter, number> = { all: 0, client: 0, vendor: 0, internal: 0, unmapped: 0 };
+    const c: Record<KindFilter, number> = { all: 0, member: 0, vendor: 0, internal: 0, unmapped: 0 };
     for (const g of groups) {
       if (!g.is_active) continue;
       c.all++;
@@ -181,7 +181,7 @@ export function SiaWorkspace({ groups: initialGroups }: { groups: SiaGroupRow[] 
           <EmptyState
             icon={MessagesSquare}
             title="No groups yet"
-            description="Once the Sia watcher is linked and added to client groups, they'll appear here with their live message streams."
+            description="Once the Sia watcher is linked and added to member groups, they'll appear here with their live message streams."
           />
         </div>
       ) : (
@@ -267,7 +267,7 @@ export function SiaWorkspace({ groups: initialGroups }: { groups: SiaGroupRow[] 
                 <EmptyState
                   icon={MessagesSquare}
                   title="Pick a conversation"
-                  description="Every watched group lives on the left — client rooms, vendors, and the ones still waiting to be classified."
+                  description="Every watched group lives on the left — member rooms, vendors, and the ones still waiting to be classified."
                 />
               </section>
             ))}

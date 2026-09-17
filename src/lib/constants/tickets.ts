@@ -1,4 +1,4 @@
-// constants/tickets.ts — THE Sia ticketing vocabulary (migration 0195, client-ticket-plan.md 7).
+// constants/tickets.ts — THE Sia ticketing vocabulary (migration 0195, member-ticket-plan.md 7).
 //
 // Statuses keep every Freshdesk meaning under a name that says who is waiting on whom; the
 // transitions table is the state machine the mutation core enforces. Categories are the real
@@ -16,7 +16,7 @@ export const TICKET_STATUSES = defineEnum([
   { id: "proposed",        label: "Proposed" },
   { id: "open",            label: "Open" },
   { id: "sourcing",        label: "Sourcing" },
-  { id: "awaiting_client", label: "Awaiting client" },
+  { id: "awaiting_member", label: "Awaiting member" },
   { id: "awaiting_vendor", label: "Awaiting vendor" },
   { id: "in_delivery",     label: "In delivery" },
   { id: "payment_due",     label: "Payment due" },
@@ -27,18 +27,18 @@ export const TICKET_STATUSES = defineEnum([
 export type TicketStatus = (typeof TICKET_STATUSES.values)[number];
 
 /** Which statuses count as live work (the board columns, the open counts). */
-export const TICKET_ACTIVE_STATUSES: readonly TicketStatus[] = ["open", "sourcing", "awaiting_client", "awaiting_vendor", "in_delivery", "payment_due"];
+export const TICKET_ACTIVE_STATUSES: readonly TicketStatus[] = ["open", "sourcing", "awaiting_member", "awaiting_vendor", "in_delivery", "payment_due"];
 export const TICKET_TERMINAL_STATUSES: readonly TicketStatus[] = ["resolved", "closed", "dropped"];
 /** Statuses where the SLA clock is stopped (Freshdesk's own stop_sla_timer flags, kept). */
-export const TICKET_SLA_STOPPED_STATUSES: readonly TicketStatus[] = ["awaiting_client", "in_delivery", "payment_due", "resolved", "closed", "dropped", "proposed"];
+export const TICKET_SLA_STOPPED_STATUSES: readonly TicketStatus[] = ["awaiting_member", "in_delivery", "payment_due", "resolved", "closed", "dropped", "proposed"];
 
 /** The allowed moves. Anything else is refused by the core. */
 export const TICKET_TRANSITIONS: Record<TicketStatus, readonly TicketStatus[]> = {
   proposed:        ["open", "dropped"],
-  open:            ["sourcing", "awaiting_client", "awaiting_vendor", "in_delivery", "resolved", "dropped"],
-  sourcing:        ["open", "awaiting_client", "awaiting_vendor", "in_delivery", "payment_due", "resolved", "dropped"],
-  awaiting_client: ["sourcing", "awaiting_vendor", "in_delivery", "resolved", "dropped"],
-  awaiting_vendor: ["sourcing", "awaiting_client", "in_delivery", "payment_due", "resolved", "dropped"],
+  open:            ["sourcing", "awaiting_member", "awaiting_vendor", "in_delivery", "resolved", "dropped"],
+  sourcing:        ["open", "awaiting_member", "awaiting_vendor", "in_delivery", "payment_due", "resolved", "dropped"],
+  awaiting_member: ["sourcing", "awaiting_vendor", "in_delivery", "resolved", "dropped"],
+  awaiting_vendor: ["sourcing", "awaiting_member", "in_delivery", "payment_due", "resolved", "dropped"],
   in_delivery:     ["sourcing", "payment_due", "resolved", "dropped"],
   payment_due:     ["in_delivery", "resolved", "dropped"],
   resolved:        ["closed", "open"],
@@ -51,13 +51,13 @@ export function canTransition(from: TicketStatus, to: TicketStatus): boolean {
 
 export type TicketStatusTone = "info" | "warning" | "success" | "neutral" | "danger";
 export const TICKET_STATUS_TONE: Record<TicketStatus, TicketStatusTone> = {
-  proposed: "neutral", open: "info", sourcing: "warning", awaiting_client: "neutral", awaiting_vendor: "warning",
+  proposed: "neutral", open: "info", sourcing: "warning", awaiting_member: "neutral", awaiting_vendor: "warning",
   in_delivery: "info", payment_due: "danger", resolved: "success", closed: "neutral", dropped: "neutral",
 };
 
 /** The member app's four-stage journey (kept so the app can read Serene later). */
 export const TICKET_APP_STAGE: Record<TicketStatus, "received" | "sourcing" | "in_progress" | "completed" | null> = {
-  proposed: null, open: "received", sourcing: "sourcing", awaiting_client: "in_progress", awaiting_vendor: "sourcing",
+  proposed: null, open: "received", sourcing: "sourcing", awaiting_member: "in_progress", awaiting_vendor: "sourcing",
   in_delivery: "in_progress", payment_due: "in_progress", resolved: "completed", closed: "completed", dropped: null,
 };
 
@@ -120,7 +120,7 @@ export type TicketOrigin = (typeof TICKET_ORIGINS.values)[number];
 
 export const TICKET_RESOLUTIONS = defineEnum([
   { id: "delivered",           label: "Delivered" },
-  { id: "cancelled_by_client", label: "Cancelled by the client" },
+  { id: "cancelled_by_member", label: "Cancelled by the member" },
   { id: "could_not_source",    label: "Could not source" },
   { id: "duplicate",           label: "Duplicate" },
   { id: "not_a_request",       label: "Not a request" },
@@ -129,16 +129,16 @@ export type TicketResolution = (typeof TICKET_RESOLUTIONS.values)[number];
 
 export const TICKET_EVENT_TYPES = [
   "created", "proposed", "approved", "classified", "assigned", "reassigned", "status_changed", "priority_changed",
-  "brief_updated", "checklist_ticked", "note", "client_message_linked", "client_update_drafted", "client_update_sent",
+  "brief_updated", "checklist_ticked", "note", "member_message_linked", "member_update_drafted", "member_update_sent",
   "vendor_shortlisted", "vendor_chosen", "quote_added", "payment_requested", "payment_received", "subtask_created",
   "handed_off", "sla_warning", "sla_breached", "reminder_sent", "observation", "escalated", "closed", "reopened", "learning_written",
 ] as const;
 export type TicketEventType = (typeof TICKET_EVENT_TYPES)[number];
 
-export const TICKET_ACTOR_KINDS = ["human", "sentinel", "intake", "elaya", "system", "client"] as const;
+export const TICKET_ACTOR_KINDS = ["human", "sentinel", "intake", "elaya", "system", "member"] as const;
 export type TicketActorKind = (typeof TICKET_ACTOR_KINDS)[number];
 
-export const TICKET_LINK_KINDS = ["origin", "update", "client_reply", "staff_reply", "attachment"] as const;
+export const TICKET_LINK_KINDS = ["origin", "update", "member_reply", "staff_reply", "attachment"] as const;
 export type TicketLinkKind = (typeof TICKET_LINK_KINDS)[number];
 
 export const TICKET_REASSIGN_REASONS = defineEnum([
@@ -156,7 +156,7 @@ export const TICKET_SLA_DEFAULTS = {
   first_response_min: { low: 15, medium: 15, high: 15, urgent: 15 } as Record<TicketPriority, number>,
   update_cadence_min: { low: 1440, medium: 720, high: 240, urgent: 120 } as Record<TicketPriority, number>,
   vendor_silence_min: 240,
-  client_silence_min: 1440,
+  member_silence_min: 1440,
   resolve_target_min: { default: 480, retail_watch_bag: 2880 },
 };
 
@@ -191,12 +191,12 @@ export const TICKET_BRIEF_FIELD_LABELS: Record<TicketBriefField, string> = {
 // ─── Checklists (per category; from Freshdesk's internal task-list checkboxes) ─
 
 export const TICKET_CHECKLIST_TEMPLATES: Record<TicketCategory, readonly string[]> = {
-  travel:          ["Options shared with the client", "Client confirmed the option", "Booking made", "Confirmation sent to the client", "Cancellation policy told", "Cost and timeline told"],
-  dining:          ["Restaurant contacted", "Table or order confirmed", "Client informed", "Dietary needs passed on"],
-  retail:          ["Product sourced", "Price and timeline told", "Box, papers and warranty checked", "Delivery arranged", "Client informed"],
-  events:          ["Tickets sourced", "Names on tickets confirmed", "Proof of tickets received", "Client informed"],
-  special_request: ["Request understood", "Options shared", "Client confirmed", "Delivered"],
-  itinerary:       ["Draft itinerary shared", "Client feedback taken", "Final itinerary sent"],
+  travel:          ["Options shared with the member", "Member confirmed the option", "Booking made", "Confirmation sent to the member", "Cancellation policy told", "Cost and timeline told"],
+  dining:          ["Restaurant contacted", "Table or order confirmed", "Member informed", "Dietary needs passed on"],
+  retail:          ["Product sourced", "Price and timeline told", "Box, papers and warranty checked", "Delivery arranged", "Member informed"],
+  events:          ["Tickets sourced", "Names on tickets confirmed", "Proof of tickets received", "Member informed"],
+  special_request: ["Request understood", "Options shared", "Member confirmed", "Delivered"],
+  itinerary:       ["Draft itinerary shared", "Member feedback taken", "Final itinerary sent"],
   recommendations: ["Recommendations shared"],
   staff_hiring:    ["Requirement understood", "Candidates shared", "Trial arranged", "Terms and agency fee told"],
 };
@@ -210,11 +210,11 @@ export function ticketStatusLabel(s: string): string {
   return TICKET_STATUSES.labels[s as TicketStatus] ?? s;
 }
 
-// ─── The sentinel (0199, client-ticket-plan.md 7.6) ──────────────────────────
+// ─── The sentinel (0199, member-ticket-plan.md 7.6) ──────────────────────────
 
 /** Minutes before a deadline the warning fires. */
 export const SENTINEL_WARN_BEFORE_MIN = { first_response: 5, resolve: 60 } as const;
-/** A resolved ticket closes on its own after this long with no client reply. */
+/** A resolved ticket closes on its own after this long with no member reply. */
 export const SENTINEL_CLOSE_AFTER_MIN = 2880;
 /** A proposal the bishop has not looked at gets one nudge after this long. */
 export const SENTINEL_PROPOSAL_NUDGE_MIN = 60;
@@ -234,7 +234,7 @@ export const SENTINEL_PROMPT_VERSION = "sentinel-read-v1";
 export const TICKETS_BOARD_PATH = `${TICKETS_PATH}/board`;
 export const TICKET_SETTINGS_PATH = "/settings/tickets";
 /** The board's columns, left to right: the live work plus what waits for approval and what is done today. */
-export const TICKET_BOARD_STATUSES: readonly TicketStatus[] = ["proposed", "open", "sourcing", "awaiting_client", "awaiting_vendor", "in_delivery", "payment_due", "resolved"];
+export const TICKET_BOARD_STATUSES: readonly TicketStatus[] = ["proposed", "open", "sourcing", "awaiting_member", "awaiting_vendor", "in_delivery", "payment_due", "resolved"];
 /** How many tickets the board reads per column at most (the rest are on the list). */
 export const TICKET_BOARD_COLUMN_CAP = 60;
 /** sia.ticket_settings keys. */

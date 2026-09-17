@@ -29,8 +29,8 @@ import type { StaffPrincipal } from "@/lib/elaya/principal";
 // Elaya runs in BOTH a session context (in-app SSE) AND sessionless contexts
 // (WhatsApp webhook; the SSE stream after the cookie session is no longer on the
 // request). The write tools must resolve the lead the same way the READ tool does
-// — via the ADMIN-client getLeadByRefForElaya, NEVER the session-client
-// getLeadBySlug (.single() on a cookie client returns 0 rows → 406 → null →
+// — via the ADMIN-member getLeadByRefForElaya, NEVER the session-member
+// getLeadBySlug (.single() on a cookie member returns 0 rows → 406 → null →
 // REFUSE_LEAD even for a lead the user owns). Identity is re-checked immediately
 // after via canAccessLead(principal, …) (the per-resource trust boundary, Q-13),
 // so the broad admin read is safe — exactly the get_lead_details pattern.
@@ -161,7 +161,7 @@ function actorFromPrincipal(principal: StaffPrincipal): MutationActor {
 
 /**
  * The {id,role,domain} shape canMutateTask takes — principal-derived, NEVER model-
- * supplied. canMutateTask uses the passed client ONLY for a read-only group-domain
+ * supplied. canMutateTask uses the passed member ONLY for a read-only group-domain
  * SELECT; it never reads auth.uid() and never relies on RLS, so the admin client the
  * tool layer passes does not widen access (the caller object IS the identity).
  */
@@ -688,7 +688,7 @@ const createPersonalTask: ElayaWriteTool = {
   description:
     "Create a personal to-do for the user, OR assign a task to ONE teammate (managers and above). " +
     "Use this for a task with at most one assignee — 'remind me to file expenses tomorrow 3pm', or " +
-    "'tell Pawani to call the client'. For a task shared by TWO OR MORE people, use create_group_task " +
+    "'tell Pawani to call the member'. For a task shared by TWO OR MORE people, use create_group_task " +
     "+ create_subtask instead. Take the title straight from what the user said — never ask what to " +
     "call it. If no due time is given, leave it open (don't ask for one). For another person, pass " +
     "their userId from find_teammate. Happens immediately — no confirmation step.",
@@ -1260,7 +1260,7 @@ const moveTicketStatus: ElayaWriteTool = {
   name: "move_ticket_status",
   roles: STAFF_ALL,
   description:
-    "Propose moving a Sia ticket to another status (sourcing, awaiting_client, awaiting_vendor, in_delivery, " +
+    "Propose moving a Sia ticket to another status (sourcing, awaiting_member, awaiting_vendor, in_delivery, " +
     "payment_due, resolved, dropped, or open to reopen). Takes the ticket number (T-000042). This records a " +
     "proposal and WAITS — it does NOT move the ticket yet. Tell the user what you are about to do and ask them " +
     "to confirm with a yes. Only the moves get_ticket lists under allowedMoves are possible.",

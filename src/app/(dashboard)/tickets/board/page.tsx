@@ -6,7 +6,7 @@ import { redirect } from 'next/navigation';
 import type { SearchParams } from 'next/dist/server/request/search-params';
 import { List, Plus } from 'lucide-react';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
-import { getQueendoms } from '@/lib/services/clients-service';
+import { getQueendoms } from '@/lib/services/members-service';
 import { listBoardTickets, listQueendomStaff, getTicketSettings } from '@/lib/services/tickets-service';
 import { canAccessRoute } from '@/lib/utils/route-access';
 import { TicketsFilters } from '@/components/tickets/TicketsFilters';

@@ -27,6 +27,7 @@
 
 import 'server-only';
 import { formatDate }          from '@/lib/utils/dates';
+import { giaDb } from '@/lib/supabase/schemas';
 import { z }                  from 'zod';
 import { createAdminClient }  from '@/lib/supabase/admin';
 import {
@@ -116,7 +117,7 @@ async function logSlaActivity(
   leadId:  string,
   details: Record<string, unknown>,
 ): Promise<void> {
-  await admin.from('lead_activities').insert({
+  await giaDb(admin).from('lead_activities').insert({
     lead_id:     leadId,
     actor_id:    null,
     action_type: 'sla_breach',
@@ -460,7 +461,7 @@ export async function fireSlaBreachHandler(
   }
 
   // ─ Step 2: Re-read lead — stale-fire guard ─────────────────────────────────
-  const { data: lead, error: leadError } = await admin
+  const { data: lead, error: leadError } = await giaDb(admin)
     .from('leads')
     .select('id, status, assigned_to, domain, call_count, first_name, last_name, phone, last_activity_at, status_changed_at, last_call_outcome, last_call_outcome_at')
     .eq('id', leadId)

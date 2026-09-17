@@ -49,7 +49,7 @@ export const MessageTripleSchema = z.object({
 });
 
 export const CreateTicketSchema = z.object({
-  client_id: uuidField(formErrors.generic),
+  member_id: uuidField(formErrors.generic),
   category: z.enum(TICKET_CATEGORIES.zodEnum),
   sub_category: optionalText(60),
   title: shortText(160).pipe(z.string().min(1, "Give the request a title.")),
@@ -61,7 +61,7 @@ export const CreateTicketSchema = z.object({
   assignee_id: uuidField(formErrors.generic).nullish().transform((v) => v ?? null),
   message_links: z.array(MessageTripleSchema).max(60).default([]),
   proposed_by_run_id: uuidField(formErrors.generic).nullish().transform((v) => v ?? null),
-  /** A note written at creation (the "why" or the client's words). */
+  /** A note written at creation (the "why" or the member's words). */
   note: optionalText(2000),
 });
 export type CreateTicketInput = z.infer<typeof CreateTicketSchema>;
@@ -124,14 +124,14 @@ export const UpdateTicketMoneySchema = z.object({
 
 /** The ticket creator: selected messages → a drafted ticket (the reasoning tier, masked). */
 export const DraftTicketSchema = z.object({
-  client_id: uuidField(formErrors.generic),
+  member_id: uuidField(formErrors.generic),
   group_jid: z.string().trim().regex(/@g\.us$/).nullish().transform((v) => v ?? null),
   messages: z.array(z.object({
     chat_jid: z.string().trim().min(1),
     wa_message_id: z.string().trim().min(1),
     sender_jid: z.string().trim().min(1),
     sender_name: z.string().trim().max(120).nullish(),
-    from_client: z.boolean().default(true),
+    from_member: z.boolean().default(true),
     at: z.string().trim(),
     text: z.string().trim().max(4000),
   })).min(1).max(60),
@@ -174,7 +174,7 @@ export const UpsertTicketSlaPolicySchema = z.object({
   first_response_min: minutes(10_080),
   update_cadence_min: minutes(20_160),
   vendor_silence_min: minutes(20_160),
-  client_silence_min: minutes(20_160),
+  member_silence_min: minutes(20_160),
   resolve_target_min: minutes(43_200),
   business_hours: z.boolean().default(true),
   escalation: z.array(z.object({ after_min: minutes(20_160), to: z.enum(["bishop", "queen", "founder"]) })).max(5).default([]),

@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { getCurrentProfile, getProfileById } from "@/lib/services/profiles-service";
 import { hasManagerPageAccess } from "@/lib/utils/route-access";
 import { getAgentRoutingConfig } from "@/lib/services/agent-routing-service";
-import { getQueendoms } from "@/lib/services/clients-service";
+import { getQueendoms } from "@/lib/services/members-service";
 import { SIA_ROLES, isSiaRole } from "@/lib/constants/sia-roles";
 import { EditProfileForm } from "@/components/admin/EditProfileForm";
 import { EditAuthorizationForm } from "@/components/admin/EditAuthorizationForm";

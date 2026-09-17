@@ -59,7 +59,7 @@ type NavItem = {
 const MAIN_NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/elaya",     label: "Elaya",     icon: Sparkles        },
-  { href: "/clients",   label: "Clients",   icon: Users           },
+  { href: "/members",   label: "Members",   icon: Users           },
   { href: "/tickets",   label: "Tickets",   icon: ClipboardList   },
   { href: "/leads",     label: "Leads",     icon: UserRound       },
   { href: "/deals",     label: "Deals",     icon: Trophy          },

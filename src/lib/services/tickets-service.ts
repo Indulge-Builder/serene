@@ -1,7 +1,7 @@
-// tickets-service.ts — ALL Sia ticket reads (migration 0195, client-ticket-plan.md 7).
+// tickets-service.ts — ALL Sia ticket reads (migration 0195, member-ticket-plan.md 7).
 //
-// Session client on the `sia` schema (RLS: the whole queendom, admin, founder). The help
-// window's slices come from the client twin (clients-service) and the mirror
+// Session member on the `sia` schema (RLS: the whole queendom, admin, founder). The help
+// window's slices come from the member twin (members-service) and the mirror
 // (freshdesk-service) through their own homes. Types are hand-declared (types/ticket.ts)
 // until `gen types` runs after 0195.
 
@@ -22,18 +22,18 @@ export function ticketsAdminDb() {
   return (createAdminClient() as unknown as SupabaseClient<TicketingDatabase, "sia">).schema("sia");
 }
 
-async function nameMaps(clientIds: string[], profileIds: string[]): Promise<{ clients: Map<string, string>; profiles: Map<string, string>; queendoms: Map<string, string> }> {
+async function nameMaps(memberIds: string[], profileIds: string[]): Promise<{ members: Map<string, string>; profiles: Map<string, string>; queendoms: Map<string, string> }> {
   const supabase = await createClient();
   const [c, p, q] = await Promise.all([
-    clientIds.length ? supabase.from("clients").select("id, full_name").in("id", clientIds) : Promise.resolve({ data: [] }),
+    memberIds.length ? supabase.from("members").select("id, full_name").in("id", memberIds) : Promise.resolve({ data: [] }),
     profileIds.length ? supabase.from("profiles").select("id, full_name").in("id", profileIds) : Promise.resolve({ data: [] }),
     supabase.schema("sia").from("queendoms").select("id, name"),
   ]);
-  const clients = new Map<string, string>(); const profiles = new Map<string, string>(); const queendoms = new Map<string, string>();
-  mapRows<{ id: string; full_name: string }, void>(c.data, (r) => { clients.set(r.id, r.full_name); });
+  const members = new Map<string, string>(); const profiles = new Map<string, string>(); const queendoms = new Map<string, string>();
+  mapRows<{ id: string; full_name: string }, void>(c.data, (r) => { members.set(r.id, r.full_name); });
   mapRows<{ id: string; full_name: string }, void>(p.data, (r) => { profiles.set(r.id, r.full_name); });
   mapRows<{ id: string; name: string }, void>(q.data, (r) => { queendoms.set(r.id, r.name); });
-  return { clients, profiles, queendoms };
+  return { members, profiles, queendoms };
 }
 
 function searchToken(q: string): string {
@@ -64,11 +64,11 @@ export async function listTickets(filters: TicketListFilters, callerId: string):
     return { tickets: [], totalCount: 0 };
   }
   const rows = mapRows<TicketRow, TicketRow>(data, (r) => r);
-  const names = await nameMaps(rows.map((r) => r.client_id), rows.map((r) => r.assignee_id).filter((x): x is string => Boolean(x)));
+  const names = await nameMaps(rows.map((r) => r.member_id), rows.map((r) => r.assignee_id).filter((x): x is string => Boolean(x)));
   return {
     tickets: rows.map((r) => ({
       ...r,
-      client_name: names.clients.get(r.client_id) ?? "Client",
+      member_name: names.members.get(r.member_id) ?? "Member",
       assignee_name: r.assignee_id ? (names.profiles.get(r.assignee_id) ?? null) : null,
       queendom_name: r.queendom_id ? (names.queendoms.get(r.queendom_id) ?? null) : null,
     })),
@@ -78,7 +78,7 @@ export async function listTickets(filters: TicketListFilters, callerId: string):
 
 /**
  * The board's read: every ticket in the board's columns (live work + proposed + resolved),
- * one queendom or all, capped per column. Session client, so RLS scopes it.
+ * one queendom or all, capped per column. Session member, so RLS scopes it.
  */
 export async function listBoardTickets(queendomId: string | null): Promise<TicketListItem[]> {
   const db = await ticketsDb();
@@ -90,10 +90,10 @@ export async function listBoardTickets(queendomId: string | null): Promise<Ticke
     return mapRows<TicketRow, TicketRow>(data, (r) => r);
   }));
   const rows = perStatus.flat();
-  const names = await nameMaps(rows.map((r) => r.client_id), rows.map((r) => r.assignee_id).filter((x): x is string => Boolean(x)));
+  const names = await nameMaps(rows.map((r) => r.member_id), rows.map((r) => r.assignee_id).filter((x): x is string => Boolean(x)));
   return rows.map((r) => ({
     ...r,
-    client_name: names.clients.get(r.client_id) ?? "Client",
+    member_name: names.members.get(r.member_id) ?? "Member",
     assignee_name: r.assignee_id ? (names.profiles.get(r.assignee_id) ?? null) : null,
     queendom_name: r.queendom_id ? (names.queendoms.get(r.queendom_id) ?? null) : null,
   }));
@@ -141,8 +141,8 @@ export async function getTicketDetail(ticketId: string): Promise<TicketDetail | 
   if (!t) return null;
   const ticket = t as TicketRow;
 
-  const [client, events, links, staff, tasks, policy] = await Promise.all([
-    supabase.from("clients").select("id, full_name, primary_phone, queendom_id").eq("id", ticket.client_id).maybeSingle(),
+  const [member, events, links, staff, tasks, policy] = await Promise.all([
+    supabase.from("members").select("id, full_name, primary_phone, queendom_id").eq("id", ticket.member_id).maybeSingle(),
     db.from("ticket_events").select("*").eq("ticket_id", ticketId).order("created_at", { ascending: true }).limit(500),
     db.from("ticket_message_links").select("*").eq("ticket_id", ticketId).order("created_at", { ascending: true }).limit(200),
     listQueendomStaff(ticket.queendom_id),
@@ -182,7 +182,7 @@ export async function getTicketDetail(ticketId: string): Promise<TicketDetail | 
     : [];
   return {
     ticket,
-    client: (client.data as TicketDetail["client"] | null) ?? { id: ticket.client_id, full_name: "Client", primary_phone: null, queendom_id: ticket.queendom_id },
+    member: (member.data as TicketDetail["member"] | null) ?? { id: ticket.member_id, full_name: "Member", primary_phone: null, queendom_id: ticket.queendom_id },
     events: eventRows.map((e) => ({ ...e, actor_name: e.actor_id ? (names?.profiles.get(e.actor_id) ?? null) : null })),
     links: linked,
     assignee: ticket.assignee_id ? (staffById.get(ticket.assignee_id) ?? null) : null,
@@ -211,18 +211,18 @@ export async function resolveSlaPolicy(ticket: Pick<TicketRow, "queendom_id" | "
 // ─── The help window ─────────────────────────────────────────────────────────
 
 export async function getTicketHelp(clientId: string, category: string, excludeTicketId?: string): Promise<TicketHelp | null> {
-  // Dynamic: clients-service pulls sia-service (a `server-only` module) into the static graph,
+  // Dynamic: members-service pulls sia-service (a `server-only` module) into the static graph,
   // and the sentinel's laptop loop (scripts/tickets/sentinel.ts) imports this file under tsx.
-  const { getClientDetail } = await import("@/lib/services/clients-service");
-  const detail = await getClientDetail(clientId);
+  const { getMemberDetail } = await import("@/lib/services/members-service");
+  const detail = await getMemberDetail(clientId);
   if (!detail) return null;
   const db = await ticketsDb();
   const fd = freshdeskDb();
   const fdCategory = Object.entries({ Travel: "travel", Dining: "dining", Retail: "retail", Events: "events", "Special Request": "special_request", Itinerary: "itinerary", "Indulge Recommendations": "recommendations", "Staff Hiring": "staff_hiring" }).find(([, v]) => v === category)?.[0];
   const [similar, open] = await Promise.all([
-    fd.from("tickets").select("id, subject, status_label, responder_id, fd_created_at, resolved_at").eq("client_id", clientId).eq("deleted", false)
+    fd.from("tickets").select("id, subject, status_label, responder_id, fd_created_at, resolved_at").eq("member_id", clientId).eq("deleted", false)
       .eq("category", fdCategory ?? category).order("fd_created_at", { ascending: false }).limit(6),
-    db.from("tickets").select("id, ticket_no, title, status").eq("client_id", clientId).in("status", [...TICKET_ACTIVE_STATUSES]).limit(10),
+    db.from("tickets").select("id, ticket_no, title, status").eq("member_id", clientId).in("status", [...TICKET_ACTIVE_STATUSES]).limit(10),
   ]);
   const agentIds = Array.from(new Set(mapRows<{ responder_id: number | null }, number | null>(similar.data, (r) => r.responder_id).filter((x): x is number => x != null)));
   const agents = new Map<number, string>();
@@ -244,7 +244,7 @@ export async function getTicketHelp(clientId: string, category: string, excludeT
 
 // ─── Elaya's reads (admin client, explicit scope — the elaya-data parity rule) ──
 
-export type ElayaTicketSummary = Pick<TicketRow, "id" | "ticket_no" | "title" | "status" | "priority" | "category" | "sub_category" | "requested_for" | "resolve_due_at" | "first_response_due_at" | "first_responded_at" | "updated_at" | "created_at" | "tags"> & { client_name: string; assignee_name: string | null; queendom_name: string | null };
+export type ElayaTicketSummary = Pick<TicketRow, "id" | "ticket_no" | "title" | "status" | "priority" | "category" | "sub_category" | "requested_for" | "resolve_due_at" | "first_response_due_at" | "first_responded_at" | "updated_at" | "created_at" | "tags"> & { member_name: string; assignee_name: string | null; queendom_name: string | null };
 
 export async function listTicketsForElaya(scope: { queendomId: string | null; assigneeId: string | null; statuses: TicketStatus[]; search: string | null; limit: number }): Promise<ElayaTicketSummary[]> {
   const db = ticketsAdminDb();
@@ -255,19 +255,19 @@ export async function listTicketsForElaya(scope: { queendomId: string | null; as
   if (scope.search) { const t = searchToken(scope.search); if (t) q = q.or(`title.ilike.%${t}%,ticket_no.ilike.%${t}%`); }
   const { data } = await q.order("updated_at", { ascending: false }).limit(Math.min(scope.limit, 50));
   const rows = mapRows<TicketRow, TicketRow>(data, (r) => r);
-  const names = await nameMaps(rows.map((r) => r.client_id), rows.map((r) => r.assignee_id).filter((x): x is string => Boolean(x)));
+  const names = await nameMaps(rows.map((r) => r.member_id), rows.map((r) => r.assignee_id).filter((x): x is string => Boolean(x)));
   return rows.map((r) => ({
     id: r.id, ticket_no: r.ticket_no, title: r.title, status: r.status, priority: r.priority, category: r.category, sub_category: r.sub_category,
     requested_for: r.requested_for, resolve_due_at: r.resolve_due_at, first_response_due_at: r.first_response_due_at, first_responded_at: r.first_responded_at,
     updated_at: r.updated_at, created_at: r.created_at, tags: r.tags ?? [],
-    client_name: names.clients.get(r.client_id) ?? "Client",
+    member_name: names.members.get(r.member_id) ?? "Member",
     assignee_name: r.assignee_id ? (names.profiles.get(r.assignee_id) ?? null) : null,
     queendom_name: r.queendom_id ? (names.queendoms.get(r.queendom_id) ?? null) : null,
   }));
 }
 
-/** One ticket by number (T-000042) or id, with its client, its last events and its policy. Admin client; the caller gates. */
-export async function getTicketByRefForElaya(ref: string): Promise<{ ticket: TicketRow; client_name: string; assignee_name: string | null; events: TicketEventRow[]; policy: TicketSlaPolicyRow | null } | null> {
+/** One ticket by number (T-000042) or id, with its member, its last events and its policy. Admin member; the caller gates. */
+export async function getTicketByRefForElaya(ref: string): Promise<{ ticket: TicketRow; member_name: string; assignee_name: string | null; events: TicketEventRow[]; policy: TicketSlaPolicyRow | null } | null> {
   const db = ticketsAdminDb();
   const clean = ref.trim().toUpperCase();
   const q = /^[0-9A-F-]{36}$/i.test(clean) ? db.from("tickets").select("*").eq("id", clean.toLowerCase()) : db.from("tickets").select("*").eq("ticket_no", /^T-\d+$/.test(clean) ? clean : `T-${clean.replace(/^T-?/, "").padStart(6, "0")}`);
@@ -276,8 +276,8 @@ export async function getTicketByRefForElaya(ref: string): Promise<{ ticket: Tic
   const t = data as TicketRow;
   const [{ data: ev }, names, policy] = await Promise.all([
     db.from("ticket_events").select("*").eq("ticket_id", t.id).order("created_at", { ascending: false }).limit(12),
-    nameMaps([t.client_id], t.assignee_id ? [t.assignee_id] : []),
+    nameMaps([t.member_id], t.assignee_id ? [t.assignee_id] : []),
     resolveSlaPolicy(t),
   ]);
-  return { ticket: t, client_name: names.clients.get(t.client_id) ?? "Client", assignee_name: t.assignee_id ? (names.profiles.get(t.assignee_id) ?? null) : null, events: mapRows<TicketEventRow, TicketEventRow>(ev, (r) => r).reverse(), policy };
+  return { ticket: t, member_name: names.members.get(t.member_id) ?? "Member", assignee_name: t.assignee_id ? (names.profiles.get(t.assignee_id) ?? null) : null, events: mapRows<TicketEventRow, TicketEventRow>(ev, (r) => r).reverse(), policy };
 }

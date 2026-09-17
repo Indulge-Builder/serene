@@ -69,7 +69,7 @@ within ~1 snapshot interval without waiting for the 15-min rollup).
   `usage_heartbeats` directly.
 - The rollup is **idempotent** (PK `(day, user_id, domain)`): re-rolling a day overwrites, never
   accumulates — `active_minutes` is always the freshly counted distinct-minute total.
-- "Active" is decided entirely by the client gate before a heartbeat fires; this view only displays
+- "Active" is decided entirely by the member gate before a heartbeat fires; this view only displays
   the ticks the gate admitted. No login span is ever counted.
 
 ## 7. Open items

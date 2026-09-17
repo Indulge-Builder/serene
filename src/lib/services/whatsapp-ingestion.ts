@@ -6,6 +6,7 @@
 // in the generated Database type — client calls here are fully typed.
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { giaDb } from '@/lib/supabase/schemas';
 import { normalizeWaPhone } from '@/lib/utils/phone';
 import { sanitizeText } from '@/lib/utils/sanitize';
 import { getMediaDownloadUrl } from '@/lib/services/whatsapp-api';
@@ -83,7 +84,7 @@ export async function processInboundMessage(
   const supabase = createAdminClient();
 
   // 2. Dedup guard — if this wa_message_id already exists, exit silently
-  const { data: existing } = await supabase
+  const { data: existing } = await giaDb(supabase)
     .from('whatsapp_messages')
     .select('id')
     .eq('wa_message_id', message.id)
@@ -102,7 +103,7 @@ export async function processInboundMessage(
 
     // Re-fetch so we have the full Lead row for downstream steps.
     const adminClient = createAdminClient();
-    const { data: created } = await adminClient
+    const { data: created } = await giaDb(adminClient)
       .from('leads')
       .select('*')
       .eq('id', leadId)
@@ -239,7 +240,7 @@ export async function processInboundMessage(
 
   // 8. Update conversation last_message_at — non-fatal: the message row already
   //    persisted; a stale timestamp only affects sort/unread ordering.
-  const { error: convUpdateError } = await supabase
+  const { error: convUpdateError } = await giaDb(supabase)
     .from('whatsapp_conversations')
     .update({ last_message_at: new Date().toISOString() })
     .eq('id', conversationId);
@@ -290,7 +291,7 @@ export async function processStatusUpdate(
 ): Promise<void> {
   const supabase = createAdminClient();
 
-  const { error, count } = await supabase
+  const { error, count } = await giaDb(supabase)
     .from('whatsapp_messages')
     .update({
       status:    status,
@@ -317,7 +318,7 @@ export async function resolveLeadByPhone(
 ): Promise<Lead | null> {
   const supabase = createAdminClient();
 
-  const { data } = await supabase
+  const { data } = await giaDb(supabase)
     .from('leads')
     .select('*')
     .eq('phone', normalizedPhone)
@@ -343,7 +344,7 @@ async function getOrCreateConversation(
   const supabase = createAdminClient();
 
   // Attempt SELECT first (hot path — most messages are from existing conversations)
-  const { data: existing } = await supabase
+  const { data: existing } = await giaDb(supabase)
     .from('whatsapp_conversations')
     .select('*')
     .eq('lead_id', leadId)
@@ -352,7 +353,7 @@ async function getOrCreateConversation(
   if (existing) return existing as WhatsAppConversation;
 
   // INSERT, ignoring duplicate on lead_id UNIQUE constraint
-  await supabase
+  await giaDb(supabase)
     .from('whatsapp_conversations')
     .insert({
       lead_id:         leadId,
@@ -369,7 +370,7 @@ async function getOrCreateConversation(
   // with a 409, which we intentionally ignore via the re-SELECT below.
 
   // Re-SELECT — guaranteed to exist now (either our insert or the concurrent one)
-  const { data: created, error } = await supabase
+  const { data: created, error } = await giaDb(supabase)
     .from('whatsapp_conversations')
     .select('*')
     .eq('lead_id', leadId)
@@ -411,7 +412,7 @@ async function insertInboundMessage(
     }
   }
 
-  const { error } = await supabase.from('whatsapp_messages').insert({
+  const { error } = await giaDb(supabase).from('whatsapp_messages').insert({
     conversation_id: conversationId,
     lead_id:         leadId,
     direction:       'inbound',

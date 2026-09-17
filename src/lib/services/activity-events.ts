@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { giaDb } from '@/lib/supabase/schemas';
 import { leadDisplayName } from '@/lib/elaya/access';
 import type { AppDomain } from '@/lib/types/database';
 import type { ActivityEventType, ActivitySubjectType } from '@/lib/types/activity';
@@ -64,7 +65,7 @@ export async function emitLeadActivityEvent(input: {
 }): Promise<void> {
   try {
     const admin = createAdminClient();
-    const { data: lead, error } = await admin
+    const { data: lead, error } = await giaDb(admin)
       .from('leads')
       .select('domain, first_name, last_name')
       .eq('id', input.leadId)

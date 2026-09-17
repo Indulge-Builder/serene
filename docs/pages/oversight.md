@@ -93,9 +93,9 @@ cannot back it (a status change with no remark writes no remark row — see §8 
 - `ALTER TABLE task_events ENABLE ROW LEVEL SECURITY`.
 - **SELECT** policy `task_events_select` → `get_user_role() IN ('manager','admin','founder')`.
   (Domain narrowing is additive in the readers/Realtime filter — RLS gives manager+ row read; the
-  service/Realtime filter clamps which rows. The session-client Realtime subscription is bounded by
+  service/Realtime filter clamps which rows. The session-member Realtime subscription is bounded by
   this SELECT policy AND the `filter=` clause.)
-- **No INSERT / UPDATE / DELETE policy — ever.** Writes are admin-client only, from the mutation
+- **No INSERT / UPDATE / DELETE policy — ever.** Writes are admin-member only, from the mutation
   cores (service-role bypasses RLS). This is the A-11 append-only contract; there is no suppression
   carve-out (unlike `task_remarks`).
 - `ALTER PUBLICATION supabase_realtime ADD TABLE task_events` — **Realtime ENABLED**.
@@ -121,7 +121,7 @@ mutation. It is `await`-ed (so a Trigger.dev/`after()` lambda stays alive until 
 failure is swallowed.
 
 The emit helper lives in `src/lib/services/task-events.ts` (`emitTaskEvent(...)`) — a single
-admin-client INSERT taking an explicit `{ taskId, domain, actorId, subjectId, eventType, taskTitle,
+admin-member INSERT taking an explicit `{ taskId, domain, actorId, subjectId, eventType, taskTitle,
 meta }`. The **caller resolves the domain** (the cores are context-free and must not run a derived-
 domain query themselves — same invariant as `hasGiaMeta`); see §4c.
 
@@ -301,7 +301,7 @@ Built net-new only where nothing exists; everything else composes:
 | Domain scope param | mirrors `resolveDomainParam`'s param/role discipline (oversight clamps in the action) |
 | Back affordance | `<BackButton>` |
 | Session guard | `requireProfile(['manager','admin','founder'])` |
-| RPC scoping model | `get_gia_tasks` (shape) + the 0102 REVOKE/admin-client pattern |
+| RPC scoping model | `get_gia_tasks` (shape) + the 0102 REVOKE/admin-member pattern |
 
 **Net-new only:** `task_events` table + `task_event_type` enum; the three oversight RPCs; the
 `/oversight` route tree + its components; `oversight-service.ts`, `oversight.ts` actions,

@@ -160,7 +160,7 @@ export const DeleteCapabilitySchema = z.object({
 export const LogEngagementSchema = z
   .object({
     vendor_id: uuidField(formErrors.vendorNotFound),
-    client_id: uuidField("Please pick a valid client.").nullish().transform((v) => v ?? null),
+    member_id: uuidField("Please pick a valid client.").nullish().transform((v) => v ?? null),
     lead_id: uuidField("Please pick a valid lead.").nullish().transform((v) => v ?? null),
     // The staff member who ran the job; defaults to the caller in the core.
     agent_id: uuidField("Please pick a valid teammate.").nullish().transform((v) => v ?? null),
@@ -230,7 +230,7 @@ export const RankVendorsSchema = z.object({
   category: optionalCategoryField,
   service: serviceField,
   city: cityField.nullish().transform((v) => v ?? null),
-  client_id: uuidField("Please pick a valid client.").nullish().transform((v) => v ?? null),
+  member_id: uuidField("Please pick a valid client.").nullish().transform((v) => v ?? null),
   // Whose preferences shape the answer — defaults to the caller in the action.
   limit: z.number().int().min(1).max(RANK_MAX_LIMIT).default(RANK_DEFAULT_LIMIT),
 });

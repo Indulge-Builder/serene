@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { redirect, notFound } from 'next/navigation';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
 import { getTicketDetail, getTicketHelp, getTicketSettings } from '@/lib/services/tickets-service';
-import { logClientAccess } from '@/lib/services/client-mutations';
+import { logMemberAccess } from '@/lib/services/member-mutations';
 import { canAccessRoute } from '@/lib/utils/route-access';
 import { BackButton } from '@/components/ui/BackButton';
 import { TicketHeaderControls } from '@/components/tickets/TicketHeaderControls';
@@ -29,8 +29,8 @@ export default async function TicketPage({ params, searchParams }: Props) {
 
   const detail = await getTicketDetail(id);
   if (!detail) notFound();
-  const [help, settings] = await Promise.all([getTicketHelp(detail.client.id, detail.ticket.category, detail.ticket.id), getTicketSettings()]);
-  await logClientAccess(detail.client.id, profile.id, 'ticket_help');
+  const [help, settings] = await Promise.all([getTicketHelp(detail.member.id, detail.ticket.category, detail.ticket.id), getTicketSettings()]);
+  await logMemberAccess(detail.member.id, profile.id, 'ticket_help');
   const canApprove = profile.role !== 'agent';
   const t = detail.ticket;
   const due = t.resolve_due_at && !['resolved', 'closed', 'dropped'].includes(t.status) ? t.resolve_due_at : null;
@@ -45,7 +45,7 @@ export default async function TicketPage({ params, searchParams }: Props) {
         </h1>
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3) var(--space-5)', alignItems: 'center', marginBottom: 'var(--space-6)', fontSize: 'var(--text-sm)', color: 'var(--theme-text-secondary)' }}>
-        <span>For <Link href={`${CLIENTS_PATH}/${detail.client.id}`} style={{ color: 'var(--neu-accent-deep)', fontWeight: 'var(--weight-medium)' }}>{detail.client.full_name}</Link></span>
+        <span>For <Link href={`${CLIENTS_PATH}/${detail.member.id}`} style={{ color: 'var(--neu-accent-deep)', fontWeight: 'var(--weight-medium)' }}>{detail.member.full_name}</Link></span>
         <span>Opened {formatDate(t.created_at, 'd MMM, h:mm a')}</span>
         {t.first_response_due_at && !t.first_responded_at && <span style={{ color: new Date(t.first_response_due_at) < new Date() ? 'var(--color-danger-text)' : undefined }}>First response due {formatRelativeTime(t.first_response_due_at)}</span>}
         {due && <span style={{ color: new Date(due) < new Date() ? 'var(--color-danger-text)' : undefined }}>Resolve by {formatDate(due, 'd MMM, h:mm a')}</span>}
@@ -60,7 +60,7 @@ export default async function TicketPage({ params, searchParams }: Props) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', minWidth: 0 }}>
           <TicketSentinelCard ticket={t} />
           <TicketTagsCard ticketId={t.id} tags={t.tags ?? []} vocabulary={settings.tags} />
-          <TicketHelpPanel help={help} clientId={detail.client.id} clientName={detail.client.full_name} />
+          <TicketHelpPanel help={help} clientId={detail.member.id} memberName={detail.member.full_name} />
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', minWidth: 0 }}>
           <TicketBriefCard ticket={t} />

@@ -140,7 +140,7 @@ What `proxy.ts` actually does (verified):
 | 3. Sidebar filter | `src/components/layout/Sidebar.tsx` | Never renders links the profile cannot access |
 
 Domain gating is `canAccessRoute(profile, pathname)` (`src/lib/utils/route-access.ts` — pure,
-client-safe) over `DOMAIN_ROUTE_MAP` + `ALWAYS_ALLOWED_PREFIXES`
+member-safe) over `DOMAIN_ROUTE_MAP` + `ALWAYS_ALLOWED_PREFIXES`
 (`['/dashboard', '/profile', '/helpdesk', '/elaya', '/notes']`) in
 `src/lib/constants/route-permissions.ts`. `/helpdesk` (the Call Intelligence library), `/elaya`
 (Elaya's AI chat surface), and `/notes` (the per-user Notes section, `elaya_notes` migration 0152;
@@ -170,7 +170,7 @@ additive, not a replacement.
   columns (admin/founder via `suppressTaskRemarkAction` only) and the WhatsApp delivery-receipt
   update (`processInboundMessage`'s `processStatusUpdate`, admin client only). Two further
   resolve-once status flips on state-machine ledgers (`elaya_actions` 0118, `revival_candidates`
-  0119) run as admin-client writes with no user UPDATE policy, documented A-11 carve-outs in
+  0119) run as admin-member writes with no user UPDATE policy, documented A-11 carve-outs in
   their migrations.
 - Archived leads are immutable via direct UPDATE (`leads_update` requires
   `archived_at IS NULL`, migration 0091; explicit `WITH CHECK` added in 0103).
@@ -186,7 +186,7 @@ SECURITY DEFINER functions bypass RLS — they run as the function owner. The st
 2. **Never trust a caller-supplied scope parameter** (`p_role`, `p_domain`, `p_user_id`) for
    access decisions (Q-13). Self-scoping functions derive the caller from
    `get_user_role()`/`get_user_domain()`/`auth.uid()` inside the body.
-3. **RPCs that do take scope params are not client-callable.** Migration 0102
+3. **RPCs that do take scope params are not member-callable.** Migration 0102
    (`revoke_scope_param_rpcs`, 2026-06-11 — security-audit F-1, Option A) revokes `EXECUTE`
    from `authenticated`/`anon` on the Class B/C read RPCs; they are reachable only through the
    service-role path inside Server Actions, which pass session-derived values. This mirrors how
@@ -219,7 +219,7 @@ actions in `src/lib/actions/auth.ts` run in sequence:
 
 The user lands on `/update-password?email=<email>` manually; the page gates only on the `?email`
 param being present — there is **no session gate** on entry (the old `getUser()` recovery-session
-check is gone, since the session does not yet exist until step 2). The flow is a two-step client
+check is gone, since the session does not yet exist until step 2). The flow is a two-step member
 component: a code step, then a new-password step.
 
 **Why OTP-code replaced magic-link:** corporate link-scanners (Google Safe Links and similar)
@@ -233,7 +233,7 @@ to pre-fetch, so the token survives until the user enters it.
 
 Full UI spec (two-step form, `PasswordStrengthBar`, error copy): `../pages/auth.md`.
 
-## 13. The Elaya principal — sessionless authorization (the admin-client + code-scoping pattern)
+## 13. The Elaya principal — sessionless authorization (the admin-member + code-scoping pattern)
 
 Elaya must work on **two channels** — in-app (a logged-in session) and WhatsApp (no session, just
 an inbound phone number) — under the **same** authorization model. The bridge is the

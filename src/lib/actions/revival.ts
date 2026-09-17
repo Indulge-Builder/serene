@@ -11,6 +11,7 @@
 // Rule S-01: Zod first. A-18: requireProfile guard. Q-03: { data, error }, never throw.
 
 import { revalidatePath } from "next/cache";
+import { giaDb } from "@/lib/supabase/schemas";
 import { createClient } from "@/lib/supabase/server";
 import { requireProfile } from "@/lib/actions/_auth";
 import { reviveLeadCore } from "@/lib/services/lead-mutations";
@@ -50,7 +51,7 @@ export async function reviveLeadAction(
 
   // 3. Fetch lead for access check (mirrors updateLeadStatus — per-resource gate
   //    after the role guard).
-  const { data: lead } = await supabase
+  const { data: lead } = await giaDb(supabase)
     .from("leads")
     .select("id, assigned_to, domain, slug")
     .eq("id", leadId)
@@ -111,7 +112,7 @@ export async function dismissRevivalCandidateAction(
 
   // Access check — the caller must be able to see the lead (RLS on the candidate
   // SELECT enforces this too, but the action gate is the code-level A-09 layer).
-  const { data: lead } = await supabase
+  const { data: lead } = await giaDb(supabase)
     .from("leads")
     .select("id, assigned_to, domain")
     .eq("id", leadId)

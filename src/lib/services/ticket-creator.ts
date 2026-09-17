@@ -1,5 +1,5 @@
-// ticket-creator.ts — THE ticket creator: selected WhatsApp messages + the client twin → a
-// drafted ticket (client-ticket-plan.md 7.8, phase 1). Reuses the Elaya provider layer wholesale
+// ticket-creator.ts — THE ticket creator: selected WhatsApp messages + the member twin → a
+// drafted ticket (member-ticket-plan.md 7.8, phase 1). Reuses the Elaya provider layer wholesale
 // (R-01 / D-01): resolveLlmForJob('reasoning') → adapter.complete() with NO tools, everything
 // masked via maskPii before the model. Every call is a sia.extraction_runs row (law 6). Fails
 // CLOSED: a bad or missing verdict returns null and the page falls back to the empty form.
@@ -9,31 +9,31 @@ import { resolveLlmForJob } from "@/lib/elaya/registry";
 import { maskPii } from "@/lib/elaya/pii";
 import { getPiiMaskingDepth } from "@/lib/services/llm-providers-service";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getClientDetail } from "@/lib/services/clients-service";
+import { getMemberDetail } from "@/lib/services/members-service";
 import { TICKET_CATEGORIES, TICKET_PRIORITIES, TICKET_SUB_CATEGORIES, TICKET_BRIEF_FIELDS_BY_CATEGORY, type TicketCategory, type TicketPriority } from "@/lib/constants/tickets";
 import { TicketBriefSchema, type DraftTicketInput, type TicketBrief } from "@/lib/validations/ticket-schema";
 import type { TicketDraft } from "@/lib/types/ticket";
 
 const SYSTEM = `You are the ticket creator for Indulge, a luxury concierge. A genie selected the WhatsApp messages
-that make up ONE client request. Turn them into a ticket draft. Return ONLY a JSON object, no prose:
+that make up ONE member request. Turn them into a ticket draft. Return ONLY a JSON object, no prose:
 {
   "category": one of ${TICKET_CATEGORIES.values.join(" | ")},
   "sub_category": a sub-category id for that category or null,
-  "title": one short line, what the client wants (max 120 chars),
+  "title": one short line, what the member wants (max 120 chars),
   "brief": an object using only these keys when the messages say so: pax, date (ISO 8601), time, date_to, from_location,
            to_location, budget_inr (number), budget_note, product_details, quantity, delivery_address, delivery_contact,
            preferred_vendor, event_name, duration, luggage, airport, early_check_in (boolean), assistance_required,
            gift_specifications, notes,
   "priority": one of ${TICKET_PRIORITIES.values.join(" | ")},
   "priority_reason": one sentence,
-  "requested_for": ISO 8601 date-time the client needs it by, or null,
-  "acknowledgement": a warm one- or two-line reply the genie could send now, in the client's language and register,
+  "requested_for": ISO 8601 date-time the member needs it by, or null,
+  "acknowledgement": a warm one- or two-line reply the genie could send now, in the member's language and register,
   "vendor_terms": up to 4 short search terms for a supplier (most important first),
   "confidence": 0 to 1 that this is a real, single request
 }
 Rules: never invent facts not in the messages or the profile; a missing value stays absent; dates relative to
 "today" use the provided date; people appear as codes, keep them as codes; addresses in the profile may be
-used to fill delivery_address when the client says "home", "farmhouse" and so on. Priority: urgent = today or a
+used to fill delivery_address when the member says "home", "farmhouse" and so on. Priority: urgent = today or a
 complaint; high = within 48 hours or a high-value item; medium = this week; low = later or a recommendation.`;
 
 function extractJson(text: string): Record<string, unknown> | null {
@@ -46,22 +46,22 @@ function extractJson(text: string): Record<string, unknown> | null {
 export async function draftTicketFromMessages(input: DraftTicketInput): Promise<TicketDraft | null> {
   const admin = createAdminClient();
   const startedAt = new Date().toISOString();
-  const { data: runRow } = await admin.schema("sia").from("extraction_runs").insert({ kind: "ticket_creator", client_id: input.client_id, input_ref: { group_jid: input.group_jid, message_ids: input.messages.map((m) => m.wa_message_id) }, started_at: startedAt }).select("id").single();
+  const { data: runRow } = await admin.schema("sia").from("extraction_runs").insert({ kind: "ticket_creator", member_id: input.member_id, input_ref: { group_jid: input.group_jid, message_ids: input.messages.map((m) => m.wa_message_id) }, started_at: startedAt }).select("id").single();
   const runId = (runRow as { id: string } | null)?.id ?? null;
   const finish = async (ok: boolean, patch: Record<string, unknown>) => {
     if (runId) await admin.schema("sia").from("extraction_runs").update({ finished_at: new Date().toISOString(), ok, ...patch }).eq("id", runId);
   };
 
   try {
-    const [detail, depth, llm] = await Promise.all([getClientDetail(input.client_id), getPiiMaskingDepth(), resolveLlmForJob("reasoning")]);
+    const [detail, depth, llm] = await Promise.all([getMemberDetail(input.member_id), getPiiMaskingDepth(), resolveLlmForJob("reasoning")]);
     const profile = detail
       ? {
           essentials: detail.facts.filter((f) => ["address", "dietary", "family", "contact_rule"].includes(f.facet)).map((f) => `${f.facet}.${f.key}: ${f.polarity === "dislikes" ? "AVOIDS " : ""}${f.value}`).slice(0, 30),
           preferences: detail.facts.filter((f) => ["preference", "travel", "interest"].includes(f.facet)).map((f) => `${f.key}: ${f.polarity === "dislikes" ? "AVOIDS " : ""}${f.value}`).slice(0, 30),
-          tier: detail.client.tier,
+          tier: detail.member.tier,
         }
       : { essentials: [], preferences: [], tier: null };
-    const thread = input.messages.map((m) => `[${m.at.slice(0, 16)}] ${m.from_client ? "CLIENT" : "STAFF"}: ${m.text}`).join("\n");
+    const thread = input.messages.map((m) => `[${m.at.slice(0, 16)}] ${m.from_member ? "CLIENT" : "STAFF"}: ${m.text}`).join("\n");
     const userContent = maskPii(
       `Today: ${new Date().toISOString().slice(0, 10)}\nClient tier: ${profile.tier ?? "unknown"}\nProfile essentials:\n${profile.essentials.join("\n") || "(none)"}\nPreferences:\n${profile.preferences.join("\n") || "(none)"}\n\nSelected messages:\n${thread}\n\nReturn the JSON.`,
       depth,

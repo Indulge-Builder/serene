@@ -69,7 +69,6 @@ export type Database = {
         Row: {
           active: boolean
           category: string | null
-          client_id: string | null
           company_id: number | null
           custom_fields: Json
           description: string | null
@@ -77,6 +76,7 @@ export type Database = {
           fd_created_at: string | null
           fd_updated_at: string | null
           id: number
+          member_id: string | null
           mobile: string | null
           name: string
           phone: string | null
@@ -88,7 +88,6 @@ export type Database = {
         Insert: {
           active?: boolean
           category?: string | null
-          client_id?: string | null
           company_id?: number | null
           custom_fields?: Json
           description?: string | null
@@ -96,6 +95,7 @@ export type Database = {
           fd_created_at?: string | null
           fd_updated_at?: string | null
           id: number
+          member_id?: string | null
           mobile?: string | null
           name: string
           phone?: string | null
@@ -107,7 +107,6 @@ export type Database = {
         Update: {
           active?: boolean
           category?: string | null
-          client_id?: string | null
           company_id?: number | null
           custom_fields?: Json
           description?: string | null
@@ -115,6 +114,7 @@ export type Database = {
           fd_created_at?: string | null
           fd_updated_at?: string | null
           id?: number
+          member_id?: string | null
           mobile?: string | null
           name?: string
           phone?: string | null
@@ -136,6 +136,7 @@ export type Database = {
           from_email: string | null
           id: number
           incoming: boolean
+          media_synced_at: string | null
           private: boolean
           raw: Json
           source: number | null
@@ -154,6 +155,7 @@ export type Database = {
           from_email?: string | null
           id: number
           incoming?: boolean
+          media_synced_at?: string | null
           private?: boolean
           raw?: Json
           source?: number | null
@@ -172,6 +174,7 @@ export type Database = {
           from_email?: string | null
           id?: number
           incoming?: boolean
+          media_synced_at?: string | null
           private?: boolean
           raw?: Json
           source?: number | null
@@ -412,9 +415,9 @@ export type Database = {
       tickets: {
         Row: {
           agent_responded_at: string | null
+          attachments: Json
           category: string | null
           classification: string | null
-          client_id: string | null
           closed_at: string | null
           company_id: number | null
           conversation_count: number
@@ -434,6 +437,7 @@ export type Database = {
           internal_agent_id: number | null
           internal_group_id: number | null
           is_escalated: boolean
+          member_id: string | null
           pending_since: string | null
           priority: number
           product_id: number | null
@@ -458,9 +462,9 @@ export type Database = {
         }
         Insert: {
           agent_responded_at?: string | null
+          attachments?: Json
           category?: string | null
           classification?: string | null
-          client_id?: string | null
           closed_at?: string | null
           company_id?: number | null
           conversation_count?: number
@@ -480,6 +484,7 @@ export type Database = {
           internal_agent_id?: number | null
           internal_group_id?: number | null
           is_escalated?: boolean
+          member_id?: string | null
           pending_since?: string | null
           priority: number
           product_id?: number | null
@@ -504,9 +509,9 @@ export type Database = {
         }
         Update: {
           agent_responded_at?: string | null
+          attachments?: Json
           category?: string | null
           classification?: string | null
-          client_id?: string | null
           closed_at?: string | null
           company_id?: number | null
           conversation_count?: number
@@ -526,6 +531,7 @@ export type Database = {
           internal_agent_id?: number | null
           internal_group_id?: number | null
           is_escalated?: boolean
+          member_id?: string | null
           pending_since?: string | null
           priority?: number
           product_id?: number | null
@@ -585,7 +591,23 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      flag_threads_for_media: { Args: { p_limit?: number }; Returns: number }
+      media_backlog: { Args: never; Returns: Json }
+      ticket_overview: {
+        Args: {
+          p_agent?: number
+          p_category?: string
+          p_from?: string
+          p_group?: number
+          p_member?: string
+          p_priority?: number
+          p_search?: string
+          p_status?: number[]
+          p_to?: string
+          p_today_start?: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never
@@ -594,52 +616,8 @@ export type Database = {
       [_ in never]: never
     }
   }
-  public: {
+  gia: {
     Tables: {
-      activity_events: {
-        Row: {
-          actor_id: string | null
-          created_at: string
-          domain: Database["public"]["Enums"]["app_domain"]
-          event_type: string
-          id: string
-          meta: Json
-          subject_id: string | null
-          subject_type: string
-          title: string | null
-        }
-        Insert: {
-          actor_id?: string | null
-          created_at?: string
-          domain: Database["public"]["Enums"]["app_domain"]
-          event_type: string
-          id?: string
-          meta?: Json
-          subject_id?: string | null
-          subject_type: string
-          title?: string | null
-        }
-        Update: {
-          actor_id?: string | null
-          created_at?: string
-          domain?: Database["public"]["Enums"]["app_domain"]
-          event_type?: string
-          id?: string
-          meta?: Json
-          subject_id?: string | null
-          subject_type?: string
-          title?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "activity_events_actor_id_fkey"
-            columns: ["actor_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       ad_account_recharges: {
         Row: {
           ad_account: string
@@ -680,15 +658,7 @@ export type Database = {
           recharged_at?: string
           updated_at?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "ad_account_recharges_done_by_fkey"
-            columns: ["done_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       ad_creatives: {
         Row: {
@@ -769,15 +739,7 @@ export type Database = {
           updated_at?: string
           uploaded_by?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "ad_spend_daily_uploaded_by_fkey"
-            columns: ["uploaded_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
       agent_routing_config: {
         Row: {
@@ -806,2445 +768,6 @@ export type Database = {
           shift_end?: string | null
           shift_start?: string | null
           updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "agent_routing_config_agent_id_fkey"
-            columns: ["agent_id"]
-            isOneToOne: true
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      client_access_log: {
-        Row: {
-          actor_id: string
-          client_id: string
-          created_at: string
-          id: number
-          surface: string
-        }
-        Insert: {
-          actor_id: string
-          client_id: string
-          created_at?: string
-          id?: number
-          surface: string
-        }
-        Update: {
-          actor_id?: string
-          client_id?: string
-          created_at?: string
-          id?: number
-          surface?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "client_access_log_actor_id_fkey"
-            columns: ["actor_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      client_anticipations: {
-        Row: {
-          client_id: string
-          created_at: string
-          due_at: string
-          evidence: Json
-          id: string
-          kind: string
-          resolved_at: string | null
-          resolved_by: string | null
-          run_id: string | null
-          status: string
-          suggested_action: string | null
-          title: string
-          updated_at: string
-        }
-        Insert: {
-          client_id: string
-          created_at?: string
-          due_at: string
-          evidence?: Json
-          id?: string
-          kind: string
-          resolved_at?: string | null
-          resolved_by?: string | null
-          run_id?: string | null
-          status?: string
-          suggested_action?: string | null
-          title: string
-          updated_at?: string
-        }
-        Update: {
-          client_id?: string
-          created_at?: string
-          due_at?: string
-          evidence?: Json
-          id?: string
-          kind?: string
-          resolved_at?: string | null
-          resolved_by?: string | null
-          run_id?: string | null
-          status?: string
-          suggested_action?: string | null
-          title?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "client_anticipations_client_id_fkey"
-            columns: ["client_id"]
-            isOneToOne: false
-            referencedRelation: "clients"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "client_anticipations_resolved_by_fkey"
-            columns: ["resolved_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      client_chunks: {
-        Row: {
-          chunk_index: number
-          client_id: string
-          created_at: string
-          document_id: string
-          embedded_at: string | null
-          embedding: string | null
-          id: string
-          kind: string
-          masked_text: string
-          model_version: string | null
-          observed_at: string | null
-          tsv: unknown
-        }
-        Insert: {
-          chunk_index?: number
-          client_id: string
-          created_at?: string
-          document_id: string
-          embedded_at?: string | null
-          embedding?: string | null
-          id?: string
-          kind: string
-          masked_text: string
-          model_version?: string | null
-          observed_at?: string | null
-          tsv?: unknown
-        }
-        Update: {
-          chunk_index?: number
-          client_id?: string
-          created_at?: string
-          document_id?: string
-          embedded_at?: string | null
-          embedding?: string | null
-          id?: string
-          kind?: string
-          masked_text?: string
-          model_version?: string | null
-          observed_at?: string | null
-          tsv?: unknown
-        }
-        Relationships: [
-          {
-            foreignKeyName: "client_chunks_client_id_fkey"
-            columns: ["client_id"]
-            isOneToOne: false
-            referencedRelation: "clients"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "client_chunks_document_id_fkey"
-            columns: ["document_id"]
-            isOneToOne: false
-            referencedRelation: "client_documents"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      client_documents: {
-        Row: {
-          client_id: string
-          created_at: string
-          from_at: string | null
-          id: string
-          kind: string
-          run_id: string | null
-          source: string
-          source_ref: Json
-          text: string
-          title: string | null
-          to_at: string | null
-        }
-        Insert: {
-          client_id: string
-          created_at?: string
-          from_at?: string | null
-          id?: string
-          kind: string
-          run_id?: string | null
-          source: string
-          source_ref?: Json
-          text: string
-          title?: string | null
-          to_at?: string | null
-        }
-        Update: {
-          client_id?: string
-          created_at?: string
-          from_at?: string | null
-          id?: string
-          kind?: string
-          run_id?: string | null
-          source?: string
-          source_ref?: Json
-          text?: string
-          title?: string | null
-          to_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "client_documents_client_id_fkey"
-            columns: ["client_id"]
-            isOneToOne: false
-            referencedRelation: "clients"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      client_events: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2024_01: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2024_02: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2024_03: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2024_04: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2024_05: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2024_06: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2024_07: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2024_08: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2024_09: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2024_10: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2024_11: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2024_12: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2025_01: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2025_02: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2025_03: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2025_04: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2025_05: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2025_06: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2025_07: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2025_08: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2025_09: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2025_10: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2025_11: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2025_12: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2026_01: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2026_02: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2026_03: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2026_04: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2026_05: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2026_06: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2026_07: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2026_08: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2026_09: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2026_10: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2026_11: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2026_12: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2027_01: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2027_02: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_2027_03: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_events_default: {
-        Row: {
-          actor: string | null
-          client_id: string
-          created_at: string
-          expires_at: string | null
-          id: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref: Json
-          summary: string
-          tone: string | null
-          weight: number
-        }
-        Insert: {
-          actor?: string | null
-          client_id: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind: string
-          occurred_at: string
-          source: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Update: {
-          actor?: string | null
-          client_id?: string
-          created_at?: string
-          expires_at?: string | null
-          id?: string
-          kind?: string
-          occurred_at?: string
-          source?: string
-          source_ref?: Json
-          summary?: string
-          tone?: string | null
-          weight?: number
-        }
-        Relationships: []
-      }
-      client_facts: {
-        Row: {
-          client_id: string
-          confidence: number
-          created_at: string
-          created_by: string | null
-          evidence: Json
-          facet: string
-          id: string
-          key: string
-          observed_at: string
-          polarity: string
-          run_id: string | null
-          source: string
-          superseded_by: string | null
-          valid_until: string | null
-          value: string
-          value_json: Json | null
-        }
-        Insert: {
-          client_id: string
-          confidence?: number
-          created_at?: string
-          created_by?: string | null
-          evidence?: Json
-          facet: string
-          id?: string
-          key?: string
-          observed_at?: string
-          polarity?: string
-          run_id?: string | null
-          source: string
-          superseded_by?: string | null
-          valid_until?: string | null
-          value: string
-          value_json?: Json | null
-        }
-        Update: {
-          client_id?: string
-          confidence?: number
-          created_at?: string
-          created_by?: string | null
-          evidence?: Json
-          facet?: string
-          id?: string
-          key?: string
-          observed_at?: string
-          polarity?: string
-          run_id?: string | null
-          source?: string
-          superseded_by?: string | null
-          valid_until?: string | null
-          value?: string
-          value_json?: Json | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "client_facts_client_id_fkey"
-            columns: ["client_id"]
-            isOneToOne: false
-            referencedRelation: "clients"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "client_facts_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "client_facts_superseded_by_fkey"
-            columns: ["superseded_by"]
-            isOneToOne: false
-            referencedRelation: "client_facts"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      client_health_events: {
-        Row: {
-          client_id: string
-          created_at: string
-          created_by: string | null
-          delta: number
-          evidence: Json
-          id: string
-          note: string | null
-          observed_at: string
-          run_id: string | null
-          signal: string
-          ticket_ref: Json | null
-        }
-        Insert: {
-          client_id: string
-          created_at?: string
-          created_by?: string | null
-          delta: number
-          evidence?: Json
-          id?: string
-          note?: string | null
-          observed_at?: string
-          run_id?: string | null
-          signal: string
-          ticket_ref?: Json | null
-        }
-        Update: {
-          client_id?: string
-          created_at?: string
-          created_by?: string | null
-          delta?: number
-          evidence?: Json
-          id?: string
-          note?: string | null
-          observed_at?: string
-          run_id?: string | null
-          signal?: string
-          ticket_ref?: Json | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "client_health_events_client_id_fkey"
-            columns: ["client_id"]
-            isOneToOne: false
-            referencedRelation: "clients"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "client_health_events_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "client_health_events_signal_fkey"
-            columns: ["signal"]
-            isOneToOne: false
-            referencedRelation: "client_health_policy"
-            referencedColumns: ["signal"]
-          },
-        ]
-      }
-      client_health_policy: {
-        Row: {
-          delta: number
-          half_life_days: number
-          label: string
-          signal: string
-          updated_at: string
-        }
-        Insert: {
-          delta: number
-          half_life_days: number
-          label: string
-          signal: string
-          updated_at?: string
-        }
-        Update: {
-          delta?: number
-          half_life_days?: number
-          label?: string
-          signal?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      client_people: {
-        Row: {
-          can_request: boolean
-          client_id: string
-          created_at: string
-          created_by: string | null
-          email: string | null
-          id: string
-          name: string
-          note: string | null
-          phone_e164: string | null
-          relation: string
-          updated_at: string
-        }
-        Insert: {
-          can_request?: boolean
-          client_id: string
-          created_at?: string
-          created_by?: string | null
-          email?: string | null
-          id?: string
-          name: string
-          note?: string | null
-          phone_e164?: string | null
-          relation: string
-          updated_at?: string
-        }
-        Update: {
-          can_request?: boolean
-          client_id?: string
-          created_at?: string
-          created_by?: string | null
-          email?: string | null
-          id?: string
-          name?: string
-          note?: string | null
-          phone_e164?: string | null
-          relation?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "client_people_client_id_fkey"
-            columns: ["client_id"]
-            isOneToOne: false
-            referencedRelation: "clients"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "client_people_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      client_relations: {
-        Row: {
-          client_id: string
-          entity_id: string
-          entity_kind: string
-          entity_label: string
-          evidence: Json
-          evidence_count: number
-          first_seen_at: string
-          id: string
-          last_seen_at: string
-          relation: string
-          strength: number
-          updated_at: string
-        }
-        Insert: {
-          client_id: string
-          entity_id: string
-          entity_kind: string
-          entity_label: string
-          evidence?: Json
-          evidence_count?: number
-          first_seen_at?: string
-          id?: string
-          last_seen_at?: string
-          relation: string
-          strength?: number
-          updated_at?: string
-        }
-        Update: {
-          client_id?: string
-          entity_id?: string
-          entity_kind?: string
-          entity_label?: string
-          evidence?: Json
-          evidence_count?: number
-          first_seen_at?: string
-          id?: string
-          last_seen_at?: string
-          relation?: string
-          strength?: number
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "client_relations_client_id_fkey"
-            columns: ["client_id"]
-            isOneToOne: false
-            referencedRelation: "clients"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      client_snapshot: {
-        Row: {
-          built_at: string
-          client_id: string
-          data: Json
-          run_id: string | null
-          version: number
-        }
-        Insert: {
-          built_at?: string
-          client_id: string
-          data?: Json
-          run_id?: string | null
-          version?: number
-        }
-        Update: {
-          built_at?: string
-          client_id?: string
-          data?: Json
-          run_id?: string | null
-          version?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "client_snapshot_client_id_fkey"
-            columns: ["client_id"]
-            isOneToOne: true
-            referencedRelation: "clients"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      clients: {
-        Row: {
-          alt_phones: string[]
-          app_member_id: string | null
-          consent: Json
-          created_at: string
-          freshdesk_contact_id: string | null
-          full_name: string
-          id: string
-          identity_status: string
-          import_raw: Json
-          membership_amount_inr: number | null
-          membership_end: string | null
-          membership_start: string | null
-          membership_status: string | null
-          membership_type: string | null
-          primary_phone: string | null
-          queendom_id: string | null
-          sources: string[]
-          tier: string | null
-          updated_at: string
-          wa_invite_link: string | null
-          zoho_customer_id: string | null
-        }
-        Insert: {
-          alt_phones?: string[]
-          app_member_id?: string | null
-          consent?: Json
-          created_at?: string
-          freshdesk_contact_id?: string | null
-          full_name: string
-          id?: string
-          identity_status?: string
-          import_raw?: Json
-          membership_amount_inr?: number | null
-          membership_end?: string | null
-          membership_start?: string | null
-          membership_status?: string | null
-          membership_type?: string | null
-          primary_phone?: string | null
-          queendom_id?: string | null
-          sources?: string[]
-          tier?: string | null
-          updated_at?: string
-          wa_invite_link?: string | null
-          zoho_customer_id?: string | null
-        }
-        Update: {
-          alt_phones?: string[]
-          app_member_id?: string | null
-          consent?: Json
-          created_at?: string
-          freshdesk_contact_id?: string | null
-          full_name?: string
-          id?: string
-          identity_status?: string
-          import_raw?: Json
-          membership_amount_inr?: number | null
-          membership_end?: string | null
-          membership_start?: string | null
-          membership_status?: string | null
-          membership_type?: string | null
-          primary_phone?: string | null
-          queendom_id?: string | null
-          sources?: string[]
-          tier?: string | null
-          updated_at?: string
-          wa_invite_link?: string | null
-          zoho_customer_id?: string | null
         }
         Relationships: []
       }
@@ -3282,7 +805,6 @@ export type Database = {
         Row: {
           archived_at: string | null
           assigned_to: string | null
-          client_id: string | null
           contact_email: string | null
           contact_name: string
           contact_phone: string
@@ -3294,6 +816,7 @@ export type Database = {
           domain: Database["public"]["Enums"]["app_domain"]
           id: string
           lead_id: string | null
+          member_id: string | null
           source: string | null
           updated_at: string
           won_at: string
@@ -3301,7 +824,6 @@ export type Database = {
         Insert: {
           archived_at?: string | null
           assigned_to?: string | null
-          client_id?: string | null
           contact_email?: string | null
           contact_name: string
           contact_phone: string
@@ -3313,6 +835,7 @@ export type Database = {
           domain: Database["public"]["Enums"]["app_domain"]
           id?: string
           lead_id?: string | null
+          member_id?: string | null
           source?: string | null
           updated_at?: string
           won_at?: string
@@ -3320,7 +843,6 @@ export type Database = {
         Update: {
           archived_at?: string | null
           assigned_to?: string | null
-          client_id?: string | null
           contact_email?: string | null
           contact_name?: string
           contact_phone?: string
@@ -3332,18 +854,12 @@ export type Database = {
           domain?: Database["public"]["Enums"]["app_domain"]
           id?: string
           lead_id?: string | null
+          member_id?: string | null
           source?: string | null
           updated_at?: string
           won_at?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "deals_assigned_to_fkey"
-            columns: ["assigned_to"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "deals_lead_id_fkey"
             columns: ["lead_id"]
@@ -3384,275 +900,6 @@ export type Database = {
           target_value?: number
           updated_at?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "domain_targets_set_by_fkey"
-            columns: ["set_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      elaya_actions: {
-        Row: {
-          action_type: string
-          conversation_id: string
-          created_at: string
-          id: string
-          message_id: string | null
-          payload: Json
-          resolved_at: string | null
-          resolved_by: string | null
-          status: string
-          user_id: string
-        }
-        Insert: {
-          action_type: string
-          conversation_id: string
-          created_at?: string
-          id?: string
-          message_id?: string | null
-          payload?: Json
-          resolved_at?: string | null
-          resolved_by?: string | null
-          status?: string
-          user_id: string
-        }
-        Update: {
-          action_type?: string
-          conversation_id?: string
-          created_at?: string
-          id?: string
-          message_id?: string | null
-          payload?: Json
-          resolved_at?: string | null
-          resolved_by?: string | null
-          status?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "elaya_actions_conversation_id_fkey"
-            columns: ["conversation_id"]
-            isOneToOne: false
-            referencedRelation: "elaya_conversations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "elaya_actions_message_id_fkey"
-            columns: ["message_id"]
-            isOneToOne: false
-            referencedRelation: "elaya_messages"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "elaya_actions_resolved_by_fkey"
-            columns: ["resolved_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "elaya_actions_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      elaya_conversations: {
-        Row: {
-          archived_at: string | null
-          channel: string
-          created_at: string
-          id: string
-          last_message_at: string
-          title: string | null
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          archived_at?: string | null
-          channel?: string
-          created_at?: string
-          id?: string
-          last_message_at?: string
-          title?: string | null
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          archived_at?: string | null
-          channel?: string
-          created_at?: string
-          id?: string
-          last_message_at?: string
-          title?: string | null
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "elaya_conversations_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      elaya_messages: {
-        Row: {
-          channel: string
-          content: string
-          conversation_id: string
-          created_at: string
-          id: string
-          meta: Json | null
-          role: string
-          sender_id: string | null
-          tool_calls: Json | null
-        }
-        Insert: {
-          channel?: string
-          content: string
-          conversation_id: string
-          created_at?: string
-          id?: string
-          meta?: Json | null
-          role: string
-          sender_id?: string | null
-          tool_calls?: Json | null
-        }
-        Update: {
-          channel?: string
-          content?: string
-          conversation_id?: string
-          created_at?: string
-          id?: string
-          meta?: Json | null
-          role?: string
-          sender_id?: string | null
-          tool_calls?: Json | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "elaya_messages_conversation_id_fkey"
-            columns: ["conversation_id"]
-            isOneToOne: false
-            referencedRelation: "elaya_conversations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "elaya_messages_sender_id_fkey"
-            columns: ["sender_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      elaya_notes: {
-        Row: {
-          body: string
-          created_at: string
-          id: string
-          title: string
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          body?: string
-          created_at?: string
-          id?: string
-          title: string
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          body?: string
-          created_at?: string
-          id?: string
-          title?: string
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "elaya_notes_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      elaya_settings: {
-        Row: {
-          created_at: string
-          key: string
-          updated_at: string
-          value: Json
-        }
-        Insert: {
-          created_at?: string
-          key: string
-          updated_at?: string
-          value: Json
-        }
-        Update: {
-          created_at?: string
-          key?: string
-          updated_at?: string
-          value?: Json
-        }
-        Relationships: []
-      }
-      elaya_training_assets: {
-        Row: {
-          active: boolean
-          created_at: string
-          description: string | null
-          domain: Database["public"]["Enums"]["app_domain"] | null
-          id: string
-          kind: string
-          send_order: number
-          storage_path: string | null
-          tags: string[]
-          title: string
-          updated_at: string
-          url: string | null
-        }
-        Insert: {
-          active?: boolean
-          created_at?: string
-          description?: string | null
-          domain?: Database["public"]["Enums"]["app_domain"] | null
-          id?: string
-          kind: string
-          send_order?: number
-          storage_path?: string | null
-          tags?: string[]
-          title: string
-          updated_at?: string
-          url?: string | null
-        }
-        Update: {
-          active?: boolean
-          created_at?: string
-          description?: string | null
-          domain?: Database["public"]["Enums"]["app_domain"] | null
-          id?: string
-          kind?: string
-          send_order?: number
-          storage_path?: string | null
-          tags?: string[]
-          title?: string
-          updated_at?: string
-          url?: string | null
-        }
         Relationships: []
       }
       lead_activities: {
@@ -3681,13 +928,6 @@ export type Database = {
           lead_id?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "lead_activities_actor_id_fkey"
-            columns: ["actor_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "lead_activities_lead_id_fkey"
             columns: ["lead_id"]
@@ -3723,13 +963,6 @@ export type Database = {
           lead_id?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "lead_notes_author_id_fkey"
-            columns: ["author_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "lead_notes_lead_id_fkey"
             columns: ["lead_id"]
@@ -3997,13 +1230,6 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "leads_assigned_to_fkey"
-            columns: ["assigned_to"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "leads_previous_lead_id_fkey"
             columns: ["previous_lead_id"]
             isOneToOne: false
@@ -4011,6 +1237,733 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      revival_candidates: {
+        Row: {
+          ai_reasoning: string
+          assigned_to: string | null
+          created_at: string
+          id: string
+          lead_id: string
+          resolved_at: string | null
+          resolved_by: string | null
+          status: string
+          suggested_revive_at: string | null
+          trigger_status: string
+          verdict: string
+        }
+        Insert: {
+          ai_reasoning: string
+          assigned_to?: string | null
+          created_at?: string
+          id?: string
+          lead_id: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          suggested_revive_at?: string | null
+          trigger_status: string
+          verdict: string
+        }
+        Update: {
+          ai_reasoning?: string
+          assigned_to?: string | null
+          created_at?: string
+          id?: string
+          lead_id?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          suggested_revive_at?: string | null
+          trigger_status?: string
+          verdict?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "revival_candidates_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      revival_policies: {
+        Row: {
+          active: boolean
+          created_at: string
+          daily_cap_per_agent: number
+          silence_days: number
+          trigger_status: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          daily_cap_per_agent?: number
+          silence_days: number
+          trigger_status: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          daily_cap_per_agent?: number
+          silence_days?: number
+          trigger_status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      service_cases: {
+        Row: {
+          category: string
+          city: string | null
+          country: string | null
+          created_at: string
+          created_by: string | null
+          domain: Database["public"]["Enums"]["app_domain"]
+          embedding: string | null
+          id: string
+          is_featured: boolean
+          outcome_note: string | null
+          search_vector: unknown
+          sort_order: number
+          summary: string
+          tags: string[]
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          category: string
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          created_by?: string | null
+          domain: Database["public"]["Enums"]["app_domain"]
+          embedding?: string | null
+          id?: string
+          is_featured?: boolean
+          outcome_note?: string | null
+          search_vector?: unknown
+          sort_order?: number
+          summary: string
+          tags?: string[]
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          created_by?: string | null
+          domain?: Database["public"]["Enums"]["app_domain"]
+          embedding?: string | null
+          id?: string
+          is_featured?: boolean
+          outcome_note?: string | null
+          search_vector?: unknown
+          sort_order?: number
+          summary?: string
+          tags?: string[]
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      sla_policies: {
+        Row: {
+          active: boolean
+          auto_task: boolean
+          channels: string[]
+          code: string
+          created_at: string
+          hours_mode: string
+          recipient_role: string
+          threshold_minutes: number
+          trigger_kind: string
+          trigger_value: string
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          auto_task?: boolean
+          channels?: string[]
+          code: string
+          created_at?: string
+          hours_mode: string
+          recipient_role: string
+          threshold_minutes?: number
+          trigger_kind: string
+          trigger_value: string
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          auto_task?: boolean
+          channels?: string[]
+          code?: string
+          created_at?: string
+          hours_mode?: string
+          recipient_role?: string
+          threshold_minutes?: number
+          trigger_kind?: string
+          trigger_value?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      task_gia_meta: {
+        Row: {
+          call_outcome: string | null
+          lead_id: string
+          task_id: string
+        }
+        Insert: {
+          call_outcome?: string | null
+          lead_id: string
+          task_id: string
+        }
+        Update: {
+          call_outcome?: string | null
+          lead_id?: string
+          task_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_gia_meta_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_conversation_reads: {
+        Row: {
+          agent_id: string
+          conversation_id: string
+          id: string
+          last_read_at: string
+        }
+        Insert: {
+          agent_id: string
+          conversation_id: string
+          id?: string
+          last_read_at?: string
+        }
+        Update: {
+          agent_id?: string
+          conversation_id?: string
+          id?: string
+          last_read_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_conversation_reads_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_conversations: {
+        Row: {
+          bot_active: boolean
+          bot_paused_at: string | null
+          bot_paused_by: string | null
+          created_at: string
+          id: string
+          last_message_at: string | null
+          lead_id: string
+          phone: string
+          status: string
+          updated_at: string
+          wa_id: string
+        }
+        Insert: {
+          bot_active?: boolean
+          bot_paused_at?: string | null
+          bot_paused_by?: string | null
+          created_at?: string
+          id?: string
+          last_message_at?: string | null
+          lead_id: string
+          phone: string
+          status?: string
+          updated_at?: string
+          wa_id: string
+        }
+        Update: {
+          bot_active?: boolean
+          bot_paused_at?: string | null
+          bot_paused_by?: string | null
+          created_at?: string
+          id?: string
+          last_message_at?: string | null
+          lead_id?: string
+          phone?: string
+          status?: string
+          updated_at?: string
+          wa_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_conversations_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: true
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_messages: {
+        Row: {
+          content: string | null
+          conversation_id: string
+          created_at: string
+          direction: string
+          id: string
+          is_bot: boolean
+          lead_id: string
+          media_mime_type: string | null
+          media_url: string | null
+          message_type: string
+          sender_id: string | null
+          sender_type: string
+          status: string | null
+          status_at: string | null
+          wa_message_id: string | null
+        }
+        Insert: {
+          content?: string | null
+          conversation_id: string
+          created_at?: string
+          direction: string
+          id?: string
+          is_bot?: boolean
+          lead_id: string
+          media_mime_type?: string | null
+          media_url?: string | null
+          message_type: string
+          sender_id?: string | null
+          sender_type: string
+          status?: string | null
+          status_at?: string | null
+          wa_message_id?: string | null
+        }
+        Update: {
+          content?: string | null
+          conversation_id?: string
+          created_at?: string
+          direction?: string
+          id?: string
+          is_bot?: boolean
+          lead_id?: string
+          media_mime_type?: string | null
+          media_url?: string | null
+          message_type?: string
+          sender_id?: string | null
+          sender_type?: string
+          status?: string | null
+          status_at?: string | null
+          wa_message_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_messages_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_notification_logs: {
+        Row: {
+          agent_name: string | null
+          created_at: string
+          delivered: boolean
+          domain: Database["public"]["Enums"]["app_domain"] | null
+          gupshup_body: string | null
+          gupshup_status: number | null
+          id: string
+          lead_id: string | null
+          lead_name: string | null
+          lead_phone: string | null
+          recipient_id: string | null
+          recipient_phone: string
+          type: string
+        }
+        Insert: {
+          agent_name?: string | null
+          created_at?: string
+          delivered?: boolean
+          domain?: Database["public"]["Enums"]["app_domain"] | null
+          gupshup_body?: string | null
+          gupshup_status?: number | null
+          id?: string
+          lead_id?: string | null
+          lead_name?: string | null
+          lead_phone?: string | null
+          recipient_id?: string | null
+          recipient_phone: string
+          type: string
+        }
+        Update: {
+          agent_name?: string | null
+          created_at?: string
+          delivered?: boolean
+          domain?: Database["public"]["Enums"]["app_domain"] | null
+          gupshup_body?: string | null
+          gupshup_status?: number | null
+          id?: string
+          lead_id?: string | null
+          lead_name?: string | null
+          lead_phone?: string | null
+          recipient_id?: string | null
+          recipient_phone?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_notification_logs_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      [_ in never]: never
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+  public: {
+    Tables: {
+      activity_events: {
+        Row: {
+          actor_id: string | null
+          created_at: string
+          domain: Database["public"]["Enums"]["app_domain"]
+          event_type: string
+          id: string
+          meta: Json
+          subject_id: string | null
+          subject_type: string
+          title: string | null
+        }
+        Insert: {
+          actor_id?: string | null
+          created_at?: string
+          domain: Database["public"]["Enums"]["app_domain"]
+          event_type: string
+          id?: string
+          meta?: Json
+          subject_id?: string | null
+          subject_type: string
+          title?: string | null
+        }
+        Update: {
+          actor_id?: string | null
+          created_at?: string
+          domain?: Database["public"]["Enums"]["app_domain"]
+          event_type?: string
+          id?: string
+          meta?: Json
+          subject_id?: string | null
+          subject_type?: string
+          title?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_events_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      elaya_actions: {
+        Row: {
+          action_type: string
+          conversation_id: string
+          created_at: string
+          id: string
+          message_id: string | null
+          payload: Json
+          resolved_at: string | null
+          resolved_by: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          action_type: string
+          conversation_id: string
+          created_at?: string
+          id?: string
+          message_id?: string | null
+          payload?: Json
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          action_type?: string
+          conversation_id?: string
+          created_at?: string
+          id?: string
+          message_id?: string | null
+          payload?: Json
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "elaya_actions_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "elaya_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "elaya_actions_message_id_fkey"
+            columns: ["message_id"]
+            isOneToOne: false
+            referencedRelation: "elaya_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "elaya_actions_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "elaya_actions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      elaya_conversations: {
+        Row: {
+          archived_at: string | null
+          channel: string
+          created_at: string
+          id: string
+          last_message_at: string
+          title: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          archived_at?: string | null
+          channel?: string
+          created_at?: string
+          id?: string
+          last_message_at?: string
+          title?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          archived_at?: string | null
+          channel?: string
+          created_at?: string
+          id?: string
+          last_message_at?: string
+          title?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "elaya_conversations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      elaya_messages: {
+        Row: {
+          channel: string
+          content: string
+          conversation_id: string
+          created_at: string
+          id: string
+          meta: Json | null
+          role: string
+          sender_id: string | null
+          tool_calls: Json | null
+        }
+        Insert: {
+          channel?: string
+          content: string
+          conversation_id: string
+          created_at?: string
+          id?: string
+          meta?: Json | null
+          role: string
+          sender_id?: string | null
+          tool_calls?: Json | null
+        }
+        Update: {
+          channel?: string
+          content?: string
+          conversation_id?: string
+          created_at?: string
+          id?: string
+          meta?: Json | null
+          role?: string
+          sender_id?: string | null
+          tool_calls?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "elaya_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "elaya_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "elaya_messages_sender_id_fkey"
+            columns: ["sender_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      elaya_notes: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          body?: string
+          created_at?: string
+          id?: string
+          title: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "elaya_notes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      elaya_settings: {
+        Row: {
+          created_at: string
+          key: string
+          updated_at: string
+          value: Json
+        }
+        Insert: {
+          created_at?: string
+          key: string
+          updated_at?: string
+          value: Json
+        }
+        Update: {
+          created_at?: string
+          key?: string
+          updated_at?: string
+          value?: Json
+        }
+        Relationships: []
+      }
+      elaya_training_assets: {
+        Row: {
+          active: boolean
+          created_at: string
+          description: string | null
+          domain: Database["public"]["Enums"]["app_domain"] | null
+          id: string
+          kind: string
+          send_order: number
+          storage_path: string | null
+          tags: string[]
+          title: string
+          updated_at: string
+          url: string | null
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          description?: string | null
+          domain?: Database["public"]["Enums"]["app_domain"] | null
+          id?: string
+          kind: string
+          send_order?: number
+          storage_path?: string | null
+          tags?: string[]
+          title: string
+          updated_at?: string
+          url?: string | null
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          description?: string | null
+          domain?: Database["public"]["Enums"]["app_domain"] | null
+          id?: string
+          kind?: string
+          send_order?: number
+          storage_path?: string | null
+          tags?: string[]
+          title?: string
+          updated_at?: string
+          url?: string | null
+        }
+        Relationships: []
       }
       llm_providers: {
         Row: {
@@ -4039,6 +1992,2437 @@ export type Database = {
           model?: string
           provider?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      member_access_log: {
+        Row: {
+          actor_id: string
+          created_at: string
+          id: number
+          member_id: string
+          surface: string
+        }
+        Insert: {
+          actor_id: string
+          created_at?: string
+          id?: number
+          member_id: string
+          surface: string
+        }
+        Update: {
+          actor_id?: string
+          created_at?: string
+          id?: number
+          member_id?: string
+          surface?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_access_log_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      member_anticipations: {
+        Row: {
+          created_at: string
+          due_at: string
+          evidence: Json
+          id: string
+          kind: string
+          member_id: string
+          resolved_at: string | null
+          resolved_by: string | null
+          run_id: string | null
+          status: string
+          suggested_action: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          due_at: string
+          evidence?: Json
+          id?: string
+          kind: string
+          member_id: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          run_id?: string | null
+          status?: string
+          suggested_action?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          due_at?: string
+          evidence?: Json
+          id?: string
+          kind?: string
+          member_id?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          run_id?: string | null
+          status?: string
+          suggested_action?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_anticipations_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_anticipations_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      member_chunks: {
+        Row: {
+          chunk_index: number
+          created_at: string
+          document_id: string
+          embedded_at: string | null
+          embedding: string | null
+          id: string
+          kind: string
+          masked_text: string
+          member_id: string
+          model_version: string | null
+          observed_at: string | null
+          tsv: unknown
+        }
+        Insert: {
+          chunk_index?: number
+          created_at?: string
+          document_id: string
+          embedded_at?: string | null
+          embedding?: string | null
+          id?: string
+          kind: string
+          masked_text: string
+          member_id: string
+          model_version?: string | null
+          observed_at?: string | null
+          tsv?: unknown
+        }
+        Update: {
+          chunk_index?: number
+          created_at?: string
+          document_id?: string
+          embedded_at?: string | null
+          embedding?: string | null
+          id?: string
+          kind?: string
+          masked_text?: string
+          member_id?: string
+          model_version?: string | null
+          observed_at?: string | null
+          tsv?: unknown
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_chunks_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "member_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_chunks_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      member_documents: {
+        Row: {
+          created_at: string
+          from_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          run_id: string | null
+          source: string
+          source_ref: Json
+          text: string
+          title: string | null
+          to_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          from_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          run_id?: string | null
+          source: string
+          source_ref?: Json
+          text: string
+          title?: string | null
+          to_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          from_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          run_id?: string | null
+          source?: string
+          source_ref?: Json
+          text?: string
+          title?: string | null
+          to_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_documents_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      member_events: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2024_01: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2024_02: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2024_03: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2024_04: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2024_05: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2024_06: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2024_07: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2024_08: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2024_09: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2024_10: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2024_11: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2024_12: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2025_01: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2025_02: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2025_03: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2025_04: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2025_05: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2025_06: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2025_07: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2025_08: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2025_09: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2025_10: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2025_11: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2025_12: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2026_01: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2026_02: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2026_03: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2026_04: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2026_05: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2026_06: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2026_07: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2026_08: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2026_09: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2026_10: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2026_11: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2026_12: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2027_01: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2027_02: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_2027_03: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_events_default: {
+        Row: {
+          actor: string | null
+          created_at: string
+          expires_at: string | null
+          id: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref: Json
+          summary: string
+          tone: string | null
+          weight: number
+        }
+        Insert: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind: string
+          member_id: string
+          occurred_at: string
+          source: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Update: {
+          actor?: string | null
+          created_at?: string
+          expires_at?: string | null
+          id?: string
+          kind?: string
+          member_id?: string
+          occurred_at?: string
+          source?: string
+          source_ref?: Json
+          summary?: string
+          tone?: string | null
+          weight?: number
+        }
+        Relationships: []
+      }
+      member_facts: {
+        Row: {
+          confidence: number
+          created_at: string
+          created_by: string | null
+          evidence: Json
+          facet: string
+          id: string
+          key: string
+          member_id: string
+          observed_at: string
+          polarity: string
+          run_id: string | null
+          source: string
+          superseded_by: string | null
+          valid_until: string | null
+          value: string
+          value_json: Json | null
+        }
+        Insert: {
+          confidence?: number
+          created_at?: string
+          created_by?: string | null
+          evidence?: Json
+          facet: string
+          id?: string
+          key?: string
+          member_id: string
+          observed_at?: string
+          polarity?: string
+          run_id?: string | null
+          source: string
+          superseded_by?: string | null
+          valid_until?: string | null
+          value: string
+          value_json?: Json | null
+        }
+        Update: {
+          confidence?: number
+          created_at?: string
+          created_by?: string | null
+          evidence?: Json
+          facet?: string
+          id?: string
+          key?: string
+          member_id?: string
+          observed_at?: string
+          polarity?: string
+          run_id?: string | null
+          source?: string
+          superseded_by?: string | null
+          valid_until?: string | null
+          value?: string
+          value_json?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_facts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_facts_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_facts_superseded_by_fkey"
+            columns: ["superseded_by"]
+            isOneToOne: false
+            referencedRelation: "member_facts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      member_health_events: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          delta: number
+          evidence: Json
+          id: string
+          member_id: string
+          note: string | null
+          observed_at: string
+          run_id: string | null
+          signal: string
+          ticket_ref: Json | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          delta: number
+          evidence?: Json
+          id?: string
+          member_id: string
+          note?: string | null
+          observed_at?: string
+          run_id?: string | null
+          signal: string
+          ticket_ref?: Json | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          delta?: number
+          evidence?: Json
+          id?: string
+          member_id?: string
+          note?: string | null
+          observed_at?: string
+          run_id?: string | null
+          signal?: string
+          ticket_ref?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_health_events_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_health_events_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_health_events_signal_fkey"
+            columns: ["signal"]
+            isOneToOne: false
+            referencedRelation: "member_health_policy"
+            referencedColumns: ["signal"]
+          },
+        ]
+      }
+      member_health_policy: {
+        Row: {
+          delta: number
+          half_life_days: number
+          label: string
+          signal: string
+          updated_at: string
+        }
+        Insert: {
+          delta: number
+          half_life_days: number
+          label: string
+          signal: string
+          updated_at?: string
+        }
+        Update: {
+          delta?: number
+          half_life_days?: number
+          label?: string
+          signal?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      member_people: {
+        Row: {
+          can_request: boolean
+          created_at: string
+          created_by: string | null
+          email: string | null
+          id: string
+          member_id: string
+          name: string
+          note: string | null
+          phone_e164: string | null
+          relation: string
+          updated_at: string
+        }
+        Insert: {
+          can_request?: boolean
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          id?: string
+          member_id: string
+          name: string
+          note?: string | null
+          phone_e164?: string | null
+          relation: string
+          updated_at?: string
+        }
+        Update: {
+          can_request?: boolean
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          id?: string
+          member_id?: string
+          name?: string
+          note?: string | null
+          phone_e164?: string | null
+          relation?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_people_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_people_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      member_relations: {
+        Row: {
+          entity_id: string
+          entity_kind: string
+          entity_label: string
+          evidence: Json
+          evidence_count: number
+          first_seen_at: string
+          id: string
+          last_seen_at: string
+          member_id: string
+          relation: string
+          strength: number
+          updated_at: string
+        }
+        Insert: {
+          entity_id: string
+          entity_kind: string
+          entity_label: string
+          evidence?: Json
+          evidence_count?: number
+          first_seen_at?: string
+          id?: string
+          last_seen_at?: string
+          member_id: string
+          relation: string
+          strength?: number
+          updated_at?: string
+        }
+        Update: {
+          entity_id?: string
+          entity_kind?: string
+          entity_label?: string
+          evidence?: Json
+          evidence_count?: number
+          first_seen_at?: string
+          id?: string
+          last_seen_at?: string
+          member_id?: string
+          relation?: string
+          strength?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_relations_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      member_snapshot: {
+        Row: {
+          built_at: string
+          data: Json
+          member_id: string
+          run_id: string | null
+          version: number
+        }
+        Insert: {
+          built_at?: string
+          data?: Json
+          member_id: string
+          run_id?: string | null
+          version?: number
+        }
+        Update: {
+          built_at?: string
+          data?: Json
+          member_id?: string
+          run_id?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_snapshot_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: true
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      members: {
+        Row: {
+          alt_phones: string[]
+          app_member_id: string | null
+          consent: Json
+          created_at: string
+          freshdesk_contact_id: string | null
+          full_name: string
+          id: string
+          identity_status: string
+          import_raw: Json
+          membership_amount_inr: number | null
+          membership_end: string | null
+          membership_start: string | null
+          membership_status: string | null
+          membership_type: string | null
+          primary_phone: string | null
+          queendom_id: string | null
+          sources: string[]
+          tier: string | null
+          updated_at: string
+          wa_invite_link: string | null
+          zoho_customer_id: string | null
+        }
+        Insert: {
+          alt_phones?: string[]
+          app_member_id?: string | null
+          consent?: Json
+          created_at?: string
+          freshdesk_contact_id?: string | null
+          full_name: string
+          id?: string
+          identity_status?: string
+          import_raw?: Json
+          membership_amount_inr?: number | null
+          membership_end?: string | null
+          membership_start?: string | null
+          membership_status?: string | null
+          membership_type?: string | null
+          primary_phone?: string | null
+          queendom_id?: string | null
+          sources?: string[]
+          tier?: string | null
+          updated_at?: string
+          wa_invite_link?: string | null
+          zoho_customer_id?: string | null
+        }
+        Update: {
+          alt_phones?: string[]
+          app_member_id?: string | null
+          consent?: Json
+          created_at?: string
+          freshdesk_contact_id?: string | null
+          full_name?: string
+          id?: string
+          identity_status?: string
+          import_raw?: Json
+          membership_amount_inr?: number | null
+          membership_end?: string | null
+          membership_start?: string | null
+          membership_status?: string | null
+          membership_type?: string | null
+          primary_phone?: string | null
+          queendom_id?: string | null
+          sources?: string[]
+          tier?: string | null
+          updated_at?: string
+          wa_invite_link?: string | null
+          zoho_customer_id?: string | null
         }
         Relationships: []
       }
@@ -4270,204 +4654,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      revival_candidates: {
-        Row: {
-          ai_reasoning: string
-          assigned_to: string | null
-          created_at: string
-          id: string
-          lead_id: string
-          resolved_at: string | null
-          resolved_by: string | null
-          status: string
-          suggested_revive_at: string | null
-          trigger_status: string
-          verdict: string
-        }
-        Insert: {
-          ai_reasoning: string
-          assigned_to?: string | null
-          created_at?: string
-          id?: string
-          lead_id: string
-          resolved_at?: string | null
-          resolved_by?: string | null
-          status?: string
-          suggested_revive_at?: string | null
-          trigger_status: string
-          verdict: string
-        }
-        Update: {
-          ai_reasoning?: string
-          assigned_to?: string | null
-          created_at?: string
-          id?: string
-          lead_id?: string
-          resolved_at?: string | null
-          resolved_by?: string | null
-          status?: string
-          suggested_revive_at?: string | null
-          trigger_status?: string
-          verdict?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "revival_candidates_assigned_to_fkey"
-            columns: ["assigned_to"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "revival_candidates_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "revival_candidates_resolved_by_fkey"
-            columns: ["resolved_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      revival_policies: {
-        Row: {
-          active: boolean
-          created_at: string
-          daily_cap_per_agent: number
-          silence_days: number
-          trigger_status: string
-          updated_at: string
-        }
-        Insert: {
-          active?: boolean
-          created_at?: string
-          daily_cap_per_agent?: number
-          silence_days: number
-          trigger_status: string
-          updated_at?: string
-        }
-        Update: {
-          active?: boolean
-          created_at?: string
-          daily_cap_per_agent?: number
-          silence_days?: number
-          trigger_status?: string
-          updated_at?: string
-        }
-        Relationships: []
-      }
-      service_cases: {
-        Row: {
-          category: string
-          city: string | null
-          country: string | null
-          created_at: string
-          created_by: string | null
-          domain: Database["public"]["Enums"]["app_domain"]
-          embedding: string | null
-          id: string
-          is_featured: boolean
-          outcome_note: string | null
-          search_vector: unknown
-          sort_order: number
-          summary: string
-          tags: string[]
-          title: string
-          updated_at: string
-        }
-        Insert: {
-          category: string
-          city?: string | null
-          country?: string | null
-          created_at?: string
-          created_by?: string | null
-          domain: Database["public"]["Enums"]["app_domain"]
-          embedding?: string | null
-          id?: string
-          is_featured?: boolean
-          outcome_note?: string | null
-          search_vector?: unknown
-          sort_order?: number
-          summary: string
-          tags?: string[]
-          title: string
-          updated_at?: string
-        }
-        Update: {
-          category?: string
-          city?: string | null
-          country?: string | null
-          created_at?: string
-          created_by?: string | null
-          domain?: Database["public"]["Enums"]["app_domain"]
-          embedding?: string | null
-          id?: string
-          is_featured?: boolean
-          outcome_note?: string | null
-          search_vector?: unknown
-          sort_order?: number
-          summary?: string
-          tags?: string[]
-          title?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "service_cases_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      sla_policies: {
-        Row: {
-          active: boolean
-          auto_task: boolean
-          channels: string[]
-          code: string
-          created_at: string
-          hours_mode: string
-          recipient_role: string
-          threshold_minutes: number
-          trigger_kind: string
-          trigger_value: string
-          updated_at: string
-        }
-        Insert: {
-          active?: boolean
-          auto_task?: boolean
-          channels?: string[]
-          code: string
-          created_at?: string
-          hours_mode: string
-          recipient_role: string
-          threshold_minutes?: number
-          trigger_kind: string
-          trigger_value: string
-          updated_at?: string
-        }
-        Update: {
-          active?: boolean
-          auto_task?: boolean
-          channels?: string[]
-          code?: string
-          created_at?: string
-          hours_mode?: string
-          recipient_role?: string
-          threshold_minutes?: number
-          trigger_kind?: string
-          trigger_value?: string
-          updated_at?: string
-        }
-        Relationships: []
       }
       subscription_password_reveals: {
         Row: {
@@ -4869,39 +5055,6 @@ export type Database = {
             foreignKeyName: "task_events_task_id_fkey"
             columns: ["task_id"]
             isOneToOne: false
-            referencedRelation: "tasks"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      task_gia_meta: {
-        Row: {
-          call_outcome: string | null
-          lead_id: string
-          task_id: string
-        }
-        Insert: {
-          call_outcome?: string | null
-          lead_id: string
-          task_id: string
-        }
-        Update: {
-          call_outcome?: string | null
-          lead_id?: string
-          task_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "task_gia_meta_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "task_gia_meta_task_id_fkey"
-            columns: ["task_id"]
-            isOneToOne: true
             referencedRelation: "tasks"
             referencedColumns: ["id"]
           },
@@ -5313,13 +5466,13 @@ export type Database = {
           amount_inr: number | null
           category: string
           city: string | null
-          client_id: string | null
           closed_at: string | null
           created_at: string
           created_by: string | null
           id: string
           invoice_paths: string[]
           lead_id: string | null
+          member_id: string | null
           note: string | null
           outcome: string
           service: string | null
@@ -5335,13 +5488,13 @@ export type Database = {
           amount_inr?: number | null
           category: string
           city?: string | null
-          client_id?: string | null
           closed_at?: string | null
           created_at?: string
           created_by?: string | null
           id?: string
           invoice_paths?: string[]
           lead_id?: string | null
+          member_id?: string | null
           note?: string | null
           outcome?: string
           service?: string | null
@@ -5357,13 +5510,13 @@ export type Database = {
           amount_inr?: number | null
           category?: string
           city?: string | null
-          client_id?: string | null
           closed_at?: string | null
           created_at?: string
           created_by?: string | null
           id?: string
           invoice_paths?: string[]
           lead_id?: string | null
+          member_id?: string | null
           note?: string | null
           outcome?: string
           service?: string | null
@@ -5382,13 +5535,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "vendor_engagements_client_id_fkey"
-            columns: ["client_id"]
-            isOneToOne: false
-            referencedRelation: "clients"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "vendor_engagements_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
@@ -5396,10 +5542,10 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "vendor_engagements_lead_id_fkey"
-            columns: ["lead_id"]
+            foreignKeyName: "vendor_engagements_member_id_fkey"
+            columns: ["member_id"]
             isOneToOne: false
-            referencedRelation: "leads"
+            referencedRelation: "members"
             referencedColumns: ["id"]
           },
           {
@@ -5580,238 +5726,6 @@ export type Database = {
         }
         Relationships: []
       }
-      whatsapp_conversation_reads: {
-        Row: {
-          agent_id: string
-          conversation_id: string
-          id: string
-          last_read_at: string
-        }
-        Insert: {
-          agent_id: string
-          conversation_id: string
-          id?: string
-          last_read_at?: string
-        }
-        Update: {
-          agent_id?: string
-          conversation_id?: string
-          id?: string
-          last_read_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "whatsapp_conversation_reads_agent_id_fkey"
-            columns: ["agent_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "whatsapp_conversation_reads_conversation_id_fkey"
-            columns: ["conversation_id"]
-            isOneToOne: false
-            referencedRelation: "whatsapp_conversations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      whatsapp_conversations: {
-        Row: {
-          bot_active: boolean
-          bot_paused_at: string | null
-          bot_paused_by: string | null
-          created_at: string
-          id: string
-          last_message_at: string | null
-          lead_id: string
-          phone: string
-          status: string
-          updated_at: string
-          wa_id: string
-        }
-        Insert: {
-          bot_active?: boolean
-          bot_paused_at?: string | null
-          bot_paused_by?: string | null
-          created_at?: string
-          id?: string
-          last_message_at?: string | null
-          lead_id: string
-          phone: string
-          status?: string
-          updated_at?: string
-          wa_id: string
-        }
-        Update: {
-          bot_active?: boolean
-          bot_paused_at?: string | null
-          bot_paused_by?: string | null
-          created_at?: string
-          id?: string
-          last_message_at?: string | null
-          lead_id?: string
-          phone?: string
-          status?: string
-          updated_at?: string
-          wa_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "whatsapp_conversations_bot_paused_by_fkey"
-            columns: ["bot_paused_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "whatsapp_conversations_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: true
-            referencedRelation: "leads"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      whatsapp_messages: {
-        Row: {
-          content: string | null
-          conversation_id: string
-          created_at: string
-          direction: string
-          id: string
-          is_bot: boolean
-          lead_id: string
-          media_mime_type: string | null
-          media_url: string | null
-          message_type: string
-          sender_id: string | null
-          sender_type: string
-          status: string | null
-          status_at: string | null
-          wa_message_id: string | null
-        }
-        Insert: {
-          content?: string | null
-          conversation_id: string
-          created_at?: string
-          direction: string
-          id?: string
-          is_bot?: boolean
-          lead_id: string
-          media_mime_type?: string | null
-          media_url?: string | null
-          message_type: string
-          sender_id?: string | null
-          sender_type: string
-          status?: string | null
-          status_at?: string | null
-          wa_message_id?: string | null
-        }
-        Update: {
-          content?: string | null
-          conversation_id?: string
-          created_at?: string
-          direction?: string
-          id?: string
-          is_bot?: boolean
-          lead_id?: string
-          media_mime_type?: string | null
-          media_url?: string | null
-          message_type?: string
-          sender_id?: string | null
-          sender_type?: string
-          status?: string | null
-          status_at?: string | null
-          wa_message_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "whatsapp_messages_conversation_id_fkey"
-            columns: ["conversation_id"]
-            isOneToOne: false
-            referencedRelation: "whatsapp_conversations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "whatsapp_messages_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "whatsapp_messages_sender_id_fkey"
-            columns: ["sender_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      whatsapp_notification_logs: {
-        Row: {
-          agent_name: string | null
-          created_at: string
-          delivered: boolean
-          domain: Database["public"]["Enums"]["app_domain"] | null
-          gupshup_body: string | null
-          gupshup_status: number | null
-          id: string
-          lead_id: string | null
-          lead_name: string | null
-          lead_phone: string | null
-          recipient_id: string | null
-          recipient_phone: string
-          type: string
-        }
-        Insert: {
-          agent_name?: string | null
-          created_at?: string
-          delivered?: boolean
-          domain?: Database["public"]["Enums"]["app_domain"] | null
-          gupshup_body?: string | null
-          gupshup_status?: number | null
-          id?: string
-          lead_id?: string | null
-          lead_name?: string | null
-          lead_phone?: string | null
-          recipient_id?: string | null
-          recipient_phone: string
-          type: string
-        }
-        Update: {
-          agent_name?: string | null
-          created_at?: string
-          delivered?: boolean
-          domain?: Database["public"]["Enums"]["app_domain"] | null
-          gupshup_body?: string | null
-          gupshup_status?: number | null
-          id?: string
-          lead_id?: string | null
-          lead_name?: string | null
-          lead_phone?: string | null
-          recipient_id?: string | null
-          recipient_phone?: string
-          type?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "whatsapp_notification_logs_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "whatsapp_notification_logs_recipient_id_fkey"
-            columns: ["recipient_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
     }
     Views: {
       [_ in never]: never
@@ -5869,7 +5783,7 @@ export type Database = {
         Args: { p_from: string; p_to: string }
         Returns: number
       }
-      can_access_client_queendom: {
+      can_access_member_queendom: {
         Args: { p_queendom: string }
         Returns: boolean
       }
@@ -5877,7 +5791,6 @@ export type Database = {
         Args: { p_lead_id: string }
         Returns: boolean
       }
-      client_visible: { Args: { p_client_id: string }; Returns: boolean }
       cold_lead_cutoff: { Args: never; Returns: string }
       count_vendors: {
         Args: { p_category?: string; p_query?: string; p_status?: string }
@@ -6485,6 +6398,7 @@ export type Database = {
       }
       get_wa_unread_count: { Args: never; Returns: number }
       lead_phone_key: { Args: { p_phone: string }; Returns: string }
+      member_visible: { Args: { p_member_id: string }; Returns: boolean }
       search_vendors: {
         Args: {
           p_category?: string
@@ -6561,13 +6475,13 @@ export type Database = {
     Tables: {
       extraction_runs: {
         Row: {
-          client_id: string | null
           cost_usd: number | null
           error: string | null
           finished_at: string | null
           id: string
           input_ref: Json
           kind: string
+          member_id: string | null
           model: string | null
           ok: boolean | null
           output: Json
@@ -6577,13 +6491,13 @@ export type Database = {
           tokens_out: number | null
         }
         Insert: {
-          client_id?: string | null
           cost_usd?: number | null
           error?: string | null
           finished_at?: string | null
           id?: string
           input_ref?: Json
           kind: string
+          member_id?: string | null
           model?: string | null
           ok?: boolean | null
           output?: Json
@@ -6593,13 +6507,13 @@ export type Database = {
           tokens_out?: number | null
         }
         Update: {
-          client_id?: string | null
           cost_usd?: number | null
           error?: string | null
           finished_at?: string | null
           id?: string
           input_ref?: Json
           kind?: string
+          member_id?: string | null
           model?: string | null
           ok?: boolean | null
           output?: Json
@@ -6689,10 +6603,10 @@ export type Database = {
           actor_id: string | null
           actor_kind: string
           body: string | null
-          client_id: string
           created_at: string
           event_type: string
           id: string
+          member_id: string
           meta: Json
           queendom_id: string | null
           run_id: string | null
@@ -6702,10 +6616,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind: string
           body?: string | null
-          client_id: string
           created_at?: string
           event_type: string
           id?: string
+          member_id: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -6715,10 +6629,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind?: string
           body?: string | null
-          client_id?: string
           created_at?: string
           event_type?: string
           id?: string
+          member_id?: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -6731,10 +6645,10 @@ export type Database = {
           actor_id: string | null
           actor_kind: string
           body: string | null
-          client_id: string
           created_at: string
           event_type: string
           id: string
+          member_id: string
           meta: Json
           queendom_id: string | null
           run_id: string | null
@@ -6744,10 +6658,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind: string
           body?: string | null
-          client_id: string
           created_at?: string
           event_type: string
           id?: string
+          member_id: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -6757,10 +6671,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind?: string
           body?: string | null
-          client_id?: string
           created_at?: string
           event_type?: string
           id?: string
+          member_id?: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -6773,10 +6687,10 @@ export type Database = {
           actor_id: string | null
           actor_kind: string
           body: string | null
-          client_id: string
           created_at: string
           event_type: string
           id: string
+          member_id: string
           meta: Json
           queendom_id: string | null
           run_id: string | null
@@ -6786,10 +6700,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind: string
           body?: string | null
-          client_id: string
           created_at?: string
           event_type: string
           id?: string
+          member_id: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -6799,10 +6713,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind?: string
           body?: string | null
-          client_id?: string
           created_at?: string
           event_type?: string
           id?: string
+          member_id?: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -6815,10 +6729,10 @@ export type Database = {
           actor_id: string | null
           actor_kind: string
           body: string | null
-          client_id: string
           created_at: string
           event_type: string
           id: string
+          member_id: string
           meta: Json
           queendom_id: string | null
           run_id: string | null
@@ -6828,10 +6742,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind: string
           body?: string | null
-          client_id: string
           created_at?: string
           event_type: string
           id?: string
+          member_id: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -6841,10 +6755,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind?: string
           body?: string | null
-          client_id?: string
           created_at?: string
           event_type?: string
           id?: string
+          member_id?: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -6857,10 +6771,10 @@ export type Database = {
           actor_id: string | null
           actor_kind: string
           body: string | null
-          client_id: string
           created_at: string
           event_type: string
           id: string
+          member_id: string
           meta: Json
           queendom_id: string | null
           run_id: string | null
@@ -6870,10 +6784,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind: string
           body?: string | null
-          client_id: string
           created_at?: string
           event_type: string
           id?: string
+          member_id: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -6883,10 +6797,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind?: string
           body?: string | null
-          client_id?: string
           created_at?: string
           event_type?: string
           id?: string
+          member_id?: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -6899,10 +6813,10 @@ export type Database = {
           actor_id: string | null
           actor_kind: string
           body: string | null
-          client_id: string
           created_at: string
           event_type: string
           id: string
+          member_id: string
           meta: Json
           queendom_id: string | null
           run_id: string | null
@@ -6912,10 +6826,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind: string
           body?: string | null
-          client_id: string
           created_at?: string
           event_type: string
           id?: string
+          member_id: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -6925,10 +6839,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind?: string
           body?: string | null
-          client_id?: string
           created_at?: string
           event_type?: string
           id?: string
+          member_id?: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -6941,10 +6855,10 @@ export type Database = {
           actor_id: string | null
           actor_kind: string
           body: string | null
-          client_id: string
           created_at: string
           event_type: string
           id: string
+          member_id: string
           meta: Json
           queendom_id: string | null
           run_id: string | null
@@ -6954,10 +6868,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind: string
           body?: string | null
-          client_id: string
           created_at?: string
           event_type: string
           id?: string
+          member_id: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -6967,10 +6881,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind?: string
           body?: string | null
-          client_id?: string
           created_at?: string
           event_type?: string
           id?: string
+          member_id?: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -6983,10 +6897,10 @@ export type Database = {
           actor_id: string | null
           actor_kind: string
           body: string | null
-          client_id: string
           created_at: string
           event_type: string
           id: string
+          member_id: string
           meta: Json
           queendom_id: string | null
           run_id: string | null
@@ -6996,10 +6910,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind: string
           body?: string | null
-          client_id: string
           created_at?: string
           event_type: string
           id?: string
+          member_id: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -7009,10 +6923,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind?: string
           body?: string | null
-          client_id?: string
           created_at?: string
           event_type?: string
           id?: string
+          member_id?: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -7025,10 +6939,10 @@ export type Database = {
           actor_id: string | null
           actor_kind: string
           body: string | null
-          client_id: string
           created_at: string
           event_type: string
           id: string
+          member_id: string
           meta: Json
           queendom_id: string | null
           run_id: string | null
@@ -7038,10 +6952,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind: string
           body?: string | null
-          client_id: string
           created_at?: string
           event_type: string
           id?: string
+          member_id: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -7051,10 +6965,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind?: string
           body?: string | null
-          client_id?: string
           created_at?: string
           event_type?: string
           id?: string
+          member_id?: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -7067,10 +6981,10 @@ export type Database = {
           actor_id: string | null
           actor_kind: string
           body: string | null
-          client_id: string
           created_at: string
           event_type: string
           id: string
+          member_id: string
           meta: Json
           queendom_id: string | null
           run_id: string | null
@@ -7080,10 +6994,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind: string
           body?: string | null
-          client_id: string
           created_at?: string
           event_type: string
           id?: string
+          member_id: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -7093,10 +7007,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind?: string
           body?: string | null
-          client_id?: string
           created_at?: string
           event_type?: string
           id?: string
+          member_id?: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -7109,10 +7023,10 @@ export type Database = {
           actor_id: string | null
           actor_kind: string
           body: string | null
-          client_id: string
           created_at: string
           event_type: string
           id: string
+          member_id: string
           meta: Json
           queendom_id: string | null
           run_id: string | null
@@ -7122,10 +7036,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind: string
           body?: string | null
-          client_id: string
           created_at?: string
           event_type: string
           id?: string
+          member_id: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -7135,10 +7049,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind?: string
           body?: string | null
-          client_id?: string
           created_at?: string
           event_type?: string
           id?: string
+          member_id?: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -7151,10 +7065,10 @@ export type Database = {
           actor_id: string | null
           actor_kind: string
           body: string | null
-          client_id: string
           created_at: string
           event_type: string
           id: string
+          member_id: string
           meta: Json
           queendom_id: string | null
           run_id: string | null
@@ -7164,10 +7078,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind: string
           body?: string | null
-          client_id: string
           created_at?: string
           event_type: string
           id?: string
+          member_id: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -7177,10 +7091,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind?: string
           body?: string | null
-          client_id?: string
           created_at?: string
           event_type?: string
           id?: string
+          member_id?: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -7193,10 +7107,10 @@ export type Database = {
           actor_id: string | null
           actor_kind: string
           body: string | null
-          client_id: string
           created_at: string
           event_type: string
           id: string
+          member_id: string
           meta: Json
           queendom_id: string | null
           run_id: string | null
@@ -7206,10 +7120,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind: string
           body?: string | null
-          client_id: string
           created_at?: string
           event_type: string
           id?: string
+          member_id: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -7219,10 +7133,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind?: string
           body?: string | null
-          client_id?: string
           created_at?: string
           event_type?: string
           id?: string
+          member_id?: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -7235,10 +7149,10 @@ export type Database = {
           actor_id: string | null
           actor_kind: string
           body: string | null
-          client_id: string
           created_at: string
           event_type: string
           id: string
+          member_id: string
           meta: Json
           queendom_id: string | null
           run_id: string | null
@@ -7248,10 +7162,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind: string
           body?: string | null
-          client_id: string
           created_at?: string
           event_type: string
           id?: string
+          member_id: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -7261,10 +7175,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind?: string
           body?: string | null
-          client_id?: string
           created_at?: string
           event_type?: string
           id?: string
+          member_id?: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -7277,10 +7191,10 @@ export type Database = {
           actor_id: string | null
           actor_kind: string
           body: string | null
-          client_id: string
           created_at: string
           event_type: string
           id: string
+          member_id: string
           meta: Json
           queendom_id: string | null
           run_id: string | null
@@ -7290,10 +7204,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind: string
           body?: string | null
-          client_id: string
           created_at?: string
           event_type: string
           id?: string
+          member_id: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -7303,10 +7217,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind?: string
           body?: string | null
-          client_id?: string
           created_at?: string
           event_type?: string
           id?: string
+          member_id?: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -7319,10 +7233,10 @@ export type Database = {
           actor_id: string | null
           actor_kind: string
           body: string | null
-          client_id: string
           created_at: string
           event_type: string
           id: string
+          member_id: string
           meta: Json
           queendom_id: string | null
           run_id: string | null
@@ -7332,10 +7246,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind: string
           body?: string | null
-          client_id: string
           created_at?: string
           event_type: string
           id?: string
+          member_id: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -7345,10 +7259,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind?: string
           body?: string | null
-          client_id?: string
           created_at?: string
           event_type?: string
           id?: string
+          member_id?: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -7361,10 +7275,10 @@ export type Database = {
           actor_id: string | null
           actor_kind: string
           body: string | null
-          client_id: string
           created_at: string
           event_type: string
           id: string
+          member_id: string
           meta: Json
           queendom_id: string | null
           run_id: string | null
@@ -7374,10 +7288,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind: string
           body?: string | null
-          client_id: string
           created_at?: string
           event_type: string
           id?: string
+          member_id: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -7387,10 +7301,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind?: string
           body?: string | null
-          client_id?: string
           created_at?: string
           event_type?: string
           id?: string
+          member_id?: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -7403,10 +7317,10 @@ export type Database = {
           actor_id: string | null
           actor_kind: string
           body: string | null
-          client_id: string
           created_at: string
           event_type: string
           id: string
+          member_id: string
           meta: Json
           queendom_id: string | null
           run_id: string | null
@@ -7416,10 +7330,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind: string
           body?: string | null
-          client_id: string
           created_at?: string
           event_type: string
           id?: string
+          member_id: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -7429,10 +7343,10 @@ export type Database = {
           actor_id?: string | null
           actor_kind?: string
           body?: string | null
-          client_id?: string
           created_at?: string
           event_type?: string
           id?: string
+          member_id?: string
           meta?: Json
           queendom_id?: string | null
           run_id?: string | null
@@ -7490,16 +7404,37 @@ export type Database = {
           },
         ]
       }
+      ticket_settings: {
+        Row: {
+          key: string
+          updated_at: string
+          updated_by: string | null
+          value: Json
+        }
+        Insert: {
+          key: string
+          updated_at?: string
+          updated_by?: string | null
+          value?: Json
+        }
+        Update: {
+          key?: string
+          updated_at?: string
+          updated_by?: string | null
+          value?: Json
+        }
+        Relationships: []
+      }
       ticket_sla_policies: {
         Row: {
           business_hours: boolean
           category: string | null
-          client_silence_min: number
           created_at: string
           escalation: Json
           first_response_min: number
           id: string
           is_active: boolean
+          member_silence_min: number
           priority: string | null
           queendom_id: string | null
           resolve_target_min: number
@@ -7512,12 +7447,12 @@ export type Database = {
         Insert: {
           business_hours?: boolean
           category?: string | null
-          client_silence_min: number
           created_at?: string
           escalation?: Json
           first_response_min: number
           id?: string
           is_active?: boolean
+          member_silence_min: number
           priority?: string | null
           queendom_id?: string | null
           resolve_target_min: number
@@ -7530,12 +7465,12 @@ export type Database = {
         Update: {
           business_hours?: boolean
           category?: string | null
-          client_silence_min?: number
           created_at?: string
           escalation?: Json
           first_response_min?: number
           id?: string
           is_active?: boolean
+          member_silence_min?: number
           priority?: string | null
           queendom_id?: string | null
           resolve_target_min?: number
@@ -7562,7 +7497,6 @@ export type Database = {
           brief: Json
           category: string
           checklist: Json
-          client_id: string
           closed_at: string | null
           created_at: string
           created_by: string | null
@@ -7574,7 +7508,8 @@ export type Database = {
           handoff_department: string | null
           id: string
           item: string | null
-          last_client_update_at: string | null
+          last_member_update_at: string | null
+          member_id: string
           money: Json
           next_update_due_at: string | null
           next_wake_at: string | null
@@ -7593,6 +7528,7 @@ export type Database = {
           status: string
           sub_category: string | null
           summary: string | null
+          tags: string[]
           ticket_no: string
           title: string
           updated_at: string
@@ -7605,7 +7541,6 @@ export type Database = {
           brief?: Json
           category: string
           checklist?: Json
-          client_id: string
           closed_at?: string | null
           created_at?: string
           created_by?: string | null
@@ -7617,7 +7552,8 @@ export type Database = {
           handoff_department?: string | null
           id?: string
           item?: string | null
-          last_client_update_at?: string | null
+          last_member_update_at?: string | null
+          member_id: string
           money?: Json
           next_update_due_at?: string | null
           next_wake_at?: string | null
@@ -7636,6 +7572,7 @@ export type Database = {
           status?: string
           sub_category?: string | null
           summary?: string | null
+          tags?: string[]
           ticket_no?: string
           title: string
           updated_at?: string
@@ -7648,7 +7585,6 @@ export type Database = {
           brief?: Json
           category?: string
           checklist?: Json
-          client_id?: string
           closed_at?: string | null
           created_at?: string
           created_by?: string | null
@@ -7660,7 +7596,8 @@ export type Database = {
           handoff_department?: string | null
           id?: string
           item?: string | null
-          last_client_update_at?: string | null
+          last_member_update_at?: string | null
+          member_id?: string
           money?: Json
           next_update_due_at?: string | null
           next_wake_at?: string | null
@@ -7679,6 +7616,7 @@ export type Database = {
           status?: string
           sub_category?: string | null
           summary?: string | null
+          tags?: string[]
           ticket_no?: string
           title?: string
           updated_at?: string
@@ -7716,12 +7654,12 @@ export type Database = {
       wag_contacts: {
         Row: {
           business_name: string | null
-          client_id: string | null
           created_at: string
           first_seen_at: string
           jid: string
           last_seen_at: string
           lid: string | null
+          member_id: string | null
           participant_role: string
           phone: string | null
           push_name: string | null
@@ -7731,12 +7669,12 @@ export type Database = {
         }
         Insert: {
           business_name?: string | null
-          client_id?: string | null
           created_at?: string
           first_seen_at?: string
           jid: string
           last_seen_at?: string
           lid?: string | null
+          member_id?: string | null
           participant_role?: string
           phone?: string | null
           push_name?: string | null
@@ -7746,12 +7684,12 @@ export type Database = {
         }
         Update: {
           business_name?: string | null
-          client_id?: string | null
           created_at?: string
           first_seen_at?: string
           jid?: string
           last_seen_at?: string
           lid?: string | null
+          member_id?: string | null
           participant_role?: string
           phone?: string | null
           push_name?: string | null
@@ -7787,13 +7725,13 @@ export type Database = {
       }
       wag_groups: {
         Row: {
-          client_id: string | null
           created_at: string
           description: string | null
           group_jid: string
           group_kind: string
           is_active: boolean
           member_count: number | null
+          member_id: string | null
           owner_jid: string | null
           subject: string | null
           updated_at: string
@@ -7801,13 +7739,13 @@ export type Database = {
           watcher_joined_at: string | null
         }
         Insert: {
-          client_id?: string | null
           created_at?: string
           description?: string | null
           group_jid: string
           group_kind?: string
           is_active?: boolean
           member_count?: number | null
+          member_id?: string | null
           owner_jid?: string | null
           subject?: string | null
           updated_at?: string
@@ -7815,13 +7753,13 @@ export type Database = {
           watcher_joined_at?: string | null
         }
         Update: {
-          client_id?: string | null
           created_at?: string
           description?: string | null
           group_jid?: string
           group_kind?: string
           is_active?: boolean
           member_count?: number | null
+          member_id?: string | null
           owner_jid?: string | null
           subject?: string | null
           updated_at?: string
@@ -8851,7 +8789,6 @@ export type Database = {
           brief: Json
           category: string
           checklist: Json
-          client_id: string
           closed_at: string | null
           created_at: string
           created_by: string | null
@@ -8863,7 +8800,8 @@ export type Database = {
           handoff_department: string | null
           id: string
           item: string | null
-          last_client_update_at: string | null
+          last_member_update_at: string | null
+          member_id: string
           money: Json
           next_update_due_at: string | null
           next_wake_at: string | null
@@ -8882,6 +8820,7 @@ export type Database = {
           status: string
           sub_category: string | null
           summary: string | null
+          tags: string[]
           ticket_no: string
           title: string
           updated_at: string
@@ -8895,15 +8834,14 @@ export type Database = {
           isSetofReturn: false
         }
       }
-      create_ticket: {
-        Args: { p_event: Json; p_ticket: Json }
+      claim_sentinel_wakes: {
+        Args: { p_lease_min?: number; p_limit?: number; p_ticket_id?: string }
         Returns: {
           assignee_id: string | null
           bishop_id: string | null
           brief: Json
           category: string
           checklist: Json
-          client_id: string
           closed_at: string | null
           created_at: string
           created_by: string | null
@@ -8915,7 +8853,8 @@ export type Database = {
           handoff_department: string | null
           id: string
           item: string | null
-          last_client_update_at: string | null
+          last_member_update_at: string | null
+          member_id: string
           money: Json
           next_update_due_at: string | null
           next_wake_at: string | null
@@ -8934,6 +8873,60 @@ export type Database = {
           status: string
           sub_category: string | null
           summary: string | null
+          tags: string[]
+          ticket_no: string
+          title: string
+          updated_at: string
+          vendor_id: string | null
+          wake_reason: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "tickets"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      create_ticket: {
+        Args: { p_event: Json; p_ticket: Json }
+        Returns: {
+          assignee_id: string | null
+          bishop_id: string | null
+          brief: Json
+          category: string
+          checklist: Json
+          closed_at: string | null
+          created_at: string
+          created_by: string | null
+          created_by_kind: string
+          first_responded_at: string | null
+          first_response_due_at: string | null
+          freshdesk_id: number | null
+          group_jid: string | null
+          handoff_department: string | null
+          id: string
+          item: string | null
+          last_member_update_at: string | null
+          member_id: string
+          money: Json
+          next_update_due_at: string | null
+          next_wake_at: string | null
+          origin: string
+          origin_ref: Json
+          priority: string
+          priority_approved_at: string | null
+          priority_approved_by: string | null
+          proposed_by_run_id: string | null
+          queendom_id: string | null
+          requested_for: string | null
+          resolution: string | null
+          resolve_due_at: string | null
+          satisfaction: number | null
+          sentinel_state: Json
+          status: string
+          sub_category: string | null
+          summary: string | null
+          tags: string[]
           ticket_no: string
           title: string
           updated_at: string
@@ -8946,6 +8939,15 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      sentinel_sleep: {
+        Args: {
+          p_next_wake_at: string
+          p_state: Json
+          p_ticket_id: string
+          p_wake_reason: string
+        }
+        Returns: undefined
       }
       wag_add_month_partition: {
         Args: { p_month: string; p_parent: string }
@@ -9095,6 +9097,9 @@ export const Constants = {
   freshdesk: {
     Enums: {},
   },
+  gia: {
+    Enums: {},
+  },
   public: {
     Enums: {
       app_domain: [
@@ -9126,7 +9131,7 @@ export const Constants = {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HAND-WRITTEN below this line. Everything above is generated by
-//   npx supabase gen types typescript --local --schema public --schema sia
+//   npx supabase gen types typescript --linked --schema public,sia,freshdesk,gia
 // Re-generating replaces ONLY the block above; this tail must be carried over.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -9180,7 +9185,7 @@ export type NotificationType =
   | 'sla_breach_founder'
   | 'task_overdue_manager'
   | 'suggestion_resolved' // hand-extended (migration 0136); regen after apply
-  | 'ticket_assigned' | 'ticket_proposed' | 'ticket_sla_warning' | 'ticket_sla_breach' | 'ticket_client_replied' | 'ticket_client_unhappy' // hand-extended (migration 0195)
+  | 'ticket_assigned' | 'ticket_proposed' | 'ticket_sla_warning' | 'ticket_sla_breach' | 'ticket_member_replied' | 'ticket_member_unhappy' // hand-extended (migration 0195)
 
 // sla_policies CHECK-constraint unions (migration 0111)
 export type SlaTriggerKind   = 'status' | 'outcome' | 'task_due'
@@ -9203,20 +9208,20 @@ export type Profile = Omit<Database['public']['Tables']['profiles']['Row'], 'the
   // posture as `theme`/`app_icon`.
   appearance: 'light' | 'dark' | 'system'
 }
-export type AdCreative       = Database['public']['Tables']['ad_creatives']['Row']
-export type LeadActivity     = Database['public']['Tables']['lead_activities']['Row']
-export type LeadNote         = Omit<Database['public']['Tables']['lead_notes']['Row'], 'call_outcome'> & {
+export type AdCreative       = Database['gia']['Tables']['ad_creatives']['Row']
+export type LeadActivity     = Database['gia']['Tables']['lead_activities']['Row']
+export type LeadNote         = Omit<Database['gia']['Tables']['lead_notes']['Row'], 'call_outcome'> & {
   call_outcome: CallOutcome | null
 }
-export type LeadRawPayload   = Omit<Database['public']['Tables']['lead_raw_payloads']['Row'], 'payload'> & {
+export type LeadRawPayload   = Omit<Database['gia']['Tables']['lead_raw_payloads']['Row'], 'payload'> & {
   payload: Record<string, unknown>
 }
-export type LeadSlaTimer     = Database['public']['Tables']['lead_sla_timers']['Row']
+export type LeadSlaTimer     = Database['gia']['Tables']['lead_sla_timers']['Row']
 
 // SlaPolicy — config row behind the Gia follow-up engine (migration 0111).
 // Read per job run via sla-service.getSlaPolicies() — never cached at module scope.
 export type SlaPolicy = Omit<
-  Database['public']['Tables']['sla_policies']['Row'],
+  Database['gia']['Tables']['sla_policies']['Row'],
   'trigger_kind' | 'recipient_role' | 'hours_mode'
 > & {
   trigger_kind:   SlaTriggerKind
@@ -9234,7 +9239,7 @@ export type PushSubscriptionRow = Database['public']['Tables']['push_subscriptio
 
 // LeadProductEnquiry — one product enquiry from an app channel (migration 0180).
 // One lead holds many; append-only, keyed for idempotency on external_lead_id.
-export type LeadProductEnquiry = Database['public']['Tables']['lead_product_enquiries']['Row']
+export type LeadProductEnquiry = Database['gia']['Tables']['lead_product_enquiries']['Row']
 
 // NotificationPreferenceRow — one per-user channel-mute row (migration 0133).
 // Absence of a row for a (user_id, notification_key) pair means both channels ON.
@@ -9264,7 +9269,7 @@ export type TaskRemark = Database['public']['Tables']['task_remarks']['Row']
 // Lead — typed-up version with narrower field types than the raw Row
 // (the generated Row uses `string` for status/outcome columns)
 export type Lead = Omit<
-  Database['public']['Tables']['leads']['Row'],
+  Database['gia']['Tables']['leads']['Row'],
   'status' | 'last_call_outcome' | 'personal_details' | 'form_data' | 'tags' | 'domain' | 'attribution'
 > & {
   status:             LeadStatus
@@ -9281,7 +9286,7 @@ export type Lead = Omit<
 export type Deal = {
   id:            string
   lead_id:       string | null        // null for walk-in deals (no lead lifecycle)
-  client_id:     string | null        // reserved for clients module; always null for now
+  member_id:     string | null        // reserved for members module; always null for now
   contact_name:  string
   contact_phone: string               // E.164
   contact_email: string | null

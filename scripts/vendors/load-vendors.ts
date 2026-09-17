@@ -28,9 +28,9 @@
  * re-inserted by a rerun and removed again by the cleanup that always follows;
  * a merged-away vendor is never re-created. A true rebuild is --wipe.
  *
- * client_id stays NULL, honestly: the archive never carried the requester's
+ * member_id stays NULL, honestly: the archive never carried the requester's
  * identity. The only client signal in the extraction is a model-guessed
- * `client_name` on some tickets, and a name is not a join key — two Rahuls.
+ * `member_name` on some tickets, and a name is not a join key — two Rahuls.
  * clients.primary_phone (0181) is the identity, and no ticket export has it.
  * The column exists so in-app tickets can fill it from day one.
  *
@@ -77,7 +77,7 @@ const IS_LOCAL = ["localhost", "127.0.0.1", "0.0.0.0"].includes(host);
 // resolves `agent_name_raw` against the profiles that exist in the TARGET
 // database, and a local copy cannot do that: this machine has one profile, so a
 // table copy would carry 46,000 null agent links to a production that has the
-// real roster. (client_id is NOT resolved — see the header: the archive has no
+// real roster. (member_id is NOT resolved — see the header: the archive has no
 // requester identity to resolve from.)
 //
 // It just may never happen by accident. The flag names the target out loud, and
@@ -562,7 +562,7 @@ async function main() {
       engRows.push({
         vendor_id: id,
         // NULL, honestly — the archive carries no requester identity (header).
-        client_id: null,
+        member_id: null,
         lead_id: null,
         agent_id: null,                             // resolved below against profiles
         agent_name_raw: t?.agent?.trim() || null,

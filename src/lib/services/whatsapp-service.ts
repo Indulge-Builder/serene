@@ -5,6 +5,7 @@
 // in the generated Database type — client calls here are fully typed.
 
 import { createClient } from '@/lib/supabase/server';
+import { giaDb } from '@/lib/supabase/schemas';
 import { sanitizeText } from '@/lib/utils/sanitize';
 import {
   WHATSAPP_CONVERSATIONS_PAGE_SIZE,
@@ -61,7 +62,7 @@ async function attachUnreadCounts(
 ): Promise<WhatsAppConversation[]> {
   if (conversations.length === 0) return conversations;
 
-  const { data, error } = await supabase
+  const { data, error } = await giaDb(supabase)
     .from('whatsapp_conversation_reads')
     .select('conversation_id, last_read_at')
     .in('conversation_id', conversations.map((c) => c.id));
@@ -126,7 +127,7 @@ export async function getConversations(options: {
     ? { period: options.period, customFrom: options.customFrom, customTo: options.customTo }
     : undefined;
 
-  let query = supabase
+  let query = giaDb(supabase)
     .from('whatsapp_conversations')
     .select(`
       *,
@@ -171,7 +172,7 @@ export async function getConversation(
 ): Promise<WhatsAppConversation | null> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
+  const { data, error } = await giaDb(supabase)
     .from('whatsapp_conversations')
     .select(`
       *,
@@ -200,7 +201,7 @@ export async function getConversationByLeadId(
 ): Promise<WhatsAppConversation | null> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
+  const { data, error } = await giaDb(supabase)
     .from('whatsapp_conversations')
     .select(`
       *,
@@ -235,7 +236,7 @@ export async function getMessages(
   const supabase = await createClient();
   const limit    = options.limit ?? WHATSAPP_MESSAGES_PAGE_SIZE;
 
-  let query = supabase
+  let query = giaDb(supabase)
     .from('whatsapp_messages')
     .select(`
       *,
@@ -298,7 +299,7 @@ export async function markConversationRead(
 ): Promise<void> {
   const supabase = await createClient();
 
-  const { error } = await supabase
+  const { error } = await giaDb(supabase)
     .from('whatsapp_conversation_reads')
     .upsert(
       {
@@ -328,7 +329,7 @@ export async function searchConversations(
   const safe     = sanitizeText(query).trim();
   if (!safe) return [];
 
-  let dbQuery = supabase
+  let dbQuery = giaDb(supabase)
     .from('whatsapp_conversations')
     .select(`
       *,

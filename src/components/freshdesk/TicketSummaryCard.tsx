@@ -28,7 +28,7 @@ function filledCustomFields(cf: Record<string, unknown>): { key: string; value: 
 }
 
 export function TicketSummaryCard({ detail, ticketUrl }: { detail: FdTicketDetail; ticketUrl: string }) {
-  const { ticket: t, agent, group, contact, client } = detail;
+  const { ticket: t, agent, group, contact, member } = detail;
   const custom = filledCustomFields(t.custom_fields ?? {});
   const category = [t.category, t.sub_category, t.classification].filter(Boolean).join(' · ') || '—';
 
@@ -55,18 +55,18 @@ export function TicketSummaryCard({ detail, ticketUrl }: { detail: FdTicketDetai
         <InfoRow
           label="Requester"
           value={
-            client ? (
+            member ? (
               <span>
                 {t.requester_name ?? contact?.name ?? '—'}
                 <span style={{ color: 'var(--theme-text-tertiary)', fontSize: 'var(--text-xs)', marginLeft: 'var(--space-2)' }}>
-                  client record: {client.full_name}
+                  member record: {member.full_name}
                 </span>
               </span>
             ) : (
               <span>
                 {t.requester_name ?? contact?.name ?? '—'}
                 <span style={{ color: 'var(--theme-text-tertiary)', fontSize: 'var(--text-xs)', marginLeft: 'var(--space-2)' }}>
-                  not linked to a client
+                  not linked to a member
                 </span>
               </span>
             )
@@ -100,9 +100,9 @@ export function TicketSummaryCard({ detail, ticketUrl }: { detail: FdTicketDetai
             <FreshdeskAttachments attachments={t.attachments ?? []} />
           </div>
         )}
-        {client && (
+        {member && (
           <Link href={`/sia`} style={{ fontSize: 'var(--text-xs)', color: 'var(--neu-accent-deep)' }}>
-            Open the client&apos;s WhatsApp group in Sia
+            Open the member&apos;s WhatsApp group in Sia
           </Link>
         )}
       </div>

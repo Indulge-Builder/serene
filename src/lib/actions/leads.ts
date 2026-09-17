@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { giaDb } from "@/lib/supabase/schemas";
 import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -69,7 +70,7 @@ export async function addLeadCallNote(
   const supabase = await createClient();
 
   // 3. Verify access to this lead
-  const { data: lead } = await supabase
+  const { data: lead } = await giaDb(supabase)
     .from("leads")
     .select("id, status, assigned_to, domain, slug")
     .eq("id", leadId)
@@ -125,7 +126,7 @@ export async function updateLeadStatus(
   const supabase = await createClient();
 
   // 3. Fetch lead for access check
-  const { data: lead } = await supabase
+  const { data: lead } = await giaDb(supabase)
     .from("leads")
     .select("id, status, assigned_to, domain, slug")
     .eq("id", leadId)
@@ -184,7 +185,7 @@ export async function assignLead(
 
   // 3. Fetch lead + agent name in parallel — eliminates post-update SELECTs
   const [{ data: existingLead }, { data: assignedAgent }] = await Promise.all([
-    admin
+    giaDb(admin)
       .from("leads")
       .select("status, domain, slug, first_name, last_name, phone")
       .eq("id", leadId)
@@ -306,7 +307,7 @@ export async function bulkUpdateLeads(
   const admin = createAdminClient();
 
   // 3. Fetch the full selected set ONCE (admin client; per-lead access gated below).
-  const { data: leadRows } = await admin
+  const { data: leadRows } = await giaDb(admin)
     .from("leads")
     .select("id, status, assigned_to, domain, slug, first_name, last_name, phone")
     .in("id", leadIds);
@@ -390,7 +391,7 @@ export async function bulkUpdateLeads(
 
     // 5a. Domain move FIRST (mirrors updateLeadDomain: admin update + activity).
     if (willDomain) {
-      const { error: domErr } = await admin
+      const { error: domErr } = await giaDb(admin)
         .from("leads")
         .update({ domain: changes.domain })
         .eq("id", leadId);
@@ -398,7 +399,7 @@ export async function bulkUpdateLeads(
         leadFailed = true;
       } else {
         effectiveDomain = changes.domain!;
-        await admin.from("lead_activities").insert({
+        await giaDb(admin).from("lead_activities").insert({
           lead_id: leadId,
           actor_id: caller.id,
           action_type: "note_added",
@@ -445,14 +446,14 @@ export async function bulkUpdateLeads(
 
     // 5d. Source (mirrors updateLeadSource: admin update + activity).
     if (!leadFailed && willSource) {
-      const { error: srcErr } = await admin
+      const { error: srcErr } = await giaDb(admin)
         .from("leads")
         .update({ source: changes.source })
         .eq("id", leadId);
       if (srcErr) {
         leadFailed = true;
       } else {
-        await admin.from("lead_activities").insert({
+        await giaDb(admin).from("lead_activities").insert({
           lead_id: leadId,
           actor_id: caller.id,
           action_type: "note_added",
@@ -515,7 +516,7 @@ export async function updatePersonalDetails(
 
   const supabase = await createClient();
 
-  const { data: lead } = await supabase
+  const { data: lead } = await giaDb(supabase)
     .from("leads")
     .select("assigned_to, domain, personal_details")
     .eq("id", leadId)
@@ -546,7 +547,7 @@ export async function updatePersonalDetails(
   }
 
   const admin = createAdminClient();
-  await admin
+  await giaDb(admin)
     .from("leads")
     .update({ personal_details: merged })
     .eq("id", leadId);
@@ -669,7 +670,7 @@ export async function createManualLead(
     // re-enquiry is visible in its timeline (parity with the webhook path, audit #15),
     // then return the existing lead without inserting.
     const existingId = existingLeads[0].id;
-    const { error: dupActivityError } = await admin.from("lead_activities").insert({
+    const { error: dupActivityError } = await giaDb(admin).from("lead_activities").insert({
       lead_id: existingId,
       actor_id: caller.id,
       action_type: "duplicate_submission",
@@ -688,7 +689,7 @@ export async function createManualLead(
   //     this phone, link the new lead to it via previous_lead_id — parity with
   //     the webhook path, which the manual path previously skipped (audit #3 dedup).
   let previousLeadId: string | null = null;
-  const { data: terminalLead } = await admin
+  const { data: terminalLead } = await giaDb(admin)
     .from("leads")
     .select("id")
     .eq("phone", phone)
@@ -701,7 +702,7 @@ export async function createManualLead(
 
   // 7. INSERT lead — source from modal when set; form_data empty for manual leads
   const now = new Date().toISOString();
-  const { data: inserted, error: insertError } = await admin
+  const { data: inserted, error: insertError } = await giaDb(admin)
     .from("leads")
     .insert({
       first_name,
@@ -745,7 +746,7 @@ export async function createManualLead(
 
   // 8. INSERT lead_created activity — error-checked (audit #14); non-fatal, the
   //    lead row stands even if the audit log insert fails.
-  const { error: createdActivityError } = await admin.from("lead_activities").insert({
+  const { error: createdActivityError } = await giaDb(admin).from("lead_activities").insert({
     lead_id: leadId,
     actor_id: caller.id,
     action_type: "lead_created",
@@ -761,7 +762,7 @@ export async function createManualLead(
 
   // 9. INSERT agent_assigned activity if assigned_to is set
   if (assignedTo) {
-    const { error: assignedActivityError } = await admin.from("lead_activities").insert({
+    const { error: assignedActivityError } = await giaDb(admin).from("lead_activities").insert({
       lead_id: leadId,
       actor_id: caller.id,
       action_type: "agent_assigned",
@@ -839,7 +840,7 @@ async function assertLeadFieldEditAccess(leadId: string): Promise<
   const caller = auth.profile;
 
   const supabase = await createClient();
-  const { data: lead } = await supabase
+  const { data: lead } = await giaDb(supabase)
     .from("leads")
     .select("id, assigned_to, domain, slug")
     .eq("id", leadId)
@@ -887,14 +888,14 @@ export async function updateLeadEmail(
   if (!access.ok) return { data: null, error: access.error };
 
   const admin = createAdminClient();
-  const { error: updateError } = await admin
+  const { error: updateError } = await giaDb(admin)
     .from("leads")
     .update({ email })
     .eq("id", leadId);
 
   if (updateError) return { data: null, error: formErrors.generic };
 
-  await admin.from("lead_activities").insert({
+  await giaDb(admin).from("lead_activities").insert({
     lead_id: leadId,
     actor_id: access.caller.id,
     action_type: "note_added",
@@ -923,14 +924,14 @@ export async function updateLeadDomain(
   }
 
   const admin = createAdminClient();
-  const { error: updateError } = await admin
+  const { error: updateError } = await giaDb(admin)
     .from("leads")
     .update({ domain })
     .eq("id", leadId);
 
   if (updateError) return { data: null, error: formErrors.generic };
 
-  await admin.from("lead_activities").insert({
+  await giaDb(admin).from("lead_activities").insert({
     lead_id: leadId,
     actor_id: access.caller.id,
     action_type: "note_added",
@@ -955,14 +956,14 @@ export async function updateLeadSource(
   if (!access.ok) return { data: null, error: access.error };
 
   const admin = createAdminClient();
-  const { error: updateError } = await admin
+  const { error: updateError } = await giaDb(admin)
     .from("leads")
     .update({ source })
     .eq("id", leadId);
 
   if (updateError) return { data: null, error: formErrors.generic };
 
-  await admin.from("lead_activities").insert({
+  await giaDb(admin).from("lead_activities").insert({
     lead_id: leadId,
     actor_id: access.caller.id,
     action_type: "note_added",
@@ -987,7 +988,7 @@ export async function updateLeadCity(
   if (!access.ok) return { data: null, error: access.error };
 
   const admin = createAdminClient();
-  const { error: updateError } = await admin
+  const { error: updateError } = await giaDb(admin)
     .from("leads")
     .update({ city: city ?? null })
     .eq("id", leadId);
@@ -1023,7 +1024,7 @@ export async function updateLeadInterests(
   );
 
   const admin = createAdminClient();
-  const { data: current } = await admin
+  const { data: current } = await giaDb(admin)
     .from("leads")
     .select("service_interests")
     .eq("id", leadId)
@@ -1038,14 +1039,14 @@ export async function updateLeadInterests(
     return { data: { leadId, interests }, error: null };
   }
 
-  const { error: updateError } = await admin
+  const { error: updateError } = await giaDb(admin)
     .from("leads")
     .update({ service_interests: interests })
     .eq("id", leadId);
 
   if (updateError) return { data: null, error: formErrors.generic };
 
-  await admin.from("lead_activities").insert({
+  await giaDb(admin).from("lead_activities").insert({
     lead_id: leadId,
     actor_id: access.caller.id,
     action_type: "note_added",
@@ -1079,7 +1080,7 @@ export async function addLeadNote(
 
   const supabase = await createClient();
 
-  const { data: lead } = await supabase
+  const { data: lead } = await giaDb(supabase)
     .from("leads")
     .select("id, assigned_to, domain")
     .eq("id", leadId)
@@ -1140,7 +1141,7 @@ export async function createLeadTaskAction(
   const supabase = await createClient();
 
   // 3. Fetch lead — verify existence and access (S-06, A-09 layer 1)
-  const { data: lead } = await supabase
+  const { data: lead } = await giaDb(supabase)
     .from("leads")
     .select("id, assigned_to, domain, slug")
     .eq("id", leadId)

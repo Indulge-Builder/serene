@@ -16,7 +16,7 @@ export const FD_STATUS_LABELS: Record<number, string> = {
   3: "Pending",
   4: "Resolved",
   5: "Closed",
-  6: "Nudge Client",
+  6: "Nudge Member",
   7: "Nudge Vendor",
   8: "Ongoing Delivery",
   9: "Invoice Due",
@@ -37,7 +37,7 @@ export function fdStatusTone(status: number): FdStatusTone {
     case 3: return "warning";     // Pending (being worked)
     case 4: return "success";     // Resolved
     case 5: return "neutral";     // Closed
-    case 6: return "neutral";     // Nudge Client
+    case 6: return "neutral";     // Nudge Member
     case 7: return "warning";     // Nudge Vendor
     case 8: return "info";        // Ongoing Delivery
     case 9: return "danger";      // Invoice Due

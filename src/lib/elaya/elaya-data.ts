@@ -4,7 +4,7 @@
 // THE PARITY RULE (Phase 1 — docs/modules/elaya.md):
 //   Every read an Elaya tool performs goes through a function HERE. Each one:
 //     1. takes the verified StaffPrincipal (identity is NEVER channel- or model-derived),
-//     2. uses the ADMIN client (works in the sessionless WhatsApp webhook AND in-app),
+//     2. uses the ADMIN member (works in the sessionless WhatsApp webhook AND in-app),
 //     3. scopes by the principal's role/userId/domain IN CODE (never auth.uid()),
 //   so a tool works IDENTICALLY on both channels by construction. A tool must call ONLY
 //   this module — never a general *-service.ts function directly — so it is physically
@@ -52,8 +52,8 @@ import { getCampaignMetrics } from '@/lib/services/leads-service';
 import { getBudgetSummary, type BudgetCampaignRow } from '@/lib/services/ad-spend-service';
 import { rankVendorsForRequest, getVendorDetail } from '@/lib/services/vendors-service';
 import { listTicketsForElaya, getTicketByRefForElaya } from '@/lib/services/tickets-service';
-import { getSiaGroupForClient, getSiaMessages, searchSiaMessages, getSiaSenderRoles } from '@/lib/services/sia-service';
-import { canAccessClient } from '@/lib/elaya/access';
+import { getSiaGroupForMember, getSiaMessages, searchSiaMessages, getSiaSenderRoles } from '@/lib/services/sia-service';
+import { canAccessMember } from '@/lib/elaya/access';
 import type { TicketStatus } from '@/lib/constants/tickets';
 import type { RankVendorsRequest } from '@/lib/services/vendors-service';
 import { GIA_DOMAINS } from '@/lib/constants/domains';
@@ -88,7 +88,7 @@ import type { DealFilters } from '@/lib/types/database';
 // ─────────────────────────────────────────────
 
 /** Scoped lead search — agent: own; manager: domain; admin/founder: all. Already
- *  admin-client + principal-scoped (searchLeadsForElaya), so both channels work. */
+ *  admin-member + principal-scoped (searchLeadsForElaya), so both channels work. */
 export function searchLeads(
   principal: StaffPrincipal,
   opts: { search: string | null; statuses: LeadStatus[] | null; page: number; pageSize: number },
@@ -116,7 +116,7 @@ export function getLeadNotes(leadId: string): Promise<LeadNoteWithAuthor[]> {
 }
 
 /** Going-cold leads — agent: own; manager: domain; admin/founder: all domains.
- *  getGoingColdLeads is admin-client + explicit scope, so both channels work. */
+ *  getGoingColdLeads is admin-member + explicit scope, so both channels work. */
 export function getColdLeads(principal: StaffPrincipal) {
   const scope =
     principal.role === 'agent'
@@ -133,8 +133,8 @@ export function getColdLeads(principal: StaffPrincipal) {
 
 /** Resolve TEAMMATES (staff) by name fragment — the name→userId lookup the task write
  *  tools need for "create a task for <person>". Wraps searchTeammatesForElaya (the
- *  ADMIN-client, code-scoped read — NOT getAssignableUsers, which uses the session
- *  client and returns ZERO rows on the sessionless WhatsApp webhook: the parity-rule
+ *  ADMIN-member, code-scoped read — NOT getAssignableUsers, which uses the session
+ *  member and returns ZERO rows on the sessionless WhatsApp webhook: the parity-rule
  *  trap that made find_teammate fail for every name on WhatsApp). This is staff
  *  identity, NOT a lead — why "create a task for Arfam" must never reach search_leads.
  *
@@ -154,7 +154,7 @@ export async function findTeammates(
 // Deals
 // ─────────────────────────────────────────────
 
-/** Closed deals — agent: own; manager: domain; admin/founder: all. Admin-client
+/** Closed deals — agent: own; manager: domain; admin/founder: all. Admin-member
  *  twin (getDealsByRoleForElaya), so both channels work. */
 export function searchDeals(
   principal: StaffPrincipal,
@@ -173,7 +173,7 @@ export function getGiaTasks(principal: StaffPrincipal): Promise<GiaTask[]> {
 }
 
 /** Personal to-dos — get_personal_tasks scopes purely on p_user_id; inject the admin
- *  client so it works in the sessionless context too. Both channels. */
+ *  member so it works in the sessionless context too. Both channels. */
 export function getPersonalTasksFor(
   principal: StaffPrincipal,
   limit = 20,
@@ -193,7 +193,7 @@ export function getGroupTasksFor(principal: StaffPrincipal): Promise<TaskGroupRo
  *  encodes "groups you created or are a subtask-assignee in" (migration 0058). Returning
  *  the row IFF it's in that set IS the per-resource check — admin/founder see all groups,
  *  so they pass; a manager/agent only passes for a group they're part of. Never a session
- *  client (would blank on WhatsApp). null = not visible to this principal. */
+ *  member (would blank on WhatsApp). null = not visible to this principal. */
 export async function getVisibleGroupById(
   principal: StaffPrincipal,
   groupId: string,
@@ -253,7 +253,7 @@ export function getHelpdeskFullLibrary(domain: Parameters<typeof getHelpdeskLibr
 // ─────────────────────────────────────────────
 // Manager oversight (Phase 4) — manager+ tools. The TOOL gates the role (manager+);
 // here we apply the DOMAIN scope the principal implies: manager → own domain;
-// admin/founder → all domains (null). All three backing services are admin-client +
+// admin/founder → all domains (null). All three backing services are admin-member +
 // explicit params, so both channels work.
 // ─────────────────────────────────────────────
 
@@ -345,7 +345,7 @@ export function getVendor(id: string) {
 // ─────────────────────────────────────────────
 // Tickets (0195, 0199, 0200)
 //
-// The sentinel's ledger and the genie's queue, read through the same admin-client
+// The sentinel's ledger and the genie's queue, read through the same admin-member
 // seam as everything else so WhatsApp turns see what the app sees. Scope is the
 // PRINCIPAL's queendom (read from the profile, never model-supplied); admin and
 // founder see every queendom. The write tools go through the ticket cores.
@@ -375,21 +375,21 @@ export async function getTicketFor(principal: StaffPrincipal, ref: string) {
   const t = await getTicketByRefForElaya(ref);
   if (!t) return null;
   const { queendom_id } = await principalQueendom(principal);
-  return canAccessClient({ role: principal.role, queendom_id }, t.ticket.queendom_id) ? t : null;
+  return canAccessMember({ role: principal.role, queendom_id }, t.ticket.queendom_id) ? t : null;
 }
 
 // ─────────────────────────────────────────────
-// Clients — a member's WhatsApp history, read for Elaya (2026-09-16)
+// Members — a member's WhatsApp history, read for Elaya (2026-09-16)
 //
 // The RAW-DATA posture: no profile layer sits in between. These return real
 // message rows (date, who said it, the text) and the model answers only from
-// them. Scope is the principal's queendom via canAccessClient (admin/founder:
-// every client); the group is the one the mapping tool tied to the client
-// (wag_groups.client_id). Admin client throughout (the parity rule) — the
-// clients-service reads use the session client and blank on WhatsApp turns.
+// them. Scope is the principal's queendom via canAccessMember (admin/founder:
+// every member); the group is the one the mapping tool tied to the member
+// (wag_groups.member_id). Admin member throughout (the parity rule) — the
+// members-service reads use the session client and blank on WhatsApp turns.
 // ─────────────────────────────────────────────
 
-export type ClientBrief = {
+export type MemberBrief = {
   id: string;
   full_name: string;
   primary_phone: string | null;
@@ -403,9 +403,9 @@ const CLIENT_BRIEF_SELECT =
   'id, full_name, primary_phone, queendom_id, tier, membership_type, membership_status, membership_end';
 
 /** One message as the model sees it: who, when, what. Text capped so a page stays bounded. */
-export type ClientMessage = {
+export type MemberMessage = {
   at: string;
-  from: 'client' | 'staff' | 'other';
+  from: 'member' | 'staff' | 'other';
   name: string | null;
   type: string;
   text: string | null;
@@ -417,61 +417,61 @@ const STAFF_ROLES = new Set(['genie', 'bishop', 'queen', 'founder', 'watcher']);
 
 async function shapeMessages(
   rows: { sender_jid: string; sender_name: string | null; type: string; text: string | null; wa_timestamp: string; is_revoked: boolean }[],
-): Promise<ClientMessage[]> {
+): Promise<MemberMessage[]> {
   const roles = await getSiaSenderRoles(rows.map((r) => r.sender_jid));
   return rows.map((r) => {
     const who = roles.get(r.sender_jid);
-    const from: ClientMessage['from'] =
-      who?.role === 'client' ? 'client' : who && (who.is_staff || STAFF_ROLES.has(who.role)) ? 'staff' : 'other';
+    const from: MemberMessage['from'] =
+      who?.role === 'member' ? 'member' : who && (who.is_staff || STAFF_ROLES.has(who.role)) ? 'staff' : 'other';
     const text = r.text && r.text.length > MESSAGE_TEXT_CAP ? r.text.slice(0, MESSAGE_TEXT_CAP) + '…' : r.text;
     return { at: r.wa_timestamp, from, name: r.sender_name, type: r.type, text, deleted: r.is_revoked };
   });
 }
 
-/** Clients whose name (or phone digits) match, filtered to what the principal may see. */
-export async function findClientsFor(principal: StaffPrincipal, query: string, limit = 8): Promise<ClientBrief[]> {
+/** Members whose name (or phone digits) match, filtered to what the principal may see. */
+export async function findMembersFor(principal: StaffPrincipal, query: string, limit = 8): Promise<MemberBrief[]> {
   const token = query.trim().replace(/[%,()]/g, ' ').replace(/\s+/g, ' ').trim();
   if (token.length < 2) return [];
   const digits = token.replace(/\D/g, '');
   const ors = [`full_name.ilike.%${token}%`];
   if (digits.length >= 6) ors.push(`primary_phone.ilike.%${digits}%`);
   const { data } = await createAdminClient()
-    .from('clients')
+    .from('members')
     .select(CLIENT_BRIEF_SELECT)
     .or(ors.join(','))
     .order('full_name')
     .limit(limit);
-  const rows = (data ?? []) as ClientBrief[];
+  const rows = (data ?? []) as MemberBrief[];
   const { queendom_id } = await principalQueendom(principal);
-  return rows.filter((c) => canAccessClient({ role: principal.role, queendom_id }, c.queendom_id));
+  return rows.filter((c) => canAccessMember({ role: principal.role, queendom_id }, c.queendom_id));
 }
 
-/** One client + their mapped group, or null when the principal may not see them (or no such client). */
-export async function getClientBriefFor(
+/** One member + their mapped group, or null when the principal may not see them (or no such member). */
+export async function getMemberBriefFor(
   principal: StaffPrincipal,
   clientId: string,
-): Promise<{ client: ClientBrief; group: Awaited<ReturnType<typeof getSiaGroupForClient>> } | null> {
-  const { data } = await createAdminClient().from('clients').select(CLIENT_BRIEF_SELECT).eq('id', clientId).maybeSingle();
-  const client = data as ClientBrief | null;
-  if (!client) return null;
+): Promise<{ member: MemberBrief; group: Awaited<ReturnType<typeof getSiaGroupForMember>> } | null> {
+  const { data } = await createAdminClient().from('members').select(CLIENT_BRIEF_SELECT).eq('id', clientId).maybeSingle();
+  const member = data as MemberBrief | null;
+  if (!member) return null;
   const { queendom_id } = await principalQueendom(principal);
-  if (!canAccessClient({ role: principal.role, queendom_id }, client.queendom_id)) return null;
-  return { client, group: await getSiaGroupForClient(clientId) };
+  if (!canAccessMember({ role: principal.role, queendom_id }, member.queendom_id)) return null;
+  return { member, group: await getSiaGroupForMember(clientId) };
 }
 
-/** The latest page of the client's group chat (oldest → newest); `before` pages further back. */
-export async function getClientMessagesFor(
+/** The latest page of the member's group chat (oldest → newest); `before` pages further back. */
+export async function getMemberMessagesFor(
   principal: StaffPrincipal,
   clientId: string,
   opts: { before?: string } = {},
-): Promise<{ client: ClientBrief; group_subject: string | null; messages: ClientMessage[]; has_more: boolean; oldest_at: string | null } | null> {
-  const brief = await getClientBriefFor(principal, clientId);
+): Promise<{ member: MemberBrief; group_subject: string | null; messages: MemberMessage[]; has_more: boolean; oldest_at: string | null } | null> {
+  const brief = await getMemberBriefFor(principal, clientId);
   if (!brief) return null;
-  if (!brief.group) return { client: brief.client, group_subject: null, messages: [], has_more: false, oldest_at: null };
+  if (!brief.group) return { member: brief.member, group_subject: null, messages: [], has_more: false, oldest_at: null };
   const page = await getSiaMessages(brief.group.group_jid, { before: opts.before });
   const messages = await shapeMessages(page.messages);
   return {
-    client: brief.client,
+    member: brief.member,
     group_subject: brief.group.subject,
     messages,
     has_more: page.hasMore,
@@ -479,17 +479,17 @@ export async function getClientMessagesFor(
   };
 }
 
-/** Full-text hits in the client's group for a word or phrase (newest first). */
-export async function searchClientHistoryFor(
+/** Full-text hits in the member's group for a word or phrase (newest first). */
+export async function searchMemberHistoryFor(
   principal: StaffPrincipal,
   clientId: string,
   query: string,
   limit = 30,
-): Promise<{ client: ClientBrief; group_subject: string | null; hits: ClientMessage[] } | null> {
-  const brief = await getClientBriefFor(principal, clientId);
+): Promise<{ member: MemberBrief; group_subject: string | null; hits: MemberMessage[] } | null> {
+  const brief = await getMemberBriefFor(principal, clientId);
   if (!brief) return null;
-  if (!brief.group) return { client: brief.client, group_subject: null, hits: [] };
+  if (!brief.group) return { member: brief.member, group_subject: null, hits: [] };
   const rows = await searchSiaMessages(query, brief.group.group_jid);
   const hits = await shapeMessages(rows.slice(0, limit));
-  return { client: brief.client, group_subject: brief.group.subject, hits };
+  return { member: brief.member, group_subject: brief.group.subject, hits };
 }

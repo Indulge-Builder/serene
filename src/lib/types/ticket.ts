@@ -21,7 +21,7 @@ export type TicketMoney = {
 export type TicketRow = {
   id: string;
   ticket_no: string;
-  client_id: string;
+  member_id: string;
   queendom_id: string | null;
   origin: TicketOrigin;
   origin_ref: Record<string, unknown>;
@@ -41,7 +41,7 @@ export type TicketRow = {
   next_update_due_at: string | null;
   resolve_due_at: string | null;
   first_responded_at: string | null;
-  last_client_update_at: string | null;
+  last_member_update_at: string | null;
   assignee_id: string | null;
   bishop_id: string | null;
   handoff_department: string | null;
@@ -86,7 +86,7 @@ export type SentinelState = {
 export type TicketEventRow = {
   id: string;
   ticket_id: string;
-  client_id: string;
+  member_id: string;
   queendom_id: string | null;
   actor_kind: TicketActorKind;
   actor_id: string | null;
@@ -121,7 +121,7 @@ export type TicketSlaPolicyRow = {
   first_response_min: number;
   update_cadence_min: number;
   vendor_silence_min: number;
-  client_silence_min: number;
+  member_silence_min: number;
   resolve_target_min: number;
   business_hours: boolean;
   escalation: { after_min: number; to: string }[];
@@ -144,7 +144,7 @@ export type GenieRosterRow = {
 
 type Table<Row, Insert = Partial<Row>> = { Row: Row; Insert: Insert; Update: Partial<Row>; Relationships: [] };
 
-/** The ticketing tables for the cast client until the generated Database carries them. */
+/** The ticketing tables for the cast member until the generated Database carries them. */
 export type TicketingDatabase = {
   public: {
     Tables: { task_ticket_meta: Table<{ task_id: string; ticket_id: string }> };
@@ -180,7 +180,7 @@ export type TicketingDatabase = {
 // ─── Page shapes ─────────────────────────────────────────────────────────────
 
 export type TicketListItem = TicketRow & {
-  client_name: string;
+  member_name: string;
   assignee_name: string | null;
   queendom_name: string | null;
 };
@@ -212,7 +212,7 @@ export type LinkedMessage = TicketMessageLinkRow & { text: string | null; sender
 
 export type TicketDetail = {
   ticket: TicketRow;
-  client: { id: string; full_name: string; primary_phone: string | null; queendom_id: string | null };
+  member: { id: string; full_name: string; primary_phone: string | null; queendom_id: string | null };
   events: (TicketEventRow & { actor_name: string | null })[];
   links: LinkedMessage[];
   assignee: StaffOption | null;
@@ -222,7 +222,7 @@ export type TicketDetail = {
   policy: TicketSlaPolicyRow | null;
 };
 
-/** What the help window shows beside a ticket (from the client twin and the mirror). */
+/** What the help window shows beside a ticket (from the member twin and the mirror). */
 export type TicketHelp = {
   facts: { facet: string; key: string; value: string; polarity: string }[];
   addresses: { key: string; value: string }[];

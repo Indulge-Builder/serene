@@ -123,7 +123,7 @@ with the exact names the design predicted:
 
 The page is **`/admin/elaya-training`**: manager, admin, and founder (the server-side role gate in
 the RSC; agents bounce to `/dashboard`). `getTrainingAssetsForBlast` is the send-path read (admin
-client + explicit domain filter, the parity rule).
+member + explicit domain filter, the parity rule).
 
 ### `elaya_training_assets` (migration 0150)
 

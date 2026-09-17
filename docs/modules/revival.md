@@ -38,7 +38,7 @@ keeps its terminal/dormant status; revival adds a task + a candidate ledger row 
 (open/actioned/dismissed) — a judged lead is never re-judged, so a `dismissed` lead doesn't re-enter
 the pool nightly, get re-dismissed, and pile up duplicate rows + burn a gate call. Since **migration
 0128** this anti-join runs **in SQL** (`get_silent_leads_for_revival` — a bounded `NOT EXISTS`,
-scope-param/EXECUTE-revoked, admin-client only); the prior Node version SELECTed every candidate
+scope-param/EXECUTE-revoked, admin-member only); the prior Node version SELECTed every candidate
 `lead_id` into a JS Set and inflated the leads LIMIT by its size — both growing unbounded with the
 ledger. Semantics are byte-identical.
 
@@ -92,7 +92,7 @@ ledger. Semantics are byte-identical.
   revival_candidates.lead_id AND <role/domain predicate>)` — the same pattern as
   `lead_activities`/`lead_notes`. SELECT only; **no user INSERT/UPDATE/DELETE policy** (A-11).
 - **State-machine carve-out (A-11, the elaya_actions precedent):** writes are service-role
-  admin-client only. The `open → actioned/dismissed` flip is a resolve-once admin UPDATE
+  admin-member only. The `open → actioned/dismissed` flip is a resolve-once admin UPDATE
   (RLS-bypassing). `verdict`/`ai_reasoning`/`lead_id`/`created_at` are write-once; only the
   resolution fields move, and only forward. Documented in the migration COMMENT.
 - **One-open-candidate-per-lead guard (structural):** a partial UNIQUE index

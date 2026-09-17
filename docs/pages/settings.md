@@ -47,7 +47,7 @@ their **own** row passes this same-domain check with no special case.
 
 ## 4. Components
 
-On `/settings`: `AgentSettingsTable` (client; optimistic toggles; one row per **pool member**,
+On `/settings`: `AgentSettingsTable` (member; optimistic toggles; one row per **pool member**,
 agents + managers) with inline `WorkDayPicker` · `TimePicker` (`src/components/ui/` primitive,
 wheel columns, measured item height) · `Toggle` for pool membership · `SettingsLinkCard`
 (`src/components/settings/SettingsLinkCard.tsx`, admin/founder only: a paper nav card in the
@@ -74,7 +74,7 @@ Identity fields (code, trigger, recipient, auto_task) are read-only — **toggli
 manager/founder rows active IS the recipient checklist** (recipients are separate rows
 by design). Reads: `getAllSlaPolicies` (session client; 0111 RLS admin/founder SELECT).
 Writes: `updateSlaPolicyAction` (`actions/sla-policies.ts`) — Zod →
-`requireProfile(['admin','founder'])` → admin-client update (no write RLS by design) →
+`requireProfile(['admin','founder'])` → admin-member update (no write RLS by design) →
 `revalidatePath('/settings/follow-up-engine')`. The engine reads policies per job run: active/channel
 edits apply on the next fire; threshold edits apply to newly armed timers only.
 
@@ -89,7 +89,7 @@ the server-returned row prepends and renders in its group. A new policy arms aut
 engine reads `getSlaPolicies()` per run, so the next matching lead picks it up with no deploy.
 
 Writes: **`createSlaPolicyAction`** (`actions/sla-policies.ts`) — mirrors `updateSlaPolicyAction`
-(Zod → `requireProfile(['admin','founder'])` → admin-client `createSlaPolicy` insert →
+(Zod → `requireProfile(['admin','founder'])` → admin-member `createSlaPolicy` insert →
 `revalidatePath('/settings/follow-up-engine')`). Two structural safeguards:
 
 - **The code is system-generated, never user-set.** The action mints an inert `USR-<id>` (the
@@ -130,7 +130,7 @@ All three commit through `save()` optimistically and **revert with a toast** on 
 save semantics mirror `SlaPoliciesPanel` exactly (the threshold/cap save on blur-when-changed; the
 toggle saves on flip). Writes go through `updateRevivalPolicyAction` (`actions/revival.ts` — Zod
 `UpdateRevivalPolicySchema` → `requireProfile(['admin','founder'])` → `updateRevivalPolicy` admin
-client → `revalidatePath('/settings/lead-revival')`). The daily sweep (`sweepRevivalCandidatesTask`)
+member → `revalidatePath('/settings/lead-revival')`). The daily sweep (`sweepRevivalCandidatesTask`)
 reads the policies per run, so an edit applies on the next sweep with no deploy. Seeded
 server-side by the sub-route's `page.tsx` via `getAllRevivalPolicies` (`revival-service`).
 Full module contract: `../modules/revival.md`.
@@ -169,7 +169,7 @@ member** (agents + managers — `ROUTING_POOL_ROLES`, migration 0124):
 
 Admin/founder additionally get two `SettingsLinkCard`s above the roster, linking to the
 dedicated config sub-routes (`/settings/follow-up-engine`, `/settings/lead-revival`).
-Three routes; `/settings` itself is one client roster table.
+Three routes; `/settings` itself is one member roster table.
 
 | Item | Value |
 | ------ | ------ |
@@ -251,7 +251,7 @@ Full export list: `getAgentRoutingConfig`, `getAgentRoutingConfigAdmin`, `getRou
 
 - **Join:** `profiles` ← `agent_routing_config!inner` (pool members — agents + managers — with a config row; the `!inner` means a pool member with no config row is absent until the auto-create trigger / backfill gives them one).
 - **Filter:** `.in('role', ROUTING_POOL_ROLES)` (= `['agent','manager']`, migration 0124); if `domain !== '*'`, `.eq('domain', domain)`.
-- **Client:** `createAdminClient()` — RLS blocks managers from cross-profile joins; **callers must enforce domain** at page/action layer (`page.tsx` passes `caller.domain` or `'*'`).
+- **Member:** `createAdminClient()` — RLS blocks managers from cross-profile joins; **callers must enforce domain** at page/action layer (`page.tsx` passes `caller.domain` or `'*'`).
 - **Sort:** `domain` ASC, `full_name` ASC.
 - **Returns:** `AgentRosterRow[]` (mapped flat):
 
@@ -264,14 +264,14 @@ Defaults on a missing/empty embedded config: `routing_is_active ?? true`, `routi
 
 #### `setAgentShift(agentId, shiftStart, shiftEnd, shiftDays)`
 
-- **Client:** `adminClient` (manager cannot UPDATE another agent's config under RLS).
+- **Member:** `adminClient` (manager cannot UPDATE another agent's config under RLS).
 - **Updates:** `shift_start`, `shift_end`, `shift_days` in one write. Passing `null` for a field clears it. The clear-all path writes `(null, null, null)`.
 - **Returns:** `{ data: AgentRoutingConfig \| null, error: string \| null }`.
 - **Note:** the `.update(...)` is cast through `as any` (eslint-disabled) because the generated Supabase types lagged the `shift_days` column at the time of writing.
 
 #### `setRoutingActive(agentId, isActive)`
 
-- **Client:** `createClient()` (session) — RLS `routing_config_update` applies.
+- **Member:** `createClient()` (session) — RLS `routing_config_update` applies.
 - **Updates:** `is_active` only.
 - **Returns:** same shape as above.
 
@@ -316,7 +316,7 @@ shiftDays:  z.array(z.number().int().min(0).max(6)).min(1, "Select at least one 
 
 - **Cross-field refine:** when both `shiftStart` and `shiftEnd` are non-null, `shiftEnd > shiftStart` (string compare on `HH:MM`). Failure: `{ message: "Shift end must be after shift start.", path: ["shiftEnd"] }`.
 - **`shiftDays`:** optional + nullable. `null` (or omitted) = inherit global `BUSINESS_HOURS`. When provided as an array it must have ≥ 1 element (`"Select at least one work day."`) and each value must be `0–6`.
-- **Nullable pairs:** both times `null` clears the window; one null + one set fails the time refine only when both are set — the client blocks partial saves before the action (`"Set both times to save"`).
+- **Nullable pairs:** both times `null` clears the window; one null + one set fails the time refine only when both are set — the member blocks partial saves before the action (`"Set both times to save"`).
 
 Type export: `SetAgentShiftInput = z.infer<typeof SetAgentShiftSchema>`.
 

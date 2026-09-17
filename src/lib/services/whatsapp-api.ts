@@ -4,6 +4,7 @@
 // Validation is deferred: assertGupshupConfigured() throws on first SEND if a var is missing.
 
 import { createHmac, timingSafeEqual } from 'crypto';
+import { giaDb } from '@/lib/supabase/schemas';
 import { formatDate } from '@/lib/utils/dates';
 import {
   WHATSAPP_API_BASE,
@@ -317,7 +318,7 @@ interface NotificationLogEntry {
 async function logNotification(entry: NotificationLogEntry): Promise<void> {
   try {
     const admin = createAdminClient();
-    await admin.from('whatsapp_notification_logs').insert({
+    await giaDb(admin).from('whatsapp_notification_logs').insert({
       type:            entry.type,
       lead_id:         entry.leadId ?? null,
       recipient_id:    entry.recipientId ?? null,

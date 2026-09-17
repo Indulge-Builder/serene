@@ -4,7 +4,7 @@ import type { SearchParams } from 'next/dist/server/request/search-params';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
 import { hasElevatedPageAccess } from '@/lib/utils/route-access';
 import {
-  getFreshdeskClientScope,
+  getFreshdeskMemberScope,
   getFreshdeskFilterVocab,
   getFreshdeskOverview,
   hasFreshdeskFilters,
@@ -43,7 +43,7 @@ function parseFilters(sp: Awaited<SearchParams>): FdTicketListFilters {
     priority: num(getString('priority')),
     dateFrom: from ? toISTMidnight(from).toISOString() : null,
     dateTo: to ? toISTEndOfDay(to).toISOString() : null,
-    client: (() => { const v = getString('client'); return v && UUID_RE.test(v) ? v : null; })(),
+    member: (() => { const v = getString('member'); return v && UUID_RE.test(v) ? v : null; })(),
     page: Math.max(1, parseInt(getString('page') ?? '1', 10) || 1),
   };
 }
@@ -77,7 +77,7 @@ export default async function FreshdeskPage({ searchParams }: { searchParams: Pr
   const filters = parseFilters(resolved);
   const [vocab, scope] = await Promise.all([
     getFreshdeskFilterVocab(),
-    filters.client ? getFreshdeskClientScope(filters.client) : Promise.resolve(null),
+    filters.member ? getFreshdeskMemberScope(filters.member) : Promise.resolve(null),
   ]);
   // The strip depends on every filter except the page number: paging must not re-count.
   const overviewKey = `overview:${JSON.stringify({ ...filters, page: 1 })}`;
@@ -99,10 +99,10 @@ export default async function FreshdeskPage({ searchParams }: { searchParams: Pr
         <FreshdeskFilters vocab={vocab} />
       </div>
 
-      {filters.client && (
+      {filters.member && (
         <p style={{ margin: '0 0 var(--space-4)', fontSize: 'var(--text-sm)', color: 'var(--theme-text-secondary)' }}>
           Tickets for{' '}
-          {scope ? <Link href={`${CLIENTS_PATH}/${scope.id}`} style={{ color: 'var(--neu-accent-deep)' }}>{scope.full_name}</Link> : 'one client'}
+          {scope ? <Link href={`${CLIENTS_PATH}/${scope.id}`} style={{ color: 'var(--neu-accent-deep)' }}>{scope.full_name}</Link> : 'one member'}
           {' · '}
           <Link href={FRESHDESK_PATH} style={{ color: 'var(--neu-accent-deep)' }}>Show all</Link>
         </p>

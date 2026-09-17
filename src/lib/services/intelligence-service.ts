@@ -15,12 +15,13 @@
 //    rendered server-side inside the dossier's own streaming boundary.
 
 import { createClient } from '@/lib/supabase/server';
+import { giaDb } from '@/lib/supabase/schemas';
 import { redis } from '@/lib/redis';
 import { REDIS_KEYS, REDIS_TTL } from '@/lib/constants/redis-keys';
 import type { AppDomain, Database } from '@/lib/types/database';
 
-type ServiceCaseRow      = Database['public']['Tables']['service_cases']['Row'];
-type ConversationHookRow = Database['public']['Tables']['conversation_hooks']['Row'];
+type ServiceCaseRow      = Database['gia']['Tables']['service_cases']['Row'];
+type ConversationHookRow = Database['gia']['Tables']['conversation_hooks']['Row'];
 
 /** UI shape — excludes search_vector/embedding (server-side concerns). */
 export type ServiceCase = Pick<
@@ -60,14 +61,14 @@ export async function getHelpdeskLibrary(domain: AppDomain): Promise<HelpdeskLib
 
   const supabase = await createClient();
   const [casesRes, hooksRes] = await Promise.all([
-    supabase
+    giaDb(supabase)
       .from('service_cases')
       .select(CASE_COLUMNS)
       .eq('domain', domain)
       .order('is_featured', { ascending: false })
       .order('sort_order', { ascending: true })
       .order('created_at', { ascending: false }),
-    supabase
+    giaDb(supabase)
       .from('conversation_hooks')
       .select(HOOK_COLUMNS)
       .eq('domain', domain)
@@ -113,7 +114,7 @@ export async function getCasesForLead(
   if (safeInterests.length === 0 && !hasCity) return [];
 
   const supabase = await createClient();
-  let query = supabase
+  let query = giaDb(supabase)
     .from('service_cases')
     .select(CASE_COLUMNS)
     .eq('domain', domain);
@@ -152,7 +153,7 @@ export async function getHooksForCategories(
   if (safe.length === 0) return [];
 
   const supabase = await createClient();
-  const { data, error } = await supabase
+  const { data, error } = await giaDb(supabase)
     .from('conversation_hooks')
     .select(HOOK_COLUMNS)
     .eq('domain', domain)

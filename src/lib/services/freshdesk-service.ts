@@ -25,7 +25,7 @@ import type {
   FdTicketListItem,
   FdTicketRow,
 } from "@/lib/types/freshdesk";
-import type { ClientTicketSummary } from "@/lib/types/client";
+import type { MemberTicketSummary } from "@/lib/types/member";
 
 // ─── Vocabulary (small tables, read whole) ───────────────────────────────────
 
@@ -83,7 +83,7 @@ export async function getFreshdeskFilterVocab(): Promise<FdFilterVocab> {
 // ─── The list ────────────────────────────────────────────────────────────────
 
 const LIST_COLUMNS =
-  "id, subject, status, status_label, priority, source, ticket_type, category, sub_category, group_id, responder_id, requester_name, client_id, due_by, is_escalated, fd_created_at, fd_updated_at, resolved_at, conversation_count";
+  "id, subject, status, status_label, priority, source, ticket_type, category, sub_category, group_id, responder_id, requester_name, member_id, due_by, is_escalated, fd_created_at, fd_updated_at, resolved_at, conversation_count";
 
 /** PostgREST `.or()` filter values cannot carry commas or parentheses. */
 function searchToken(q: string): string {
@@ -94,7 +94,7 @@ function searchToken(q: string): string {
 export function hasFreshdeskFilters(filters: FdTicketListFilters): boolean {
   return Boolean(
     filters.search || filters.status.length || filters.group != null || filters.agent != null ||
-    filters.category || filters.priority != null || filters.dateFrom || filters.dateTo || filters.client,
+    filters.category || filters.priority != null || filters.dateFrom || filters.dateTo || filters.member,
   );
 }
 
@@ -118,7 +118,7 @@ function applyTicketFilters(q: TicketSelect, filters: FdTicketListFilters, withS
   if (filters.priority != null) out = out.eq("priority", filters.priority);
   if (filters.dateFrom) out = out.gte("fd_created_at", filters.dateFrom);
   if (filters.dateTo) out = out.lte("fd_created_at", filters.dateTo);
-  if (filters.client) out = out.eq("client_id", filters.client);
+  if (filters.member) out = out.eq("member_id", filters.member);
   if (filters.search) {
     const token = searchToken(filters.search);
     if (token) {
@@ -156,9 +156,9 @@ export async function listFreshdeskTickets(
   return { tickets, totalCount: Number(count ?? 0) };
 }
 
-/** The client a `?client=` scope points at, for the "Tickets for …" line; null when unknown. */
-export async function getFreshdeskClientScope(clientId: string): Promise<{ id: string; full_name: string } | null> {
-  const { data } = await createAdminClient().from("clients").select("id, full_name").eq("id", clientId).maybeSingle();
+/** The member a `?member=` scope points at, for the "Tickets for …" line; null when unknown. */
+export async function getFreshdeskMemberScope(clientId: string): Promise<{ id: string; full_name: string } | null> {
+  const { data } = await createAdminClient().from("members").select("id, full_name").eq("id", clientId).maybeSingle();
   return data ? { id: (data as { id: string }).id, full_name: (data as { full_name: string }).full_name } : null;
 }
 
@@ -194,10 +194,10 @@ export async function getFreshdeskTicketDetail(id: number): Promise<FdTicketDeta
     mapRows<{ id: number; name: string }, void>(agents, (a) => { agentNames[a.id] = a.name; });
   }
 
-  let client: { id: string; full_name: string } | null = null;
-  if (t.client_id) {
-    const { data: c } = await createAdminClient().from("clients").select("id, full_name").eq("id", t.client_id).maybeSingle();
-    if (c) client = { id: (c as { id: string }).id, full_name: (c as { full_name: string }).full_name };
+  let member: { id: string; full_name: string } | null = null;
+  if (t.member_id) {
+    const { data: c } = await createAdminClient().from("members").select("id, full_name").eq("id", t.member_id).maybeSingle();
+    if (c) member = { id: (c as { id: string }).id, full_name: (c as { full_name: string }).full_name };
   }
 
   return {
@@ -208,7 +208,7 @@ export async function getFreshdeskTicketDetail(id: number): Promise<FdTicketDeta
     agent: (agent.data as unknown as FdAgentRow | null) ?? null,
     group: (group.data as unknown as FdGroupRow | null) ?? null,
     agentNames,
-    client,
+    member,
   };
 }
 
@@ -276,7 +276,7 @@ async function overviewViaRpc(filters: FdTicketListFilters, todayStart: string):
     p_from: filters.dateFrom,
     p_to: filters.dateTo,
     p_search: token || null,
-    p_client: filters.client,
+    p_member: filters.member,
     p_today_start: todayStart,
   });
   if (error) {
@@ -319,34 +319,34 @@ export async function getRecentFreshdeskRuns(limit = 12): Promise<FdSyncRunRow[]
   return mapRows<FdSyncRunRow, FdSyncRunRow>(data, (r) => r);
 }
 
-// ─── The client dossier's Requests card (0194) ───────────────────────────────
+// ─── The member dossier's Requests card (0194) ───────────────────────────────
 
 const CLIENT_TICKET_COLUMNS =
   "id, subject, status, status_label, priority, category, sub_category, responder_id, fd_created_at, fd_updated_at, resolved_at, is_escalated";
 
-/** A client's mirrored tickets: the open ones, the most recent ones, and the total. */
-export async function getFreshdeskTicketsForClient(
+/** A member's mirrored tickets: the open ones, the most recent ones, and the total. */
+export async function getFreshdeskTicketsForMember(
   clientId: string,
   recentLimit = 12,
-): Promise<{ open: ClientTicketSummary[]; recent: ClientTicketSummary[]; total: number }> {
+): Promise<{ open: MemberTicketSummary[]; recent: MemberTicketSummary[]; total: number }> {
   const db = freshdeskDb();
   const [names, openRes, recentRes] = await Promise.all([
     getNameMaps(),
-    db.from("tickets").select(CLIENT_TICKET_COLUMNS).eq("client_id", clientId).eq("deleted", false).eq("spam", false)
+    db.from("tickets").select(CLIENT_TICKET_COLUMNS).eq("member_id", clientId).eq("deleted", false).eq("spam", false)
       .not("status", "in", "(4,5)").order("fd_updated_at", { ascending: false }).limit(50),
-    db.from("tickets").select(CLIENT_TICKET_COLUMNS, { count: "exact" }).eq("client_id", clientId).eq("deleted", false).eq("spam", false)
+    db.from("tickets").select(CLIENT_TICKET_COLUMNS, { count: "exact" }).eq("member_id", clientId).eq("deleted", false).eq("spam", false)
       .order("fd_created_at", { ascending: false }).limit(recentLimit),
   ]);
-  type Row = Omit<ClientTicketSummary, "agent_name"> & { responder_id: number | null };
-  const shape = (r: Row): ClientTicketSummary => ({
+  type Row = Omit<MemberTicketSummary, "agent_name"> & { responder_id: number | null };
+  const shape = (r: Row): MemberTicketSummary => ({
     id: r.id, subject: r.subject, status: r.status, status_label: r.status_label ?? fdStatusLabel(r.status), priority: r.priority,
     category: r.category, sub_category: r.sub_category,
     agent_name: r.responder_id != null ? (names.agents.get(r.responder_id) ?? null) : null,
     fd_created_at: r.fd_created_at, fd_updated_at: r.fd_updated_at, resolved_at: r.resolved_at, is_escalated: r.is_escalated,
   });
   return {
-    open: mapRows<Row, ClientTicketSummary>(openRes.data, shape),
-    recent: mapRows<Row, ClientTicketSummary>(recentRes.data, shape),
+    open: mapRows<Row, MemberTicketSummary>(openRes.data, shape),
+    recent: mapRows<Row, MemberTicketSummary>(recentRes.data, shape),
     total: Number(recentRes.count ?? 0),
   };
 }

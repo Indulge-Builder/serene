@@ -1,6 +1,7 @@
 // All DB queries for agent_routing_config — Rule 03.
 
 import { createClient } from "@/lib/supabase/server";
+import { giaDb } from "@/lib/supabase/schemas";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { ROUTING_POOL_ROLES } from "@/lib/constants/roles";
 import type { AgentRoutingConfig, AgentRosterRow, AppDomain } from "@/lib/types/database";
@@ -10,7 +11,7 @@ export async function getAgentRoutingConfig(
   agentId: string,
 ): Promise<AgentRoutingConfig | null> {
   const supabase = await createClient();
-  const { data, error } = await supabase
+  const { data, error } = await giaDb(supabase)
     .from("agent_routing_config")
     .select("*")
     .eq("agent_id", agentId)
@@ -29,7 +30,7 @@ export async function getAgentRoutingConfigAdmin(
   agentId: string,
 ): Promise<AgentRoutingConfig | null> {
   const admin = createAdminClient();
-  const { data, error } = await admin
+  const { data, error } = await giaDb(admin)
     .from("agent_routing_config")
     .select("*")
     .eq("agent_id", agentId)
@@ -121,7 +122,7 @@ export async function setAgentShift(
   shiftDays: number[] | null,
 ): Promise<{ data: AgentRoutingConfig | null; error: string | null }> {
   const admin = createAdminClient();
-  const { data, error } = await admin
+  const { data, error } = await giaDb(admin)
     .from('agent_routing_config')
     .update({ shift_start: shiftStart, shift_end: shiftEnd, shift_days: shiftDays })
     .eq('agent_id', agentId)
@@ -141,7 +142,7 @@ export async function setRoutingActive(
   isActive: boolean,
 ): Promise<{ data: AgentRoutingConfig | null; error: string | null }> {
   const supabase = await createClient();
-  const { data, error } = await supabase
+  const { data, error } = await giaDb(supabase)
     .from("agent_routing_config")
     .update({ is_active: isActive })
     .eq("agent_id", agentId)

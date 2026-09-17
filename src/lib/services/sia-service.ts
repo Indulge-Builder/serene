@@ -7,7 +7,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 // Every wag_ table lives in the `sia` schema (migration 0172). This admin client is
 // scoped to it, so `.from("wag_…")` resolves to sia.wag_…; service_role-only grants +
-// the page role-gate keep client conversations admin/founder-only (Q-13 boundary).
+// the page role-gate keep member conversations admin/founder-only (Q-13 boundary).
 function siaDb() {
   return createAdminClient().schema("sia");
 }
@@ -15,20 +15,20 @@ type SiaDb = ReturnType<typeof siaDb>;
 
 // ─────────────────────────────────────────────────────────────────────────
 // Sia read service — the wag_ group world (migrations 0169–0173), the Baileys
-// watcher's data. Admin/founder only (client conversations are the most sensitive
+// watcher's data. Admin/founder only (member conversations are the most sensitive
 // data Indulge holds; the page role-gates and RLS is deny-by-default — this
-// admin-client read is the sanctioned Q-13 boundary, the elaya-data.ts precedent).
+// admin-member read is the sanctioned Q-13 boundary, the elaya-data.ts precedent).
 // SERVER ONLY.
 // ─────────────────────────────────────────────────────────────────────────
 
-export type SiaGroupKind = "client" | "vendor" | "internal" | "unmapped";
+export type SiaGroupKind = "member" | "vendor" | "internal" | "unmapped";
 
 export type SiaGroupRow = {
   group_jid: string;
   subject: string | null;
   group_kind: SiaGroupKind;
-  /** The linked client (0194); the chat's "Create ticket" needs it. */
-  client_id: string | null;
+  /** The linked member (0194); the chat's "Create ticket" needs it. */
+  member_id: string | null;
   is_active: boolean;
   member_count: number | null;
   last_message_at: string | null;
@@ -134,7 +134,7 @@ export async function getSiaGroups(): Promise<SiaGroupRow[]> {
   const db = siaDb();
 
   const [{ data: groups, error: gErr }, { data: agg, error: aErr }] = await Promise.all([
-    db.from("wag_groups").select("group_jid, subject, group_kind, is_active, member_count, client_id"),
+    db.from("wag_groups").select("group_jid, subject, group_kind, is_active, member_count, member_id"),
     // One grouped pass over messages: count + last-activity + last-message preview
     // for ALL groups (migration 0173). If this table grows to millions, denormalise
     // a per-group counter; the seam is this one function.
@@ -164,7 +164,7 @@ export async function getSiaGroups(): Promise<SiaGroupRow[]> {
   }
 
   const rows: SiaGroupRow[] = (
-    groups as Pick<SiaGroupRow, "group_jid" | "subject" | "group_kind" | "is_active" | "member_count" | "client_id">[]
+    groups as Pick<SiaGroupRow, "group_jid" | "subject" | "group_kind" | "is_active" | "member_count" | "member_id">[]
   ).map((g) => {
     const a = activity.get(g.group_jid);
     return {
@@ -300,8 +300,8 @@ export type SiaMemberRow = {
 };
 
 export type SiaGroupInfo = {
-  /** The client this group is mapped to (0194: linked from this panel or the client page). */
-  client: { id: string; full_name: string } | null;
+  /** The member this group is mapped to (0194: linked from this panel or the member page). */
+  member: { id: string; full_name: string } | null;
   description: string | null;
   watcher_joined_at: string | null;
   created_at: string;
@@ -320,7 +320,7 @@ export async function getSiaGroupInfo(groupJid: string): Promise<SiaGroupInfo | 
   const [groupRes, membersRes, formerRes, formerCountRes] = await Promise.all([
     db
       .from("wag_groups")
-      .select("description, owner_jid, watcher_joined_at, created_at, client_id")
+      .select("description, owner_jid, watcher_joined_at, created_at, member_id")
       .eq("group_jid", groupJid)
       .limit(1),
     db
@@ -430,11 +430,11 @@ export async function getSiaGroupInfo(groupJid: string): Promise<SiaGroupInfo | 
   });
 
   const ownerContact = group.owner_jid ? contactFor.get(group.owner_jid) : undefined;
-  const groupClientId = (groupRes.data?.[0] as { client_id?: string | null } | undefined)?.client_id ?? null;
-  let client: SiaGroupInfo["client"] = null;
-  if (groupClientId) {
-    const { data: c } = await createAdminClient().from("clients").select("id, full_name").eq("id", groupClientId).maybeSingle();
-    if (c) client = { id: (c as { id: string }).id, full_name: (c as { full_name: string }).full_name };
+  const groupMemberId = (groupRes.data?.[0] as { member_id?: string | null } | undefined)?.member_id ?? null;
+  let member: SiaGroupInfo["member"] = null;
+  if (groupMemberId) {
+    const { data: c } = await createAdminClient().from("members").select("id, full_name").eq("id", groupMemberId).maybeSingle();
+    if (c) member = { id: (c as { id: string }).id, full_name: (c as { full_name: string }).full_name };
   }
   return {
     description: group.description,
@@ -444,7 +444,7 @@ export async function getSiaGroupInfo(groupJid: string): Promise<SiaGroupInfo | 
       ? { name: ownerContact?.push_name ?? null, phone: phoneByJid.get(group.owner_jid) ?? null }
       : null,
     members,
-    client,
+    member,
     formerMembers: former.map(toRow),
     formerCount: Number(formerCountRes.count ?? 0),
     staffCount: members.filter((m) => m.staff_name).length,
@@ -473,15 +473,15 @@ const MEDIA_SIGNED_URL_TTL_SECONDS = 900; // 15 min — outlives any open viewer
 // direnv exports .env.local into the shell, and AWS_ACCESS_KEY_ID there would
 // hijack the operator's own AWS CLI with this read-only media identity. Falls
 // back to the default provider chain (task role / instance profile) when unset.
-let s3Client: S3Client | null = null;
+let s3Member: S3Client | null = null;
 function s3(): S3Client {
   const keyId = process.env.SIA_S3_ACCESS_KEY_ID;
   const secret = process.env.SIA_S3_SECRET_ACCESS_KEY;
-  s3Client ??= new S3Client({
+  s3Member ??= new S3Client({
     region: process.env.SIA_S3_REGION ?? "ap-south-1",
     ...(keyId && secret ? { credentials: { accessKeyId: keyId, secretAccessKey: secret } } : {}),
   });
-  return s3Client;
+  return s3Member;
 }
 
 export type SiaMediaPayload = {
@@ -710,10 +710,10 @@ export async function getSiaHealth(): Promise<SiaHealth> {
 
 export async function updateSiaGroupMapping(
   groupJid: string,
-  // client_id (0194): link a group to a client (the Sia panel picker and the client page
-  // both call this); null unlinks. A link also sets group_kind = 'client', an unlink flips
+  // member_id (0194): link a group to a member (the Sia panel picker and the member page
+  // both call this); null unlinks. A link also sets group_kind = 'member', an unlink flips
   // it to 'unmapped' so the profiler's "blocked stays blocked" rule holds.
-  patch: { group_kind?: SiaGroupKind; is_active?: boolean; client_id?: string | null },
+  patch: { group_kind?: SiaGroupKind; is_active?: boolean; member_id?: string | null },
 ): Promise<boolean> {
   const db = siaDb();
   const { error } = await db.from("wag_groups").update(patch).eq("group_jid", groupJid);
@@ -851,7 +851,7 @@ async function attachSenderNames<T extends { sender_jid: string }>(
 }
 
 /** Who a sender IS for Indulge, by jid — the mapping tool's answer (participant_role + the
- *  staff link). Elaya's client-history tools label each message client / staff / other with it. */
+ *  staff link). Elaya's member-history tools label each message member / staff / other with it. */
 export async function getSiaSenderRoles(
   jids: string[],
 ): Promise<Map<string, { role: string; is_staff: boolean }>> {
@@ -868,15 +868,15 @@ export async function getSiaSenderRoles(
   return out;
 }
 
-/** The client's WhatsApp group (0194): at most one mapped group per client today. */
-export async function getSiaGroupForClient(clientId: string): Promise<{
+/** The member's WhatsApp group (0194): at most one mapped group per member today. */
+export async function getSiaGroupForMember(clientId: string): Promise<{
   group_jid: string; subject: string | null; member_count: number | null; last_message_at: string | null; message_count: number;
 } | null> {
   const db = siaDb();
   const { data, error } = await db
     .from("wag_groups")
     .select("group_jid, subject, member_count, is_active")
-    .eq("client_id", clientId)
+    .eq("member_id", clientId)
     .limit(1)
     .maybeSingle();
   if (error || !data) return null;

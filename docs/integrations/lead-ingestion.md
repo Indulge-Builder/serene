@@ -56,11 +56,11 @@ migration 0065). Every non-standard `field_data` answer lands in `form_data` aut
 
 ### The shop app adapter
 
-The Indulge Shop app is a React Native client with a NestJS API on EC2. It posts to us
+The Indulge Shop app is a React Native member with a NestJS API on EC2. It posts to us
 directly, with no Pabbly in between. Pabbly only exists for Meta, which will not POST to an
 arbitrary URL.
 
-It is a first-party sender, so the payload is flat and server-built. The client cannot forge
+It is a first-party sender, so the payload is flat and server-built. The member cannot forge
 identity: phone, name and product are all resolved from the authenticated member on their
 side before the webhook fires. Phone arrives as verified E.164, because a phone OTP is the
 only way to have an account there at all.
@@ -179,7 +179,7 @@ the shop URL. A dead link is honest. An empty card is not.
 ### Rate limiting note for the shop
 
 The limiter is 100 requests per minute per IP, in-memory per worker. The shop runs a single
-EC2 box behind a fixed Elastic IP, so all of its traffic counts as one client. Normal
+EC2 box behind a fixed Elastic IP, so all of its traffic counts as one member. Normal
 enquiry volume is nowhere near the cap. The risk is their recovery sweep re-driving a
 backlog of failed deliveries, which must be paced at roughly 60 per minute with a cap per
 run.

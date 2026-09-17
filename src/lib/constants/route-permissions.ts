@@ -20,7 +20,7 @@ export const ALWAYS_ALLOWED_PREFIXES: string[] = ['/dashboard', '/profile', '/he
 export const FOUNDER_NAV_PREFIXES: string[] = [
   '/dashboard',
   '/elaya',
-  '/clients',
+  '/members',
   '/leads',
   '/tasks',
   '/vendors',
@@ -45,8 +45,8 @@ export const FOUNDER_NAV_PREFIXES: string[] = [
 export const WORKBENCH_DOMAINS: AppDomain[] = ['tech'];
 /** Pages a workbench member still does not reach. /books is the organisation's money. */
 export const WORKBENCH_BLOCKED_PREFIXES: string[] = ['/books'];
-// /clients (the Sia client twin, 0194): the whole queendom sees its clients — the concierge
-// domain reaches it here; admin/founder bypass this map; the rows are RLS-scoped (client_visible).
+// /members (the Sia member twin, 0194): the whole queendom sees its members — the concierge
+// domain reaches it here; admin/founder bypass this map; the rows are RLS-scoped (member_visible).
 
 
 /**
@@ -80,7 +80,7 @@ export const DOMAIN_ROUTE_MAP: Record<AppDomain, string[]> = {
   // ── Non-Gia domains ───────────────────────────────────────────────────────
   // /subscriptions is the Subscriptions & Bills Tracker — Finance + Tech own it
   // (admin/founder reach it by bypassing this map in canAccessRoute).
-  concierge: ['/tasks', '/whatsapp', '/settings', '/clients', '/tickets'],
+  concierge: ['/tasks', '/whatsapp', '/settings', '/members', '/tickets'],
   finance:   ['/tasks', '/subscriptions', '/settings'],
   marketing: ['/tasks', '/campaigns', '/settings'],
   tech:      ['/tasks', '/subscriptions', '/settings'],

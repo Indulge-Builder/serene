@@ -211,6 +211,42 @@ compile crawl and is the first thing to fix before judging local speed.
 
 ---
 
+## 2026-09-17 — Members: the customer is a member (the clients → members rename)
+
+Why: Indulge sells memberships, so the person is a member. "Client" also meant two other
+things in this codebase, the Supabase client and React client components, so every new
+engineer tripped over `clients-service` next to `createClient`. Decided with the founder
+today: rename everywhere, in one pass, as its own commit, with the profile row staying the
+one record of who holds a seat.
+
+What changed:
+
+- Migration `20260917000202_members_rename.sql` — rename only, one transaction, no row
+  moved: tables, columns, the two RLS gate functions (every policy re-created against the
+  new names), the ticket RPCs, the Freshdesk overview RPC, every index / constraint /
+  trigger / policy / sequence name, our own stored vocabularies (ticket status
+  `awaiting_member`, resolution `cancelled_by_member`, event actor `member`, link
+  `member_reply`, notification types `ticket_member_*`, relation `member`, WhatsApp group
+  kind and participant role `member`, access-log surface `members_page`) with their CHECKs,
+  and the foreign key `deals.member_id` was born without. Proven on a throwaway Supabase
+  Postgres loaded from a live schema dump: nothing named client remains except the vendor
+  import label `client-excluded` (kept on purpose), the RPCs write `member_id`, the old
+  words are rejected. Rollback is the same file with the two words swapped.
+- Code: `components/clients` → `components/members` (every card renamed Member*),
+  `/clients` → `/members` (permanent redirects in `next.config.ts` keep old links alive),
+  `members-service` / `member-mutations` / `member-observation-reader` / `member-facets` /
+  `member-schema` / `types/member` / `actions/members`, `canAccessMember`,
+  `MEMBERS_PATH`, `memberFinancePath`, Elaya's `get_member_overview` /
+  `get_member_recent_messages` / `search_member_history` (the bridge answers the old names
+  until the next Python-brain deploy), the Python brain's members specialist, the import and
+  seed scripts (`import-members-and-map-groups.py`, `members/seed-member-facts.py`; the
+  CSV file names under `cleint-data/` are unchanged), `member-ticket-plan.md`, the
+  registries. Words that mean the Supabase or React client stayed untouched.
+- Not done here: `database.ts` was renamed by the same rule and must be regenerated once
+  0202 is applied; the Fargate brain needs a deploy for the new tool names; the
+  `memberships` history table and the won-deal → member bridge are the next step, on
+  purpose separate from a pure rename.
+
 ## 2026-09-16 — Freshdesk files: the copy runs in parallel
 
 Why: the attachment backlog (0197) cleared about eight tickets a minute against a
@@ -270,6 +306,32 @@ What changed:
 - Not yet applied: 0201 (with 0199 and 0200) waits for the next `db push`; the forms render
   today, the write lands once the CHECKs and the trigger are in. The 176 clients without a
   queendom and the Concierge accounts themselves are the next data step.
+
+## 2026-09-17 — Schema restructure, gia half built (not applied)
+
+Why: the plan of 2026-09-16, executed for the half whose decisions are all taken. The member
+half waits for the spine name from the members session.
+
+What changed:
+
+- Migration `20260917000210_gia_schema.sql` — `CREATE SCHEMA gia`, USAGE to `authenticated` +
+  `service_role`, the 22 tables `SET SCHEMA gia` (guarded), grants + default privileges, every
+  non-extension routine in `public` gets `gia` APPENDED to its search path (the live dump
+  showed six routines on `public, extensions[, vault]` that must keep their extras), the four
+  routines whose body spells `public.<moved table>` re-declared from the live definitions
+  with `gia.`, Realtime membership re-asserted for the two WhatsApp tables, `pgrst.db_schemas`
+  + reload. Numbered 0210 to stay clear of the 020x files the members session is writing;
+  it must run after `20260917000202_members_rename`.
+- `src/lib/supabase/schemas.ts` — `GIA_SCHEMA`, `GIA_TABLES`, `giaDb(client)`.
+- 180 call sites in 35 files switched to `giaDb(…)`; five scripts use `.schema('gia')`; the
+  Freshdesk mirror's own `sla_policies` stays on `freshdeskDb()`.
+- Realtime: the three WhatsApp channels name `schema: "gia"`.
+- Types: the 22 table types moved into a `gia` block of `database.ts`; the aliases at the
+  tail and in intelligence-service / lead-ingestion re-pointed; 12 cross-schema embed casts.
+- Lint: `no-restricted-syntax` refuses an unscoped `.from()` on a moved table in `src/`.
+- `scripts/db/row-counts.ts` — the before/after proof (`--compare`, `--rename old=new`).
+
+Not applied anywhere. Next: the rehearsal on a local copy of production (plan §5).
 
 ## 2026-09-16 — Schema restructure planned: `public` → `gia` + `client`
 

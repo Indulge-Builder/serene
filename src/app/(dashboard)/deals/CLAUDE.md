@@ -68,7 +68,7 @@ Every row in `public.deals` is a closed deal. There is no `status = 'won'` gate 
 only contains deals. The structural WHERE collapses to `archived_at IS NULL`.
 
 **Walk-in deals:** `lead_id = null`. These are direct sales with no lead lifecycle.
-`client_id` is also `null` for now — reserved for the future clients module.
+`member_id` is also `null` for now — reserved for the future clients module.
 
 ---
 
@@ -248,6 +248,6 @@ retail ⇒ valid category, sale ⇒ neither). A client-sent `deal_type` is never
 
 ## What is OUT OF SCOPE (do not build)
 
-- The `clients` table — `client_id` column exists, FK deferred.
+- The `clients` table — `member_id` column exists, FK deferred.
 - Any `renews_deal_id` / renewal chain — renewals are flat rows under a (future) client.
 - Making deal-insert + lead-status-flip a single transaction — two-step "insert first, flip second" is intentional for now.

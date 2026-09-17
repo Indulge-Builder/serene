@@ -1,6 +1,6 @@
 // vendors-service.ts — read-only vendor queries + THE ranker (migrations 0183–0185).
 //
-// SERVER ONLY. ADMIN client throughout (the revival-service / elaya-actions-service
+// SERVER ONLY. ADMIN member throughout (the revival-service / elaya-actions-service
 // posture), NOT session+RLS like subscriptions-service: rankVendorsForRequest is
 // also the body of Elaya's future find_vendors tool, which runs SESSIONLESS on the
 // WhatsApp webhook (auth.uid() is NULL there — a session client would return []).
@@ -542,8 +542,8 @@ export type RankVendorsRequest = {
  *      no `declines` covering it, and vendors.status = 'active' (paused /
  *      blacklisted never appear — getVendorDetail says why when asked directly).
  *   2. Score each from the one rollup (computeVendorScore) + flags.
- *   4. Client layer: prior jobs for this client become a reason (Phase 2 grows
- *      this into the full client-match score — the column exists for it).
+ *   4. Member layer: prior jobs for this member become a reason (Phase 2 grows
+ *      this into the full member-match score — the column exists for it).
  *   5. Top N by score, ties by name.
  */
 type HistoryMatchRow = {
@@ -671,29 +671,29 @@ export async function rankVendorsForRequest(req: RankVendorsRequest): Promise<Ra
   if (vendors.length === 0) return [];
   const activeIds = vendors.map((v) => v.id);
 
-  // 2–3. Signals: the rollup, this client's own history, and the asking
+  // 2–3. Signals: the rollup, this member's own history, and the asking
   // agent's own marks. The two side reads are keyed on the PERSON, never on
   // the candidate list: a `.in("vendor_id", activeIds)` puts every candidate id
   // in the request URI, and the capability fallback can return thousands — the
-  // same "URI too long" that broke the old Node ranker. One client's jobs and
+  // same "URI too long" that broke the old Node ranker. One member's jobs and
   // one agent's marks are each a short list; the candidate filter is in memory.
   const candidateIds = new Set(activeIds);
-  const [inputs, clientHistory, agentMarks] = await Promise.all([
+  const [inputs, memberHistory, agentMarks] = await Promise.all([
     getVendorScoreInputs(activeIds, { now, category: useCategory, city: useCity }),
     req.clientId
-      ? from(admin, "vendor_engagements").select("vendor_id").eq("client_id", req.clientId)
+      ? from(admin, "vendor_engagements").select("vendor_id").eq("member_id", req.clientId)
       : Promise.resolve({ data: [], error: null }),
     req.agentId
       ? from(admin, "vendor_agent_preferences").select("vendor_id, stance, note").eq("agent_id", req.agentId)
       : Promise.resolve({ data: [], error: null }),
   ]);
-  if (clientHistory.error) console.error(`${LOG} rankVendorsForRequest client history failed:`, clientHistory.error);
+  if (memberHistory.error) console.error(`${LOG} rankVendorsForRequest member history failed:`, memberHistory.error);
   if (agentMarks.error)    console.error(`${LOG} rankVendorsForRequest agent preferences failed:`, agentMarks.error);
 
-  const clientJobsByVendor = new Map<string, number>();
-  for (const e of mapRows<Pick<VendorEngagementRow, "vendor_id">, Pick<VendorEngagementRow, "vendor_id">>(clientHistory.data, (r) => r)) {
+  const memberJobsByVendor = new Map<string, number>();
+  for (const e of mapRows<Pick<VendorEngagementRow, "vendor_id">, Pick<VendorEngagementRow, "vendor_id">>(memberHistory.data, (r) => r)) {
     if (!candidateIds.has(e.vendor_id)) continue;
-    clientJobsByVendor.set(e.vendor_id, (clientJobsByVendor.get(e.vendor_id) ?? 0) + 1);
+    memberJobsByVendor.set(e.vendor_id, (memberJobsByVendor.get(e.vendor_id) ?? 0) + 1);
   }
   type MarkRow = Pick<VendorAgentPreferenceRow, "vendor_id" | "stance" | "note">;
   const myMarkByVendor = new Map<string, MarkRow>();
@@ -737,8 +737,8 @@ export async function rankVendorsForRequest(req: RankVendorsRequest): Promise<Ra
           (match.sampleTitles[0] ? ` — "${match.sampleTitles[0]}"` : ""),
       );
     }
-    const clientJobs = clientJobsByVendor.get(vendor.id) ?? 0;
-    if (clientJobs > 0) reasons.push(`Used ${clientJobs} time${clientJobs === 1 ? "" : "s"} for this client before`);
+    const memberJobs = memberJobsByVendor.get(vendor.id) ?? 0;
+    if (memberJobs > 0) reasons.push(`Used ${memberJobs} time${memberJobs === 1 ? "" : "s"} for this member before`);
 
     ranked.push({
       vendor,

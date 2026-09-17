@@ -20,7 +20,7 @@ import { ChevronDown } from "lucide-react";
 import { USER_ROLES, ROLE_LABELS } from "@/lib/constants/roles";
 import { APP_DOMAINS, DOMAIN_LABELS } from "@/lib/constants/domains";
 import { SIA_ROLES, SIA_ROLE_PLATFORM_ROLE, positionsForDomain, isSiaRole, type SiaRole } from "@/lib/constants/sia-roles";
-import type { QueendomSummary } from "@/lib/types/client";
+import type { QueendomSummary } from "@/lib/types/member";
 import type { UserRole, AppDomain } from "@/lib/types/database";
 
 export type RoleDomainDefaults = {

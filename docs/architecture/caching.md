@@ -13,7 +13,7 @@ TTL, and return it. **Postgres is always the source of truth** — a cold cache 
 slower. Every Redis call is wrapped so an outage degrades to direct Postgres reads, never a
 user-facing error.
 
-- **Client:** `src/lib/redis.ts` exports a single `redis = Redis.fromEnv()` — the only Upstash
+- **Member:** `src/lib/redis.ts` exports a single `redis = Redis.fromEnv()` — the only Upstash
   instance in the app.
 - **Keys + TTLs:** `src/lib/constants/redis-keys.ts` (`REDIS_KEYS`, `buildLeadListKey()`,
   `REDIS_TTL`, `TASK_*_TTL`, `PERF_*_TTL`) is the **only** source of key strings and TTL
@@ -35,7 +35,7 @@ user-facing error.
 | `dashboard:*` | `dashboard-service` (status, volume, multi-domain, campaigns, agent-tasks) | 30–120s | Keys are date-range-namespaced (`from:to`). `dashboard:lead-status` and `dashboard:campaigns` are ALSO role-scoped (`{role}:{domain}:{from}:{to}`, role ∈ `DASHBOARD_PIPELINE_ROLES` = manager/admin/founder, Q-16), and their **all-time slots are explicitly deleted** by `invalidateLeadCaches`' dashboard scope (loops every role variant). The *volume* keys stay TTL-only: a del cannot enumerate their date ranges |
 | `task:*` | `tasks-service` (gia 60s, personal page-1 30s, group-list 120s) | 30–120s | Explicit `del` on task writes; `task:group-list` is **user-scoped** (flat-visibility migration 0058b) — on subtask assignment both the caller's and the assignee's keys are deleted. Subtasks and remarks are NOT Redis-cached: `getGroupSubtasks`/`getTaskRemarks` use React `cache()` per-request memoisation only |
 | `helpdesk:cases:{domain}` | `intelligence-service.getHelpdeskLibrary` | 3600s (`REDIS_TTL.HELPDESK_CASES`) | Explicit `del` of `helpdeskCases(domain)` on every case/hook write — `actions/intelligence.ts` awaits the del before `revalidatePath('/helpdesk')`. One `{ cases, hooks }` envelope per domain; partial reads never cached. The dossier reads (`getCasesForLead`/`getHooksForCategories`) are deliberately un-cached |
-| `presence:{userId}` | `usage-service.recordPresence` (write) / `listLivePresence` (read) | 150s (`REDIS_TTL.PRESENCE`) | **TTL-only — never `del`.** The active-time heartbeat (adoption tracking) SETs one key per active user every 60s (`UsagePresence` client gate: tab visible + interacted < 120s); value `{domain,role,ts}`. The 1-min snapshot job (`snapshotUsagePresenceTask`) SCANs `presence:*` (`PRESENCE_KEY_PATTERN`) and appends to `usage_heartbeats`. **No DB write on the heartbeat path** — Redis only, fails open. TTL > the 60s beat so a key survives one missed beat but expires within ~1 snapshot of the user going idle/hidden |
+| `presence:{userId}` | `usage-service.recordPresence` (write) / `listLivePresence` (read) | 150s (`REDIS_TTL.PRESENCE`) | **TTL-only — never `del`.** The active-time heartbeat (adoption tracking) SETs one key per active user every 60s (`UsagePresence` member gate: tab visible + interacted < 120s); value `{domain,role,ts}`. The 1-min snapshot job (`snapshotUsagePresenceTask`) SCANs `presence:*` (`PRESENCE_KEY_PATTERN`) and appends to `usage_heartbeats`. **No DB write on the heartbeat path** — Redis only, fails open. TTL > the 60s beat so a key survives one missed beat but expires within ~1 snapshot of the user going idle/hidden |
 
 **No `ad-creatives` namespace.** A `campaign:ad-creative:*` cache was added 2026-06-01 and
 removed 2026-06-08 (its `void redis.del` was a P-08 bug; the cache was dropped entirely).

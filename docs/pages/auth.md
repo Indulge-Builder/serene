@@ -1,8 +1,8 @@
 # Auth Pages & Session — Page Spec
 
 > **Purpose:** spec for the pre-auth surfaces (`/login`, `/forgot-password`, `/update-password`), the root redirect, the auth callback, and the end-to-end session flow.
-> **Audience:** engineers. · **Source-of-truth scope:** the `(auth)` route group + session flow as experienced by the user. The session *architecture* (proxy, clients, route gates, RBAC) lives in `../architecture/auth-and-rbac.md`; `/profile` lives in `profile.md`; visual law for the canvas-dark auth surface: `../design/DESIGN-DNA.md` §3.7.
-> **Last verified:** 2026-07-02 (SSR theme cookie, three-stage layout gate, signOut removal); 2026-06-24 (invite-by-email onboarding + callback-client pass); 2026-06-15 (OTP-code password reset pass); 2026-06-11 restructure.
+> **Audience:** engineers. · **Source-of-truth scope:** the `(auth)` route group + session flow as experienced by the user. The session *architecture* (proxy, members, route gates, RBAC) lives in `../architecture/auth-and-rbac.md`; `/profile` lives in `profile.md`; visual law for the canvas-dark auth surface: `../design/DESIGN-DNA.md` §3.7.
+> **Last verified:** 2026-07-02 (SSR theme cookie, three-stage layout gate, signOut removal); 2026-06-24 (invite-by-email onboarding + callback-member pass); 2026-06-15 (OTP-code password reset pass); 2026-06-11 restructure.
 
 ## 1. Purpose
 
@@ -22,18 +22,18 @@ hitting `/` are redirected to `/dashboard`; deactivated users are gated twice (a
 
 | Layer | Key items |
 | ----- | --------- |
-| Actions | `auth.ts` — exactly four exports: `loginAction` (+ `is_active` check; the documented non-authorization profile read), `requestPasswordResetAction` (sends a 6-digit OTP code; never reveals email existence — S-09), `verifyResetOtpAction` (verifies the code → establishes the recovery session), `updatePasswordAction` (the shared step-2 for **both** reset and invite). The duplicate `signOut` was deleted in the 2026-07-02 dead-code purge; sign-out lives only as `signOutUser` in `lib/actions/profiles.ts`. (No invite-specific action exists — invite session establishment is client-side in `callback-client.tsx`, not a server action.) |
-| Invite callback (live) | `/auth/callback` → `src/app/(auth)/auth/callback/page.tsx` + `callback-client.tsx` — **a CLIENT page** (built 2026-06-16). THE invite landing: the invite `redirectTo` (`inviteUser` in `lib/actions/profiles.ts`) points here as `/auth/callback?next=/update-password`. Handles three flows — implicit-grant **hash** (`#access_token=…`, the actual invite path the browser client consumes on mount; the server can't read a hash fragment), PKCE (`?code=` → `exchangeCodeForSession`), and OTP (`?token_hash=&type=` → `verifyOtp`) — then `router.replace(next)` (default `/update-password`, sanitised to a same-origin relative path). |
+| Actions | `auth.ts` — exactly four exports: `loginAction` (+ `is_active` check; the documented non-authorization profile read), `requestPasswordResetAction` (sends a 6-digit OTP code; never reveals email existence — S-09), `verifyResetOtpAction` (verifies the code → establishes the recovery session), `updatePasswordAction` (the shared step-2 for **both** reset and invite). The duplicate `signOut` was deleted in the 2026-07-02 dead-code purge; sign-out lives only as `signOutUser` in `lib/actions/profiles.ts`. (No invite-specific action exists — invite session establishment is client-side in `callback-member.tsx`, not a server action.) |
+| Invite callback (live) | `/auth/callback` → `src/app/(auth)/auth/callback/page.tsx` + `callback-member.tsx` — **a CLIENT page** (built 2026-06-16). THE invite landing: the invite `redirectTo` (`inviteUser` in `lib/actions/profiles.ts`) points here as `/auth/callback?next=/update-password`. Handles three flows — implicit-grant **hash** (`#access_token=…`, the actual invite path the browser client consumes on mount; the server can't read a hash fragment), PKCE (`?code=` → `exchangeCodeForSession`), and OTP (`?token_hash=&type=` → `verifyOtp`) — then `router.replace(next)` (default `/update-password`, sanitised to a same-origin relative path). |
 | Legacy callback (compat) | `GET /api/auth/callback` (`route.ts`) — exchanges `?code` (PKCE) or `?token_hash` (`verifyOtp`) for a session. **Kept for backward compatibility only; it never receives the invite token** (a hash fragment a server route can't read) and is **dead code for the OTP-code password reset**. |
 | Validation | `validations/auth.ts` — `loginSchema`, `forgotPasswordSchema`, `verifyResetOtpSchema`, `updatePasswordSchema`; errors via `form-errors.ts` |
-| Session | proxy + `updateSession()` + client factories — `../architecture/auth-and-rbac.md` §7 |
+| Session | proxy + `updateSession()` + member factories — `../architecture/auth-and-rbac.md` §7 |
 
 ## 4. Components
 
 - `LoginForm`, `ForgotPasswordForm`.
 - `UpdatePasswordForm` — **three branches** (not two): `invited` (skip the code, render `PasswordStep invited` directly), `!verified` (`CodeStep`), `verified` (`PasswordStep`). Shared chrome is the extracted helpers `AuthCardShell`, `ErrorBanner`, and `EyeToggle` (all local to `update-password-form.tsx`).
 - `InvalidLinkCard` (the real component — takes an `expired?` prop) lives in `update-password/page.tsx`; `MissingEmailCard()` is just a thin wrapper that returns `<InvalidLinkCard />` (no `expired` flag).
-- `AuthCallbackClient` + `CallbackPending` (the "Signing you in…" fallback) + a **local** `InvalidLinkCard` all live in `callback-client.tsx` / `page.tsx` — the invite-landing surface.
+- `AuthCallbackClient` + `CallbackPending` (the "Signing you in…" fallback) + a **local** `InvalidLinkCard` all live in `callback-member.tsx` / `page.tsx` — the invite-landing surface.
 - `PasswordStrengthBar` (4-segment danger→success).
 
 All draw from the canvas/sidebar palette — `--theme-paper*`, `.serene-input`, and light
@@ -62,7 +62,7 @@ future proxy/action must rate-limit to once per minute when implemented.
 ## 8. Deep dive
 
 > Section numbering preserved from the original intelligence document. The former §3 (Supabase
-> client files), §4 (proxy session layer), and §7 (`/profile`) now live in
+> member files), §4 (proxy session layer), and §7 (`/profile`) now live in
 > `../architecture/auth-and-rbac.md` and `profile.md`.
 
 ### 1. Module Overview
@@ -70,7 +70,7 @@ future proxy/action must rate-limit to once per minute when implemented.
 Three distinct layers make up how users enter, stay in, and manage their identity inside Serene:
 
 1. **Pre-auth pages** — unauthenticated surfaces (`/login`, `/forgot-password`, `/update-password`, and the invite landing `/auth/callback`) inside the `(auth)` route group. No sidebar, no dashboard shell, canvas background with ambient motion layers. (`/auth/callback` is public but transient — it forwards once the session is live; it's not a page the user lingers on.)
-2. **Session infrastructure** — `src/proxy.ts` (Next.js 16 proxy), `src/lib/supabase/middleware.ts` (`updateSession()` — uses `auth.getClaims()`, a local ES256 verify against a process-cached JWKS, not `getUser()`), and the two Supabase client factories (`client.ts` / `server.ts`). Keeps the Supabase session cookie fresh on navigations.
+2. **Session infrastructure** — `src/proxy.ts` (Next.js 16 proxy), `src/lib/supabase/middleware.ts` (`updateSession()` — uses `auth.getClaims()`, a local ES256 verify against a process-cached JWKS, not `getUser()`), and the two Supabase client factories (`member.ts` / `server.ts`). Keeps the Supabase session cookie fresh on navigations.
 3. **Profile self-management** — `/profile` inside `(dashboard)`. Any authenticated user edits **only their own** `profiles` row. Admins edit other users at `/admin/users/[id]`, not here.
 
 #### Route group structure
@@ -136,7 +136,7 @@ export default async function RootPage() {
 | **Fields** | `email`, `password` — password field **has** an Eye/EyeOff visibility toggle (`showPassword` state, `lucide-react` `Eye`/`EyeOff`, **15px / strokeWidth 1.5**, `type="button"`, `tabIndex={-1}`, absolute-right, colour `--theme-sidebar-text`) |
 | **Submit copy** | "Sign In" / "Signing in…" (pending). `Button variant="primary"` full-width + `--shadow-accent-glow` |
 | **Action** | `loginAction` in `src/lib/actions/auth.ts` via `useActionState` |
-| **Supabase** | `signInWithPassword({ email, password })` using **server** client (`createClient()` from `server.ts`) |
+| **Supabase** | `signInWithPassword({ email, password })` using **server** member (`createClient()` from `server.ts`) |
 | **Deactivation gate** | After a successful `signInWithPassword`, the action calls `getCurrentProfile()`; if `profile.is_active === false` it immediately `signOut()`s and returns `formErrors.accountDeactivated` ("Your account has been deactivated. Please contact your administrator.") — a deactivated user can never establish a usable session at the login step |
 | **Success** | `redirect("/dashboard")` |
 | **Errors** | Bad email/password or Supabase auth failure → `formErrors.invalidCredentials` ("The email or password you entered is incorrect."); deactivated account → `formErrors.accountDeactivated`. No separate "unconfirmed email" branch in code |
@@ -188,7 +188,7 @@ an OTP code has no link to expire).
 
 **Invite session establishment is client-side, not a callback in this file.** For the OTP reset
 path the recovery session is established by `verifyResetOtpAction` (`verifyOtp({ type: 'recovery' })`).
-For the invite path the session is established earlier, in `callback-client.tsx`
+For the invite path the session is established earlier, in `callback-member.tsx`
 (`/auth/callback`), by the browser client consuming the implicit-grant hash — see §5d-i below.
 The legacy server route `src/app/api/auth/callback/route.ts` is dead code for both flows (it can't
 read the invite hash, and reset no longer uses a link).
@@ -204,10 +204,10 @@ The end-to-end invite flow (fixed 2026-06-16, changelog 2026-06-16):
    applied to prod) inserts the `profiles` row and now also copies `job_title`
    (`NULLIF(... ,'')`) — previously dropped for invited users (the password-mode `createUser` path
    set it via a follow-up `updateProfileFields`, so only invites lost it).
-3. The user clicks the email button → lands on **`/auth/callback`** (the client page). The Supabase
+3. The user clicks the email button → lands on **`/auth/callback`** (the member page). The Supabase
    implicit grant returns the session in the URL **hash** (`#access_token=…&type=invite`); only
-   client JS can read `window.location.hash`, which is why this is a client page, not a route
-   handler. `callback-client.tsx` is robust to all three flows: hash (poll `getSession()` up to
+   member JS can read `window.location.hash`, which is why this is a member page, not a route
+   handler. `callback-member.tsx` is robust to all three flows: hash (poll `getSession()` up to
    ~2s for the browser client to persist it), PKCE (`exchangeCodeForSession`), OTP
    (`verifyOtp({ token_hash, type })`). On success it `router.replace(next)` (default
    `/update-password`, sanitised to a same-origin relative path); any error / expired link renders
@@ -384,7 +384,7 @@ const safeTheme = isThemeKey(profile.theme) ? profile.theme : DEFAULT_THEME;
 | Item | Detail |
 | ---- | ------ |
 | **Who** | Own profile, or admin/founder |
-| **Writes** | `avatar_url` (public URL after client upload) |
+| **Writes** | `avatar_url` (public URL after member upload) |
 | **Validation** | Zod `.url()`; no bucket-prefix enforcement in code |
 | **revalidatePath** | `/profile` |
 
@@ -447,7 +447,7 @@ sequenceDiagram
 5. User changes theme → instant `setAttribute` on `<html>` + `persistThemeCookie(theme)` + async `updateProfile({ theme })` → persisted in `profiles.theme`.
 6. User clicks Sign out → `signOutUser` → cookie cleared → `/login`.
 
-**Invite onboarding path (alternative entry, no `loginAction`):** admin invite → email link → `/auth/callback` (client) establishes the session from the implicit-grant hash → forwards to `/update-password` (invite mode) → `updatePasswordAction` sets the first password → "Continue to Dashboard" (`/dashboard`). No server action mints the invite session — `callback-client.tsx` does it browser-side. See §5d-i.
+**Invite onboarding path (alternative entry, no `loginAction`):** admin invite → email link → `/auth/callback` (member) establishes the session from the implicit-grant hash → forwards to `/update-password` (invite mode) → `updatePasswordAction` sets the first password → "Continue to Dashboard" (`/dashboard`). No server action mints the invite session — `callback-member.tsx` does it browser-side. See §5d-i.
 
 ---
 
@@ -470,13 +470,13 @@ sequenceDiagram
 | Avatar upload: 2 MB max validated client-side before upload | `ProfileAvatarSection.tsx` |
 | Forgot-password must not reveal whether email exists | `requestPasswordResetAction` |
 | Password reset uses a 6-digit OTP **code** (no link, no `redirectTo`) — recovery session is established by `verifyResetOtpAction`'s `verifyOtp({ type: 'recovery' })`, never at a callback | `requestPasswordResetAction`, `verifyResetOtpAction`, recovery email template |
-| The live invite landing is the **client** page `/auth/callback` (reads the implicit-grant hash; the server can't). The legacy `/api/auth/callback` route is kept for backward compat only — dead code for both invite and reset | `src/app/(auth)/auth/callback/callback-client.tsx`, `src/app/api/auth/callback/route.ts` |
+| The live invite landing is the **member** page `/auth/callback` (reads the implicit-grant hash; the server can't). The legacy `/api/auth/callback` route is kept for backward compat only — dead code for both invite and reset | `src/app/(auth)/auth/callback/callback-member.tsx`, `src/app/api/auth/callback/route.ts` |
 | The invite `redirectTo` points at `/auth/callback?next=/update-password` (never `/api/auth/callback`) | `inviteUser` in `lib/actions/profiles.ts` |
 | `handle_new_user()` copies `job_title` from invite metadata (`NULLIF(... ,'')`) — invited users keep the job title set at invite time | migration `20260616000125_handle_new_user_job_title.sql` |
 | Invalid and expired reset codes both surface as `formErrors.otpInvalid` — the page never reveals which | `verifyResetOtpAction` + `update-password-form.tsx` |
 | `/update-password` has **two entry modes**: a live session → invite mode (`<UpdatePasswordForm invited />`, no OTP step); else the `?email` param gate (→ `MissingEmailCard` → `InvalidLinkCard` when absent). No recovery-session page gate in OTP mode | `update-password/page.tsx` |
 | Invite onboarding completes at `/dashboard` ("Continue to Dashboard"); OTP reset completes at `/login` ("Sign In") | `update-password-form.tsx` `PasswordStep` |
-| One browser Supabase client — `createClient()` from `client.ts` only | Rule 05 |
+| One browser Supabase client — `createClient()` from `member.ts` only | Rule 05 |
 | One server Supabase client per request — `server.ts` only in services/actions | Rule 05 |
 | Notification sound preference: `serene:notifications:sound:v1` in localStorage — separate from theme DB field; no `/profile` control | `useNotificationSound.ts` |
 | Password reset completes at `/login` after success, not `/dashboard` | `UpdatePasswordForm` success link |

@@ -30,7 +30,7 @@ department, carries a billing type (`monthly` / `yearly` / `top_up` / `other`), 
 | Object | Migration | Notes |
 | --- | --- | --- |
 | `subscriptions` | 0163 | Parent. `departments text[]` (`<@` CHECK mirrors `APP_DOMAINS`), `type`/`currency` CHECKs, `amount`, a due-date shape CHECK (monthly/other → `due_day` 1–31; yearly → `due_date`; top_up → neither), `login`/`password`, `notes`, `is_archived` (soft delete), `created_by`, timestamps + `update_updated_at` trigger. |
-| `subscription-invoices` bucket | 0163 | **PRIVATE** storage bucket. Client uploads under `{uid}/` prefix (insert-own-prefix RLS); reads mint short-lived signed urls (admin client). Rows store the **path**, never a url. |
+| `subscription-invoices` bucket | 0163 | **PRIVATE** storage bucket. Member uploads under `{uid}/` prefix (insert-own-prefix RLS); reads mint short-lived signed urls (admin client). Rows store the **path**, never a url. |
 | `subscription_payments` | 0164 | Append-only payment history (`due_date`, `paid_at`, `rate` in original currency, `paid_amount_inr` manual, `invoice_path`, `notes`). SELECT-only RLS. |
 | `subscription_topups` | 0165 | Append-only top-up history (`topped_up_at`, `amount`+`currency` per event, `paid_amount_inr` manual, `invoice_path`, `notes`). SELECT-only RLS. |
 | password encryption | 0166 | See **Password encryption** below. |

@@ -20,12 +20,12 @@ was real: spreadsheets, chat threads, and memory. Serene replaces it.
 It is built like a building with named floors:
 
 - **Serene** is the building itself — the login, the look and feel, the navigation.
-- **Gia** is the sales floor — it manages every prospective client from first contact to
+- **Gia** is the sales floor — it manages every prospective member from first contact to
   closed deal. *This is live and used daily.*
 - **Elaya** is the assistant who walks every floor — an AI presence that surfaces the right
   insight at the right moment and can now take action on a salesperson's behalf. *Live and in
   use, including over WhatsApp.*
-- **Sia** is the concierge floor — where won clients will live as ongoing relationships.
+- **Sia** is the concierge floor — where won members will live as ongoing relationships.
   *Planned, not started.*
 - One further floor name is reserved for the future; its scope is not yet defined.
 
@@ -94,12 +94,12 @@ advertisement to deal:
   entries can be added, but the record of what happened cannot be edited away.
 - **Sensitive controls need two people.** Nobody can quietly promote themselves or
   deactivate a colleague — role changes are made by administrators and logged.
-- **Client privacy is a design rule, not an afterthought.** Client personal details are never
+- **Member privacy is a design rule, not an afterthought.** Member personal details are never
   sent to outside AI services, and even internal alert logs keep only the last four digits of
   a phone number.
 - **The look matches the brand.** Serene was designed like a luxury product — calm, precise,
   uncluttered — because the team lives in it eight to twelve hours a day, and because it
-  represents a brand that serves demanding clients.
+  represents a brand that serves demanding members.
 
 ## What's live, what's next
 
@@ -112,7 +112,7 @@ campaign and performance reporting, and the shared WhatsApp inbox. Plus, now liv
   note, create or update tasks, and *propose* bigger steps such as a status change, a
   reassignment, or recording a won deal, which a person approves in one reply before anything
   happens. She also remembers each person over time and speaks in the style they prefer. Every
-  action she takes is recorded, and she is never sent a client's raw personal details.
+  action she takes is recorded, and she is never sent a member's raw personal details.
 - **Voice dictation** — agents can speak instead of type a call note, a WhatsApp reply, or a
   message to Elaya; their speech (including Hinglish) becomes editable text. The audio is
   transcribed in the moment and never stored.
@@ -133,11 +133,11 @@ campaign and performance reporting, and the shared WhatsApp inbox. Plus, now liv
 
 **Being built now:**
 
-- **Client records** — the bridge from "deal won" to "ongoing client relationship".
+- **Member records** — the bridge from "deal won" to "ongoing member relationship".
 
 **Planned next:**
 
-- **Sia**, the concierge floor, on top of client records.
+- **Sia**, the concierge floor, on top of member records.
 
 The honest summary for an outsider: the company's core sales operation already runs on
 software the company owns outright — built to luxury-brand standards, with discipline about

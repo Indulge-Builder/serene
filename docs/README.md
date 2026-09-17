@@ -98,7 +98,7 @@ for product context
 | Who can see/do what; sessions; RLS philosophy | `architecture/auth-and-rbac.md` |
 | Redis keys, TTLs, invalidation | `architecture/caching.md` |
 | A migration's purpose / conventions | `architecture/migrations.md` |
-| Moving tables into `gia` / `client` schemas (the plan, rehearsal, runbook) | `architecture/schema-restructure-plan.md` |
+| Moving tables into `gia` / `member` schemas (the plan, rehearsal, runbook) | `architecture/schema-restructure-plan.md` |
 | Any visual rule (colour, motion, type, spacing) | `design/DESIGN-DNA.md` |
 | How a UI component behaves | `design/design-system.md` (+ `src/components/CLAUDE.md`) |
 | Why a design choice was made / open design questions | `design/decision-log.md` |

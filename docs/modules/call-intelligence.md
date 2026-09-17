@@ -18,7 +18,7 @@
 3. [Service Taxonomy — The 6 Categories](#3-service-taxonomy--the-6-categories)
 4. [Data Model — Complete Schema](#4-data-model--complete-schema)
 5. [Lead Form Integration & Ingestion Pipeline](#5-lead-form-integration--ingestion-pipeline)
-6. [Retrieval Strategy — Why Client-Side Wins](#6-retrieval-strategy--why-client-side-wins)
+6. [Retrieval Strategy — Why Member-Side Wins](#6-retrieval-strategy--why-client-side-wins)
 7. [Redis Caching Layer](#7-redis-caching-layer)
 8. [UI Surface 1 — Lead Dossier Interest Card](#8-ui-surface-1--lead-dossier-interest-card)
 9. [UI Surface 2 — The Helpdesk Page](#9-ui-surface-2--the-helpdesk-page)
@@ -61,7 +61,7 @@ Today's problem:
 What this feature gives them:
 
 - Specific, impressive past examples matched to what the lead cares about
-- City-contextual proof ("here's what we've done for clients in your city")
+- City-contextual proof ("here's what we've done for members in your city")
 - Confident scripts and talking points so they never ramble
 - A search tool for when the conversation goes off-script
 
@@ -78,12 +78,12 @@ These are stored as a PostgreSQL enum (`service_category`) on the `service_cases
 
 | Value     | Display Name     | What It Covers                                                                                                                                                                                                                                                     |
 | --------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `travel`  | Travel           | Custom itineraries, hotel bookings, flight management, pick-drop, invisible butler travel experiences. We don't recommend Instagram places — we find the hidden ones matched to the client's personality, hygiene standard, adventure level, and past preferences. |
+| `travel`  | Travel           | Custom itineraries, hotel bookings, flight management, pick-drop, invisible butler travel experiences. We don't recommend Instagram places — we find the hidden ones matched to the member's personality, hygiene standard, adventure level, and past preferences. |
 | `dining`  | Dining           | Fully-booked restaurant seats, club entries, lounge access, private dining, party organization, table at the place everyone says is impossible.                                                                                                                    |
-| `gifts`   | Gifts            | Rare item sourcing, personality-matched gifts, occasion reminders. Our Joker team's only job is to make clients look incredible to the people they care about.                                                                                                     |
+| `gifts`   | Gifts            | Rare item sourcing, personality-matched gifts, occasion reminders. Our Joker team's only job is to make members look incredible to the people they care about.                                                                                                     |
 | `events`  | Events           | Sports tickets (F1, IPL, Wimbledon, WWE), concerts, once-in-a-lifetime experiences (Antarctica, Everest breakfast), workshops, and any seat the public cannot buy.                                                                                                 |
-| `retail`  | Retail           | Sold-out and waitlisted items — Rolex on 3-year waitlist, limited sneakers, jewellery, yachts, jets. Client wishes for a thing; we source and deliver it.                                                                                                          |
-| `special` | Special Requests | Everything that doesn't fit above. If it is legal where the client is, we can attempt it. Nanny sourcing, househelp, tutors, unusual logistics, delivering medicine to a remote location, a Coke bottle to a mountain peak.                                        |
+| `retail`  | Retail           | Sold-out and waitlisted items — Rolex on 3-year waitlist, limited sneakers, jewellery, yachts, jets. Member wishes for a thing; we source and deliver it.                                                                                                          |
+| `special` | Special Requests | Everything that doesn't fit above. If it is legal where the member is, we can attempt it. Nanny sourcing, househelp, tutors, unusual logistics, delivering medicine to a remote location, a Coke bottle to a mountain peak.                                        |
 
 
 ### Tag Convention
@@ -93,7 +93,7 @@ Tags are freeform `text[]` on each case. They are the only granular vocabulary �
 - **City tags:** `'delhi'`, `'jaipur'`, `'mumbai'`, `'goa'`, `'london'`, `'tokyo'` — always lowercase city slug
 - **Service tags:** `'rolex'`, `'daytona'`, `'nanny'`, `'wimbledon'`, `'f1'`, `'private_chef'`, `'yacht'`, `'sold_out'`
 - **Qualifier tags:** `'48hrs'`, `'same_day'`, `'international'`, `'rare'`, `'waitlisted'`, `'bespoke'`
-- **Impression tags:** `'client_loved'`, `'referred_others'`, `'extended_engagement'`
+- **Impression tags:** `'member_loved'`, `'referred_others'`, `'extended_engagement'`
 
 **Rule:** Every case must include at minimum the city slug as a tag (matching `leads.city`). This is what powers the city-contextual card on the dossier.
 
@@ -151,7 +151,7 @@ CREATE TABLE public.service_cases (
 
   -- Content (what agents read and say)
   title          text        NOT NULL,  -- one impressive claim line. max 120 chars.
-  summary        text        NOT NULL,  -- 2–3 sentences. what, how, why it was hard. no client names.
+  summary        text        NOT NULL,  -- 2–3 sentences. what, how, why it was hard. no member names.
   outcome_note   text,                  -- what happened after. brag number if possible.
 
   -- Location display
@@ -328,7 +328,7 @@ The normalized array is written to `leads.service_interests` on INSERT. `form_da
 
 ---
 
-## 6. Retrieval Strategy — Why Client-Side Wins
+## 6. Retrieval Strategy — Why Member-Side Wins
 
 ### The Math
 
@@ -361,7 +361,7 @@ Page loads → Server Component RSC fetch → getAllServiceCases(domain) →
 Dossier page loads → Server Component → parallel Promise.all([
   getLeadBySlug(slug),
   getCasesForLead(lead.service_interests, lead.city, lead.domain)  ← DB query, not client-side
-]) → rendered server-side → zero client fetches for this card
+]) → rendered server-side → zero member fetches for this card
 ```
 
 The dossier card uses a server-side query because:
@@ -523,7 +523,7 @@ Standard paper shell. Full-width single column. Max-width 860px, centered.
 - Hooks listed as numbered items, `--theme-text-secondary`, italic
 - Compact — not cards, just text rows with numbers
 
-### Client-Side Filter Logic
+### Member-Side Filter Logic
 
 ```typescript
 // All 150 cases loaded on mount as initialData
@@ -573,7 +573,7 @@ src/
 │   │   ├── category-icons.ts          ← category → Lucide icon map.
 │   │   ├── HookList.tsx               ← Conversation hooks list (numbered items).
 │   │   ├── CategoryPill.tsx           ← Single category filter pill (shared).
-│   │   └── HelpdeskSearch.tsx         ← Client component. Owns query state + filter logic.
+│   │   └── HelpdeskSearch.tsx         ← Member component. Owns query state + filter logic.
 │   │
 │   └── leads/
 │       └── ServiceInterestCard.tsx    ← Dossier section. Server-rendered. Uses CaseCard + HookList.
@@ -694,9 +694,9 @@ Every case has 5 required fields and 2 optional:
 
 | Field          | Required | Guidance                                                                                                                                                                                 |
 | -------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `title`        | Yes      | One line, max 120 chars. Make it a claim, not a description. *"Sourced a Patek Philippe Nautilus in 36 hours when the global waitlist was 4 years"* — not *"Watch sourcing for client"*. |
-| `summary`      | Yes      | 2–3 sentences. What was done. What made it hard or special. Never mention client name or identifying details. Write in past tense, third person.                                         |
-| `outcome_note` | No       | What happened after. Numbers, referrals, repeat business, extensions, upgrades. *"Client extended the itinerary twice and referred three families to Indulge."*                          |
+| `title`        | Yes      | One line, max 120 chars. Make it a claim, not a description. *"Sourced a Patek Philippe Nautilus in 36 hours when the global waitlist was 4 years"* — not *"Watch sourcing for member"*. |
+| `summary`      | Yes      | 2–3 sentences. What was done. What made it hard or special. Never mention member name or identifying details. Write in past tense, third person.                                         |
+| `outcome_note` | No       | What happened after. Numbers, referrals, repeat business, extensions, upgrades. *"Member extended the itinerary twice and referred three families to Indulge."*                          |
 | `category`     | Yes      | One of the 6 values.                                                                                                                                                                     |
 | `tags`         | Yes      | 4–8 tags minimum. Always include city slug. Think: what would an agent type mid-call?                                                                                                    |
 | `city`         | Yes      | Display name: `"Delhi"`, `"Tokyo"`, `"London"`. Not a slug here — this is shown in the UI.                                                                                               |
@@ -716,8 +716,8 @@ For each of the 6 categories, write 4–6 hooks. A hook is a single confident li
 
 Good hooks:
 
-- *"We once arranged a private debenture box at Wimbledon Centre Court for a client who called us 48 hours before the final. The waiting list for that box is normally 12 years."*
-- *"One of our clients in Jaipur wanted to gift his daughter something for her university results. We found a miniature glass duck — her favourite animal — from a Murano artisan in Venice. She still talks about it."*
+- *"We once arranged a private debenture box at Wimbledon Centre Court for a member who called us 48 hours before the final. The waiting list for that box is normally 12 years."*
+- *"One of our members in Jaipur wanted to gift his daughter something for her university results. We found a miniature glass duck — her favourite animal — from a Murano artisan in Venice. She still talks about it."*
 - *"We sourced a Rolex Daytona in Platinum within 72 hours. The dealer waitlist was 3 years. We didn't use a dealer."*
 
 Bad hooks (too vague, no proof):
@@ -727,7 +727,7 @@ Bad hooks (too vague, no proof):
 
 ### Anti-Patterns to Avoid
 
-- **No client names** — ever. Not even initials or "a client from Delhi who works in finance."
+- **No member names** — ever. Not even initials or "a member from Delhi who works in finance."
 - **No unverifiable claims** — if you can't back it up, don't write it
 - **No generic adjectives** — "amazing", "incredible", "world-class" — use specific facts instead
 - **No future tense** — these are past deliveries, always past tense
@@ -767,7 +767,7 @@ Step 7 — SHARED COMPONENTS
   CaseCard.tsx, HookList.tsx, CategoryPill.tsx (in src/components/intelligence/)
 
 Step 8 — HELPDESK PAGE
-  HelpdeskSearch.tsx (client, owns filter logic)
+  HelpdeskSearch.tsx (member, owns filter logic)
   helpdesk/page.tsx (server, fetches data, passes initialData)
   helpdesk/loading.tsx (skeleton)
   Add to sidebar nav + route-permissions

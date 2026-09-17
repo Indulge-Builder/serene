@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { createUser, inviteUser } from "@/lib/actions/profiles";
 import { Button } from "@/components/ui/Button";
 import { RoleDomainFields } from "@/components/admin/RoleDomainFields";
-import type { QueendomSummary } from "@/lib/types/client";
+import type { QueendomSummary } from "@/lib/types/member";
 import type { ActionResult } from "@/lib/types";
 
 export type CreateUserMode = "password" | "invite";

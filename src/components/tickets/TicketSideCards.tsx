@@ -7,12 +7,12 @@ import { SENTINEL_TOKEN_BUDGET } from '@/lib/constants/tickets';
 import type { SentinelState } from '@/lib/types/ticket';
 import { CardHeader } from '@/components/leads/CardHeader';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { HealthPill } from '@/components/clients/HealthPill';
+import { HealthPill } from '@/components/members/HealthPill';
 import { formatDate, formatRelativeTime } from '@/lib/utils/dates';
 import { FRESHDESK_PATH } from '@/lib/constants/freshdesk';
 import { TICKETS_PATH, TICKET_STATUSES } from '@/lib/constants/tickets';
 import { CLIENTS_PATH } from '@/lib/constants/sia-roles';
-import { FACT_KEY_LABELS } from '@/lib/constants/client-facets';
+import { FACT_KEY_LABELS } from '@/lib/constants/member-facets';
 import type { TicketDetail, TicketHelp } from '@/lib/types/ticket';
 
 const SHELL: React.CSSProperties = { background: 'var(--theme-paper)', border: '1px solid var(--theme-paper-border)', borderRadius: 'var(--neu-radius-card)', boxShadow: 'var(--shadow-1)', overflow: 'hidden' };
@@ -21,12 +21,12 @@ const BODY: React.CSSProperties = { padding: 'var(--space-4) var(--space-6) var(
 export function TicketLinkedMessagesCard({ links }: { links: TicketDetail['links'] }) {
   return (
     <div style={SHELL}>
-      <CardHeader icon={MessageCircle} label="The client's words" right={<span style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--neu-header-ink)' }}>{links.length}</span>} />
+      <CardHeader icon={MessageCircle} label="The member's words" right={<span style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--neu-header-ink)' }}>{links.length}</span>} />
       <div style={BODY}>
         {links.length === 0 ? <EmptyState variant="inline" title="No messages linked." description="Select messages in Sia and create or link them to this ticket." /> :
           links.map((l) => (
             <div key={l.id} style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--neu-radius-tile, var(--radius-md))', background: l.from_me ? 'var(--theme-accent-surface)' : 'var(--theme-paper-subtle)', alignSelf: l.from_me ? 'flex-end' : 'flex-start', maxWidth: '92%' }}>
-              <span style={{ fontSize: 'var(--text-2xs)', color: 'var(--theme-text-tertiary)' }}>{l.from_me ? 'Indulge' : (l.sender_name ?? 'Client')} · {l.wa_timestamp ? formatDate(l.wa_timestamp, 'd MMM, h:mm a') : ''} · {l.link_kind}</span>
+              <span style={{ fontSize: 'var(--text-2xs)', color: 'var(--theme-text-tertiary)' }}>{l.from_me ? 'Indulge' : (l.sender_name ?? 'Member')} · {l.wa_timestamp ? formatDate(l.wa_timestamp, 'd MMM, h:mm a') : ''} · {l.link_kind}</span>
               <span style={{ fontSize: 'var(--text-sm)', whiteSpace: 'pre-wrap' }}>{l.text ?? '(media or empty)'}</span>
             </div>
           ))}
@@ -35,14 +35,14 @@ export function TicketLinkedMessagesCard({ links }: { links: TicketDetail['links
   );
 }
 
-export function TicketHelpPanel({ help, clientId, clientName }: { help: TicketHelp | null; clientId: string; clientName: string }) {
+export function TicketHelpPanel({ help, clientId, memberName }: { help: TicketHelp | null; clientId: string; memberName: string }) {
   const label = (facet: string, key: string) => FACT_KEY_LABELS[`${facet}.${key}`] ?? key.replace(/_/g, ' ');
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
       <div style={SHELL}>
-        <CardHeader icon={Compass} label="Client" right={help?.health != null ? <span style={{ marginLeft: 'auto' }}><HealthPill score={help.health} /></span> : undefined} />
+        <CardHeader icon={Compass} label="Member" right={help?.health != null ? <span style={{ marginLeft: 'auto' }}><HealthPill score={help.health} /></span> : undefined} />
         <div style={BODY}>
-          <Link href={`${CLIENTS_PATH}/${clientId}`} style={{ fontWeight: 'var(--weight-medium)', color: 'var(--neu-accent-deep)' }}>{clientName}</Link>
+          <Link href={`${CLIENTS_PATH}/${clientId}`} style={{ fontWeight: 'var(--weight-medium)', color: 'var(--neu-accent-deep)' }}>{memberName}</Link>
           {!help ? <span style={{ fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>The profile could not be read.</span> : (
             <>
               {help.dislikes.length > 0 && (
@@ -105,9 +105,9 @@ export function TicketSentinelCard({ ticket }: { ticket: TicketDetail['ticket'] 
         {ticket.summary ? (
           <p style={{ margin: 0, lineHeight: 1.6 }}>{ticket.summary}</p>
         ) : (
-          <EmptyState variant="inline" title={live ? 'Watching. Nothing to say yet.' : 'Retired with the ticket.'} description={live ? 'A summary appears after the first note or client message.' : undefined} />
+          <EmptyState variant="inline" title={live ? 'Watching. Nothing to say yet.' : 'Retired with the ticket.'} description={live ? 'A summary appears after the first note or member message.' : undefined} />
         )}
-        {tone && <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: tone === 'praise' ? 'var(--color-success-text)' : 'var(--color-danger-text)' }}>The client last sounded {tone}.</p>}
+        {tone && <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: tone === 'praise' ? 'var(--color-success-text)' : 'var(--color-danger-text)' }}>The member last sounded {tone}.</p>}
         {fired.length > 0 && (
           <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 2, fontSize: 'var(--text-xs)', color: 'var(--theme-text-secondary)' }}>
             {fired.slice(0, 6).map(([k, at]) => (

@@ -233,7 +233,7 @@ export async function logEngagementCore(
     .insert({
       id,
       vendor_id: input.vendor_id,
-      client_id: input.client_id,
+      member_id: input.member_id,
       lead_id: input.lead_id,
       agent_id: input.agent_id ?? actor.userId,
       agent_name_raw: null,

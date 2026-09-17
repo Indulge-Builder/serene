@@ -28,9 +28,9 @@ bypass the map. The sidebar entry lives in `getConfigurationNav`, self-gated by
 - Table: `elaya_training_assets` (migration 0150). Editable config, not append-only. The SQL
   CHECK on `kind` mirrors `TRAINING_ASSET_KINDS`.
 - Page read: `getAllTrainingAssets()`. Send-path read: `getTrainingAssetsForBlast` (admin
-  client with an explicit domain scope, the parity rule).
+  member with an explicit domain scope, the parity rule).
 - Writes: `src/lib/actions/elaya-training.ts` (`upsertTrainingAsset`, `deleteTrainingAsset`).
-  Zod first, `requireProfile(['manager','admin','founder'])`, admin-client writes,
+  Zod first, `requireProfile(['manager','admin','founder'])`, admin-member writes,
   `sanitizeText` on text fields only (never on url or storage_path),
   `revalidatePath('/admin/elaya-training')`. Company facts are a singleton per domain: a new
   `kind='fact'` row updates the existing one.

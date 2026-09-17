@@ -33,9 +33,9 @@ export function TicketThread({
           {conversations.map((c) => {
             const author =
               c.user_id != null
-                ? agentNames[c.user_id] ?? (c.user_id === requesterId ? requesterName ?? 'Client' : `User ${c.user_id}`)
+                ? agentNames[c.user_id] ?? (c.user_id === requesterId ? requesterName ?? 'Member' : `User ${c.user_id}`)
                 : c.incoming
-                  ? requesterName ?? 'Client'
+                  ? requesterName ?? 'Member'
                   : 'Freshdesk';
             const Icon = c.private ? Lock : MessageSquare;
             const attachments = Array.isArray(c.attachments) ? c.attachments : [];
@@ -54,7 +54,7 @@ export function TicketThread({
                   <Icon style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5, color: 'var(--theme-text-tertiary)' }} />
                   <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', color: 'var(--theme-text-primary)' }}>{author}</span>
                   <span style={{ fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>
-                    {c.private ? 'internal note' : c.incoming ? 'from the client' : 'reply'} · {formatDate(c.fd_created_at, 'd MMM yyyy, h:mm a')}
+                    {c.private ? 'internal note' : c.incoming ? 'from the member' : 'reply'} · {formatDate(c.fd_created_at, 'd MMM yyyy, h:mm a')}
                   </span>
                 </div>
                 {text ? (

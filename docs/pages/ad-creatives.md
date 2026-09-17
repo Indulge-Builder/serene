@@ -428,7 +428,7 @@ Campaign pages: agent/guest redirected from `/campaigns`; manager+ can see read 
 9. **Multiple videos per `campaign_key` are allowed** since migration 0058 — any code assuming `.single()` or one row per campaign is a bug.
 10. **Admin list uses optimistic local state** after upsert/delete — do not rely on full-page refetch for manager UX.
 11. **`video_url` comes from Storage public URL** — bucket must allow public read for playback surfaces.
-12. **Writes are role-gated then admin-client** — `requireProfile(ADMIN_ROLES)` (A-18) is the trust boundary; the DB write uses `adminClient` (bypasses RLS, but RLS still mirrors the same admin/founder gate as defence in depth). `deleteAdCreative` reads the row back (`.select('campaign_key').maybeSingle()`) and fails when no row matched.
+12. **Writes are role-gated then admin-member** — `requireProfile(ADMIN_ROLES)` (A-18) is the trust boundary; the DB write uses `adminClient` (bypasses RLS, but RLS still mirrors the same admin/founder gate as defence in depth). `deleteAdCreative` reads the row back (`.select('campaign_key').maybeSingle()`) and fails when no row matched.
 
 ---
 

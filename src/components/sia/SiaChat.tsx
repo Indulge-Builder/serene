@@ -52,7 +52,7 @@ export function SiaChat({
   onPatchGroup: (jid: string, patch: Partial<SiaGroupRow>) => void;
 }) {
   const [messages, setMessages] = useState<SiaMessageRow[]>([]);
-  // Ticket creation from selected messages (client-ticket-plan.md 7.8, phase 1): a selection
+  // Ticket creation from selected messages (member-ticket-plan.md 7.8, phase 1): a selection
   // mode over the stream; the chosen messages go to /tickets/new through sessionStorage.
   const router = useRouter();
   const [selecting, setSelecting] = useState(false);
@@ -61,15 +61,15 @@ export function SiaChat({
     setSelectedIds((prev) => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   }, []);
   const startTicket = useCallback(() => {
-    if (!group.client_id) { toast.warning("Link this group to a client first (Group info → Linked client)."); return; }
+    if (!group.member_id) { toast.warning("Link this group to a member first (Group info → Linked member)."); return; }
     const chosen = messages.filter((m) => selectedIds.has(m.id)).sort((a, b) => a.wa_timestamp.localeCompare(b.wa_timestamp));
     if (chosen.length === 0) return;
     const payload: TicketSelection = {
-      client_id: group.client_id, client_name: groupTitle(group), queendom_id: null, group_jid: group.group_jid,
-      messages: chosen.map((m) => ({ chat_jid: group.group_jid, wa_message_id: m.wa_message_id, sender_jid: m.sender_jid, sender_name: m.sender_name, from_client: !m.from_me, at: m.wa_timestamp, text: m.text ?? (m.media ? `[${m.type}]` : "") })),
+      member_id: group.member_id, member_name: groupTitle(group), queendom_id: null, group_jid: group.group_jid,
+      messages: chosen.map((m) => ({ chat_jid: group.group_jid, wa_message_id: m.wa_message_id, sender_jid: m.sender_jid, sender_name: m.sender_name, from_member: !m.from_me, at: m.wa_timestamp, text: m.text ?? (m.media ? `[${m.type}]` : "") })),
     };
     try { sessionStorage.setItem(TICKET_SELECTION_KEY, JSON.stringify(payload)); } catch { /* storage unavailable: the form falls back to manual */ }
-    router.push(`${TICKETS_PATH}/new?client=${group.client_id}&from=sia`);
+    router.push(`${TICKETS_PATH}/new?member=${group.member_id}&from=sia`);
   }, [group, messages, selectedIds, router]);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
