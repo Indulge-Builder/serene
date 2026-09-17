@@ -12,6 +12,21 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-17 — The concierge roster tagged in the WhatsApp contacts
+
+Why: the meaning layer blocks profiling while a group has unknown members, and most members
+of a concierge group are our own staff, who are not Serene users. The founder gave the roster
+(three queendoms: queen, bishops, genies) by name.
+
+What changed: `scripts/sia-tag-staff-roster.py` (dry-run by default) matches each roster name
+to its WhatsApp contact rows through the team's "Name at Indulge" display-name convention (one
+person often has two or three rows: work and personal numbers) and sets
+`sia.wag_contacts.participant_role` to queen / bishop / genie. The founder settled the three
+names the convention could not: the queens are the queendoms' namesakes, "Aditya at Indulge"
+is Aditya Sonde (not Aditya Inamdar), "Mustafa at Indulge" is Mustafa Hussain. Applied: 33 of
+34 people, 68 contact rows; Mustafa Kothari has no number in the archive yet. Only the roster
+was tagged; the founder chose not to label the other staff-named contacts for now.
+
 ## 2026-09-16 — Build fix: the Next app no longer type-checks the Baileys connector
 
 Why: `tsconfig.json` included every `.ts` under the repo, so `pnpm build` on Vercel type-checked
