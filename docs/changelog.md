@@ -27,6 +27,19 @@ is Aditya Sonde (not Aditya Inamdar), "Mustafa at Indulge" is Mustafa Hussain. A
 34 people, 68 contact rows; Mustafa Kothari has no number in the archive yet. Only the roster
 was tagged; the founder chose not to label the other staff-named contacts for now.
 
+Follow-up the same day (2026-09-17): the nameless contact present in all 489 groups is our
+watcher number, now tagged `watcher`; two roster people had a second display name without
+the convention ("eeti srinivas", "Iqbal") and are tagged through overrides; the three people
+in nearly every client group are leadership by the founder's word: Advita and Karan Bhangay
+`founder`, Shruti Lunkad `joker` (migration 0204 adds `joker` to the contacts vocabulary,
+matching the 0201 profile positions). Measured after: across the 338 mapped client groups the
+member slots read watcher 338, staff roles 4,713, "at Indulge"-named staff not on the roster
+881, single-group members (the client's own household) 506, the mapped client 131, and 93
+true unknowns, mostly nameless numbers shared by sibling groups. Read that way, 318 of 338
+client groups have no unknown member. The strict reading (every member carries an explicit
+role) still passes none, because the household and the non-roster staff are inferred, not
+labelled; the profiling gate (S1) must take a decision on that reading.
+
 ## 2026-09-16 — Build fix: the Next app no longer type-checks the Baileys connector
 
 Why: `tsconfig.json` included every `.ts` under the repo, so `pnpm build` on Vercel type-checked

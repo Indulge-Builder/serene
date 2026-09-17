@@ -32,6 +32,11 @@ BASE = os.environ.get("NEXT_PUBLIC_SUPABASE_URL", "").rstrip("/")
 KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 
 ROSTER: dict[str, dict[str, list[str]]] = {
+    # Leadership sits in nearly every group (founder answers, 2026-09-17). Not a queendom.
+    "leadership": {
+        "founder": ["Advita", "Karan Bhangay"],
+        "joker": ["Shruti Lunkad"],
+    },
     "anishqa": {
         "queen": ["Anishqa Bhagia"],
         "bishop": ["Sagar Ali", "Iqbal Ali"],
@@ -60,6 +65,12 @@ OVERRIDES: dict[str, list[str]] = {
     "Mustafa Hussain": ["Mustafa at Indulge"],
     "Mustafa Kothari": [],                                             # number not in the archive yet
     "Kshathriya C C A": ["Kshatriya"],                                 # spelled Kshatriya on WhatsApp
+    # Second display names without the convention (found 2026-09-17 by group presence).
+    "Eeti Srinivsulu": ["Eeti Srinivas at Indulge", "eeti srinivas"],
+    "Iqbal Ali": ["Iqbal At Indulge", "Iqbal"],
+    "Advita": ["Advita At Indulge Global", "Advita at Indulge", "Advita At Indulge"],
+    "Karan Bhangay": ["karan bhangay"],
+    "Shruti Lunkad": ["Shruti Lunkad"],
 }
 
 
