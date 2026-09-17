@@ -318,6 +318,26 @@ What changed:
   today, the write lands once the CHECKs and the trigger are in. The 176 clients without a
   queendom and the Concierge accounts themselves are the next data step.
 
+## 2026-09-17 — The leads page came back empty: PostgREST cannot embed across schemas
+
+Why: a resource embed resolves only inside the schema of the request. `gia.leads` asking for
+`profiles!leads_assigned_to_fkey(full_name)` returns PGRST200, not rows, even though the
+foreign key exists and is enforced. From the moment 0210 committed, 26 embeds in 9 files were
+failing: the leads list and dossier, deals, the SLA reads, the WhatsApp lead lookup, one
+member read. The pages showed nothing instead of erroring, which is why it went unnoticed for
+hours. My rehearsal checked the database and never ran the app's own queries — plan §12.
+
+What changed: migration `20260917000212_cross_schema_profile_views.sql` adds `gia.profiles`
+and `member.profiles`, read-only views of `public.profiles` with `security_invoker = true`,
+so RLS still runs as the caller and only SELECT is granted. PostgREST traces a view's columns
+back to the base table, so the existing foreign keys resolve and all 21 `→ profiles` embeds
+work with no application change. Verified on Postgres **plus PostgREST** locally: the failure
+reproduced first, then leads, lead_notes and lead_activities each returned the joined name.
+
+Still to fix, in code, the 5 embeds that point the other way (`public.tasks` →
+`gia.task_gia_meta` / `gia.leads`, `public.profiles` → `gia.agent_routing_config`): the lead
+dossier's task list, the revival lookup, two SLA reads and one dashboard widget.
+
 ## 2026-09-17 — The Python brain follows the schema move (it had been 404ing since 13:41)
 
 Why: `backend/app/core/supa.py` is the brain's own PostgREST client, and `tools/registry.py`

@@ -287,3 +287,32 @@ deployed, and both caused a short outage. The database and the build are one rel
 holds the keys should push the migration only once the commit is ready to go out behind it,
 or build the deployment first and promote it the moment the migration lands.
 
+## 12. The embed break, and what the rehearsal missed (2026-09-17 evening)
+
+**PostgREST resolves a resource embed only inside the schema of the request.** A cross-schema
+foreign key exists and is enforced, but the embed cannot see it:
+
+```
+gia.leads  ->  profiles!leads_assigned_to_fkey(full_name)
+PGRST200: no relationship between 'leads' and 'profiles' in the schema 'gia'
+```
+
+So from the moment 0210 committed, every query of that shape returned an error instead of
+rows: the leads list and dossier, deals, the SLA reads, the WhatsApp lead lookup, and one
+member read — 26 embeds in 9 files. The pages rendered empty rather than failing loudly.
+
+**This is the real hole in §5.** The rehearsal proved the DATABASE was intact (rows, policies,
+triggers, foreign keys, every routine callable) and proved nothing about the APPLICATION's
+queries, which is where the damage was. A rehearsal for a schema move must run the app's own
+reads against the moved copy — a Postgres container alone cannot show this, because the
+limitation lives in PostgREST. Migration 0212 was verified on Postgres **plus PostgREST**
+(`postgrest/postgrest:v12.2.3` against the loaded dump), reproducing PGRST200 first and then
+showing the joined name come back.
+
+**The fix, in two parts, by direction:**
+
+| Direction | Fix | Why |
+| --- | --- | --- |
+| A moved table embeds `public.profiles` (21 sites) | `gia.profiles` / `member.profiles`, read-only views with `security_invoker = true` (migration 0212) | `profiles` is shared infrastructure that every schema needs to name. PostgREST traces a view's columns to its base table, so the existing foreign keys resolve and no application code changes. `security_invoker` keeps RLS with the caller; only SELECT is granted. |
+| `public` reaches INTO a moved schema (5 sites: `tasks` → `task_gia_meta` / `leads`, `profiles` → `agent_routing_config`) | split the query in code | That direction is public code reaching into a module's private data, which is what the restructure exists to make explicit. A `public.leads` view would undo the move in all but name. |
+
