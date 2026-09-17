@@ -74,9 +74,25 @@ function classify(error: { code?: string } | null): VendorMutationError {
 // ── Spine ──────────────────────────────────────────────────────────────────────
 
 /** A vendor entered by staff — born verified (a human just confirmed it), source `manual`. */
+/**
+ * Where a vendor row came from, when a person did not type it in.
+ *
+ * A hand-entered vendor is born `verified` — a human just confirmed it exists.
+ * A machine-extracted one must not be: it is a reading of a sentence, and the
+ * whole point of `identity_status` is to say which of those you are looking at.
+ * `import_raw` keeps the evidence so any row this creates can be traced back to
+ * the note it came from, and undone as a set if the extraction turns out wrong.
+ */
+export type VendorProvenance = {
+  source: "freshdesk" | "sia" | "ticket";
+  /** Filed under this key inside `import_raw` — the ticket id, the note id, the quote. */
+  evidence: Record<string, unknown>;
+};
+
 export async function createVendorCore(
   actor: MutationActor,
   input: CreateVendorInput,
+  provenance?: VendorProvenance,
 ): Promise<VendorMutationResult<VendorRow>> {
   const admin = createAdminClient();
   const { data, error } = await from(admin, "vendors")
@@ -90,9 +106,11 @@ export async function createVendorCore(
       primary_phone: input.primary_phone,
       home_city: input.home_city,
       notes: input.notes,
-      identity_status: "verified",
-      sources: ["manual"],
-      import_raw: { manual: { created_by: actor.userId } },
+      identity_status: provenance ? "unverified" : "verified",
+      sources: [provenance?.source ?? "manual"],
+      import_raw: provenance
+        ? { [provenance.source]: provenance.evidence }
+        : { manual: { created_by: actor.userId } },
     })
     .select("*")
     .single();
@@ -159,9 +177,21 @@ export async function setVendorStatusCore(
  * name — so: one lookup, then update or insert (race-safe under the index:
  * a concurrent insert surfaces as 23505 → `duplicate`, the caller retries).
  */
+/**
+ * Who set a capability, when it was not a person.
+ *
+ * `set_by` is a uuid FK to profiles. A machine caller has no user, and the
+ * extractor's ticket agent often has no Serene profile at all -- so the honest
+ * value is NULL, not a fabricated one. Without this the whole write fails on an
+ * invalid uuid, and it fails QUIETLY unless the caller checks the result: seven
+ * vendors landed with zero capability rows before this argument existed.
+ */
+export type CapabilityProvenance = { setBy: string | null };
+
 export async function upsertCapabilityCore(
   actor: MutationActor,
   input: UpsertCapabilityInput,
+  provenance?: CapabilityProvenance,
 ): Promise<VendorMutationResult<VendorCapabilityRow>> {
   const admin = createAdminClient();
   let lookup = from(admin, "vendor_capabilities")
@@ -179,7 +209,7 @@ export async function upsertCapabilityCore(
     stance: input.stance,
     cities: input.cities,
     note: input.note,
-    set_by: actor.userId,
+    set_by: provenance ? provenance.setBy : actor.userId,
   };
   const query = existing
     ? from(admin, "vendor_capabilities").update(fields).eq("id", (existing as { id: string }).id)
@@ -223,35 +253,67 @@ export async function deleteCapabilityCore(
  * own id (the (source, source_ref) UNIQUE needs a ref; the id is the honest one).
  * The runner defaults to the actor; `created_by` is always the actor.
  */
+/**
+ * Where a ledger row came from, when it was not a person filling in the form.
+ *
+ * A hand-logged job is `source: 'manual'` with a generated `source_ref`, because
+ * there is no outside record to point at. A job the extractor read off a
+ * Freshdesk ticket has one, and it matters: `(vendor_id, source, source_ref)` is
+ * UNIQUE, so passing the ticket id makes the write IDEMPOTENT — the same ticket
+ * read twice updates one row instead of minting a second. That is the whole
+ * reason the key exists (0185), and a machine caller cannot use it without this.
+ */
+export type EngagementProvenance = {
+  source: "freshdesk" | "sia" | "ticket";
+  /** The outside system's id for this job — a Freshdesk ticket id, say. */
+  sourceRef: string;
+  /** The ticket subject. THE discriminator find_vendors_by_history searches (0189). */
+  title?: string | null;
+  /** Kept when the handling agent has no Serene profile (the 0185 ex-staff contract). */
+  agentNameRaw?: string | null;
+  /** Bucket paths, never urls (0184). */
+  invoicePaths?: string[];
+};
+
 export async function logEngagementCore(
   actor: MutationActor,
   input: LogEngagementInput,
+  provenance?: EngagementProvenance,
 ): Promise<VendorMutationResult<VendorEngagementRow>> {
   const id = randomUUID();
   const admin = createAdminClient();
-  const { data, error } = await from(admin, "vendor_engagements")
-    .insert({
-      id,
-      vendor_id: input.vendor_id,
-      member_id: input.member_id,
-      lead_id: input.lead_id,
-      agent_id: input.agent_id ?? actor.userId,
-      agent_name_raw: null,
-      category: input.category,
-      service: input.service,
-      city: input.city,
-      source: "manual",
-      source_ref: id,
-      started_at: input.started_at,
-      closed_at: input.closed_at,
-      outcome: input.outcome,
-      amount_inr: input.amount_inr,
-      invoice_paths: [],
-      note: input.note,
-      created_by: actor.userId,
-    })
-    .select("*")
-    .single();
+  const row = {
+    id,
+    vendor_id: input.vendor_id,
+    member_id: input.member_id,
+    lead_id: input.lead_id,
+    // `?? actor.userId` only holds for a person: a machine caller passes the
+    // ticket's own agent, and null is a legal answer when they have no profile.
+    agent_id: provenance ? input.agent_id : (input.agent_id ?? actor.userId),
+    agent_name_raw: provenance?.agentNameRaw ?? null,
+    title: provenance?.title ?? null,
+    category: input.category,
+    service: input.service,
+    city: input.city,
+    source: provenance?.source ?? "manual",
+    source_ref: provenance?.sourceRef ?? id,
+    started_at: input.started_at,
+    closed_at: input.closed_at,
+    outcome: input.outcome,
+    amount_inr: input.amount_inr,
+    invoice_paths: provenance?.invoicePaths ?? [],
+    note: input.note,
+    created_by: provenance ? null : actor.userId,
+  };
+
+  // With a provenance ref the write is an UPSERT on the unique key, so re-reading
+  // a ticket refines the row it already wrote. Without one it is a plain insert:
+  // a hand-logged job has no outside identity to collide on.
+  const q = provenance
+    ? from(admin, "vendor_engagements")
+        .upsert(row, { onConflict: "vendor_id,source,source_ref" })
+    : from(admin, "vendor_engagements").insert(row);
+  const { data, error } = await q.select("*").single();
   if (error || !data) {
     console.error(`${LOG} logEngagementCore failed:`, error);
     return { ok: false, error: classify(error) };

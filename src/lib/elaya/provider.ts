@@ -8,9 +8,36 @@
 
 import type { ElayaToolCallRecord } from '@/lib/types/elaya';
 
-/** One turn in the model conversation, provider-neutral. */
+/**
+ * A file shown to the model inside a user turn — an image or a PDF, as bytes.
+ *
+ * Provider-neutral by construction: base64 + a media type is the shape every
+ * major provider accepts (Anthropic image/document blocks, Gemini inlineData,
+ * OpenAI image_url with a data: URL). An adapter that cannot show files should
+ * drop them rather than throw — the text of the turn still stands on its own.
+ *
+ * The bytes are held in memory for the length of the call and never stored:
+ * the file itself already lives wherever it came from (the freshdesk-attachments
+ * bucket, say) and the model sees a copy, not a new home for it.
+ */
+export type LlmFilePart = {
+  /** 'image/png', 'image/jpeg', 'image/gif', 'image/webp', or 'application/pdf'. */
+  mediaType: string;
+  /** The file's bytes, base64-encoded, with no data: prefix. */
+  dataBase64: string;
+};
+
+/**
+ * One turn in the model conversation, provider-neutral.
+ *
+ * A user turn may carry `files` alongside its text (added 2026-09-17 for the
+ * vendor extractor, which reads invoices that were photographed rather than
+ * typed — about 39% of concierge notes carry a file and the supplier's details
+ * are commonly ONLY in it). Text stays required: a file with no instruction is
+ * not a question, and every existing caller keeps working unchanged.
+ */
 export type LlmChatMessage =
-  | { role: 'user'; content: string }
+  | { role: 'user'; content: string; files?: LlmFilePart[] }
   | { role: 'assistant'; content: string; toolCalls?: ElayaToolCallRecord[] }
   | { role: 'tool'; toolCallId: string; content: string };
 

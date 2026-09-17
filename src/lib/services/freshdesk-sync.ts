@@ -389,6 +389,11 @@ function normalizeConversation(c: FdApiConversation, ticketId: number) {
     fd_created_at: c.created_at,
     fd_updated_at: c.updated_at ?? null,
     synced_at: new Date().toISOString(),
+    // `vendor_extracted_at` (0213) is deliberately ABSENT. PostgREST builds the
+    // ON CONFLICT SET clause from the keys present here, so leaving it out is
+    // what preserves it across a thread re-sync. Adding it — even as null —
+    // would re-queue every note on the ticket and re-bill the model read, which
+    // is the only paid step in that pipeline. Do not "complete" this object.
   };
 }
 

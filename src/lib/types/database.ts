@@ -7,11 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.5"
-  }
   freshdesk: {
     Tables: {
       agents: {
@@ -144,6 +139,7 @@ export type Database = {
           ticket_id: number
           to_emails: Json
           user_id: number | null
+          vendor_extracted_at: string | null
         }
         Insert: {
           attachments?: Json
@@ -163,6 +159,7 @@ export type Database = {
           ticket_id: number
           to_emails?: Json
           user_id?: number | null
+          vendor_extracted_at?: string | null
         }
         Update: {
           attachments?: Json
@@ -182,6 +179,7 @@ export type Database = {
           ticket_id?: number
           to_emails?: Json
           user_id?: number | null
+          vendor_extracted_at?: string | null
         }
         Relationships: [
           {
@@ -658,7 +656,15 @@ export type Database = {
           recharged_at?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "ad_account_recharges_done_by_fkey"
+            columns: ["done_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       ad_creatives: {
         Row: {
@@ -739,7 +745,15 @@ export type Database = {
           updated_at?: string
           uploaded_by?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "ad_spend_daily_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       agent_routing_config: {
         Row: {
@@ -769,7 +783,15 @@ export type Database = {
           shift_start?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "agent_routing_config_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       conversation_hooks: {
         Row: {
@@ -861,6 +883,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "deals_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "deals_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
@@ -900,7 +929,15 @@ export type Database = {
           target_value?: number
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "domain_targets_set_by_fkey"
+            columns: ["set_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       lead_activities: {
         Row: {
@@ -928,6 +965,13 @@ export type Database = {
           lead_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "lead_activities_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "lead_activities_lead_id_fkey"
             columns: ["lead_id"]
@@ -963,6 +1007,13 @@ export type Database = {
           lead_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "lead_notes_author_id_fkey"
+            columns: ["author_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "lead_notes_lead_id_fkey"
             columns: ["lead_id"]
@@ -1230,6 +1281,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "leads_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "leads_previous_lead_id_fkey"
             columns: ["previous_lead_id"]
             isOneToOne: false
@@ -1280,10 +1338,24 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "revival_candidates_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "revival_candidates_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "revival_candidates_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -1370,7 +1442,15 @@ export type Database = {
           title?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "service_cases_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       sla_policies: {
         Row: {
@@ -1461,6 +1541,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "whatsapp_conversation_reads_agent_id_fkey"
+            columns: ["agent_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "whatsapp_conversation_reads_conversation_id_fkey"
             columns: ["conversation_id"]
             isOneToOne: false
@@ -1510,6 +1597,13 @@ export type Database = {
           wa_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "whatsapp_conversations_bot_paused_by_fkey"
+            columns: ["bot_paused_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "whatsapp_conversations_lead_id_fkey"
             columns: ["lead_id"]
@@ -1586,6 +1680,13 @@ export type Database = {
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "whatsapp_messages_sender_id_fkey"
+            columns: ["sender_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
         ]
       }
       whatsapp_notification_logs: {
@@ -1642,11 +1743,97 @@ export type Database = {
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "whatsapp_notification_logs_recipient_id_fkey"
+            columns: ["recipient_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
         ]
       }
     }
     Views: {
-      [_ in never]: never
+      profiles: {
+        Row: {
+          app_icon: string | null
+          appearance: string | null
+          avatar_url: string | null
+          created_at: string | null
+          domain: Database["public"]["Enums"]["app_domain"] | null
+          email: string | null
+          full_name: string | null
+          id: string | null
+          is_active: boolean | null
+          is_on_leave: boolean | null
+          job_title: string | null
+          last_seen_at: string | null
+          phone: string | null
+          queendom_id: string | null
+          reports_to: string | null
+          role: Database["public"]["Enums"]["user_role"] | null
+          sia_role: string | null
+          theme: string | null
+          timezone: string | null
+          updated_at: string | null
+          username: string | null
+        }
+        Insert: {
+          app_icon?: string | null
+          appearance?: string | null
+          avatar_url?: string | null
+          created_at?: string | null
+          domain?: Database["public"]["Enums"]["app_domain"] | null
+          email?: string | null
+          full_name?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          is_on_leave?: boolean | null
+          job_title?: string | null
+          last_seen_at?: string | null
+          phone?: string | null
+          queendom_id?: string | null
+          reports_to?: string | null
+          role?: Database["public"]["Enums"]["user_role"] | null
+          sia_role?: string | null
+          theme?: string | null
+          timezone?: string | null
+          updated_at?: string | null
+          username?: string | null
+        }
+        Update: {
+          app_icon?: string | null
+          appearance?: string | null
+          avatar_url?: string | null
+          created_at?: string | null
+          domain?: Database["public"]["Enums"]["app_domain"] | null
+          email?: string | null
+          full_name?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          is_on_leave?: boolean | null
+          job_title?: string | null
+          last_seen_at?: string | null
+          phone?: string | null
+          queendom_id?: string | null
+          reports_to?: string | null
+          role?: Database["public"]["Enums"]["user_role"] | null
+          sia_role?: string | null
+          theme?: string | null
+          timezone?: string | null
+          updated_at?: string | null
+          username?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profiles_reports_to_fkey"
+            columns: ["reports_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       [_ in never]: never
@@ -1682,7 +1869,15 @@ export type Database = {
           member_id?: string
           surface?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "member_access_log_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       member_anticipations: {
         Row: {
@@ -1736,6 +1931,13 @@ export type Database = {
             columns: ["member_id"]
             isOneToOne: false
             referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_anticipations_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -3752,6 +3954,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "member_facts_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "member_facts_member_id_fkey"
             columns: ["member_id"]
             isOneToOne: false
@@ -3808,6 +4017,13 @@ export type Database = {
           ticket_ref?: Json | null
         }
         Relationships: [
+          {
+            foreignKeyName: "member_health_events_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "member_health_events_member_id_fkey"
             columns: ["member_id"]
@@ -3889,6 +4105,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "member_people_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "member_people_member_id_fkey"
             columns: ["member_id"]
@@ -4057,7 +4280,86 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      profiles: {
+        Row: {
+          app_icon: string | null
+          appearance: string | null
+          avatar_url: string | null
+          created_at: string | null
+          domain: Database["public"]["Enums"]["app_domain"] | null
+          email: string | null
+          full_name: string | null
+          id: string | null
+          is_active: boolean | null
+          is_on_leave: boolean | null
+          job_title: string | null
+          last_seen_at: string | null
+          phone: string | null
+          queendom_id: string | null
+          reports_to: string | null
+          role: Database["public"]["Enums"]["user_role"] | null
+          sia_role: string | null
+          theme: string | null
+          timezone: string | null
+          updated_at: string | null
+          username: string | null
+        }
+        Insert: {
+          app_icon?: string | null
+          appearance?: string | null
+          avatar_url?: string | null
+          created_at?: string | null
+          domain?: Database["public"]["Enums"]["app_domain"] | null
+          email?: string | null
+          full_name?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          is_on_leave?: boolean | null
+          job_title?: string | null
+          last_seen_at?: string | null
+          phone?: string | null
+          queendom_id?: string | null
+          reports_to?: string | null
+          role?: Database["public"]["Enums"]["user_role"] | null
+          sia_role?: string | null
+          theme?: string | null
+          timezone?: string | null
+          updated_at?: string | null
+          username?: string | null
+        }
+        Update: {
+          app_icon?: string | null
+          appearance?: string | null
+          avatar_url?: string | null
+          created_at?: string | null
+          domain?: Database["public"]["Enums"]["app_domain"] | null
+          email?: string | null
+          full_name?: string | null
+          id?: string | null
+          is_active?: boolean | null
+          is_on_leave?: boolean | null
+          job_title?: string | null
+          last_seen_at?: string | null
+          phone?: string | null
+          queendom_id?: string | null
+          reports_to?: string | null
+          role?: Database["public"]["Enums"]["user_role"] | null
+          sia_role?: string | null
+          theme?: string | null
+          timezone?: string | null
+          updated_at?: string | null
+          username?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profiles_reports_to_fkey"
+            columns: ["reports_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       [_ in never]: never
@@ -8957,12 +9259,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -8986,11 +9288,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -9011,11 +9313,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -9036,11 +9338,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -9053,11 +9355,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never) = never,
+    : never = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

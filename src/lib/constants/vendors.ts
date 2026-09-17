@@ -340,3 +340,79 @@ export const VENDOR_INVOICE_SIGNED_URL_TTL = 60 * 60; // 1 hour
 
 /** The route revalidated on every vendor write (lands with the Sia UI). */
 export const VENDORS_PATH = "/vendors";
+
+// ─────────────────────────────────────────────
+// The live extractor (migration 0213) — reading vendors out of the Freshdesk
+// mirror. Every number here was set against measured behaviour on 2,800 real
+// notes (25 Aug -> 17 Sep 2026), not guessed; the measurements are in the
+// changelog entry for 2026-09-17.
+// ─────────────────────────────────────────────
+
+/** Notes read per cycle. The mirror delivers ~680 a day, so this drains it many times over. */
+export const EXTRACT_NOTES_PER_CYCLE = 40;
+/** Notes read at once. Small: each may carry files, and the run has a 60s ceiling. */
+export const EXTRACT_CONCURRENCY = 3;
+/**
+ * Files sent to the model from one note. 39.2% of notes carry one; a handful carry
+ * many, and reading all of them would spend a whole cycle on a single note.
+ */
+export const EXTRACT_FILES_PER_NOTE = 4;
+/** Bytes. Above this a file is skipped and said so — the model cannot read it usefully anyway. */
+export const EXTRACT_FILE_MAX_BYTES = 8 * 1024 * 1024;
+/** Characters of note text sent. Long threads are pasted email chains; the top carries the point. */
+export const EXTRACT_NOTE_CHAR_CAP = 6000;
+/** A JSON array of small objects. Generous, and a cap keeps a runaway reply cheap. */
+export const EXTRACT_MAX_OUTPUT_TOKENS = 700;
+/** Earlier findings on the same ticket shown to the model, newest first. */
+export const EXTRACT_TICKET_CONTEXT_ROWS = 6;
+/**
+ * `word_similarity` a candidate must clear to be treated as the SAME vendor.
+ * Deliberately high. Below it a new row is created, which the duplicate report
+ * can merge later; above it two different suppliers are silently fused, which
+ * nothing catches. 0.82 was chosen because "Blue Dart"/"Bluedart" clears it and
+ * "Akshay"/"Lakshay" does not.
+ */
+export const EXTRACT_MATCH_MIN_SIMILARITY = 0.82;
+/**
+ * Below this many characters a name is not matched fuzzily at all — only exactly.
+ * The vendor table contains rows named "Nudged", "Local", "Frame" and "Flowers";
+ * a loose match on a short common word attaches hundreds of unrelated tickets to
+ * one row (measured: "Nudged" alone hit 182 of 2,800 notes).
+ */
+export const EXTRACT_MIN_FUZZY_NAME_CHARS = 8;
+/**
+ * Indulge's OWN legal entities. Never a vendor, however the invoice reads.
+ *
+ * "Pricetime Technologies Private Limited" IS Indulge (founder, 2026-09-17): an
+ * invoice bearing that name is Indulge billing a CLIENT, not a supplier billing
+ * Indulge. The extractor met one on a ticket attachment and proposed it as a
+ * supplier at 17,200 rupees; the 21,580-row historical table has no such row,
+ * so the manual import got this right and the model had to be taught it.
+ *
+ * Used twice on purpose: as a negative in the extraction prompt, AND as a hard
+ * filter at the write boundary. A prompt instruction is guidance a model may
+ * ignore on any given call; a filter is not. Matched on the squashed name, so
+ * punctuation and spacing cannot slip one past.
+ *
+ * Add any further group or billing entity here and both halves pick it up.
+ */
+export const INDULGE_OWN_ENTITIES: readonly string[] = [
+  "pricetime technologies private limited",
+  "pricetime technologies",
+  "pricetime",
+  "indulge global",
+  "indulge",
+];
+
+/** True when a name is one of ours rather than a supplier's. Punctuation-insensitive. */
+export function isOwnEntity(name: string | null | undefined): boolean {
+  const key = (name ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+  if (!key) return false;
+  return INDULGE_OWN_ENTITIES.some((e) => {
+    const ek = e.replace(/[^a-z0-9]+/g, "");
+    return key === ek || key.startsWith(ek);
+  });
+}
+
+/** The sync_state key holding the extractor's own run record. */
+export const EXTRACT_SYNC_KEY = "vendor_extract";

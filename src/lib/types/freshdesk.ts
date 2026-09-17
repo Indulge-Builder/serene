@@ -75,6 +75,12 @@ export type FdConversationRow = {
   synced_at: string;
   /** 0197: when the note's files were copied; NULL = the backlog. */
   media_synced_at: string | null;
+  /**
+   * 0213: when the vendor extractor last read this note; NULL = queued.
+   * Set once and PRESERVED across thread re-syncs — the model read is the only
+   * billed step in that pipeline, so clearing it re-bills the whole thread.
+   */
+  vendor_extracted_at: string | null;
 };
 
 export type FdContactRow = {
@@ -213,7 +219,7 @@ export type FreshdeskDatabase = {
   freshdesk: {
     Tables: {
       tickets: Table<FdTicketRow, Omit<FdTicketRow, "first_synced_at" | "synced_at" | "attachments"> & { synced_at?: string; attachments?: FdAttachment[] }>;
-      conversations: Table<FdConversationRow, Omit<FdConversationRow, "media_synced_at"> & { media_synced_at?: string | null }>;
+      conversations: Table<FdConversationRow, Omit<FdConversationRow, "media_synced_at" | "vendor_extracted_at"> & { media_synced_at?: string | null; vendor_extracted_at?: string | null }>;
       contacts: Table<FdContactRow>;
       agents: Table<FdAgentRow>;
       groups: Table<FdGroupRow>;
