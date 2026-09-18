@@ -22,6 +22,9 @@ import type { ElayaToolCallRecord } from '@/lib/types/elaya';
 // silently riding the SDK's 10-min default into a lambda kill.
 const ELAYA_REQUEST_TIMEOUT_MS = 30_000;
 
+/** The image media types Anthropic accepts as a base64 image block; anything else is dropped. */
+const ANTHROPIC_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+
 let client: Anthropic | null = null;
 
 function getMember(): Anthropic {
@@ -43,6 +46,33 @@ function toAnthropicMessages(messages: LlmChatMessage[]): Anthropic.MessageParam
 
   for (const msg of messages) {
     if (msg.role === 'user') {
+      // Files first, then the text: Anthropic reads a turn in order, and the
+      // instruction lands better when it follows what it is about.
+      if (msg.files?.length) {
+        const blocks: Anthropic.ContentBlockParam[] = [];
+        for (const f of msg.files) {
+          if (f.mediaType === 'application/pdf') {
+            blocks.push({
+              type: 'document',
+              source: { type: 'base64', media_type: 'application/pdf', data: f.dataBase64 },
+            });
+          } else if (ANTHROPIC_IMAGE_TYPES.has(f.mediaType)) {
+            blocks.push({
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: f.mediaType as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp',
+                data: f.dataBase64,
+              },
+            });
+          }
+          // Anything else is dropped, not thrown: a file the model cannot read
+          // must never cost the caller its text (provider.ts LlmFilePart).
+        }
+        blocks.push({ type: 'text', text: msg.content });
+        out.push({ role: 'user', content: blocks });
+        continue;
+      }
       out.push({ role: 'user', content: msg.content });
       continue;
     }
@@ -130,7 +160,7 @@ export const anthropicAdapter: LlmProviderAdapter = {
       // function killed mid-stream with no error event — M6). A turn makes up to
       // MAX_TOOL_ITERATIONS+1 calls, so each call is bounded well under the lambda
       // budget and retried at most once (a second backoff would blow the window).
-      { timeout: ELAYA_REQUEST_TIMEOUT_MS, maxRetries: 1 },
+      { timeout: req.timeoutMs ?? ELAYA_REQUEST_TIMEOUT_MS, maxRetries: 1 },
     );
 
     if (req.onTextDelta) {

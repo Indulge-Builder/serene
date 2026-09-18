@@ -12,6 +12,206 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-17 — Vendors keep themselves current: the live extractor (migration 0214)
+
+**Rebased onto the schema restructure.** Main moved eight commits while this was being built and
+landed 0210 to 0212: `public` to `gia`, the member twin to its own schema, and `clients` renamed to
+`members` all the way down. Three consequences, all handled:
+
+- The migration is **0214**, not 0205. Production was already past 0212 by the time this was ready,
+  so the original number would have been refused exactly as the vendor migrations were last round.
+  (It was 0213 for a day; main then landed its own 0213, see reviewer round 3 below.)
+- `freshdesk.tickets.client_id` is `member_id` now, and so is `vendor_engagements.client_id`. The
+  extractor reads and writes the new name; the one merge conflict was in `logEngagementCore`, where
+  the resolution keeps the provenance path and takes main's column name.
+- **Vendors stay in `public`** -- they are in neither `GIA_TABLES` nor `MEMBER_TABLES` -- so nothing
+  else about the module moved.
+
+Re-verified after the rebase on a database rebuilt from scratch: all 214 migrations apply, the queue migration lands
+on the restructured schema, `database.ts` regenerated across all five schemas (`public`, `sia`, `gia`,
+`member`, `freshdesk`) with the hand-written tail carried over, and typecheck, lint and build are clean.
+
+
+The vendor tables were a snapshot. Everything in them came from one manual Freshdesk export that
+stopped on 25 August, so every supplier found since then was invisible to search and to Elaya. This
+job reads new notes as they arrive and fills the tables in, by itself.
+
+**It calls Freshdesk not at all.** The mirror (0193) already pulls every ticket, note and attachment
+every minute and is the account's priority consumer of the 50-calls-a-minute budget. A second poller
+would have fought it for that budget to re-download bytes we already hold. The extractor reads
+`freshdesk.conversations`, which is free, so the same history can be re-read whenever the rules get
+better. That also deleted most of the original plan: no rate limiting, no retry-after, no attachment
+downloading, no second watermark, no risk of starving the other project.
+
+**The queue is a column, not a table.** `vendor_extracted_at` on the conversation row, NULL meaning
+"nobody has read this yet" -- the same shape the mirror already uses for `conversations_synced_at`
+and `media_synced_at`. It is set once and preserved across thread re-syncs, and that preservation is
+load bearing: a model read is the only billed step in the pipeline, so clearing the column would
+re-bill every old note on a ticket each time a new one landed. The mirror's conversation upsert
+leaves the column out of its payload, which is what keeps it, and there is now a comment at that
+exact line saying so.
+
+**Forward only.** Existing rows were backfilled to now(), so the 210,773 notes already mirrored are
+not re-read. The backlog can be opened later for any date range by setting the column back to NULL --
+which is the whole reason the marker is per row rather than one watermark.
+
+**What the notes actually look like**, measured over 2,800 real ones before any of this was written:
+39.2% carry at least one file, and the commonest shape on this account is a note with no text and one
+photographed bill. Only 3.8% mention a phone in the text and 2.6% an amount. A text-only reader would
+have missed most of what the job exists to find, so images and PDFs go to the model directly. That
+needed the provider contract to carry files at all: `LlmChatMessage` was text only, and now a user
+turn may carry `files` (base64 plus a media type, the shape every provider accepts). The Anthropic
+adapter maps them to image and document blocks and silently drops anything it cannot show, so a bad
+file never costs a note its text.
+
+**The free shortcut was measured and rejected.** Scanning notes for the 25,077 vendor names we
+already hold looked like it would handle most of the volume for nothing. It does not: the top match
+across 2,800 notes was a vendor row literally named "Nudged", firing 182 times on the ordinary
+English word, with "Flowers", "Local", "Frame", "laundry" and bare first names close behind. It would
+have linked hundreds of unrelated tickets to junk rows. The name scan survives only as a matching
+tier, gated on a name being long enough to be distinctive.
+
+**Reading the note.** One `resolveLlmForJob('routing')` call per note through the Elaya provider, no
+tools, no new SDK. The prompt is mostly negative space, because the failure that matters is not
+spelling but role: the client, our own staff, a product, a delivery address and ticket chatter are
+each named as things that are NOT vendors. That is what produced 216 junk rows in the historical
+import. It fails CLOSED -- a timeout or a torn reply yields nothing and the note stays queued, the
+opposite posture to the search reader, because this one writes to the spine.
+
+**A defect the dry run caught before anything was written.** `maskPii` turns "+91 77689 21969" into
+bullets before the model reads it, which is right for a gate that needs a verdict and wrong for an
+extractor whose job is to bring that number back: every vendor would have landed with no phone, which
+is the strongest matching key there is. Phones and emails are now swapped for `[PHONE_1]`
+placeholders before masking and swapped back after the reply, so the model never sees a real number
+and can still say which one belongs to the vendor rather than the client. Two Decision Log rows cover
+what is left: a file shown to the model cannot be masked, and that is stated rather than hidden.
+
+**Matching, in tiers, each one a fact:** the phone when it belongs to exactly one vendor (a shared
+switchboard identifies nobody -- one number here is the primary phone of 39 rows), then the exact
+name or alias, then a close name only when it is long enough to be distinctive and exactly one
+candidate clears the bar. A new spelling becomes an alias on the row it matched, so the next
+occurrence is an exact hit and the problem shrinks with use. It will not fuzzy-match a short or
+person-shaped name: one character between Indian first names means a different person, not a typo.
+A phone learned later that points at a different existing vendor is FLAGGED, never auto-merged.
+
+**What it writes, and through what.** Nothing touches a vendor table directly. Every write goes
+through the cores in `vendor-mutations.ts` -- the same functions the /vendors form and Elaya call --
+so a synced vendor is the same shape as a typed one. The cores were extended, not copied, to carry
+provenance: `source: 'ticket'`, the ticket id as `source_ref` (which is what makes the write
+idempotent against the unique key), and `identity_status: 'unverified'`, so everything the machine
+created is findable and reversible as a set.
+
+**Three fields the historical import could never fill** come free from the mirror: `client_id`
+(already resolved against `public.clients`, and the thing the client-match score needs), the real
+`agent_id` rather than a name string, and an `outcome` of completed for a resolved or closed ticket.
+Ticket category and service come off the ticket's own fields, not from the model -- already mirrored,
+already correct, free.
+
+**Cost.** About 20 paise a note, roughly 11,000 readable notes a month, so around ₹3,300 a month on
+Haiku, agreed with the founder. A note is read once, ever: a quiet day costs nothing.
+
+**Four defects the local bench found, none of which reading the code would have shown.**
+
+`scripts/vendors/copy-notes-for-testing.ts` copies real notes and their attachment bytes from
+production's mirror into a local one, and `run-extract-once.ts` drives one real cycle and prints every
+row it made. Sixteen deliberately awkward notes -- photographed bills, a client-name note, pure
+chatter -- cost about five rupees a round to re-read after a change. What it caught:
+
+1. **A duplicate MakeMyTrip.** An invoice says "MAKEMYTRIP (INDIA) LIMITED" and the table already
+   held "MakeMyTrip (India) Private Limited" with 275 jobs. Squashed whole they do not match, because
+   "private" sits in the middle of one and not the other, so a second MakeMyTrip was created. Matching
+   now strips the legal form before comparing and the two meet; the existing row went 275 to 276 with
+   no new row.
+2. **Every capability write failed, silently.** The machine actor had `userId: ""` -- a value I
+   invented because `MutationActor.userId` is not nullable -- and `set_by` is a uuid foreign key. The
+   insert failed on every vendor and nobody noticed, because the result was not checked. Seven vendors
+   landed with zero capability rows. `upsertCapabilityCore` now takes provenance (`setBy: null` is the
+   honest answer when the ticket's agent has no Serene profile), the caller checks the result, and the
+   count is in the cycle stats so the same silence cannot recur.
+3. **A regex with invisible corruption.** The word boundaries in the legal-form pattern were written
+   through a shell heredoc, which turned each `\b` into a literal backspace character. It looked right
+   in the file and matched nothing. Every file this build touched was then scanned for the same class
+   of corruption; only that one was affected.
+4. **A duplicate flag that cried wolf.** The first version recorded the search's top hits as possible
+   duplicates, which offered "Treebo Regency - Hotel near Dhole Patil Road" for "Rohan Patil" on one
+   shared surname. It now records only a name that contains ours or is contained by ours. A flag
+   nobody trusts is worse than no flag.
+
+**Where it stands on sixteen real notes:** 6 vendors created, 8 matched to existing rows, 14 jobs,
+7 capabilities, 0 false duplicate flags, 0 failures. Vision read a photographed Bill of Supply and
+produced "Patel Kaju Hub, Calangute, 9700 rupees" from an image with no text beside it.
+
+Runs every five minutes (`trigger/vendor-extract.ts`), 40 notes a pass, which drains several times
+the ~680 notes a day this account produces. Not every minute like the mirror, because Freshdesk calls
+are free and model reads are not.
+
+**Reviewer round 2 (2026-09-18) -- seven findings, seven fixes, all proven without a model call.**
+
+1. **A later note could erase an earlier note's amount.** `logEngagementCore` used PostgREST's upsert
+   for a repeat, and an upsert sends the whole row: note 1 carries the bill (9,700 rupees), note 2 on
+   the same ticket merely names the vendor again, the second write nulls the amount, and the vendor
+   score reads that row. The payload also carried a fresh random `id`, so the row's id changed and any
+   review linked to it was orphaned. Now a repeat LOOKS UP the row and refines it: fills what is still
+   empty, changes nothing that is set, never sends `id`. Proven: 9,700 survives a null, `goa` fills a
+   null city, a later `mumbai` does not overwrite it, one row, same id. Outcome and `closed_at` are
+   deliberately NOT refined here -- they belong to `closeEngagementCore`. Decision Log row: the ledger
+   now has two sanctioned existing-row writes, and the second is narrow.
+2. **The rows carried the wrong source.** `ticket` is reserved for Sia's in-app tickets, which now
+   exist -- the extractor's rows would have rendered as "In-app ticket" and, once Sia jobs log, the two
+   sets would be inseparable. They could not share `freshdesk` either: the loader's `--wipe` deletes
+   every `freshdesk` row on a re-run. So: **`freshdesk_live`**, one line in `VENDOR_SOURCE_DEF` and the
+   two CHECKs re-declared in the queue migration (it is applied nowhere but a rebuilt local database,
+   so it was extended rather than followed by a second migration for the same feature). Proven on a fresh database: exactly
+   one constraint per table, both accepting the value.
+3. **A note that always failed was retried forever.** Oldest-first, so forty such notes would have
+   blocked the whole queue, silently. `vendor_extract_attempts` on the row, bumped on every failed
+   read; the queue stops offering a note at `EXTRACT_MAX_ATTEMPTS` (3). `vendor_extracted_at` stays
+   NULL on a give-up so it is a state you can query, and the trigger logs a give-up as an error naming
+   the note. The two *causes* the reviewer named are handled too: a per-note file **budget** (16 MB
+   raw, 5 MB per file -- the API refuses more, identically on every retry) and a **60 s** per-call
+   timeout -- `timeoutMs` is now an optional field on the provider contract, the adapter keeps its
+   30 s default when it is absent.
+4. **Outcomes now catch up with the ticket.** A job is logged when a note is read, when the ticket is
+   nearly always still open, so nearly every job would have stayed `unknown` forever. A settle pass
+   runs every cycle -- no model, no cost -- and closes the live extractor's open jobs through
+   `closeEngagementCore` once the mirrored ticket is Resolved or Closed, carrying the row's own amount
+   and files forward. Proven: open ticket → still unknown; resolved → exactly one job closed at the
+   ticket's `resolved_at`; a second pass closes nothing (resolve-once holds).
+5. **Each note is marked the moment its own writes land**, not at the end of the batch, so a crash
+   on note 31 no longer re-bills notes 1 to 30. The cycle also has a wall-clock budget (240 s under the
+   trigger's 300 s): notes not reached stay NULL and unattempted for the next pass.
+6. **`isOwnEntity` matched a character prefix**, so "Indulgence Spa" would have vanished. Now whole
+   words from the front: "Indulge Global Pvt. Ltd." still matches, "Indulgence" is a different word.
+7. Provenance `source` types now derive from the vocabulary (`Exclude<VendorSource, "manual">`)
+   instead of a hand-written union that could drift from it.
+
+**Reviewer round 3 (2026-09-18) -- three last items before merge.**
+
+1. **The migration is now 0214.** While round 2 was being fixed, main landed its own 0213
+   (`20260918000213_narrow_profile_views.sql`). Two files with the same number, and the vendor one
+   carried the earlier date, so `supabase db push` would have refused it as out of order once main's
+   was applied. Renamed to `20260918000214_vendor_extraction_queue.sql`; every mention in the code
+   and docs follows. The SQL did not change. Checked against production first (read-only): it is at
+   0212, neither 0213 nor 0214 is applied, and the two CHECK names the migration drops
+   (`vendors_sources_check`, `vendor_engagements_source_check`) are the names production has.
+2. **The settle pass now walks every open job.** It looked at the 200 oldest open jobs only. Two
+   hundred jobs on tickets that stay open for weeks would have filled that window on every pass, and
+   no newer job would ever have been closed. It now pages through all of them, keyset on `id`, until
+   it runs out of jobs or the cycle's time budget. `EXTRACT_SETTLE_PER_CYCLE` became
+   `EXTRACT_SETTLE_PAGE_SIZE`. Still no model call, still through `closeEngagementCore`.
+3. **A refused write no longer marks the note as read.** When the model read worked but a core
+   refused the write (a database hiccup, or two tickets creating the same new vendor in the same
+   second), the note was marked done and that vendor was lost with only a log line. `writeFinding`
+   now returns whether everything landed; if not, the note is counted as a failed attempt and comes
+   back next pass, up to the same cap of 3, then given up on loudly. Safe to repeat because every
+   write is idempotent: exact-name match, the refine path, the capability lookup.
+
+Verified: typecheck, lint and build clean. Not run against a database: this machine has no local
+Supabase, so the two code changes are proven by reading and by the compiler, not by a live cycle.
+Merged from main first (no conflicts). `.cursorrules` copied from `CLAUDE.md` so the two match again.
+
+---
+
 ## 2026-09-17 — Decision: the profiling gate is the group link, not the members
 
 Why: the plan said a group with an unknown member is never profiled. That was written before
@@ -222,7 +422,10 @@ bound on the cycle's length).
 What changed: `createFdBudget(maxCalls, reserve, deadlineMs?)` — the budget is now calls AND
 time; past the deadline `budgetHasRoom()` is false, so every step stops starting new work the
 same clean way it does when calls run out, and in-flight downloads finish. The task passes
-40 seconds; `maxDuration` 120 → 90 as the backstop only. The 173 queued runs were cancelled.
+30 seconds (40 measured 29 to 72s in production, too close to the minute); `maxDuration`
+120 → 90 as the backstop only. A run that starts more than 150 seconds after its scheduled
+minute now exits at once, so a slow stretch can delay the mirror but never build a backlog.
+The 168 queued runs were cancelled.
 
 ## 2026-09-18 — Elaya reads the member twin: what we know, and the money
 

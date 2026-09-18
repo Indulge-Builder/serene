@@ -18,7 +18,7 @@
  * (scripts/freshdesk/backfill.ts --poll --media) is therefore optional; if it runs beside
  * this task, give it a small share (--calls 8) — both read the same rate-limit header.
  * One run at a time (concurrencyLimit 1) so two cycles never pull the same threads, and a
- * 40-second time budget so a cycle always ends inside its minute: with one run at a time, a
+ * 30-second time budget so a cycle always ends inside its minute: with one run at a time, a
  * cycle longer than the schedule's interval makes the queue grow without end (it reached 173
  * stale runs and a 17-hour lag on 2026-09-18). In-flight downloads finish after the deadline;
  * nothing new starts. maxDuration is only the backstop.
@@ -31,10 +31,18 @@ import { schedules } from "@trigger.dev/sdk/v3";
 export const freshdeskSyncTask = schedules.task({
   id: "freshdesk-sync",
   cron: { pattern: "* * * * *" },
-  // Backstop only: the 40s time budget below is what keeps a cycle inside its minute.
+  // Backstop only: the 30s time budget below is what keeps a cycle inside its minute.
   maxDuration: 90,
   queue: { concurrencyLimit: 1 },
-  run: async () => {
+  run: async (payload) => {
+    // Self-healing: a run that starts long after its scheduled minute is redundant (the next
+    // cycle reads the same watermark), so it leaves at once instead of holding the single slot.
+    // With this, a slow stretch can delay the mirror by minutes but can never build a backlog.
+    const lateMs = Date.now() - new Date(payload.timestamp).getTime();
+    if (lateMs > 150_000) {
+      console.log(`[freshdesk-sync] ${Math.round(lateMs / 1000)}s late; skipped`);
+      return { skipped: "stale", lateSeconds: Math.round(lateMs / 1000) };
+    }
     // Dynamic imports — keep server-only modules out of the Trigger.dev module scan.
     const { isFreshdeskConfigured, createFdBudget } = await import("@/lib/services/freshdesk-api");
     if (!isFreshdeskConfigured()) {
@@ -43,7 +51,7 @@ export const freshdeskSyncTask = schedules.task({
     }
     const { runSyncCycle } = await import("@/lib/services/freshdesk-sync");
     const { FD_MEDIA_FLAG_BATCH } = await import("@/lib/constants/freshdesk");
-    const summary = await runSyncCycle(createFdBudget(undefined, undefined, 40_000), { flagMedia: FD_MEDIA_FLAG_BATCH });
+    const summary = await runSyncCycle(createFdBudget(undefined, undefined, 30_000), { flagMedia: FD_MEDIA_FLAG_BATCH });
     const line = {
       apiCalls: summary.apiCalls,
       rateRemaining: summary.rateRemaining,
