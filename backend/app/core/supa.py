@@ -185,6 +185,45 @@ async def select_one(
     return rows[0] if rows else None
 
 
+# ── Lead tasks across the public ↔ gia boundary ──────────────────────────
+# A lead task is a public.tasks row linked to gia.leads by gia.task_gia_meta.
+# PostgREST cannot embed across schemas, so a read that starts in `tasks` cannot
+# embed `task_gia_meta`; read the links separately. Mirrors getGiaLinksForTasks in
+# src/lib/services/gia-task-links.ts — keep the two in step.
+
+_IN_CHUNK = 200
+
+
+async def get_gia_links_for_tasks(task_ids: list[str]) -> dict[str, dict[str, Any]]:
+    """task_id -> {"lead_id", "call_outcome", "lead": {id, slug, first_name, last_name,
+    domain, archived_at} | None}. A task with no link is absent: that absence is the
+    "not a lead task" signal. Raises on a query error, like every read here."""
+    links: dict[str, dict[str, Any]] = {}
+    ids = sorted(set(task_ids))
+    for i in range(0, len(ids), _IN_CHUNK):
+        rows = await select(
+            "task_gia_meta",
+            {
+                "select": (
+                    "task_id, lead_id, call_outcome, "
+                    "lead:leads!task_gia_meta_lead_id_fkey"
+                    "(id, slug, first_name, last_name, domain, archived_at)"
+                ),
+                "task_id": f"in.({','.join(ids[i:i + _IN_CHUNK])})",
+            },
+        )
+        for r in rows:
+            lead = r.get("lead")
+            if isinstance(lead, list):
+                lead = lead[0] if lead else None
+            links[r["task_id"]] = {
+                "lead_id": r["lead_id"],
+                "call_outcome": r.get("call_outcome"),
+                "lead": lead,
+            }
+    return links
+
+
 # ── Domain reads the brain foundation needs ──────────────────────────────
 
 
