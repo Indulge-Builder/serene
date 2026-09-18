@@ -51,8 +51,8 @@ export const VENDOR_IDENTITY_STATUS_ENUM   = VENDOR_IDENTITY_STATUS_DEF.zodEnum;
 
 // ONE source vocabulary for BOTH vendors.sources[] and
 // vendor_engagements.source (the two CHECKs mirror this list -- 0183 / 0185,
-// re-declared in 0213). `ticket` is reserved for Sia's in-app tickets, which
-// now exist. `freshdesk_live` is the live extractor (0213): its rows could not
+// re-declared in 0214). `ticket` is reserved for Sia's in-app tickets, which
+// now exist. `freshdesk_live` is the live extractor (0214): its rows could not
 // share `freshdesk`, because load-vendors.ts --wipe deletes every `freshdesk`
 // row when the archive is re-run and would have taken the live rows with it;
 // and they could not borrow `ticket`, because a Sia job and a Freshdesk job
@@ -348,7 +348,7 @@ export const VENDOR_INVOICE_SIGNED_URL_TTL = 60 * 60; // 1 hour
 export const VENDORS_PATH = "/vendors";
 
 // ─────────────────────────────────────────────
-// The live extractor (migration 0213) — reading vendors out of the Freshdesk
+// The live extractor (migration 0214) — reading vendors out of the Freshdesk
 // mirror. Every number here was set against measured behaviour on 2,800 real
 // notes (25 Aug -> 17 Sep 2026), not guessed; the measurements are in the
 // changelog entry for 2026-09-17.
@@ -395,8 +395,12 @@ export const EXTRACT_TIMEOUT_MS = 60_000;
  * writes land.
  */
 export const EXTRACT_CYCLE_BUDGET_MS = 240_000;
-/** Open live-extractor jobs checked against their ticket per cycle (no model, no cost). */
-export const EXTRACT_SETTLE_PER_CYCLE = 200;
+/**
+ * Open live-extractor jobs checked against their ticket per PAGE of the settle
+ * pass (no model, no cost). The pass walks every open job, a page at a time,
+ * until it runs out of jobs or the cycle's wall-clock budget.
+ */
+export const EXTRACT_SETTLE_PAGE_SIZE = 200;
 /** Characters of note text sent. Long threads are pasted email chains; the top carries the point. */
 export const EXTRACT_NOTE_CHAR_CAP = 6000;
 /** A JSON array of small objects. Generous, and a cap keeps a runaway reply cheap. */

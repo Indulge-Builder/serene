@@ -1,5 +1,5 @@
 /**
- * vendor-extract.ts — the vendor extractor's heartbeat (migration 0213).
+ * vendor-extract.ts — the vendor extractor's heartbeat (migration 0214).
  *
  * Every five minutes: one batch of notes the Freshdesk mirror has written but
  * nobody has read for vendors yet. It calls Freshdesk NOT AT ALL — the mirror

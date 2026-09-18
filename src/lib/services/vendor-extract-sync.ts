@@ -7,7 +7,7 @@
 // re-fetch bytes we already hold. This reads `freshdesk.conversations`, which is
 // free, and can therefore re-read history whenever the rules improve.
 //
-// THE QUEUE is `vendor_extracted_at IS NULL` on the conversation row (0213) —
+// THE QUEUE is `vendor_extracted_at IS NULL` on the conversation row (0214) —
 // the same NULL-as-flag shape the mirror already uses for `conversations_synced_at`
 // and `media_synced_at`. Marked once, preserved forever: the model read is the
 // only billed step, so re-clearing that column re-bills the whole thread.
@@ -28,7 +28,8 @@
 //
 // EACH NOTE IS MARKED THE MOMENT ITS OWN WRITES LAND, not at the end of the
 // batch: a crash midway through forty notes must not re-bill the thirty it had
-// already read. A note that FAILS to read is counted (vendor_extract_attempts)
+// already read. A note that FAILS -- the model read, or a write a core refused
+// after a good read -- is counted (vendor_extract_attempts)
 // and the queue stops offering it at EXTRACT_MAX_ATTEMPTS, so one permanently
 // bad note cannot hold the oldest-first queue for everything behind it.
 //
@@ -62,7 +63,7 @@ import {
   EXTRACT_MAX_ATTEMPTS,
   EXTRACT_MIN_FUZZY_NAME_CHARS,
   EXTRACT_NOTES_PER_CYCLE,
-  EXTRACT_SETTLE_PER_CYCLE,
+  EXTRACT_SETTLE_PAGE_SIZE,
   EXTRACT_SOURCE,
   EXTRACT_SYNC_KEY,
   EXTRACT_TICKET_CONTEXT_ROWS,
@@ -390,7 +391,13 @@ async function writeFinding(
   ticket: TicketFacts,
   agent: { profileId: string | null; name: string | null } | undefined,
   stats: ExtractCycleStats,
-): Promise<string | null> {
+): Promise<boolean> {
+  // TRUE = everything this finding had to say is in the tables (or it had
+  // nothing to say). FALSE = a core refused a write, and the caller must NOT
+  // mark the note read: the model read worked but the fact did not land, and
+  // marking it done would lose that vendor for good with only a log line to
+  // show for it. Every write below is idempotent (exact-name match, the refine
+  // path, the capability lookup), so reading the note again is safe.
   const actor = actorFor(agent?.profileId ?? null);
   const phonesE164 = found.phones
     .map((p) => { try { return normalizeToE164(p); } catch { return null; } })
@@ -417,7 +424,7 @@ async function writeFinding(
       else await updateVendorCore(actor, { id: matched.id, primary_phone: phonesE164[0] } as never);
     }
   } else {
-    if (!found.name) return null;                    // a detail with no owner — parked, see the caller
+    if (!found.name) return true;                    // a detail with no owner — nothing to write, not a failure
     const created = await createVendorCore(
       actor,
       {
@@ -447,7 +454,7 @@ async function writeFinding(
     );
     if (!created.ok) {
       console.error(`${LOG} createVendorCore refused (${created.error}) for "${found.name}"`);
-      return null;
+      return false;
     }
     stats.vendorsCreated++;
     if (nearMisses.length) stats.duplicatesFlagged++;
@@ -485,7 +492,7 @@ async function writeFinding(
   );
   if (!logged.ok) {
     console.error(`${LOG} logEngagementCore refused (${logged.error}) for ticket ${ticket.id}`);
-    return vendorId;
+    return false;
   }
   stats.engagementsWritten++;
 
@@ -508,10 +515,13 @@ async function writeFinding(
     );
     // Checked, because it failing quietly is exactly how seven vendors landed
     // with no capability row at all.
-    if (!cap.ok) console.error(`${LOG} upsertCapabilityCore refused (${cap.error}) for vendor ${vendorId}`);
-    else stats.capabilitiesWritten++;
+    if (!cap.ok) {
+      console.error(`${LOG} upsertCapabilityCore refused (${cap.error}) for vendor ${vendorId}`);
+      return false;
+    }
+    stats.capabilitiesWritten++;
   }
-  return vendorId;
+  return true;
 }
 
 // ─── Outcomes catch up with the ticket ───────────────────────────────────────
@@ -527,52 +537,67 @@ async function writeFinding(
  * only rows this extractor wrote (source = freshdesk_live). Never the archive,
  * never a hand-logged job. No model call, so it costs nothing to run every pass.
  */
-async function settleOutcomes(stats: ExtractCycleStats): Promise<void> {
+async function settleOutcomes(stats: ExtractCycleStats, deadline: number): Promise<void> {
   const admin = createAdminClient();
-  const { data, error } = await admin
-    .from("vendor_engagements")
-    .select("id, source_ref, amount_inr, invoice_paths, note")
-    .eq("source", EXTRACT_SOURCE)
-    .eq("outcome", "unknown")
-    .is("closed_at", null)
-    .order("started_at", { ascending: true })
-    .limit(EXTRACT_SETTLE_PER_CYCLE);
-  if (error) {
-    console.error(`${LOG} settle read failed:`, error.message);
-    return;
-  }
-  const open = (data ?? []) as { id: string; source_ref: string; amount_inr: number | null; invoice_paths: string[]; note: string | null }[];
-  if (open.length === 0) return;
-
-  const ticketIds = [...new Set(open.map((r) => Number(r.source_ref)).filter((n) => Number.isFinite(n)))];
-  const { data: tickets, error: tErr } = await freshdeskDb()
-    .from("tickets")
-    .select("id, status, resolved_at, closed_at, fd_created_at")
-    .in("id", ticketIds);
-  if (tErr) {
-    console.error(`${LOG} settle ticket read failed:`, tErr.message);
-    return;
-  }
-  const byId = new Map<number, { id: number; status: number | null; resolved_at: string | null; closed_at: string | null; fd_created_at: string }>();
-  for (const t of (tickets ?? []) as unknown as { id: number; status: number | null; resolved_at: string | null; closed_at: string | null; fd_created_at: string }[]) byId.set(t.id, t);
-
   const actor = actorFor(null);
-  for (const row of open) {
-    const t = byId.get(Number(row.source_ref));
-    if (!t) continue;
-    const closedAt = closedAtFor(t);
-    if (!closedAt) continue;                              // still open -- next time
-    const res = await closeEngagementCore(actor, {
-      id: row.id,
-      closed_at: closedAt,
-      outcome: "completed",
-      // The close carries the row's own facts forward; it must not blank them.
-      amount_inr: row.amount_inr,
-      invoice_paths: row.invoice_paths ?? [],
-      note: row.note,
-    });
-    if (res.ok) stats.outcomesSettled++;
-    else if (res.error !== "already_closed") console.error(`${LOG} closeEngagementCore refused (${res.error}) for job ${row.id}`);
+  type OpenJob = { id: string; source_ref: string; amount_inr: number | null; invoice_paths: string[]; note: string | null };
+  type TicketState = { id: number; status: number | null; resolved_at: string | null; closed_at: string | null; fd_created_at: string };
+
+  // EVERY open job, a page at a time, keyset on id. The first version looked at
+  // the 200 oldest only: two hundred jobs on tickets that stay open for weeks
+  // would have filled that window on every pass, and nothing newer would ever
+  // have settled (reviewer, 2026-09-18). A keyset on id is stable while rows
+  // close underneath it, and the whole walk is two cheap reads a page.
+  let afterId: string | null = null;
+  while (Date.now() <= deadline) {
+    let query = admin
+      .from("vendor_engagements")
+      .select("id, source_ref, amount_inr, invoice_paths, note")
+      .eq("source", EXTRACT_SOURCE)
+      .eq("outcome", "unknown")
+      .is("closed_at", null)
+      .order("id", { ascending: true })
+      .limit(EXTRACT_SETTLE_PAGE_SIZE);
+    if (afterId) query = query.gt("id", afterId);
+    const { data, error } = await query;
+    if (error) {
+      console.error(`${LOG} settle read failed:`, error.message);
+      return;
+    }
+    const open = (data ?? []) as OpenJob[];
+    if (open.length === 0) return;
+    afterId = open[open.length - 1].id;
+
+    const ticketIds = [...new Set(open.map((r) => Number(r.source_ref)).filter((n) => Number.isFinite(n)))];
+    const { data: tickets, error: tErr } = await freshdeskDb()
+      .from("tickets")
+      .select("id, status, resolved_at, closed_at, fd_created_at")
+      .in("id", ticketIds);
+    if (tErr) {
+      console.error(`${LOG} settle ticket read failed:`, tErr.message);
+      return;
+    }
+    const byId = new Map<number, TicketState>();
+    for (const t of (tickets ?? []) as unknown as TicketState[]) byId.set(t.id, t);
+
+    for (const row of open) {
+      const t = byId.get(Number(row.source_ref));
+      if (!t) continue;
+      const closedAt = closedAtFor(t);
+      if (!closedAt) continue;                              // still open -- next time
+      const res = await closeEngagementCore(actor, {
+        id: row.id,
+        closed_at: closedAt,
+        outcome: "completed",
+        // The close carries the row's own facts forward; it must not blank them.
+        amount_inr: row.amount_inr,
+        invoice_paths: row.invoice_paths ?? [],
+        note: row.note,
+      });
+      if (res.ok) stats.outcomesSettled++;
+      else if (res.error !== "already_closed") console.error(`${LOG} closeEngagementCore refused (${res.error}) for job ${row.id}`);
+    }
+    if (open.length < EXTRACT_SETTLE_PAGE_SIZE) return;
   }
 }
 
@@ -585,8 +610,8 @@ async function settleOutcomes(stats: ExtractCycleStats): Promise<void> {
  * in note 1 — the model is told what earlier notes on the same ticket already
  * yielded. Then the settle pass closes jobs whose tickets have resolved.
  *
- * A note whose READ failed is counted (recordFailure) and comes back next pass
- * until the attempts cap. A note the model read and found nothing in is marked
+ * A note whose READ failed, or whose WRITE a core refused, is counted
+ * (recordFailure) and comes back next pass until the attempts cap. A note the model read and found nothing in is marked
  * done: that is an answer, not a failure, and re-reading it would re-bill it
  * forever. Notes not reached before the wall-clock budget stay queued, untouched.
  */
@@ -659,19 +684,26 @@ export async function runVendorExtractCycle(limit = EXTRACT_NOTES_PER_CYCLE): Pr
           });
 
           if (result == null) { await recordFailure(note, stats); continue; }
-          stats.notesRead++;
 
+          // A refused or thrown write counts exactly like a failed read: the
+          // note stays queued, the attempt is counted, and at the cap it is
+          // given up on loudly. Marking it read here would lose the vendor.
+          let allWritten = true;
           for (const found of result.vendors) {
             try {
-              await writeFinding(found, ticket, agent, stats);
+              const written = await writeFinding(found, ticket, agent, stats);
+              if (!written) { allWritten = false; continue; }
               if (found.name) {
                 const line = [found.name, found.category, found.phones[0]].filter(Boolean).join(" · ");
                 context.set(ticketId, [line, ...(context.get(ticketId) ?? [])]);
               }
             } catch (e) {
+              allWritten = false;
               console.error(`${LOG} write failed for ticket ${ticketId}:`, e instanceof Error ? e.message : e);
             }
           }
+          if (!allWritten) { await recordFailure(note, stats); continue; }
+          stats.notesRead++;
           // THIS note, now. A crash on the next one must not re-bill this one.
           await markRead([note.id]);
         }
@@ -681,7 +713,7 @@ export async function runVendorExtractCycle(limit = EXTRACT_NOTES_PER_CYCLE): Pr
   }
 
   // Runs whether or not there were notes: tickets resolve on their own clock.
-  if (Date.now() <= deadline) await settleOutcomes(stats);
+  if (Date.now() <= deadline) await settleOutcomes(stats, deadline);
 
   const idle = notes.length === 0 && stats.outcomesSettled === 0;
   // A heartbeat even when there is nothing to do. Without it "alive and idle"

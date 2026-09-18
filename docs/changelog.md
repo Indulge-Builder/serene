@@ -12,21 +12,22 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
-## 2026-09-17 — Vendors keep themselves current: the live extractor (migration 0213)
+## 2026-09-17 — Vendors keep themselves current: the live extractor (migration 0214)
 
 **Rebased onto the schema restructure.** Main moved eight commits while this was being built and
 landed 0210 to 0212: `public` to `gia`, the member twin to its own schema, and `clients` renamed to
 `members` all the way down. Three consequences, all handled:
 
-- The migration is **0213**, not 0205. Production was already past 0212 by the time this was ready,
+- The migration is **0214**, not 0205. Production was already past 0212 by the time this was ready,
   so the original number would have been refused exactly as the vendor migrations were last round.
+  (It was 0213 for a day; main then landed its own 0213, see reviewer round 3 below.)
 - `freshdesk.tickets.client_id` is `member_id` now, and so is `vendor_engagements.client_id`. The
   extractor reads and writes the new name; the one merge conflict was in `logEngagementCore`, where
   the resolution keeps the provenance path and takes main's column name.
 - **Vendors stay in `public`** -- they are in neither `GIA_TABLES` nor `MEMBER_TABLES` -- so nothing
   else about the module moved.
 
-Re-verified after the rebase on a database rebuilt from scratch: all 214 migrations apply, 0213 lands
+Re-verified after the rebase on a database rebuilt from scratch: all 214 migrations apply, the queue migration lands
 on the restructured schema, `database.ts` regenerated across all five schemas (`public`, `sia`, `gia`,
 `member`, `freshdesk`) with the hand-written tail carried over, and typecheck, lint and build are clean.
 
@@ -159,8 +160,8 @@ are free and model reads are not.
    exist -- the extractor's rows would have rendered as "In-app ticket" and, once Sia jobs log, the two
    sets would be inseparable. They could not share `freshdesk` either: the loader's `--wipe` deletes
    every `freshdesk` row on a re-run. So: **`freshdesk_live`**, one line in `VENDOR_SOURCE_DEF` and the
-   two CHECKs re-declared in 0213 (0213 is applied nowhere but a rebuilt local database, so it was
-   extended rather than followed by a 0214 for the same feature). Proven on a fresh database: exactly
+   two CHECKs re-declared in the queue migration (it is applied nowhere but a rebuilt local database,
+   so it was extended rather than followed by a second migration for the same feature). Proven on a fresh database: exactly
    one constraint per table, both accepting the value.
 3. **A note that always failed was retried forever.** Oldest-first, so forty such notes would have
    blocked the whole queue, silently. `vendor_extract_attempts` on the row, bumped on every failed
@@ -183,6 +184,31 @@ are free and model reads are not.
    words from the front: "Indulge Global Pvt. Ltd." still matches, "Indulgence" is a different word.
 7. Provenance `source` types now derive from the vocabulary (`Exclude<VendorSource, "manual">`)
    instead of a hand-written union that could drift from it.
+
+**Reviewer round 3 (2026-09-18) -- three last items before merge.**
+
+1. **The migration is now 0214.** While round 2 was being fixed, main landed its own 0213
+   (`20260918000213_narrow_profile_views.sql`). Two files with the same number, and the vendor one
+   carried the earlier date, so `supabase db push` would have refused it as out of order once main's
+   was applied. Renamed to `20260918000214_vendor_extraction_queue.sql`; every mention in the code
+   and docs follows. The SQL did not change. Checked against production first (read-only): it is at
+   0212, neither 0213 nor 0214 is applied, and the two CHECK names the migration drops
+   (`vendors_sources_check`, `vendor_engagements_source_check`) are the names production has.
+2. **The settle pass now walks every open job.** It looked at the 200 oldest open jobs only. Two
+   hundred jobs on tickets that stay open for weeks would have filled that window on every pass, and
+   no newer job would ever have been closed. It now pages through all of them, keyset on `id`, until
+   it runs out of jobs or the cycle's time budget. `EXTRACT_SETTLE_PER_CYCLE` became
+   `EXTRACT_SETTLE_PAGE_SIZE`. Still no model call, still through `closeEngagementCore`.
+3. **A refused write no longer marks the note as read.** When the model read worked but a core
+   refused the write (a database hiccup, or two tickets creating the same new vendor in the same
+   second), the note was marked done and that vendor was lost with only a log line. `writeFinding`
+   now returns whether everything landed; if not, the note is counted as a failed attempt and comes
+   back next pass, up to the same cap of 3, then given up on loudly. Safe to repeat because every
+   write is idempotent: exact-name match, the refine path, the capability lookup.
+
+Verified: typecheck, lint and build clean. Not run against a database: this machine has no local
+Supabase, so the two code changes are proven by reading and by the compiler, not by a live cycle.
+Merged from main first (no conflicts). `.cursorrules` copied from `CLAUDE.md` so the two match again.
 
 ---
 

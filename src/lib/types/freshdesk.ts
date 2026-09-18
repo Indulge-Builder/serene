@@ -76,12 +76,12 @@ export type FdConversationRow = {
   /** 0197: when the note's files were copied; NULL = the backlog. */
   media_synced_at: string | null;
   /**
-   * 0213: when the vendor extractor last read this note; NULL = queued.
+   * 0214: when the vendor extractor last read this note; NULL = queued.
    * Set once and PRESERVED across thread re-syncs — the model read is the only
    * billed step in that pipeline, so clearing it re-bills the whole thread.
    */
   vendor_extracted_at: string | null;
-  /** 0213: failed extraction reads; the queue stops offering a note at EXTRACT_MAX_ATTEMPTS. */
+  /** 0214: failed extraction reads; the queue stops offering a note at EXTRACT_MAX_ATTEMPTS. */
   vendor_extract_attempts: number;
 };
 

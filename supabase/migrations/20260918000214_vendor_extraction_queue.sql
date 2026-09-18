@@ -1,4 +1,4 @@
--- Migration 0213: the vendor extractor's queue marker on the Freshdesk mirror,
+-- Migration 0214: the vendor extractor's queue marker on the Freshdesk mirror,
 -- its retry counter, and the `freshdesk_live` source value.
 --
 -- WHY A COLUMN AND NOT A TABLE
@@ -63,7 +63,7 @@ COMMENT ON COLUMN freshdesk.conversations.vendor_extracted_at IS
   'When the vendor extractor last read this note (services/vendor-extract-sync.ts). '
   'NULL = queued. Set once and PRESERVED across thread re-syncs -- a model read is the only '
   'billed step in that pipeline, so clearing this re-bills the whole thread. '
-  'Backfilled to now() at 0213: the extractor is forward-only from 2026-09-17. To open the '
+  'Backfilled to now() at 0214: the extractor is forward-only from 2026-09-17. To open the '
   'backlog for a window, set this back to NULL for that date range.';
 
 -- ─────────────────────────────────────────────────────────────────────────────
