@@ -38,7 +38,7 @@ const LOG = "[ticket-intake]";
 const sia = () => createAdminClient().schema("sia");
 
 type Msg = { id: string; wa_message_id: string; sender_jid: string; text: string; wa_timestamp: string };
-type DueGroup = { group_jid: string; member_id: string; queendom_id: string | null; cursor_at: string; fail_count: number | null };
+type DueGroup = { group_jid: string; member_id: string; queendom_id: string | null; cursor_at: string; newest_at: string; fail_count: number | null };
 type OpenTicket = { id: string; ticket_no: string; title: string; category: string };
 
 export type IntakeVerdict = { kind: IntakeKind; confidence: number; ticket_no: string | null; tone: (typeof INTAKE_TONES)[number]; summary: string; request_messages: number[]; more_requests: boolean };
@@ -246,8 +246,11 @@ export async function runIntakeSweep(opts: IntakeSweepOptions): Promise<{ groups
     ]);
     if (mErr) { console.warn(`${LOG} messages read failed`, g.group_jid, mErr.message); return; }
     const msgs = ((fresh ?? []) as Msg[]).filter((m) => m.text.trim().length > 0);
+    // Only photos or stickers since the bookmark: nothing to read, ever. Move past them, or the
+    // group stays "due" for good and holds a slot (the profiler's 2026-09-18 lesson).
+    if (msgs.length === 0) { if (opts.apply) await state(g.group_jid, { last_message_at: g.newest_at }); return; }
     const bursts = buildBursts(msgs, Date.now());
-    if (bursts.length === 0) return; // still moving, or only media: next minute
+    if (bursts.length === 0) return; // the chat is still moving: next minute
     let context = ((before ?? []) as Msg[]).filter((m) => m.text.trim().length > 0).reverse();
 
     const vault = await openVault(g.group_jid, g.member_id, [...context, ...msgs].map((m) => m.sender_jid), broad);

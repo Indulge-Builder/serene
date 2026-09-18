@@ -522,7 +522,7 @@ export async function runProfilerSweep(opts: SweepOptions): Promise<{ groups: nu
     getBroadSenders(),
   ]);
   if (error) throw new Error(`${LOG} due groups failed: ${error.message}`);
-  const groups = (due ?? []) as { group_jid: string; member_id: string; cursor_at: string | null; fail_count: number | null }[];
+  const groups = (due ?? []) as { group_jid: string; member_id: string; cursor_at: string | null; newest_at: string; fail_count: number | null }[];
   const outcomes: WindowOutcome[] = [];
   let sent = 0;
   let providerFailsInARow = 0;
@@ -559,6 +559,10 @@ export async function runProfilerSweep(opts: SweepOptions): Promise<{ groups: nu
     const { data: rows, error: mErr } = await q;
     if (mErr) { console.warn(`${LOG} messages read failed`, g.group_jid, mErr.message); return; }
     const msgs = ((rows ?? []) as Msg[]).filter((m) => m.text.trim().length > 0);
+    // Nothing but photos, stickers or deleted messages since the bookmark: there is no text to
+    // read and there never will be, so the bookmark moves past them. Left alone, the group would
+    // stay "due" for ever and hold a slot other groups are waiting for.
+    if (msgs.length === 0) { if (opts.apply) await state(g.group_jid, { last_message_at: g.newest_at }); return; }
     let windows = buildWindows(g.group_jid, g.member_id, msgs, Date.now());
     // A full page means the last conversation may be cut by the page, not by a quiet gap. Leave
     // it for the next pass, which starts right after the conversation before it and reads it whole.

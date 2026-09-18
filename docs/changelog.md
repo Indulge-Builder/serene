@@ -55,6 +55,28 @@ the same expression. `members-service.ts` reads the mirror for both the filter a
 mirror. Verified: 614 of 614 members match the Sia link (343 linked, 271 not), and a hand-blanked
 mirror is restored by the trigger. The member page was already right (it shows the real group).
 
+## 2026-09-18 -- The profiler reads the longest-waiting group first (migration 0220)
+
+**What went wrong.** The history read slowed from about 150 readings a run to about 25, with 304
+groups still waiting and only 85 ever started. Nothing was failing.
+
+**Why.** `sia.profiler_due_groups` ordered groups by their newest message, newest first, and the
+sweep took the first 12. The most recently active groups are exactly the ones already read: their
+only unread chat is a conversation still in progress, which the sweep rightly leaves alone. So the
+first 12 filled up with groups that had nothing to give, and the never-started groups waited
+behind them. A design flaw in the ordering, mine.
+
+**What changed.**
+
+- `supabase/migrations/20260918000220_due_groups_fair_order.sql`: order by the bookmark, oldest
+  first, never-started groups before all. A group just read goes to the back of the line.
+- `PROFILER_GROUPS_PER_RUN` 12 to 60, so the three workers never run dry.
+- Both sweeps (profiler and ticket intake): when everything since a group's bookmark is photos,
+  stickers or deleted messages, the bookmark now moves past them. Before, such a group stayed
+  "due" for ever and held a slot.
+
+---
+
 ## 2026-09-18 -- Elaya searches a member's history by topic, not by exact words
 
 **Why.** `search_member_history` matched words with AND: "anniversary dinner" found a message only

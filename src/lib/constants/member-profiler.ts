@@ -31,7 +31,9 @@ export const PROFILER_CONFIDENCE_FLOOR = 0.5;
 export const PROFILER_BROAD_SENDER_MIN_GROUPS = 6;
 
 /** The cloud task's budget per run: groups looked at, windows sent to the model. */
-export const PROFILER_GROUPS_PER_RUN = 12;
+/** Groups offered to a run. Generous: many will have only a conversation still in progress, and the
+ *  three workers must never run dry while others wait (the 2026-09-18 starvation, migration 0220). */
+export const PROFILER_GROUPS_PER_RUN = 60;
 /**
  * Conversations sent to the model per run: a ceiling, not a target. The task's time budget is
  * what usually ends a run (a reading takes about nine seconds in the cloud).
