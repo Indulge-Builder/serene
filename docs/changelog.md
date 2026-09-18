@@ -211,6 +211,19 @@ compile crawl and is the first thing to fix before judging local speed.
 
 ---
 
+## 2026-09-18 — Freshdesk cloud task: a time budget, so the queue can never grow
+
+Why: the cloud `freshdesk-sync` task stopped keeping up. Read from the Trigger.dev production
+run log: each cycle took 90 to 116 seconds once it copied files, a new run is created every
+60, and the task runs one at a time. So the queue only grew: 173 stale runs waiting and the
+newest work starting 17 hours late. That was yesterday's change (one run at a time, without a
+bound on the cycle's length).
+
+What changed: `createFdBudget(maxCalls, reserve, deadlineMs?)` — the budget is now calls AND
+time; past the deadline `budgetHasRoom()` is false, so every step stops starting new work the
+same clean way it does when calls run out, and in-flight downloads finish. The task passes
+40 seconds; `maxDuration` 120 → 90 as the backstop only. The 173 queued runs were cancelled.
+
 ## 2026-09-18 — Elaya reads the member twin: what we know, and the money
 
 Why: Elaya could read a member's WhatsApp chat but not what Serene has saved about them. The
