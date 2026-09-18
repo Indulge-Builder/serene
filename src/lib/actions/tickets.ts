@@ -17,6 +17,7 @@ import { canAccessMember } from "@/lib/elaya/access";
 import { TICKETS_PATH } from "@/lib/constants/tickets";
 import { CLIENTS_PATH } from "@/lib/constants/sia-roles";
 import { draftTicketFromMessages } from "@/lib/services/ticket-creator";
+import { getIntakeProposal, resolveIntakeProposal } from "@/lib/services/intake-service";
 import { getTicketHelp, listQueendomStaff, listBoardTickets } from "@/lib/services/tickets-service";
 import {
   addTicketNoteCore, assignTicketCore, createTicketCore, linkTicketMessagesCore, moveTicketStatusCore,
@@ -26,7 +27,7 @@ import {
 import {
   AddTicketNoteSchema, AssignTicketSchema, CreateTicketSchema, DraftTicketSchema, LinkTicketMessagesSchema,
   MoveTicketStatusSchema, SetTicketPrioritySchema, TickChecklistSchema, UpdateTicketBriefSchema, UpdateTicketMoneySchema,
-  UpdateTicketTagsSchema, CreateTicketTaskSchema,
+  UpdateTicketTagsSchema, CreateTicketTaskSchema, DismissIntakeProposalSchema, AcceptIntakeUpdateSchema,
 } from "@/lib/validations/ticket-schema";
 import type { ActionResult } from "@/lib/types";
 import { wakeTicketNow } from "@/lib/services/ticket-sentinel";
@@ -77,10 +78,64 @@ export async function createTicketAction(input: unknown): Promise<ActionResult<T
   if (!auth.ok) return auth.result;
   const q = await memberQueendom(parsed.data.member_id);
   if (!q.exists || !canAccessMember(auth.profile, q.queendom_id)) return { data: null, error: formErrors.unauthorized };
+  // From an intake card (0219): the card must be one the caller can see, still open, and about
+  // this member. What the human changed before creating is the training signal, so it is
+  // measured here against the stored draft, never taken from the browser.
+  const card = parsed.data.proposal_id ? await getIntakeProposal(parsed.data.proposal_id) : null;
+  if (parsed.data.proposal_id && (!card || card.status !== "open" || card.member_id !== parsed.data.member_id)) return { data: null, error: "That suggestion is no longer open. Refresh the Tickets page." };
   const res = await createTicketCore(parsed.data, actorFromProfile(auth.profile));
   if (res.error !== null || !res.data) return { data: null, error: res.error ?? formErrors.generic };
+  if (card) {
+    await resolveIntakeProposal(card.id, auth.profile.id, { status: "accepted", ticket_id: res.data.id, fields_changed: draftFieldsChanged(card.draft, parsed.data) });
+    revalidatePath(TICKETS_PATH);
+  }
   revalidateTicket(res.data.id, res.data.member_id);
   return { data: res.data, error: null };
+}
+
+/** Which drafted fields the human changed before creating. Empty = accepted exactly as Serene drafted it. */
+function draftFieldsChanged(draft: Partial<TicketDraft>, made: { category: string; sub_category: string | null; title: string; priority: string; requested_for: string | null; brief: Record<string, unknown> }): string[] {
+  const out: string[] = [];
+  const same = (a: unknown, b: unknown) => String(a ?? "").trim() === String(b ?? "").trim();
+  if (!same(draft.category, made.category)) out.push("category");
+  if (!same(draft.sub_category, made.sub_category)) out.push("sub_category");
+  if (!same(draft.title, made.title)) out.push("title");
+  if (!same(draft.priority, made.priority)) out.push("priority");
+  if (!same(draft.requested_for?.slice(0, 16), made.requested_for?.slice(0, 16))) out.push("requested_for");
+  const d = (draft.brief ?? {}) as Record<string, unknown>;
+  for (const k of new Set([...Object.keys(d), ...Object.keys(made.brief)])) if (!same(d[k], made.brief[k])) out.push(`brief.${k}`);
+  return out;
+}
+
+/** Dismiss an intake card, with the reason. The reason is how intake learns; it is not optional. */
+export async function dismissIntakeProposalAction(input: unknown): Promise<ActionResult<{ id: string }>> {
+  const parsed = parseActionInput(DismissIntakeProposalSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+  const card = await getIntakeProposal(parsed.data.proposal_id); // RLS: only a card the caller can see comes back
+  if (!card || !canAccessMember(auth.profile, card.queendom_id)) return { data: null, error: formErrors.unauthorized };
+  const done = await resolveIntakeProposal(card.id, auth.profile.id, { status: "dismissed", dismiss_reason: parsed.data.reason });
+  if (!done) return { data: null, error: "Someone already handled that suggestion." };
+  revalidatePath(TICKETS_PATH);
+  return { data: { id: card.id }, error: null };
+}
+
+/** Accept an "update" card: the messages are linked onto the ticket it named, and its sentinel wakes. */
+export async function acceptIntakeUpdateAction(input: unknown): Promise<ActionResult<{ ticket_id: string }>> {
+  const parsed = parseActionInput(AcceptIntakeUpdateSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
+  const auth = await requireProfile();
+  if (!auth.ok) return auth.result;
+  const card = await getIntakeProposal(parsed.data.proposal_id);
+  if (!card || card.kind !== "update" || !card.ticket_id || !canAccessMember(auth.profile, card.queendom_id)) return { data: null, error: formErrors.unauthorized };
+  if (card.status !== "open") return { data: null, error: "Someone already handled that suggestion." };
+  const res = await linkTicketMessagesCore(card.ticket_id, card.messages.map((m) => ({ chat_jid: m.chat_jid, wa_message_id: m.wa_message_id, sender_jid: m.sender_jid, link_kind: "update" as const })), actorFromProfile(auth.profile));
+  if (res.error) return { data: null, error: res.error };
+  await resolveIntakeProposal(card.id, auth.profile.id, { status: "accepted", ticket_id: card.ticket_id, fields_changed: [] });
+  revalidatePath(TICKETS_PATH);
+  revalidateTicket(card.ticket_id, card.member_id);
+  return { data: { ticket_id: card.ticket_id }, error: null };
 }
 
 export async function moveTicketStatusAction(input: unknown): Promise<ActionResult<TicketRow>> {

@@ -7,6 +7,11 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
+  }
   freshdesk: {
     Tables: {
       agents: {
@@ -1759,83 +1764,18 @@ export type Database = {
     Views: {
       profiles: {
         Row: {
-          app_icon: string | null
-          appearance: string | null
-          avatar_url: string | null
-          created_at: string | null
-          domain: Database["public"]["Enums"]["app_domain"] | null
-          email: string | null
           full_name: string | null
           id: string | null
-          is_active: boolean | null
-          is_on_leave: boolean | null
-          job_title: string | null
-          last_seen_at: string | null
-          phone: string | null
-          queendom_id: string | null
-          reports_to: string | null
-          role: Database["public"]["Enums"]["user_role"] | null
-          sia_role: string | null
-          theme: string | null
-          timezone: string | null
-          updated_at: string | null
-          username: string | null
         }
         Insert: {
-          app_icon?: string | null
-          appearance?: string | null
-          avatar_url?: string | null
-          created_at?: string | null
-          domain?: Database["public"]["Enums"]["app_domain"] | null
-          email?: string | null
           full_name?: string | null
           id?: string | null
-          is_active?: boolean | null
-          is_on_leave?: boolean | null
-          job_title?: string | null
-          last_seen_at?: string | null
-          phone?: string | null
-          queendom_id?: string | null
-          reports_to?: string | null
-          role?: Database["public"]["Enums"]["user_role"] | null
-          sia_role?: string | null
-          theme?: string | null
-          timezone?: string | null
-          updated_at?: string | null
-          username?: string | null
         }
         Update: {
-          app_icon?: string | null
-          appearance?: string | null
-          avatar_url?: string | null
-          created_at?: string | null
-          domain?: Database["public"]["Enums"]["app_domain"] | null
-          email?: string | null
           full_name?: string | null
           id?: string | null
-          is_active?: boolean | null
-          is_on_leave?: boolean | null
-          job_title?: string | null
-          last_seen_at?: string | null
-          phone?: string | null
-          queendom_id?: string | null
-          reports_to?: string | null
-          role?: Database["public"]["Enums"]["user_role"] | null
-          sia_role?: string | null
-          theme?: string | null
-          timezone?: string | null
-          updated_at?: string | null
-          username?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "profiles_reports_to_fkey"
-            columns: ["reports_to"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
     }
     Functions: {
@@ -4288,83 +4228,18 @@ export type Database = {
     Views: {
       profiles: {
         Row: {
-          app_icon: string | null
-          appearance: string | null
-          avatar_url: string | null
-          created_at: string | null
-          domain: Database["public"]["Enums"]["app_domain"] | null
-          email: string | null
           full_name: string | null
           id: string | null
-          is_active: boolean | null
-          is_on_leave: boolean | null
-          job_title: string | null
-          last_seen_at: string | null
-          phone: string | null
-          queendom_id: string | null
-          reports_to: string | null
-          role: Database["public"]["Enums"]["user_role"] | null
-          sia_role: string | null
-          theme: string | null
-          timezone: string | null
-          updated_at: string | null
-          username: string | null
         }
         Insert: {
-          app_icon?: string | null
-          appearance?: string | null
-          avatar_url?: string | null
-          created_at?: string | null
-          domain?: Database["public"]["Enums"]["app_domain"] | null
-          email?: string | null
           full_name?: string | null
           id?: string | null
-          is_active?: boolean | null
-          is_on_leave?: boolean | null
-          job_title?: string | null
-          last_seen_at?: string | null
-          phone?: string | null
-          queendom_id?: string | null
-          reports_to?: string | null
-          role?: Database["public"]["Enums"]["user_role"] | null
-          sia_role?: string | null
-          theme?: string | null
-          timezone?: string | null
-          updated_at?: string | null
-          username?: string | null
         }
         Update: {
-          app_icon?: string | null
-          appearance?: string | null
-          avatar_url?: string | null
-          created_at?: string | null
-          domain?: Database["public"]["Enums"]["app_domain"] | null
-          email?: string | null
           full_name?: string | null
           id?: string | null
-          is_active?: boolean | null
-          is_on_leave?: boolean | null
-          job_title?: string | null
-          last_seen_at?: string | null
-          phone?: string | null
-          queendom_id?: string | null
-          reports_to?: string | null
-          role?: Database["public"]["Enums"]["user_role"] | null
-          sia_role?: string | null
-          theme?: string | null
-          timezone?: string | null
-          updated_at?: string | null
-          username?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "profiles_reports_to_fkey"
-            columns: ["reports_to"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
     }
     Functions: {
@@ -6754,6 +6629,38 @@ export type Database = {
   }
   sia: {
     Tables: {
+      codenames: {
+        Row: {
+          code: string
+          created_at: string
+          group_jid: string
+          sender_jid: string
+          side: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          group_jid: string
+          sender_jid: string
+          side: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          group_jid?: string
+          sender_jid?: string
+          side?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "codenames_group_jid_fkey"
+            columns: ["group_jid"]
+            isOneToOne: false
+            referencedRelation: "wag_groups"
+            referencedColumns: ["group_jid"]
+          },
+        ]
+      }
       extraction_runs: {
         Row: {
           cost_usd: number | null
@@ -6845,6 +6752,165 @@ export type Database = {
             columns: ["queendom_id"]
             isOneToOne: false
             referencedRelation: "queendoms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      intake_group_state: {
+        Row: {
+          bursts_done: number
+          fail_count: number
+          group_jid: string
+          last_error: string | null
+          last_message_at: string | null
+          updated_at: string
+        }
+        Insert: {
+          bursts_done?: number
+          fail_count?: number
+          group_jid: string
+          last_error?: string | null
+          last_message_at?: string | null
+          updated_at?: string
+        }
+        Update: {
+          bursts_done?: number
+          fail_count?: number
+          group_jid?: string
+          last_error?: string | null
+          last_message_at?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      intake_proposals: {
+        Row: {
+          classify_run_id: string | null
+          confidence: number
+          created_at: string
+          dismiss_reason: string | null
+          draft: Json
+          draft_run_id: string | null
+          fields_changed: string[] | null
+          first_message_at: string
+          group_jid: string
+          id: string
+          kind: string
+          last_message_at: string
+          member_id: string
+          messages: Json
+          queendom_id: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          status: string
+          summary: string
+          ticket_id: string | null
+          tone: string | null
+        }
+        Insert: {
+          classify_run_id?: string | null
+          confidence: number
+          created_at?: string
+          dismiss_reason?: string | null
+          draft?: Json
+          draft_run_id?: string | null
+          fields_changed?: string[] | null
+          first_message_at: string
+          group_jid: string
+          id?: string
+          kind: string
+          last_message_at: string
+          member_id: string
+          messages: Json
+          queendom_id?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          summary: string
+          ticket_id?: string | null
+          tone?: string | null
+        }
+        Update: {
+          classify_run_id?: string | null
+          confidence?: number
+          created_at?: string
+          dismiss_reason?: string | null
+          draft?: Json
+          draft_run_id?: string | null
+          fields_changed?: string[] | null
+          first_message_at?: string
+          group_jid?: string
+          id?: string
+          kind?: string
+          last_message_at?: string
+          member_id?: string
+          messages?: Json
+          queendom_id?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          summary?: string
+          ticket_id?: string | null
+          tone?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intake_proposals_queendom_id_fkey"
+            columns: ["queendom_id"]
+            isOneToOne: false
+            referencedRelation: "queendoms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intake_proposals_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiler_group_state: {
+        Row: {
+          fail_count: number
+          group_jid: string
+          last_error: string | null
+          last_message_at: string | null
+          last_run_id: string | null
+          updated_at: string
+          windows_done: number
+        }
+        Insert: {
+          fail_count?: number
+          group_jid: string
+          last_error?: string | null
+          last_message_at?: string | null
+          last_run_id?: string | null
+          updated_at?: string
+          windows_done?: number
+        }
+        Update: {
+          fail_count?: number
+          group_jid?: string
+          last_error?: string | null
+          last_message_at?: string | null
+          last_run_id?: string | null
+          updated_at?: string
+          windows_done?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profiler_group_state_group_jid_fkey"
+            columns: ["group_jid"]
+            isOneToOne: true
+            referencedRelation: "wag_groups"
+            referencedColumns: ["group_jid"]
+          },
+          {
+            foreignKeyName: "profiler_group_state_last_run_id_fkey"
+            columns: ["last_run_id"]
+            isOneToOne: false
+            referencedRelation: "extraction_runs"
             referencedColumns: ["id"]
           },
         ]
@@ -9221,6 +9287,35 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      intake_due_groups: {
+        Args: { p_limit?: number; p_since?: string; p_statuses?: string[] }
+        Returns: {
+          cursor_at: string
+          fail_count: number
+          group_jid: string
+          member_id: string
+          newest_at: string
+          queendom_id: string
+        }[]
+      }
+      member_wa_group: { Args: { p_member_id: string }; Returns: string }
+      profiler_broad_senders: {
+        Args: { p_min_groups?: number }
+        Returns: {
+          groups: number
+          sender_jid: string
+        }[]
+      }
+      profiler_due_groups: {
+        Args: { p_limit?: number; p_statuses?: string[] }
+        Returns: {
+          cursor_at: string
+          fail_count: number
+          group_jid: string
+          member_id: string
+          newest_at: string
+        }[]
+      }
       sentinel_sleep: {
         Args: {
           p_next_wake_at: string
@@ -9265,12 +9360,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -9294,11 +9389,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -9319,11 +9414,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -9344,11 +9439,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -9361,11 +9456,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -9415,7 +9510,7 @@ export const Constants = {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HAND-WRITTEN below this line. Everything above is generated by
-//   npx supabase gen types typescript --linked --schema public,sia,freshdesk,gia
+//   supabase gen types typescript --linked --schema public,sia,freshdesk,gia,member
 // Re-generating replaces ONLY the block above; this tail must be carried over.
 // ─────────────────────────────────────────────────────────────────────────────
 

@@ -24,7 +24,7 @@ export type MemberListFilters = {
   tier: MemberTier | null;
   status: string | null;          // membership_status
   health: "low" | "mid" | "high" | null;
-  unlinked: "whatsapp" | "freshdesk" | "zoho" | "app" | null;
+  unlinked: "whatsapp" | "freshdesk" | "zoho" | "app" | "queendom" | null;
   page: number;
 };
 

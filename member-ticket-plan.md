@@ -552,18 +552,21 @@ M0  the spine, queendoms, facts seeded                                  DONE 202
 M1  /members list + dossier + New member form + link/unlink             DONE, live. Renamed clients -> members 2026-09-17.
                                                                         Founder walk-through still to do
 M2  zoho-service + the Money page                                       DONE 2026-09-15 (live Zoho, read only)
-    the member app webhook + the App card                               NOT BUILT (needs a change on the app server)
+    the member app webhook + the App card                               LATER PHASE, founder's call 2026-09-18 (kept on the to-do list;
+                                                                        needs a small change on the app server)
 T0  Freshdesk mirror live in the cloud, files copied, history loaded    DONE (file backlog still draining by itself)
     staff roster screen: domain -> role -> queendom, one seat each      DONE 2026-09-16 (0201)
-    ... but nobody is seated yet: 0 staff hold a Concierge seat         DATA WORK, founder + team
-    WhatsApp groups linked to members: 420 linked, 45 still open        DATA WORK, in progress in the other session
-    176 members have no queendom                                        DATA WORK
+    ... seating: ONE test agent per queendom first (founder, 2026-09-18); the real
+    roster is pulled in once everything is live and checked              DATA WORK, founder
+    WhatsApp groups linked to members: 420 linked, 45 still open        DATA WORK. The Sia list has a "No member" filter for them
+    176 members have no queendom -> Members filter "No queendom"        (both filters added 2026-09-18)
 T1  ticket tables, state machine, list, board (live drag), ticket page,
     new ticket from selected messages, help window, SLA + labels settings   DONE, live. 0 real tickets yet: waits on the roster
 T2  the sentinel: rules pass + reading pass, runs every minute in cloud DONE 2026-09-16
     the judgement pass (the sentinel proposes a status move)            NOT BUILT
 T3  intake phase 1: the genie selects messages -> a ticket draft        DONE
-    intake phase 2: Serene reads the groups and proposes tickets itself NOT BUILT
+    intake phase 2: Serene reads the groups and proposes tickets itself DONE 2026-09-18 (0219), training phase: cards only, a human
+                                                                        creates or dismisses; the numbers sit on the Tickets page
 T4  the profiler: reads chats, files facts / people / relations /
     coming up, names hidden from the AI                                 DONE, SWITCHED ON 2026-09-18 (whole history,
                                                                         Active members only, about a day to finish)
@@ -571,7 +574,8 @@ T4  the profiler: reads chats, files facts / people / relations /
     health score with reasons, access log                               DONE
     the scored exam (golden set) for the profiler                       NOT BUILT (the founder's pilot review stood in for it)
     the fast snapshot per member                                        NOT BUILT (table exists, nothing fills it; reads are live and fast enough today)
-    per-person tagging inside a group (husband vs wife)                 NOT BUILT (known limit of the profiler)
+    per-person tagging inside a group (husband vs wife)                 LATER PHASE, founder's call 2026-09-18: for now a couple in one
+                                                                        group is ONE member; we come back and split facts per person
 T5  Elaya member tools on both channels: overview, recent messages,
     history search, full profile, finance                               DONE 2026-09-18
     Elaya ticket tools: list, get, add note, propose a status move      DONE 2026-09-15

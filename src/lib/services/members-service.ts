@@ -117,6 +117,8 @@ export async function listMembers(filters: MemberListFilters): Promise<{ members
   if (filters.unlinked === "freshdesk") q = q.is("freshdesk_contact_id", null);
   if (filters.unlinked === "zoho") q = q.is("zoho_customer_id", null);
   if (filters.unlinked === "app") q = q.is("app_member_id", null);
+  // A member with no queendom is seen by admin and founder only (member_visible), so nobody serves them.
+  if (filters.unlinked === "queendom") q = q.is("queendom_id", null);
   if (filters.search) {
     const token = searchToken(filters.search);
     if (token) q = q.or(`full_name.ilike.%${token}%,primary_phone.ilike.%${token.replace(/\s+/g, "")}%`);

@@ -20,6 +20,7 @@ import {
 } from '@/lib/constants/tickets';
 import type { MemberPickerHit } from '@/lib/types/member';
 import type { StaffOption, TicketDraft } from '@/lib/types/ticket';
+import type { IntakeProposal } from '@/lib/types/intake';
 
 export const TICKET_SELECTION_KEY = 'serene:ticket-selection';
 export type TicketSelection = {
@@ -38,7 +39,12 @@ function Label({ children }: { children: React.ReactNode }) {
 
 type BriefState = Partial<Record<TicketBriefField, string | boolean>>;
 
-export function NewTicketForm({ initialMember, callerQueendomId }: { initialMember: { id: string; full_name: string; queendom_id: string | null } | null; callerQueendomId: string | null }) {
+export function NewTicketForm({ initialMember, callerQueendomId, initialProposal = null }: {
+  initialMember: { id: string; full_name: string; queendom_id: string | null } | null;
+  callerQueendomId: string | null;
+  /** (c) From an intake card (0219): Serene found the messages AND already drafted the ticket. The human checks and creates. */
+  initialProposal?: IntakeProposal | null;
+}) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [drafting, setDrafting] = useState(false);
@@ -52,8 +58,26 @@ export function NewTicketForm({ initialMember, callerQueendomId }: { initialMemb
   const [brief, setBrief] = useState<BriefState>({});
   const [error, setError] = useState<string | null>(null);
 
+  const applyDraft = (d: Partial<TicketDraft>) => {
+    setForm((f) => ({ ...f, category: d.category ?? f.category, sub_category: d.sub_category ?? '', title: d.title ?? f.title, priority: d.priority ?? f.priority, requested_for: d.requested_for ? d.requested_for.slice(0, 16) : '' }));
+    const b: BriefState = {};
+    for (const [k, v] of Object.entries(d.brief ?? {})) if (v != null && v !== '') b[k as TicketBriefField] = typeof v === 'boolean' ? v : String(v);
+    setBrief(b);
+  };
+
+  // (c) From an intake card: the messages and the draft arrive together; no model is asked again.
+  useEffect(() => {
+    if (!initialProposal) return;
+    const p = initialProposal;
+    setSelection({ member_id: p.member_id, member_name: p.member_name, queendom_id: p.queendom_id, group_jid: p.group_jid, messages: p.messages });
+    setForm((f) => ({ ...f, note: p.messages.map((m) => `${m.from_member ? 'Member' : m.sender_name ?? 'Staff'}: ${m.text}`).join('\n') }));
+    if (p.draft.title) setDraft(p.draft as TicketDraft);
+    applyDraft(p.draft);
+  }, [initialProposal]);
+
   // (a) From Sia: read the selection once, draft with the creator.
   useEffect(() => {
+    if (initialProposal) return;
     try {
       const raw = sessionStorage.getItem(TICKET_SELECTION_KEY);
       if (!raw) return;
@@ -66,15 +90,11 @@ export function NewTicketForm({ initialMember, callerQueendomId }: { initialMemb
       draftTicketAction({ member_id: sel.member_id, group_jid: sel.group_jid, messages: sel.messages }).then((res) => {
         setDrafting(false);
         if (res.error || !res.data) { toast.warning(res.error ?? 'Elaya could not draft this; fill it by hand.'); return; }
-        const d = res.data;
-        setDraft(d);
-        setForm((f) => ({ ...f, category: d.category, sub_category: d.sub_category ?? '', title: d.title, priority: d.priority, requested_for: d.requested_for ? d.requested_for.slice(0, 16) : '' }));
-        const b: BriefState = {};
-        for (const [k, v] of Object.entries(d.brief)) if (v != null && v !== '') b[k as TicketBriefField] = typeof v === 'boolean' ? v : String(v);
-        setBrief(b);
+        setDraft(res.data);
+        applyDraft(res.data);
       });
     } catch { /* no selection */ }
-  }, []);
+  }, [initialProposal]);
 
   // The member picker (by hand).
   useEffect(() => {
@@ -106,6 +126,7 @@ export function NewTicketForm({ initialMember, callerQueendomId }: { initialMemb
         origin: selection ? 'whatsapp_group' : 'manual', group_jid: selection?.group_jid ?? null, assignee_id: form.assignee_id || null,
         message_links: (selection?.messages ?? []).map((m, i) => ({ chat_jid: m.chat_jid, wa_message_id: m.wa_message_id, sender_jid: m.sender_jid, link_kind: i === 0 ? 'origin' : 'update' })),
         proposed_by_run_id: draft?.run_id ?? null, note: form.note || null,
+        proposal_id: initialProposal?.id ?? null,
       });
       if (res.error || !res.data) { setError(res.error ?? 'Could not create the ticket.'); return; }
       toast.success(`${res.data.ticket_no} created.`);

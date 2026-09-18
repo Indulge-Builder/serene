@@ -21,6 +21,7 @@ const UNLINKED_ITEMS = [
   { id: 'freshdesk', label: 'No Freshdesk contact' },
   { id: 'zoho', label: 'No Zoho customer' },
   { id: 'app', label: 'No app account' },
+  { id: 'queendom', label: 'No queendom' },
 ];
 
 export function MembersFilters({ queendoms }: { queendoms: QueendomSummary[] }) {

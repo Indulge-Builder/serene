@@ -26,8 +26,11 @@ import { SiaControlModal } from "./SiaControlModal";
 import { formatSystemText, groupTitle, KIND_LABEL, TYPE_PREVIEW } from "./sia-shared";
 import type { SiaGroupKind, SiaGroupRow, SiaHealth, SiaMessageRow } from "@/lib/services/sia-service";
 
-type KindFilter = "all" | SiaGroupKind;
-const FILTERS: KindFilter[] = ["all", "member", "vendor", "internal", "unmapped"];
+// "nomember" is not a kind: it is the to-do list of the linking work, a MEMBER group that no
+// member is linked to yet (so no queendom sees it, nothing profiles it, no ticket can come from it).
+type KindFilter = "all" | SiaGroupKind | "nomember";
+const FILTERS: KindFilter[] = ["all", "member", "vendor", "internal", "unmapped", "nomember"];
+const needsMember = (g: SiaGroupRow) => g.group_kind === "member" && !g.member_id;
 
 const RAIL_REFRESH_MS = 60_000;
 const HEALTH_REFRESH_MS = 60_000;
@@ -123,18 +126,19 @@ export function SiaWorkspace({ groups: initialGroups, initialGroupJid = null, ca
     const q = debouncedRailSearch.trim().toLowerCase();
     return groups.filter((g) => {
       if (!g.is_active) return false; // hidden groups live in the console only
-      const matchesFilter = filter === "all" || g.group_kind === filter;
+      const matchesFilter = filter === "all" || (filter === "nomember" ? needsMember(g) : g.group_kind === filter);
       const matchesSearch = !q || groupTitle(g).toLowerCase().includes(q);
       return matchesFilter && matchesSearch;
     });
   }, [groups, filter, debouncedRailSearch]);
 
   const counts = useMemo(() => {
-    const c: Record<KindFilter, number> = { all: 0, member: 0, vendor: 0, internal: 0, unmapped: 0 };
+    const c: Record<KindFilter, number> = { all: 0, member: 0, vendor: 0, internal: 0, unmapped: 0, nomember: 0 };
     for (const g of groups) {
       if (!g.is_active) continue;
       c.all++;
       c[g.group_kind]++;
+      if (needsMember(g)) c.nomember++;
     }
     return c;
   }, [groups]);
@@ -215,9 +219,9 @@ export function SiaWorkspace({ groups: initialGroups, initialGroupJid = null, ca
                   aria-label="Search groups"
                 />
                 <div className="flex gap-1.5 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
-                  {FILTERS.map((f) => {
+                  {FILTERS.filter((f) => canManage || f !== "nomember").map((f) => {
                     const active = filter === f;
-                    const label = f === "all" ? "All" : KIND_LABEL[f];
+                    const label = f === "all" ? "All" : f === "nomember" ? "No member" : KIND_LABEL[f];
                     return (
                       <button
                         key={f}

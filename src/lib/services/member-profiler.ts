@@ -283,51 +283,92 @@ export function validateReading(raw: Record<string, unknown>, messageCount: numb
 
 // ─── One window, end to end ──────────────────────────────────────────────────
 
-type MemberCtx = { id: string; full_name: string; facts: { facet: string; key: string; value: string }[]; people: string[] };
+export type MemberCtx = { id: string; full_name: string; tier: string | null; facts: { facet: string; key: string; value: string; polarity?: string | null }[]; people: string[] };
 
 async function memberContext(memberId: string): Promise<MemberCtx | null> {
   const admin = createAdminClient();
   const [{ data: m }, { data: facts }, { data: people }] = await Promise.all([
-    memberDb(admin).from("members").select("id, full_name").eq("id", memberId).maybeSingle(),
-    memberDb(admin).from("member_facts").select("facet, key, value").eq("member_id", memberId).is("superseded_by", null).neq("facet", "note").order("confidence", { ascending: false }).limit(400),
+    memberDb(admin).from("members").select("id, full_name, tier").eq("id", memberId).maybeSingle(),
+    memberDb(admin).from("member_facts").select("facet, key, value, polarity").eq("member_id", memberId).is("superseded_by", null).neq("facet", "note").order("confidence", { ascending: false }).limit(400),
     memberDb(admin).from("member_people").select("name").eq("member_id", memberId).limit(60),
   ]);
   if (!m) return null;
   return {
     id: (m as { id: string }).id,
     full_name: (m as { full_name: string }).full_name,
-    facts: mapRows<{ facet: string; key: string; value: string }, { facet: string; key: string; value: string }>(facts, (r) => r),
+    tier: (m as { tier: string | null }).tier ?? null,
+    facts: mapRows<MemberCtx["facts"][number], MemberCtx["facts"][number]>(facts, (r) => r),
     people: mapRows<{ name: string }, string>(people, (r) => r.name),
   };
 }
 
 export type ProfilerDeps = { broad: Set<string>; apply: boolean };
 
-export async function profileWindow(w: ProfilerWindow, deps: ProfilerDeps): Promise<WindowOutcome> {
-  const base: WindowOutcome = { group_jid: w.group_jid, member_id: w.member_id, member_name: "", from_at: w.from_at, to_at: w.to_at, messages: w.messages.length, status: "failed", run_id: null, reading: null, written: null, tokens: null, error: null };
-  const ctx = await memberContext(w.member_id);
-  if (!ctx) return { ...base, error: "member not found" };
-  base.member_name = ctx.full_name;
+/**
+ * THE vault for one stretch of one group's chat: who is who (code names, kept per group in
+ * sia.codenames), a masker that turns every known name, phone and email into a code, the leak
+ * check, and the way back from codes to names. The profiler and the ticket intake both open it,
+ * so a name reaches a model through neither (plan rule: vault first).
+ */
+export type Vault = {
+  ctx: MemberCtx;
+  /** "member" | "staff" | "vendor" for a sender; a stranger reads as member-side (MEMBER_n). */
+  sideOf: (senderJid: string) => Side;
+  codeOf: (senderJid: string) => string;
+  mask: (text: string) => string;
+  /** Known names still readable in this masked text (our own codes are ignored). Empty = safe to send. */
+  leaks: (maskedText: string) => string[];
+  /** Codes back to names, everywhere inside a value. */
+  unmask: <T>(value: T) => T;
+};
 
-  const senders = [...new Set(w.messages.map((m) => m.sender_jid))];
+export async function openVault(groupJid: string, memberId: string, senderJids: string[], broad: Set<string>): Promise<Vault | null> {
+  const ctx = await memberContext(memberId);
+  if (!ctx) return null;
+  const senders = [...new Set(senderJids)];
   const { data: contactRows } = await sia().from("wag_contacts").select("jid, push_name, participant_role, staff_profile_id, vendor_id, member_id").in("jid", senders);
   const contacts = new Map<string, Contact>(((contactRows ?? []) as Contact[]).map((c) => [c.jid, c]));
-  const codes = await codesFor(w.group_jid, senders, contacts, deps.broad);
-
-  const memberSide = w.messages.filter((m) => codes.get(m.sender_jid)?.side === "member").length;
-  if (memberSide < PROFILER_MIN_MEMBER_MESSAGES) return { ...base, status: "thin" };
+  const codes = await codesFor(groupJid, senders, contacts, broad);
 
   // The member's own number carries the member's name; otherwise the first member-side code does.
-  const ownJid = [...contacts.values()].find((c) => c.member_id === w.member_id)?.jid;
+  const ownJid = [...contacts.values()].find((c) => c.member_id === memberId)?.jid;
   const memberCode = (ownJid && codes.get(ownJid)?.code) || [...codes.values()].find((c) => c.side === "member")?.code || "MEMBER_1";
   const table = nameTable(ctx.full_name, memberCode, contacts, codes, ctx.people);
   const knownNames = [ctx.full_name, ...[...contacts.values()].map((c) => c.push_name ?? ""), ...ctx.people].flatMap((n) => nameParts(n, 4));
   const depth = await getPiiMaskingDepth();
   const floor = depth === "off" ? "light" : depth; // the vault never runs with the regex floor off
-  const mask = (t: string) => maskPii(maskText(t, table), floor);
+
+  // Codes → names, longest code first so MEMBER_10 is never read as MEMBER_1 + "0".
+  const back: [RegExp, string][] = [];
+  const nameOf = (jid: string) => contacts.get(jid)?.push_name?.trim() || null;
+  for (const [jid, c] of codes) back.push([new RegExp(`\\b${esc(c.code)}\\b`, "g"), jid === ownJid || c.code === memberCode ? ctx.full_name : (nameOf(jid) ?? (c.side === "member" ? "a member of the household" : c.side === "staff" ? "the concierge team" : "the vendor"))]);
+  ctx.people.forEach((p, i) => back.push([new RegExp(`\\bPERSON_${i + 1}\\b`, "g"), p]));
+  back.sort((x, y) => y[0].source.length - x[0].source.length);
+
+  return {
+    ctx,
+    sideOf: (jid) => codes.get(jid)?.side ?? "member",
+    codeOf: (jid) => codes.get(jid)?.code ?? "MEMBER_1",
+    mask: (t) => maskPii(maskText(t, table), floor),
+    // Our own codes are taken out first: a genie whose WhatsApp name is "Joker" is masked to
+    // STAFF_JOKER_1, and that code must not read as the name "Joker" having survived.
+    leaks: (masked) => { const visible = masked.replace(OUR_CODES, " "); return [...new Set(knownNames.filter((n) => new RegExp(`(?<![\\p{L}\\p{N}])${esc(n)}(?![\\p{L}\\p{N}])`, "iu").test(visible)))]; },
+    unmask: (value) => unmaskDeep(value, back),
+  };
+}
+
+export async function profileWindow(w: ProfilerWindow, deps: ProfilerDeps): Promise<WindowOutcome> {
+  const base: WindowOutcome = { group_jid: w.group_jid, member_id: w.member_id, member_name: "", from_at: w.from_at, to_at: w.to_at, messages: w.messages.length, status: "failed", run_id: null, reading: null, written: null, tokens: null, error: null };
+  const vault = await openVault(w.group_jid, w.member_id, w.messages.map((m) => m.sender_jid), deps.broad);
+  if (!vault) return { ...base, error: "member not found" };
+  const { ctx, mask } = vault;
+  base.member_name = ctx.full_name;
+
+  const memberSide = w.messages.filter((m) => vault.sideOf(m.sender_jid) === "member").length;
+  if (memberSide < PROFILER_MIN_MEMBER_MESSAGES) return { ...base, status: "thin" };
 
   const lines = w.messages.map((m, i) => {
-    const code = codes.get(m.sender_jid)?.code ?? "MEMBER_1";
+    const code = vault.codeOf(m.sender_jid);
     const text = m.text.length > PROFILER_MESSAGE_CHAR_CAP ? m.text.slice(0, PROFILER_MESSAGE_CHAR_CAP) + "…" : m.text;
     return `[#${i + 1} ${m.wa_timestamp.slice(0, 16).replace("T", " ")}] ${code}: ${mask(text)}`;
   });
@@ -335,10 +376,7 @@ export async function profileWindow(w: ProfilerWindow, deps: ProfilerDeps): Prom
   const userContent = `Already on file for this member (do not repeat these):\n${onFile}\n\nThe conversation (${w.messages.length} messages):\n${lines.join("\n")}`;
 
   // The vault's own guard: if any name we KNOW survived the masking, this window does not leave.
-  // Our own codes are taken out first: a genie whose WhatsApp name is "Joker" is masked to
-  // STAFF_JOKER_1, and that code must not read as the name "Joker" having survived.
-  const visible = lines.join("\n").replace(OUR_CODES, " ");
-  const leaked = [...new Set(knownNames.filter((n) => new RegExp(`(?<![\\p{L}\\p{N}])${esc(n)}(?![\\p{L}\\p{N}])`, "iu").test(visible)))];
+  const leaked = vault.leaks(lines.join("\n"));
   if (leaked.length) {
     console.warn(`${LOG} vault leak in ${w.group_jid}: ${leaked.length} known name(s) survived masking; window not sent`);
     return { ...base, error: `vault leak (${leaked.length} name${leaked.length === 1 ? "" : "s"})` };
@@ -348,7 +386,7 @@ export async function profileWindow(w: ProfilerWindow, deps: ProfilerDeps): Prom
   const startedAt = new Date().toISOString();
   const { data: runRow } = await admin.schema("sia").from("extraction_runs").insert({
     kind: PROFILER_RUN_KIND, member_id: w.member_id, prompt_version: PROFILER_PROMPT_VERSION, started_at: startedAt,
-    input_ref: { group_jid: w.group_jid, from_at: w.from_at, to_at: w.to_at, messages: w.messages.length, first_message_id: w.messages[0].id, last_message_id: w.messages[w.messages.length - 1].id, codes: codes.size, dry_run: !deps.apply, masked_window: userContent.slice(0, 24_000) },
+    input_ref: { group_jid: w.group_jid, from_at: w.from_at, to_at: w.to_at, messages: w.messages.length, first_message_id: w.messages[0].id, last_message_id: w.messages[w.messages.length - 1].id, codes: new Set(w.messages.map((m) => vault.codeOf(m.sender_jid))).size, dry_run: !deps.apply, masked_window: userContent.slice(0, 24_000) },
   }).select("id").single();
   const runId = (runRow as { id: string } | null)?.id ?? null;
   const finish = async (ok: boolean, patch: Record<string, unknown>) => {
@@ -369,13 +407,7 @@ export async function profileWindow(w: ProfilerWindow, deps: ProfilerDeps): Prom
     if (!raw) { await finish(false, { model: llm.model, tokens_in: tokens.in, tokens_out: tokens.out, cost_usd: cost, error: "no json", output: { text: result.text.slice(0, 2000) } }); return { ...base, run_id: runId, tokens, error: "no json" }; }
 
     const coded = validateReading(raw, w.messages.length);
-    // Codes → names, longest code first so MEMBER_10 is never read as MEMBER_1 + "0".
-    const back: [RegExp, string][] = [];
-    const nameOf = (jid: string) => contacts.get(jid)?.push_name?.trim() || null;
-    for (const [jid, c] of codes) back.push([new RegExp(`\\b${esc(c.code)}\\b`, "g"), jid === ownJid || c.code === memberCode ? ctx.full_name : (nameOf(jid) ?? (c.side === "member" ? "a member of the household" : c.side === "staff" ? "the concierge team" : "the vendor"))]);
-    ctx.people.forEach((p, i) => back.push([new RegExp(`\\bPERSON_${i + 1}\\b`, "g"), p]));
-    back.sort((a, b) => b[0].source.length - a[0].source.length);
-    const reading = unmaskDeep(coded, back);
+    const reading = vault.unmask(coded);
 
     const written = deps.apply ? await writeReading(w, reading, ctx, runId) : null;
     await finish(true, { model: llm.model, tokens_in: tokens.in, tokens_out: tokens.out, cost_usd: cost, output: { reading: coded, written } });
@@ -395,7 +427,7 @@ export async function profileWindow(w: ProfilerWindow, deps: ProfilerDeps): Prom
  * an empty credit balance arrives as a 400 too, so it is named explicitly. The error is read
  * by shape, never by class: the SDK may only be imported inside the adapter.
  */
-function isProviderSide(e: unknown, msg: string): boolean {
+export function isProviderSide(e: unknown, msg: string): boolean {
   if (/credit balance|billing/i.test(msg)) return true;
   const status = (e as { status?: unknown } | null)?.status;
   return !(status === 400 || status === 413 || status === 422);

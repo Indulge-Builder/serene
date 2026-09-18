@@ -6,6 +6,8 @@ import { Plus, LayoutGrid } from 'lucide-react';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
 import { getQueendoms } from '@/lib/services/members-service';
 import { listTickets, listQueendomStaff, getTicketSettings } from '@/lib/services/tickets-service';
+import { listOpenIntakeProposals, getIntakeStats } from '@/lib/services/intake-service';
+import { IntakeProposals } from '@/components/tickets/IntakeProposals';
 import { TicketsFilters } from '@/components/tickets/TicketsFilters';
 import { TicketsTable } from '@/components/tickets/TicketsTable';
 import { TicketsTableSkeleton } from '@/components/tickets/TicketsTableSkeleton';
@@ -38,6 +40,12 @@ async function TicketsAsync({ filters, callerId }: { filters: TicketListFilters;
   );
 }
 
+/** The intake cards (0219). RLS scopes them to the caller's queendom; the training numbers are for admin and founder. */
+async function IntakeAsync({ withStats }: { withStats: boolean }) {
+  const [proposals, stats] = await Promise.all([listOpenIntakeProposals(), withStats ? getIntakeStats(7) : Promise.resolve(null)]);
+  return <IntakeProposals proposals={proposals} stats={stats} />;
+}
+
 export default async function TicketsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const profile = await getCurrentProfile();
   if (!profile) redirect('/login');
@@ -58,6 +66,7 @@ export default async function TicketsPage({ searchParams }: { searchParams: Prom
         </Link>
         </div>
       </div>
+      <Suspense fallback={null}><IntakeAsync withStats={privileged} /></Suspense>
       <div className="mb-4"><TicketsFilters queendoms={privileged ? queendoms : queendoms.filter((q) => q.id === profile.queendom_id)} staff={staff} tags={settings.tags} labels={settings.statusLabels} /></div>
       <Suspense key={JSON.stringify(filters)} fallback={<TicketsTableSkeleton />}>
         <TicketsAsync filters={filters} callerId={profile.id} />

@@ -55,6 +55,72 @@ the same expression. `members-service.ts` reads the mirror for both the filter a
 mirror. Verified: 614 of 614 members match the Sia link (343 linked, 271 not), and a hand-blanked
 mirror is restored by the trigger. The member page was already right (it shows the real group).
 
+## 2026-09-18 -- Ticket intake, phase 2: Serene reads the groups and proposes tickets (migration 0219)
+
+**Why.** Until now a ticket started only when a genie noticed a request and selected its messages.
+The founder asked for the next step, with two conditions: the human makes the final call, and this
+is a training phase, so we must be able to see how well it performs.
+
+**What it does.** Every minute it looks at the linked groups of Active members that have something
+new, and files a CARD for anything that reads as a request. A card is not a ticket. It shows the
+member, their words, what Serene thinks they want, and a fully drafted ticket. "Review and create"
+opens the New ticket form already filled; the bishop checks, fixes what is wrong and creates.
+"Dismiss" asks why, because the reason is how intake gets better. Nothing creates work by itself.
+
+**It does as little as it can,** in this order, and stops at the first step that settles it:
+only groups with something new; only once the chat has been quiet for 45 seconds (a request often
+arrives in three messages); no member message, nothing to do; the member only said "ok thanks",
+chatter, no model; a genie already made a ticket from those messages, nothing to do; then ONE cheap
+call (routing tier) says what it is; and only a request gets the second, dearer call that drafts
+the ticket. In the first real pass, 13 of 28 bursts were settled with no model at all.
+
+**Names never reach a model.** Intake opens the profiler's vault: `openVault()` is now one exported
+piece in `member-profiler.ts` (code names per group, the masker, the leak check, the way back) and
+the profiler itself uses it, so there is one implementation.
+
+**One draft, two ways in.** `src/lib/services/ticket-draft-core.ts` is THE place chat becomes a
+drafted ticket. The New ticket form (a genie selected the messages) and intake (Serene found them)
+both call it. The old creator sent names to the model with only phones masked, and its 1,200 token
+allowance could return nothing on the Claude 5 family (thinking counts against it); both are fixed
+here. The drafter is also given the conversation AROUND the request: the first version drafted
+"Member requests 2 tickets" because the event was named in the staff message the member was
+replying to. It now drafts "Arrange 2 tickets for Farewell: An Entropy of Separation".
+
+**How we will know if it is good** (the training numbers, on the Tickets page for admin and founder):
+chats read, cards suggested, accepted, accepted with no edits, dismissed and why, and the free
+exam from the plan: for each request card, did a Freshdesk ticket for the same member appear within
+two hours. Which drafted fields the human changed is measured on the server against the stored
+draft (`fields_changed`), never taken from the browser.
+
+**What changed.**
+
+- `supabase/migrations/20260918000219_ticket_intake.sql`: `sia.intake_proposals` (RLS: the whole
+  queendom sees its own, like tickets), `sia.intake_group_state`, `sia.intake_due_groups`, and the
+  `ticket_intake_enabled` switch. A group never seen before starts 6 hours back, never at the
+  beginning of its history.
+- `src/lib/services/ticket-intake.ts` + `src/lib/constants/ticket-intake.ts`: the sweep. It fails
+  closed like the profiler: a failed burst keeps the bookmark, is stepped over after 3 tries, and a
+  provider outage never counts.
+- `src/lib/services/intake-service.ts`: the reads (session client, RLS), the resolve-once write,
+  the stats. `src/lib/actions/tickets.ts`: `createTicketAction` closes the card as accepted;
+  `dismissIntakeProposalAction`; `acceptIntakeUpdateAction` (an "update" card links the messages to
+  the ticket it named).
+- `src/components/tickets/IntakeProposals.tsx`, the Tickets page, `/tickets/new?proposal=<id>`, and
+  `NewTicketForm` (filled from the card, no second model call).
+- `src/trigger/ticket-intake.ts`: every minute, one at a time, a 40 second budget, skips a late start.
+- `scripts/tickets/intake-pilot.ts`: the dry run, report written outside the repo.
+- `database.ts` regenerated across all five schemas.
+
+**Pilot (dry run, last 8 hours, 25 groups):** 36 bursts, 15 settled without a model, 5 request
+cards, 0 failed, 42 seconds. All five were real requests; the ten "updates" were real follow-ups
+and cancellations, not hidden requests.
+
+**Deliberately not done yet.** No notification when a card appears (the page is the surface for
+now). Complaints and praise are read but do not move the health score: that waits until the
+numbers say the reader can be trusted.
+
+---
+
 ## 2026-09-18 -- The concierge floor gets Sia and Freshdesk, each person only their own queendom
 
 **What the founder saw.** Logged in as a genie, the sidebar offered WhatsApp and Helpdesk, which are

@@ -63,8 +63,17 @@ export const CreateTicketSchema = z.object({
   proposed_by_run_id: uuidField(formErrors.generic).nullish().transform((v) => v ?? null),
   /** A note written at creation (the "why" or the member's words). */
   note: optionalText(2000),
+  /** Set when the ticket is created from an intake card (0219): the card is closed as accepted. */
+  proposal_id: uuidField(formErrors.generic).nullish().transform((v) => v ?? null),
 });
 export type CreateTicketInput = z.infer<typeof CreateTicketSchema>;
+
+/** Intake cards (0219): dismiss with the reason (the training signal), or accept an update onto its ticket. */
+export const DismissIntakeProposalSchema = z.object({
+  proposal_id: uuidField(formErrors.generic),
+  reason: z.enum(["not_a_request", "already_handled", "duplicate", "wrong_member", "other"]),
+});
+export const AcceptIntakeUpdateSchema = z.object({ proposal_id: uuidField(formErrors.generic) });
 
 export const TicketIdSchema = z.object({ ticket_id: uuidField(formErrors.generic) });
 

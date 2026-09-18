@@ -100,3 +100,8 @@ export async function getSessionExpiryHours(): Promise<number> {
 export async function getMemberProfilerEnabled(): Promise<boolean> {
   try { return (await getSettingValue('member_profiler_enabled')) === true; } catch { return false; }
 }
+
+/** The ticket intake sweep's switch (0219). True only when the row is exactly `true`; anything else is off. */
+export async function getTicketIntakeEnabled(): Promise<boolean> {
+  try { return (await getSettingValue('ticket_intake_enabled')) === true; } catch { return false; }
+}

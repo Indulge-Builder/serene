@@ -31,7 +31,7 @@ function parseFilters(sp: Awaited<SearchParams>): MemberListFilters {
     tier: (getString('tier') as MemberTier | null) ?? null,
     status: getString('status'),
     health: health === 'low' || health === 'mid' || health === 'high' ? health : null,
-    unlinked: unlinked === 'whatsapp' || unlinked === 'freshdesk' || unlinked === 'zoho' || unlinked === 'app' ? unlinked : null,
+    unlinked: unlinked === 'whatsapp' || unlinked === 'freshdesk' || unlinked === 'zoho' || unlinked === 'app' || unlinked === 'queendom' ? unlinked : null,
     page: Math.max(1, parseInt(getString('page') ?? '1', 10) || 1),
   };
 }
