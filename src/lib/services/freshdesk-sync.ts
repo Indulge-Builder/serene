@@ -26,6 +26,7 @@ import {
   FD_REFERENCE_TTL_MS,
   FD_SYNC_KEYS,
   FD_TRACKED_FIELDS,
+  fdComparable,
   fdStatusLabel,
 } from "@/lib/constants/freshdesk";
 import {
@@ -265,13 +266,6 @@ async function resolveMemberLinks(
 
 type TrackedSnapshot = Pick<FdTicketRow, (typeof FD_TRACKED_FIELDS)[number] | "custom_fields" | "fd_updated_at">;
 
-function valueForDiff(v: unknown): string | null {
-  if (v == null) return null;
-  if (Array.isArray(v)) return JSON.stringify([...v].map(String).sort());
-  if (typeof v === "object") return JSON.stringify(v);
-  return String(v);
-}
-
 function diffTicket(
   before: TrackedSnapshot | undefined,
   after: TicketInsert,
@@ -280,8 +274,8 @@ function diffTicket(
   if (!before) return [];
   const out: ReturnType<typeof diffTicket> = [];
   for (const field of FD_TRACKED_FIELDS) {
-    const o = valueForDiff((before as Record<string, unknown>)[field]);
-    const n = valueForDiff((after as Record<string, unknown>)[field]);
+    const o = fdComparable(field, (before as Record<string, unknown>)[field]);
+    const n = fdComparable(field, (after as Record<string, unknown>)[field]);
     if (o !== n) out.push({ ticket_id: after.id, field, old_value: o, new_value: n, fd_updated_at: after.fd_updated_at, source });
   }
   const beforeCf = (before.custom_fields ?? {}) as Record<string, unknown>;
@@ -290,8 +284,8 @@ function diffTicket(
   for (const k of keys) {
     // The nested category levels are already tracked as top-level columns.
     if (k === "cf_category_of_request" || k === "cf_sub_category" || k === "cf_classification") continue;
-    const o = valueForDiff(beforeCf[k]);
-    const n = valueForDiff(afterCf[k]);
+    const o = fdComparable(`cf.${k}`, beforeCf[k]);
+    const n = fdComparable(`cf.${k}`, afterCf[k]);
     // false/null flips on the many checkbox fields are noise; record real value changes only.
     if (o === n) continue;
     if ((o == null || o === "false") && (n == null || n === "false")) continue;

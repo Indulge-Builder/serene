@@ -93,6 +93,30 @@ export const FD_TRACKED_FIELDS = [
 ] as const;
 export type FdTrackedField = (typeof FD_TRACKED_FIELDS)[number];
 
+/**
+ * The tracked fields that are MOMENTS. A moment has more than one spelling: Freshdesk sends
+ * `2026-09-21T05:30:00Z`, Postgres hands the same instant back as `2026-09-21T05:30:00+00:00`.
+ * Compared as text they never match, so every touch of a ticket logged a "change" of both due
+ * dates to the value they already had (24,510 of 28,301 movement rows by 2026-09-18).
+ */
+const FD_MOMENT_FIELDS: ReadonlySet<string> = new Set(["due_by", "fr_due_by"]);
+
+/**
+ * THE comparable form of one tracked value. The sync diffs with it (so a respelled moment is
+ * not a change) and the ticket page filters with it (so the rows already written that way are
+ * not shown). Arrays compare order-free; a moment compares as its instant.
+ */
+export function fdComparable(field: string, v: unknown): string | null {
+  if (v == null) return null;
+  if (Array.isArray(v)) return JSON.stringify([...v].map(String).sort());
+  if (typeof v === "object") return JSON.stringify(v);
+  if (FD_MOMENT_FIELDS.has(field)) {
+    const t = Date.parse(String(v));
+    if (!Number.isNaN(t)) return new Date(t).toISOString();
+  }
+  return String(v);
+}
+
 // ─── The sync budget ─────────────────────────────────────────────────────────
 // The account allows 50 calls a minute (X-RateLimit-Total, measured 2026-09-15). The sync
 // stops a run when the window has fewer than FD_RATE_RESERVE calls left (room for a human

@@ -8,7 +8,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { memberDb } from "@/lib/supabase/schemas";
 import { mapRows } from "@/lib/utils/rows";
 import { toISTMidnight } from "@/lib/utils/ist";
-import { FD_STATUS_LABELS, FRESHDESK_LIST_PAGE_SIZE, FD_SYNC_KEYS, fdStatusLabel } from "@/lib/constants/freshdesk";
+import { FD_STATUS_LABELS, FRESHDESK_LIST_PAGE_SIZE, FD_SYNC_KEYS, fdStatusLabel, fdComparable } from "@/lib/constants/freshdesk";
 import { freshdeskDb } from "@/lib/services/freshdesk-sync";
 import { signFreshdeskAttachments } from "@/lib/services/freshdesk-media";
 import type {
@@ -177,7 +177,9 @@ export async function getFreshdeskTicketDetail(id: number): Promise<FdTicketDeta
 
   const [convs, changes, contact, agent, group] = await Promise.all([
     db.from("conversations").select("*").eq("ticket_id", id).order("fd_created_at", { ascending: true }).limit(500),
-    db.from("ticket_changes").select("*").eq("ticket_id", id).order("observed_at", { ascending: true }).limit(500),
+    // 2000, then filtered below: until 2026-09-18 the sync logged a due date respelled (Z vs
+    // +00:00) as a change on every touch, so a busy ticket holds hundreds of rows that say nothing.
+    db.from("ticket_changes").select("*").eq("ticket_id", id).order("observed_at", { ascending: true }).limit(2000),
     db.from("contacts").select("*").eq("id", t.requester_id).maybeSingle(),
     t.responder_id != null ? db.from("agents").select("*").eq("id", t.responder_id).maybeSingle() : Promise.resolve({ data: null }),
     t.group_id != null ? db.from("groups").select("*").eq("id", t.group_id).maybeSingle() : Promise.resolve({ data: null }),
@@ -204,7 +206,10 @@ export async function getFreshdeskTicketDetail(id: number): Promise<FdTicketDeta
   return {
     ticket: signedTicket,
     conversations,
-    changes: mapRows<FdTicketChangeRow, FdTicketChangeRow>(changes.data, (r) => r),
+    // The table is append-only, so the respelled-moment rows stay; they are simply not movement.
+    changes: mapRows<FdTicketChangeRow, FdTicketChangeRow>(changes.data, (r) => r)
+      .filter((r) => fdComparable(r.field, r.old_value) !== fdComparable(r.field, r.new_value))
+      .slice(-500),
     contact: (contact.data as unknown as FdContactRow | null) ?? null,
     agent: (agent.data as unknown as FdAgentRow | null) ?? null,
     group: (group.data as unknown as FdGroupRow | null) ?? null,

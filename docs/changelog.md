@@ -55,6 +55,33 @@ the same expression. `members-service.ts` reads the mirror for both the filter a
 mirror. Verified: 614 of 614 members match the Sia link (343 linked, 271 not), and a hand-blanked
 mirror is restored by the trigger. The member page was already right (it shows the real group).
 
+## 2026-09-18 -- Freshdesk movement history: a due date written two ways is not a change
+
+**What the founder saw.** The Movement list on a ticket was full of rows like "Resolve due 14 Sep
+to 14 Sep via poll", the same date on both sides, repeated many times.
+
+**Why.** The sync compares the ticket it just pulled with the row already stored, field by field,
+as text. Freshdesk writes a moment as `2026-09-21T05:30:00Z`. Postgres hands the same moment back
+as `2026-09-21T05:30:00+00:00`. As text those never match, so every time anything touched a ticket
+the sync logged a "change" of both due dates to the value they already had.
+
+**How big.** 24,510 of the 28,301 movement rows were this. Every other tracked field was clean
+(status, agent, tags, custom fields: 0 false rows).
+
+**What changed.**
+
+- `src/lib/constants/freshdesk.ts`: `fdComparable(field, value)`, THE comparable form of a tracked
+  value. A due date compares as its instant; arrays compare order-free; everything else as before.
+- `src/lib/services/freshdesk-sync.ts`: the diff uses it, so no new false rows are written. A real
+  change of a due date is still logged.
+- `src/lib/services/freshdesk-service.ts`: the ticket page reads the movement rows through the
+  same function and leaves out any row whose two sides are the same. It reads up to 2,000 rows
+  first, because on a busy ticket the false rows could push real ones past the old 500 limit.
+- The stored rows were NOT deleted. The table is append-only (Rule 08) and removing rows from it is
+  the founder's call. They take about 24,500 rows of space and are never shown.
+
+---
+
 ## 2026-09-18 -- The member profiler is switched on: whole history, Active members only (migration 0218)
 
 **Why.** The founder read the dry-run report, approved the quality, and asked for two things: read
