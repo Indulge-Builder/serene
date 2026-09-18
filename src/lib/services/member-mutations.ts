@@ -12,6 +12,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { memberDb } from "@/lib/supabase/schemas";
 import { updateSiaGroupMapping } from "@/lib/services/sia-service";
 import type { MutationActor } from "@/lib/services/lead-mutations";
+import { upsertMemberRelation } from "@/lib/services/member-relations";
 import { readMemberObservation, OBSERVATION_PROMPT_VERSION } from "@/lib/services/member-observation-reader";
 import type { MemberFactRow, MemberObservationResult, MemberPersonRow, MemberRow } from "@/lib/types/member";
 import type { Database } from "@/lib/types/database";
@@ -185,19 +186,9 @@ export async function addObservationCore(input: AddMemberObservationInput, actor
   }
 
   // 3. Relations: one row per (kind, label, relation); a repeat bumps the evidence count.
+  //    THE one write lives in member-relations.ts (the chat profiler calls the same one).
   for (const r of reading.relations) {
-    const entityId = `${r.kind}:${r.label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")}`;
-    const { data: cur } = await memberDb(admin).from("member_relations").select("id, evidence_count, strength")
-      .eq("member_id", input.member_id).eq("entity_kind", r.kind).eq("entity_id", entityId).eq("relation", r.relation).maybeSingle();
-    if (cur) {
-      const c = cur as { id: string; evidence_count: number; strength: number };
-      await memberDb(admin).from("member_relations").update({ evidence_count: c.evidence_count + 1, strength: Math.min(1, Number(c.strength) + 0.1), last_seen_at: startedAt }).eq("id", c.id);
-    } else {
-      await memberDb(admin).from("member_relations").insert({
-        member_id: input.member_id, entity_kind: r.kind, entity_id: entityId, entity_label: r.label, relation: r.relation,
-        strength: 0.6, evidence: [{ note_id: note.id, by: actor.userId }],
-      });
-    }
+    await upsertMemberRelation(admin, input.member_id, r, { note_id: note.id, by: actor.userId }, startedAt);
   }
 
   return { data: { note, facts, relations: reading.relations, read: true, corrected: reading.text !== input.text }, error: null };

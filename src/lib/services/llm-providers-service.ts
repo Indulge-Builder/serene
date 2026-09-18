@@ -90,3 +90,13 @@ export async function getSessionExpiryHours(): Promise<number> {
   const value = await getSettingValue('session_expiry_hours');
   return typeof value === 'number' && value > 0 ? value : DEFAULT_SESSION_EXPIRY_HOURS;
 }
+
+/**
+ * The member profiler's switch (row `member_profiler_enabled`, migration 0215). OFF unless the
+ * row says exactly `true`: a missing row, a malformed value or a failed read all mean "do not
+ * read anyone's chat". The cloud task asks on every run, so flipping the row is the whole
+ * control — no deploy.
+ */
+export async function getMemberProfilerEnabled(): Promise<boolean> {
+  try { return (await getSettingValue('member_profiler_enabled')) === true; } catch { return false; }
+}

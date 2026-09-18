@@ -79,6 +79,14 @@ export type LlmCompleteRequest = {
    * one -- the same call is not "stalled" at 30s when it carries two images.
    */
   timeoutMs?: number;
+  /**
+   * How hard the model should think, provider-neutral. Absent = the provider's default
+   * (on the Claude 5 family that is adaptive thinking at "high", whose tokens count against
+   * maxTokens). Single structured judgements (an extraction, a classification) pass "low":
+   * cheaper, faster, and the answer is not crowded out. An adapter or model without the
+   * notion ignores it.
+   */
+  effort?: 'low' | 'medium' | 'high';
   /** Streamed text deltas (assistant prose only — never tool-call JSON). */
   onTextDelta?: (delta: string) => void;
 };

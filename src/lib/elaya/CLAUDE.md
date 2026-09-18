@@ -9,6 +9,9 @@
 
 ```text
 provider.ts            ← the ONE provider-neutral complete() contract
+                          (optional `effort` low/medium/high: the Claude 5 models think by default and the
+                          thinking counts against maxTokens, so a single structured judgement passes `low` and a
+                          real allowance; the Anthropic adapter leaves it off for Haiku, which rejects it)
 adapters/anthropic.ts  ← the ONLY file allowed to import @anthropic-ai/sdk
 elaya-data.ts          ← THE single data seam every READ tool fetches through (parity rule, below)
 registry.ts (tools/)   ← the 12 READ-only tools + THE single executeTool dispatch (read ∪ write)

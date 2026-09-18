@@ -27,7 +27,7 @@ const ANTHROPIC_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', '
 
 let client: Anthropic | null = null;
 
-function getMember(): Anthropic {
+function getClient(): Anthropic {
   if (!client) {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) throw new Error('[elaya-anthropic] ANTHROPIC_API_KEY is not set');
@@ -139,10 +139,15 @@ export const anthropicAdapter: LlmProviderAdapter = {
         ? [{ type: 'text', text: req.system, cache_control: { type: 'ephemeral' } }]
         : req.system;
 
-    const stream = getMember().messages.stream(
+    const stream = getClient().messages.stream(
       {
         model: req.model,
         max_tokens: req.maxTokens,
+        // Thinking is ON by default on the Claude 5 family and its tokens count against
+        // max_tokens, so a short structured job can spend its whole allowance reasoning and
+        // return no text. `effort` is how a caller asks for less of it. Haiku 4.5 rejects the
+        // field, so it is only sent to models that take it.
+        ...(req.effort && !/haiku/i.test(req.model) ? { output_config: { effort: req.effort } } : {}),
         system,
         messages: toAnthropicMessages(req.messages),
         ...(req.tools && req.tools.length > 0
