@@ -4230,6 +4230,7 @@ export type Database = {
           sources: string[]
           tier: string | null
           updated_at: string
+          wa_group_jid: string | null
           wa_invite_link: string | null
           zoho_customer_id: string | null
         }
@@ -4253,6 +4254,7 @@ export type Database = {
           sources?: string[]
           tier?: string | null
           updated_at?: string
+          wa_group_jid?: string | null
           wa_invite_link?: string | null
           zoho_customer_id?: string | null
         }
@@ -4276,6 +4278,7 @@ export type Database = {
           sources?: string[]
           tier?: string | null
           updated_at?: string
+          wa_group_jid?: string | null
           wa_invite_link?: string | null
           zoho_customer_id?: string | null
         }

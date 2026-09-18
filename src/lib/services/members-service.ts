@@ -94,7 +94,7 @@ async function healthScoresFor(memberIds: string[]): Promise<Map<string, number>
 
 // ─── The list ────────────────────────────────────────────────────────────────
 
-const LIST_COLUMNS = "id, full_name, primary_phone, queendom_id, tier, membership_status, membership_end, freshdesk_contact_id, zoho_customer_id, app_member_id, wa_invite_link, updated_at";
+const LIST_COLUMNS = "id, full_name, primary_phone, queendom_id, tier, membership_status, membership_end, freshdesk_contact_id, zoho_customer_id, app_member_id, wa_group_jid, updated_at";
 
 function searchToken(q: string): string {
   return q.replace(/[,()"'\\%]/g, " ").trim();
@@ -110,7 +110,10 @@ export async function listMembers(filters: MemberListFilters): Promise<{ members
   if (filters.queendom) q = q.eq("queendom_id", filters.queendom);
   if (filters.tier) q = q.eq("tier", filters.tier);
   if (filters.status) q = q.eq("membership_status", filters.status);
-  if (filters.unlinked === "whatsapp") q = q.is("wa_invite_link", null);
+  // "No WhatsApp group" = no Sia group linked. wa_group_jid is the trigger-kept mirror of
+  // sia.wag_groups.member_id (0217); wa_invite_link is only the invite URL from the app export
+  // and proves nothing about a link (it mis-listed 115 linked members and hid 119 unlinked ones).
+  if (filters.unlinked === "whatsapp") q = q.is("wa_group_jid", null);
   if (filters.unlinked === "freshdesk") q = q.is("freshdesk_contact_id", null);
   if (filters.unlinked === "zoho") q = q.is("zoho_customer_id", null);
   if (filters.unlinked === "app") q = q.is("app_member_id", null);
@@ -125,7 +128,7 @@ export async function listMembers(filters: MemberListFilters): Promise<{ members
     console.error("[members-service] list failed", error.message);
     return { members: [], totalCount: 0 };
   }
-  type Row = Pick<MemberRow, "id" | "full_name" | "primary_phone" | "queendom_id" | "tier" | "membership_status" | "membership_end" | "freshdesk_contact_id" | "zoho_customer_id" | "app_member_id" | "wa_invite_link" | "updated_at">;
+  type Row = Pick<MemberRow, "id" | "full_name" | "primary_phone" | "queendom_id" | "tier" | "membership_status" | "membership_end" | "freshdesk_contact_id" | "zoho_customer_id" | "app_member_id" | "wa_group_jid" | "updated_at">;
   const rows = mapRows<Row, Row>(data, (r) => r);
   const ids = rows.map((r) => r.id);
   const qd = new Map(queendoms.map((x) => [x.id, x]));
@@ -157,7 +160,7 @@ export async function listMembers(filters: MemberListFilters): Promise<{ members
     open_tickets: openCounts.get(r.id) ?? 0,
     last_contact_at: lastContact.get(r.id) ?? null,
     linked: {
-      whatsapp: Boolean(r.wa_invite_link),
+      whatsapp: Boolean(r.wa_group_jid),
       freshdesk: Boolean(r.freshdesk_contact_id),
       zoho: Boolean(r.zoho_customer_id),
       app: Boolean(r.app_member_id),

@@ -12,6 +12,98 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-18 — Fix: the members "No WhatsApp group" filter told the wrong story (migration 0217)
+
+Why: the filter and the WhatsApp chip on each row read `wa_invite_link`, the invite URL from
+the old app export, which says nothing about whether a Sia group is linked. Measured: the
+filter listed 267 members, 115 of whom do have a linked group, and hid 119 who have none. The
+real link is `sia.wag_groups.member_id`, in another schema the list query cannot join.
+
+What changed: migration 0217 adds `member.members.wa_group_jid`, a mirror of the Sia link
+written only by a trigger on `sia.wag_groups` (insert, a change of `member_id` or `is_active`,
+delete; it recomputes the member who lost the group and the one who gained it), backfilled with
+the same expression. `members-service.ts` reads the mirror for both the filter and the chip.
+`sia.wag_groups.member_id` stays the one source of truth; application code never writes the
+mirror. Verified: 614 of 614 members match the Sia link (343 linked, 271 not), and a hand-blanked
+mirror is restored by the trigger. The member page was already right (it shows the real group).
+
+## 2026-09-18 -- The member profiler: Serene reads the chats and fills the member's profile (migrations 0215, 0216)
+
+**Why.** Elaya can already open a member's profile, but most of it is empty. The only way a fact
+got in was a teammate typing it into the Observation box. Meanwhile the WhatsApp groups hold years
+of what each member likes, who is around them and what is coming up. The profiler reads those
+chats and files what it learns, with the message it came from, so the profile fills itself.
+
+**It ships switched off.** The setting `member_profiler_enabled` is `false`. While it is off the
+cloud task wakes, sees the switch and does nothing. The founder reviews a dry-run report first and
+turns it on only when the quality is right (plan decision 4).
+
+**How one reading works.**
+
+- A group is only read when it is linked to a member. Unlinked groups are never touched.
+- The chat is cut into conversations. A gap of 6 quiet hours ends one. A conversation still going
+  is left alone until it goes quiet.
+- **Names never reach the model.** Every sender gets a code name per group (`MEMBER`, `STAFF_1`,
+  `VENDOR_1`), stored in `sia.codenames` so the same person keeps the same code. Known names inside
+  the text are swapped for codes too, and `maskPii` takes phones and emails. A last check looks for
+  any real name left in the text. If it finds one, the reading stops and nothing is sent.
+- One call to the reasoning tier through the Elaya provider. No new SDK import. Every call is a row
+  in `sia.extraction_runs` with the masked text, the tokens and the cost.
+- The answer is checked field by field. Facets, relation kinds and event kinds outside our own
+  lists are dropped. A fact with no message number behind it is dropped. Confidence is capped at
+  0.85, so a chat reading never outranks what a teammate typed.
+- Codes are turned back into names, then the writer files: facts (source `whatsapp_group`, with
+  the group, the message ids and a short quote), people, relations, one timeline event and
+  anything with a future date as "coming up".
+- **It fails closed.** A failed reading does not move the group's bookmark, so the same
+  conversation is tried again next run. Nothing half-read is ever filed.
+
+**What changed.**
+
+- `supabase/migrations/20260918000215_member_profiler.sql`: `sia.codenames`,
+  `sia.profiler_group_state` (the bookmark per group), the two read functions, the off switch.
+- `supabase/migrations/20260918000216_member_profiler_fast_reads.sql`: the first version of
+  "which groups have something new" scanned every message and hit the 8 second limit. It now does
+  one index lookup per group (683 ms on production). Both functions are service role only.
+- `src/lib/services/member-profiler.ts`: THE profiler (code names, conversation builder, prompt,
+  checker, writer, the sweep). `src/lib/constants/member-profiler.ts`: its numbers.
+- `src/lib/services/member-relations.ts`: THE one write for a member relation. The Observation
+  box used to carry its own copy; it now calls this, so both paths agree on what "the same
+  relation" means (R-01).
+- `src/trigger/member-profiler.ts`: the cloud task, every 10 minutes, one at a time, skips a late
+  start, stops itself after 4 minutes.
+- `scripts/members/profile-pilot.ts`: the dry run. It writes its report outside the repo
+  (`~/Desktop/serene-backups`) because the report holds real names.
+- `src/lib/services/llm-providers-service.ts`: `getMemberProfilerEnabled()`, true only when the
+  row is exactly `true`.
+
+**A provider change that came out of the pilot.** The first pilot lost 8 of 30 conversations, all
+long ones, all with exactly 1,800 output tokens and no text. The Claude 5 models think before they
+answer, and the thinking counts against the output allowance, so the model spent the whole
+allowance thinking. Two fixes:
+
+- `src/lib/elaya/provider.ts`: a new optional `effort` (`low`, `medium`, `high`) on the one
+  provider contract. `adapters/anthropic.ts` passes it on, and leaves it off for Haiku, which
+  rejects it. Callers that do not set it behave exactly as before.
+- The profiler asks for low effort, has its own allowance of 8,000 tokens, a 2 minute timeout, and
+  treats an answer that was cut off as a failure instead of trying to parse half of it.
+
+Also in the adapter: `getMember()` is `getClient()` again. The members rename had swapped the word
+inside the Anthropic SDK helper. It compiled, but it was the wrong word.
+
+**Pilot result (dry run, 20 groups, the 2 newest finished conversations each, last 45 days).**
+32 read, 8 skipped as too thin, 0 failed. It would file 17 facts, 10 people, 22 relations and 16
+coming-up items. About 94,000 tokens, roughly 25 cents. Small chats produced no invented facts.
+
+**Known limit.** When a husband and wife share one group, both are "the member" to the profiler,
+because members are not yet tagged person by person in their own groups. A fact about one can land
+on the shared profile. That tagging is separate data work.
+
+**Not built yet.** The scored exam (a fixed set of conversations with known answers, to compare
+prompt versions) is not built. The pilot report is the review for now.
+
+---
+
 ## 2026-09-17 — Vendors keep themselves current: the live extractor (migration 0214)
 
 **Rebased onto the schema restructure.** Main moved eight commits while this was being built and
