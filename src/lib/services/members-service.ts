@@ -33,25 +33,30 @@ import type {
 
 // ─── Queendoms ───────────────────────────────────────────────────────────────
 
-export const getQueendoms = cache(async (): Promise<QueendomSummary[]> => {
-  const supabase = await createClient();
+type Db = Awaited<ReturnType<typeof createClient>>;
+
+/** The queendom list on a given client (the session one for pages, the admin one for Elaya). */
+async function readQueendoms(supabase: Db): Promise<QueendomSummary[]> {
   const { data, error } = await supabase.schema("sia").from("queendoms").select("id, name, slug").eq("is_active", true).order("name");
   if (error) {
     console.error("[members-service] queendoms read failed", error.message);
     return [];
   }
   return mapRows<QueendomSummary, QueendomSummary>(data, (r) => r);
-});
+}
+
+export const getQueendoms = cache(async (): Promise<QueendomSummary[]> => readQueendoms(await createClient()));
 
 // ─── Health ──────────────────────────────────────────────────────────────────
 
-const getHealthPolicy = cache(async (): Promise<Map<string, MemberHealthPolicyRow>> => {
-  const supabase = await createClient();
+async function readHealthPolicy(supabase: Db): Promise<Map<string, MemberHealthPolicyRow>> {
   const { data } = await memberDb(supabase).from("member_health_policy").select("*");
   const m = new Map<string, MemberHealthPolicyRow>();
   mapRows<MemberHealthPolicyRow, void>(data, (r) => { m.set(r.signal, r); });
   return m;
-});
+}
+
+const getHealthPolicy = cache(async (): Promise<Map<string, MemberHealthPolicyRow>> => readHealthPolicy(await createClient()));
 
 function buildHealth(events: MemberHealthEventRow[], policy: Map<string, MemberHealthPolicyRow>): MemberHealth {
   const withHalf = events.map((e) => ({ delta: Number(e.delta), observed_at: e.observed_at, half_life_days: policy.get(e.signal)?.half_life_days ?? 60 }));
@@ -189,10 +194,10 @@ export async function searchMembersForPicker(q: string, limit = 8): Promise<Memb
 
 // ─── The dossier ─────────────────────────────────────────────────────────────
 
-async function getTeam(queendomId: string | null): Promise<MemberTeam> {
+async function getTeam(queendomId: string | null, db?: Db): Promise<MemberTeam> {
   const empty: MemberTeam = { queen: null, bishop: null, joker: null, genies: [] };
   if (!queendomId) return empty;
-  const supabase = await createClient();
+  const supabase = db ?? (await createClient());
   const { data } = await supabase.from("profiles").select("id, full_name, sia_role").eq("queendom_id", queendomId).eq("is_active", true).order("full_name");
   const team: MemberTeam = { ...empty, genies: [] };
   mapRows<{ id: string; full_name: string; sia_role: string | null }, void>(data, (p) => {
@@ -237,7 +242,19 @@ export async function memberQueendom(clientId: string): Promise<{ exists: boolea
 }
 
 export async function getMemberDetail(clientId: string): Promise<MemberDetail | null> {
-  const supabase = await createClient();
+  return readMemberDetail(await createClient(), clientId, false);
+}
+
+/**
+ * The same dossier on the admin client — for callers with no session (Elaya on WhatsApp, the
+ * Python brain through the bridge). RLS does not run here, so the CALLER gates first with
+ * canAccessMember (Q-13); never call this from a page or an action.
+ */
+export async function getMemberDetailAsAdmin(clientId: string): Promise<MemberDetail | null> {
+  return readMemberDetail(createAdminClient() as unknown as Db, clientId, true);
+}
+
+async function readMemberDetail(supabase: Db, clientId: string, sessionless: boolean): Promise<MemberDetail | null> {
   const { data: member, error } = await memberDb(supabase).from("members").select("*").eq("id", clientId).maybeSingle();
   if (error) {
     console.error("[members-service] member read failed", error.message);
@@ -247,12 +264,12 @@ export async function getMemberDetail(clientId: string): Promise<MemberDetail | 
   const c = member as MemberRow;
 
   const [queendoms, team, people, factsRes, healthRes, policy, tickets, group, events, relations, snapshot, anticipations] = await Promise.all([
-    getQueendoms(),
-    getTeam(c.queendom_id),
+    sessionless ? readQueendoms(supabase) : getQueendoms(),
+    getTeam(c.queendom_id, supabase),
     memberDb(supabase).from("member_people").select("*").eq("member_id", clientId).order("relation").order("name"),
     memberDb(supabase).from("member_facts").select("*, created_by_profile:profiles!member_facts_created_by_fkey(full_name)").eq("member_id", clientId).is("superseded_by", null).order("observed_at", { ascending: false }).limit(1000),
     memberDb(supabase).from("member_health_events").select("*").eq("member_id", clientId).order("observed_at", { ascending: false }).limit(500),
-    getHealthPolicy(),
+    sessionless ? readHealthPolicy(supabase) : getHealthPolicy(),
     getFreshdeskTicketsForMember(clientId),
     getSiaGroupForMember(clientId),
     memberDb(supabase).from("member_events").select("*").eq("member_id", clientId).order("occurred_at", { ascending: false }).limit(100),

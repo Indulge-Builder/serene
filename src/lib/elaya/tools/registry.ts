@@ -73,7 +73,10 @@ export type ElayaReadToolName =
   // Members (0181/0194) — a member's WhatsApp history, raw, queendom-scoped in code
   | 'get_member_overview'
   | 'get_member_recent_messages'
-  | 'search_member_history';
+  | 'search_member_history'
+  // The twin itself (0194): what Serene knows, and the money (Zoho, live)
+  | 'get_member_profile'
+  | 'get_member_finance';
 
 /** Every tool name the principal may carry — read tools (this file) + write tools. */
 export type ElayaToolName = ElayaReadToolName | ElayaWriteToolName;
@@ -882,7 +885,7 @@ const getMemberOverview: ElayaTool = {
   description:
     'Find a member member and their WhatsApp concierge group. Pass `member` as the name the user ' +
     'said (or a member id). Returns tier, membership status, queendom and the group with its message ' +
-    'count and last activity, plus the member_id the other member tools need — call this FIRST. If ' +
+    'count and last activity, plus the member_id the other member tools need (get_member_profile for what we know, get_member_recent_messages for what was said, get_member_finance for money) — call this FIRST. If ' +
     'several members match you get a `candidates` list: ask the user which one, never pick. If none ' +
     'match, say you could not find that member; never describe a member you did not get back.',
   schema: z.object({ member: z.string().trim().min(2).max(120) }),
@@ -925,6 +928,67 @@ const getMemberOverview: ElayaTool = {
         : null,
       note: group ? undefined : 'No WhatsApp group is mapped to this member yet, so there is no chat history to read.',
     };
+  },
+};
+
+const getMemberProfile: ElayaTool = {
+  name: 'get_member_profile',
+  description:
+    'Everything Serene KNOWS about one member, as opposed to what was said in the chat: their saved ' +
+    'facts grouped by facet (preferences, dislikes, dietary, travel, family, essentials…) each with its ' +
+    'source, confidence and date; the people around them (spouse, assistant, driver) and who may ' +
+    'request on their behalf; the concierge team serving them; their health score with the reasons; ' +
+    'their open and recent Freshdesk requests; what is coming up (renewal, occasions); and the latest ' +
+    'observations the team wrote. Use for "what do we know about X", "what does X like / avoid", ' +
+    '"is X vegetarian", "who is X\'s genie", "how is X doing", "brief me on X before I call". State a ' +
+    'fact only if it is in the result, and say where it came from when confidence is below 0.8. An ' +
+    'empty facet means nothing is on record, never a guess. For what the member SAID lately use ' +
+    'get_member_recent_messages. Needs member_id from get_member_overview.',
+  schema: z.object({ member_id: z.string().uuid() }),
+  jsonSchema: {
+    type: 'object',
+    properties: { member_id: { type: 'string', description: 'The member_id from get_member_overview' } },
+    required: ['member_id'],
+    additionalProperties: false,
+  },
+  run: async (principal, input) => {
+    const { member_id } = input as { member_id: string };
+    const profile = await elayaData.getMemberProfileFor(principal, member_id);
+    if (!profile) return { error: 'No such member, or outside what you can see.' };
+    return {
+      ...profile,
+      note:
+        profile.facts_total === 0
+          ? 'No saved facts for this member yet. Say exactly that; the chat may still hold answers (get_member_recent_messages).'
+          : profile.facts_shown < profile.facts_total
+            ? `Showing the ${profile.facts_shown} most confident of ${profile.facts_total} facts.`
+            : 'Every current fact is shown. Anything not here is not on record.',
+    };
+  },
+};
+
+const getMemberFinance: ElayaTool = {
+  name: 'get_member_finance',
+  description:
+    "One member's money, read live from Zoho Books: totals invoiced / paid / outstanding / credits, the " +
+    'unpaid invoices with due dates, the latest invoices and payments. Use for "does X owe anything", ' +
+    '"has X paid", "when is X\'s invoice due", "what did X pay last". Amounts are INR. If the member has ' +
+    'no Zoho link say so; never estimate a figure. Needs member_id from get_member_overview.',
+  schema: z.object({ member_id: z.string().uuid() }),
+  jsonSchema: {
+    type: 'object',
+    properties: { member_id: { type: 'string', description: 'The member_id from get_member_overview' } },
+    required: ['member_id'],
+    additionalProperties: false,
+  },
+  run: async (principal, input) => {
+    const { member_id } = input as { member_id: string };
+    const money = await elayaData.getMemberFinanceFor(principal, member_id);
+    if (!money) return { error: 'No such member, or outside what you can see.' };
+    if ('denied' in money) return { error: 'Your role cannot see member finance.' };
+    if (!money.linked) return { ...money, note: 'This member is not linked to a Zoho customer, so there is no ledger to read.' };
+    if ('unavailable' in money) return { ...money, note: 'Zoho Books did not answer just now. Say so; do not guess.' };
+    return { ...money, note: 'Live from Zoho Books. Quote figures exactly as given.' };
   },
 };
 
@@ -1016,6 +1080,8 @@ export const BRIDGED_READ_TOOL_NAMES: ReadonlySet<string> = new Set([
   'get_ticket',
   // Members: the member's WhatsApp history lives in the sia schema Node already reads.
   'get_member_overview',
+  'get_member_profile',
+  'get_member_finance',
   'get_member_recent_messages',
   'search_member_history',
 ]);
@@ -1134,6 +1200,8 @@ const ALL_TOOLS = [
   listTickets,
   getTicket,
   getMemberOverview,
+  getMemberProfile,
+  getMemberFinance,
   getMemberRecentMessages,
   searchMemberHistory,
 ] as const;

@@ -136,19 +136,23 @@ SPECIALISTS: dict[str, Specialist] = {
     "members": Specialist(
         id="members",
         description=(
-            "a member member and their WhatsApp group chat: what a member asked for lately, what is "
-            "going on with a member, summarise a member's chat, did a member ever mention something, "
-            "when did a member talk about a topic, a member's tier or membership, which group a member is in"
+            "a member of Indulge: what we know about them (preferences, dislikes, dietary, family, the "
+            "people around them, their genie and queendom, their health score, their open requests, their "
+            "renewal), what they said in their WhatsApp group (asked for lately, ever mentioned a topic, "
+            "summarise the chat), and their money (owes anything, paid, invoice due)"
         ),
-        focus=("Focus for this conversation: CLIENTS — one member's story, read from their real "
-               "WhatsApp group messages. Always call get_member_overview first to find the member and "
-               "their member_id, then get_member_recent_messages or search_member_history. Every "
-               "statement about the member must come from a returned message and carry its date; if a "
-               "tool returns nothing, say that nothing is on record — never fill the gap from memory, "
-               "and never describe a member the tool did not return. Several matching members means "
-               "ask which one."),
-        # All three run in Node through the bridge; Node scopes rows to the reader's queendom.
-        toolset=["get_member_overview", "get_member_recent_messages", "search_member_history", "find_teammate"],
+        focus=("Focus for this conversation: MEMBERS — one member's story from Serene's own records. "
+               "Always call get_member_overview first to find the member and their member_id. Then pick by "
+               "the question: get_member_profile for what we KNOW (saved facts, people, team, health, "
+               "requests, what is coming up); get_member_recent_messages or search_member_history for what "
+               "was SAID in their WhatsApp group; get_member_finance for money. A briefing uses the profile "
+               "first and the recent messages second. Every statement must come from a returned field or "
+               "message, with its date or source; if a tool returns nothing, say nothing is on record — never "
+               "fill the gap from memory, and never describe a member the tool did not return. Several "
+               "matching members means ask which one."),
+        # All five run in Node through the bridge; Node scopes rows to the reader's queendom.
+        toolset=["get_member_overview", "get_member_profile", "get_member_recent_messages",
+                 "search_member_history", "get_member_finance", "find_teammate"],
     ),
     "general": Specialist(
         id="general",
@@ -163,6 +167,8 @@ SPECIALISTS: dict[str, Specialist] = {
             "get_helpdesk_content",
             "search_leads",
             "get_member_overview",
+            "get_member_profile",
+            "get_member_finance",
             "get_member_recent_messages",
             "search_member_history",
             "add_lead_note",

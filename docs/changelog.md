@@ -211,6 +211,33 @@ compile crawl and is the first thing to fix before judging local speed.
 
 ---
 
+## 2026-09-18 — Elaya reads the member twin: what we know, and the money
+
+Why: Elaya could read a member's WhatsApp chat but not what Serene has saved about them. The
+founder asked "what does she like", "who is her genie", "does he owe anything" and got
+nothing, while 6,757 facts, the health scores, 50,000 mirrored requests and the live Zoho
+ledger sat one read away.
+
+What changed:
+
+- `services/members-service.ts` — the dossier read is now one function on a given client:
+  `getMemberDetail` (session, the page) and `getMemberDetailAsAdmin` (admin client, for
+  callers with no session). Same rows, same fact collapsing, same health math; the queendom
+  and health-policy helpers take the client too. The caller of the admin twin gates first.
+- `elaya/elaya-data.ts` — `getMemberProfileFor` (the queendom gate, then the dossier, trimmed
+  to a bounded shape: facts by facet, most confident first, capped 80; people; the serving
+  team; health; open and recent requests; what is coming up; relations; observations) and
+  `getMemberFinanceFor` (`canSeeMemberFinance`, the gate, then live Zoho: totals, unpaid
+  invoices, latest invoices and payments).
+- `elaya/tools/registry.ts` — `get_member_profile` and `get_member_finance`, bridged so both
+  brains carry them; `get_member_overview` now points at all four follow-ups. Python brain:
+  the two names, their roles, and the members specialist rewritten around "what we KNOW,
+  what was SAID, the money".
+- Fix from the rename: `ZbInvoice.is_viewed_by_client` is Zoho's own field name and is back.
+- Exercised against production as the founder: profile in about a second (28 facts across
+  five facets, 301 past requests), finance live from Zoho, an outsider gets nothing, a guest
+  is refused money.
+
 ## 2026-09-18 — Freshdesk: tuned to the corrected rate limit
 
 Why: Freshdesk support fixed the account's API allowance (it had been throttled at the trial

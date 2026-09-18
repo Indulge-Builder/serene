@@ -1890,8 +1890,8 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/tools/registry.ts": {
-    "mtime": 1789716521.7687137,
-    "ast_hash": "cb225b58dd9183f1a1d7c402844b399a",
+    "mtime": 1789626186.1088302,
+    "ast_hash": "1c86d3699cd2405336709cce1bedcbda",
     "semantic_hash": ""
   },
   "src/lib/elaya/tools/write-registry.ts": {
@@ -3085,8 +3085,8 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1789716681.0555778,
-    "ast_hash": "81a153eecdbccdffac656ec9139efa64",
+    "mtime": 1789636188.6652148,
+    "ast_hash": "e164a49f451f09ee28adc887387af2fd",
     "semantic_hash": ""
   },
   "README.md": {
@@ -3170,8 +3170,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1789716681.0627222,
-    "ast_hash": "d275d12879870d836d4358af73b81dbc",
+    "mtime": 1789642120.4403353,
+    "ast_hash": "dc8880aff71df6a985c5b0f532c734e7",
     "semantic_hash": ""
   },
   "docs/claude-project/1-product-and-status.md": {
@@ -3265,8 +3265,8 @@
     "semantic_hash": ""
   },
   "docs/operations/deployment.md": {
-    "mtime": 1789642616.6269357,
-    "ast_hash": "5f3d84c5fa79dc6937122c479880179c",
+    "mtime": 1788240303.982658,
+    "ast_hash": "5b307b480f69a4ee4510cca17a1ee6f2",
     "semantic_hash": ""
   },
   "docs/operations/engine-health-check.md": {
@@ -3495,8 +3495,8 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/CLAUDE.md": {
-    "mtime": 1789716681.054504,
-    "ast_hash": "7caf422b1f8f34e7543af9ba846f99fe",
+    "mtime": 1789626493.4278889,
+    "ast_hash": "18af8beaccc0d93882518131bcb535f2",
     "semantic_hash": ""
   },
   "src/lib/services/CLAUDE.md": {
@@ -3990,8 +3990,8 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/elaya-data.ts": {
-    "mtime": 1789716521.7676976,
-    "ast_hash": "060f9e3711e519d79c4d5f1d76f3f178",
+    "mtime": 1789636036.4521935,
+    "ast_hash": "df6b0ad9cd949e6f6a7cfb123057f3c6",
     "semantic_hash": ""
   },
   "src/lib/elaya/memory.ts": {
@@ -6495,8 +6495,8 @@
     "semantic_hash": ""
   },
   "backend/app/brain/specialists.py": {
-    "mtime": 1789716521.7700677,
-    "ast_hash": "0ccaf78c82c6cc90838f7a046be4d763",
+    "mtime": 1789626186.0529912,
+    "ast_hash": "ad98489a2793862d3f77c176ed449e57",
     "semantic_hash": ""
   },
   "backend/app/core/__init__.py": {
@@ -6505,8 +6505,8 @@
     "semantic_hash": ""
   },
   "backend/app/core/supa.py": {
-    "mtime": 1789642533.4897914,
-    "ast_hash": "69ff9c30edf25bf08124e9363174e481",
+    "mtime": 1788092474.798661,
+    "ast_hash": "dcbe32b5174da878fe81486d4e13dffa",
     "semantic_hash": ""
   },
   "backend/app/llm/__init__.py": {
@@ -6535,8 +6535,8 @@
     "semantic_hash": ""
   },
   "backend/app/tools/registry.py": {
-    "mtime": 1789716521.7695246,
-    "ast_hash": "180cbf6b6638432e93906a8e758fda9f",
+    "mtime": 1789626186.053363,
+    "ast_hash": "9e0baf3b70eb71df5bfce3f304aae679",
     "semantic_hash": ""
   },
   "supabase/migrations/20260828000176_llm_heavy_tier.sql": {
@@ -7205,8 +7205,8 @@
     "semantic_hash": ""
   },
   "src/lib/constants/freshdesk.ts": {
-    "mtime": 1789715846.9701085,
-    "ast_hash": "a35ed42de2b4e6e4d8ab71664e30ed0c",
+    "mtime": 1789626186.1047468,
+    "ast_hash": "2039a9ad100be2f3c06b6e2b3864ca11",
     "semantic_hash": ""
   },
   "src/lib/services/freshdesk-api.ts": {
@@ -7435,8 +7435,8 @@
     "semantic_hash": ""
   },
   "src/lib/types/zoho.ts": {
-    "mtime": 1789716370.6424773,
-    "ast_hash": "dc09493e135c4cdb7b66769dfbc1f29c",
+    "mtime": 1789626186.1245644,
+    "ast_hash": "b5702c075fc58c8b485bd66551cd24c7",
     "semantic_hash": ""
   },
   "docs/integrations/zoho-books.md": {
@@ -7820,8 +7820,8 @@
     "semantic_hash": ""
   },
   "docs/architecture/schema-restructure-plan.md": {
-    "mtime": 1789646412.957598,
-    "ast_hash": "3ead22acddf2e80d805e147639fa88b7",
+    "mtime": 1789642120.4312716,
+    "ast_hash": "7e5ae1ae1bf1bdee2875878f899df20d",
     "semantic_hash": ""
   },
   "evals/results/20260916-095313.json": {
@@ -7995,8 +7995,8 @@
     "semantic_hash": ""
   },
   "src/lib/services/members-service.ts": {
-    "mtime": 1789716370.6439188,
-    "ast_hash": "53f8372a245cc7bbed4e7bd589fe0450",
+    "mtime": 1789636036.4576237,
+    "ast_hash": "c98c9b03cc73a7c5f69d5ef4621ad9e1",
     "semantic_hash": ""
   },
   "src/lib/supabase/schemas.ts": {
@@ -8042,11 +8042,6 @@
   "supabase/migrations/20260917000211_member_schema.sql": {
     "mtime": 1789635987.4769492,
     "ast_hash": "1a00f2a579e6987479ed9941bd8346d9",
-    "semantic_hash": ""
-  },
-  "supabase/migrations/20260917000212_cross_schema_profile_views.sql": {
-    "mtime": 1789646300.5466866,
-    "ast_hash": "c8f6124caf087b5b4fcc96e2e8e6de89",
     "semantic_hash": ""
   }
 }

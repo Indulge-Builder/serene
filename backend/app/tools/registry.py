@@ -1088,6 +1088,8 @@ BRIDGED_READ_TOOL_NAMES: frozenset[str] = frozenset({
     # Members (2026-09-16): a member's WhatsApp history, raw. The sia archive and the
     # queendom gate (canAccessMember) live in Node; this brain decides WHEN to read.
     "get_member_overview", "get_member_recent_messages", "search_member_history",
+    # The twin and the money (2026-09-18): the dossier read and the Zoho read live in Node.
+    "get_member_profile", "get_member_finance",
 })
 
 # The ticket pair (2026-09-15) is bridged for the same reason: the sentinel's ledger and the
@@ -1102,6 +1104,8 @@ _BRIDGED_READ_ROLES: dict[str, frozenset[str]] = {
     "get_member_overview": frozenset({"agent", "manager", "admin", "founder"}),
     "get_member_recent_messages": frozenset({"agent", "manager", "admin", "founder"}),
     "search_member_history": frozenset({"agent", "manager", "admin", "founder"}),
+    "get_member_profile": frozenset({"agent", "manager", "admin", "founder"}),
+    "get_member_finance": frozenset({"agent", "manager", "admin", "founder"}),
 }
 
 
