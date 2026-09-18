@@ -38,10 +38,13 @@ export function SiaGroupInfoPanel({
   group,
   onClose,
   onPatchGroup,
+  canManage = true,
 }: {
   group: SiaGroupRow;
   onClose: () => void;
   onPatchGroup: (jid: string, patch: Partial<SiaGroupRow>) => void;
+  /** False for a queendom viewer: the linked member is shown, nothing can be re-mapped. */
+  canManage?: boolean;
 }) {
   const [info, setInfo] = useState<SiaGroupInfo | null>(
     () => {
@@ -178,6 +181,7 @@ export function SiaGroupInfoPanel({
         </div>
 
         {/* Mapping controls */}
+        {canManage && (
         <div className="px-5 pb-4 flex flex-col gap-3 border-b border-(--theme-paper-border)">
           <div className="flex justify-center">
             <KindPillRow value={group.group_kind} disabled={saving} onPick={setKind} />
@@ -231,6 +235,17 @@ export function SiaGroupInfoPanel({
             )}
           </div>
         </div>
+        )}
+
+        {/* A queendom viewer sees who the group belongs to; re-mapping is an admin job. */}
+        {!canManage && info?.member && (
+          <div className="px-5 pb-4 flex flex-col gap-2 border-b border-(--theme-paper-border)">
+            <span className="label-micro" style={{ color: "var(--theme-text-tertiary)" }}>Linked member</span>
+            <Link href={`${CLIENTS_PATH}/${info.member.id}`} className="type-body-sm" style={{ color: "var(--neu-accent-deep)" }}>
+              {info.member.full_name}
+            </Link>
+          </div>
+        )}
 
         {failed ? (
           <div className="py-10 px-5">

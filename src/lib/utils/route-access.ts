@@ -1,6 +1,7 @@
 import type { UserRole, AppDomain } from '@/lib/types/database';
 import {
   ALWAYS_ALLOWED_PREFIXES,
+  DOMAIN_NAV_HIDDEN,
   DOMAIN_ROUTE_MAP,
   FOUNDER_NAV_PREFIXES,
   WORKBENCH_BLOCKED_PREFIXES,
@@ -63,5 +64,6 @@ export function hasManagerPageAccess(profile: RouteProfile): boolean {
 export function isNavVisible(profile: RouteProfile, href: string): boolean {
   if (!canAccessRoute(profile, href)) return false;
   if (profile.role === 'founder') return startsWithAny(href, FOUNDER_NAV_PREFIXES);
+  if (profile.role !== 'admin' && startsWithAny(href, DOMAIN_NAV_HIDDEN[profile.domain] ?? [])) return false;
   return true;
 }

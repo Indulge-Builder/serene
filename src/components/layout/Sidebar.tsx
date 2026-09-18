@@ -292,7 +292,10 @@ export function Sidebar({ profile }: SidebarProps) {
   const configurationNav = isManager
     ? getConfigurationNav(isPrivileged).filter((item) => isNavVisible(profile, item.href))
     : [];
-  const adminNav = isPrivileged ? ADMIN_NAV.filter((item) => isNavVisible(profile, item.href)) : [];
+  // Not gated on isPrivileged: isNavVisible already answers per link. A concierge teammate
+  // reaches /sia and /freshdesk through the domain map and nothing else in this section, so
+  // they get exactly those two; a sales agent reaches none and the section does not render.
+  const adminNav = ADMIN_NAV.filter((item) => isNavVisible(profile, item.href));
   const isOnProfile = pathname === "/profile";
 
   // Mobile drawer (< md). On md+ the CSS ignores data-open entirely —
@@ -485,7 +488,7 @@ export function Sidebar({ profile }: SidebarProps) {
 
         {adminNav.length > 0 && (
           <>
-            <NavSection label="Admin" />
+            <NavSection label={isPrivileged ? "Admin" : "Concierge"} />
             {adminNav.map(({ href, label, icon }) => (
               <NavLink
                 key={href}

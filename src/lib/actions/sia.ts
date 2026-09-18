@@ -21,13 +21,25 @@ import {
   type SiaSearchHit,
   type SiaWatcherState,
 } from "@/lib/services/sia-service";
+import { canViewSiaGroup, getQueendomGroupJids, getSiaViewerScope, type SiaViewerScope } from "@/lib/services/sia-access";
 import { formErrors } from "@/lib/validations/form-errors";
 import type { ActionResult } from "@/lib/types";
 
-// Sia is admin/founder only (member conversations — the most sensitive data Indulge
-// holds). Every action here gates on that role; identity comes from the verified
-// profile, never the member (A-01).
+// Two gates (2026-09-18, plan decision 6). The READS (groups, info, messages, media, search)
+// are open to whoever getSiaViewerScope admits: admin/founder see everything, a seated
+// concierge teammate sees only the groups of their own queendom, checked per group on the
+// server. Everything that CHANGES Sia (the console, restart, repair, mapping) stays
+// admin/founder. Identity always comes from the verified profile, never the browser (A-01).
 const SIA_ROLES = ["admin", "founder"] as const;
+
+type SiaViewer = { ok: true; scope: SiaViewerScope } | { ok: false; result: { data: null; error: string } };
+async function requireSiaViewer(): Promise<SiaViewer> {
+  const auth = await requireProfile();
+  if (!auth.ok) return { ok: false, result: auth.result };
+  const scope = await getSiaViewerScope(auth.profile);
+  if (!scope) return { ok: false, result: { data: null, error: formErrors.unauthorized } };
+  return { ok: true, scope };
+}
 const GROUP_KINDS: readonly SiaGroupKind[] = ["member", "vendor", "internal", "unmapped"];
 
 function isGroupJid(v: unknown): v is string {
@@ -40,10 +52,13 @@ function isIsoTimestamp(v: unknown): v is string {
 
 // ── getSiaGroupsAction — rail refresh + the control modal's mapping list ──
 export async function getSiaGroupsAction(): Promise<ActionResult<SiaGroupRow[]>> {
-  const auth = await requireProfile(SIA_ROLES);
+  const auth = await requireSiaViewer();
   if (!auth.ok) return auth.result;
   try {
-    return { data: await getSiaGroups(), error: null };
+    const groups = await getSiaGroups();
+    if (auth.scope.kind === "all") return { data: groups, error: null };
+    const mine = await getQueendomGroupJids(auth.scope.queendomId);
+    return { data: groups.filter((g) => mine.has(g.group_jid)), error: null };
   } catch (err) {
     console.error("[sia-action] getSiaGroups failed:", err);
     return { data: null, error: formErrors.generic };
@@ -52,9 +67,10 @@ export async function getSiaGroupsAction(): Promise<ActionResult<SiaGroupRow[]>>
 
 // ── getSiaGroupInfoAction — the group profile panel (members, description, owner) ──
 export async function getSiaGroupInfoAction(groupJid: string): Promise<ActionResult<SiaGroupInfo>> {
-  const auth = await requireProfile(SIA_ROLES);
+  const auth = await requireSiaViewer();
   if (!auth.ok) return auth.result;
   if (!isGroupJid(groupJid)) return { data: null, error: formErrors.generic };
+  if (!(await canViewSiaGroup(auth.scope, groupJid))) return { data: null, error: formErrors.unauthorized };
   try {
     const info = await getSiaGroupInfo(groupJid);
     if (!info) return { data: null, error: formErrors.generic };
@@ -70,9 +86,10 @@ export async function getSiaMessagesAction(
   groupJid: string,
   opts?: { before?: string; after?: string },
 ): Promise<ActionResult<{ messages: SiaMessageRow[]; hasMore: boolean }>> {
-  const auth = await requireProfile(SIA_ROLES);
+  const auth = await requireSiaViewer();
   if (!auth.ok) return auth.result;
   if (!isGroupJid(groupJid)) return { data: null, error: formErrors.generic };
+  if (!(await canViewSiaGroup(auth.scope, groupJid))) return { data: null, error: formErrors.unauthorized };
   const before = opts?.before;
   const after = opts?.after;
   if (before !== undefined && !isIsoTimestamp(before)) return { data: null, error: formErrors.generic };
@@ -91,9 +108,10 @@ export async function getSiaMediaAction(
   waMessageId: string,
   senderJid: string,
 ): Promise<ActionResult<SiaMediaPayload>> {
-  const auth = await requireProfile(SIA_ROLES);
+  const auth = await requireSiaViewer();
   if (!auth.ok) return auth.result;
   if (!isGroupJid(chatJid)) return { data: null, error: formErrors.generic };
+  if (!(await canViewSiaGroup(auth.scope, chatJid))) return { data: null, error: formErrors.unauthorized };
   if (typeof waMessageId !== "string" || waMessageId.length === 0 || waMessageId.length > 256) {
     return { data: null, error: formErrors.generic };
   }
@@ -123,12 +141,17 @@ export async function searchSiaMessagesAction(
   query: string,
   groupJid?: string,
 ): Promise<ActionResult<SiaSearchHit[]>> {
-  const auth = await requireProfile(SIA_ROLES);
+  const auth = await requireSiaViewer();
   if (!auth.ok) return auth.result;
   if (typeof query !== "string") return { data: null, error: formErrors.generic };
   if (groupJid !== undefined && !isGroupJid(groupJid)) return { data: null, error: formErrors.generic };
+  if (groupJid !== undefined && !(await canViewSiaGroup(auth.scope, groupJid))) return { data: null, error: formErrors.unauthorized };
   try {
-    return { data: await searchSiaMessages(query, groupJid), error: null };
+    const hits = await searchSiaMessages(query, groupJid);
+    // A search across groups is cut down to the viewer's own queendom before it leaves the server.
+    if (auth.scope.kind === "all" || groupJid !== undefined) return { data: hits, error: null };
+    const mine = await getQueendomGroupJids(auth.scope.queendomId);
+    return { data: hits.filter((h) => mine.has(h.group_jid)), error: null };
   } catch (err) {
     console.error("[sia-action] searchSiaMessages failed:", err);
     return { data: null, error: formErrors.generic };

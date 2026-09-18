@@ -33,7 +33,12 @@ const RAIL_REFRESH_MS = 60_000;
 const HEALTH_REFRESH_MS = 60_000;
 const HEALTH_REFRESH_OPEN_MS = 20_000;
 
-export function SiaWorkspace({ groups: initialGroups, initialGroupJid = null }: { groups: SiaGroupRow[]; initialGroupJid?: string | null }) {
+export function SiaWorkspace({ groups: initialGroups, initialGroupJid = null, canManage = true }: {
+  groups: SiaGroupRow[];
+  initialGroupJid?: string | null;
+  /** False for a queendom viewer: no console gear, no health poll, no mapping controls. The server refuses those actions anyway. */
+  canManage?: boolean;
+}) {
   const [groups, setGroups] = useState<SiaGroupRow[]>(initialGroups);
   const [filter, setFilter] = useState<KindFilter>("all");
   const [railSearch, setRailSearch] = useState("");
@@ -95,6 +100,7 @@ export function SiaWorkspace({ groups: initialGroups, initialGroupJid = null }: 
   const consoleOpenRef = useRef(consoleOpen);
   consoleOpenRef.current = consoleOpen;
   useEffect(() => {
+    if (!canManage) return; // the console's pulse; a queendom viewer has no console
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
     const tick = async () => {
@@ -111,7 +117,7 @@ export function SiaWorkspace({ groups: initialGroups, initialGroupJid = null }: 
       cancelled = true;
       clearTimeout(timer);
     };
-  }, []);
+  }, [canManage]);
 
   const visible = useMemo(() => {
     const q = debouncedRailSearch.trim().toLowerCase();
@@ -143,6 +149,7 @@ export function SiaWorkspace({ groups: initialGroups, initialGroupJid = null }: 
         <h1 className="type-page-title m-0">
           Sia<span className="page-title-dot">.</span>
         </h1>
+        {canManage && (
         <button
           type="button"
           onClick={() => setConsoleOpen(true)}
@@ -181,6 +188,7 @@ export function SiaWorkspace({ groups: initialGroups, initialGroupJid = null }: 
             />
           )}
         </button>
+        )}
       </div>
 
       {groups.length === 0 ? (
@@ -268,6 +276,7 @@ export function SiaWorkspace({ groups: initialGroups, initialGroupJid = null }: 
                 onBack={() => setSelectedJid(null)}
                 onLiveMessages={handleLiveMessages}
                 onPatchGroup={patchGroup}
+                canManage={canManage}
               />
             ) : (
               <section className="flex-1 rounded-(--radius-lg) border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1) hidden md:flex items-center justify-center">
@@ -281,13 +290,13 @@ export function SiaWorkspace({ groups: initialGroups, initialGroupJid = null }: 
         </div>
       )}
 
-      <SiaControlModal
+      {canManage && <SiaControlModal
         open={consoleOpen}
         onClose={() => setConsoleOpen(false)}
         health={health}
         groups={groups}
         onPatchGroup={patchGroup}
-      />
+      />}
     </div>
   );
 }

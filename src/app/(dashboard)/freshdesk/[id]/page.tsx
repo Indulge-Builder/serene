@@ -1,6 +1,6 @@
 import { redirect, notFound } from 'next/navigation';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
-import { hasElevatedPageAccess } from '@/lib/utils/route-access';
+import { getSiaViewerScope, pinnedFreshdeskGroup } from '@/lib/services/sia-access';
 import { getFreshdeskTicketDetail } from '@/lib/services/freshdesk-service';
 import { freshdeskTicketUrl } from '@/lib/services/freshdesk-api';
 import { freshdeskDb } from '@/lib/services/freshdesk-sync';
@@ -19,7 +19,10 @@ type Props = {
 export default async function FreshdeskTicketPage({ params, searchParams }: Props) {
   const profile = await getCurrentProfile();
   if (!profile) redirect('/login');
-  if (!hasElevatedPageAccess(profile)) redirect('/dashboard');
+  // Same scope as the list (sia-access.ts): a queendom viewer opens only their own group's tickets.
+  const viewer = await getSiaViewerScope(profile);
+  if (!viewer) redirect('/dashboard');
+  const pin = pinnedFreshdeskGroup(viewer);
 
   const [{ id: rawId }, sp] = await Promise.all([params, searchParams]);
   const id = Number(rawId);
@@ -33,6 +36,8 @@ export default async function FreshdeskTicketPage({ params, searchParams }: Prop
     freshdeskDb().from('groups').select('id, name'),
   ]);
   if (!detail) notFound();
+  // Not theirs reads as not there: a ticket number must not confirm that another queendom's ticket exists.
+  if (pin.pinned && (pin.groupId == null || detail.ticket.group_id !== pin.groupId)) notFound();
   const groupNames: Record<number, string> = {};
   mapRows<{ id: number; name: string }, void>(groups.data, (g) => { groupNames[g.id] = g.name; });
 

@@ -42,6 +42,7 @@ export function SiaChat({
   onBack,
   onLiveMessages,
   onPatchGroup,
+  canManage = true,
 }: {
   group: SiaGroupRow;
   isMobile: boolean;
@@ -50,6 +51,8 @@ export function SiaChat({
   onLiveMessages: (groupJid: string, latest: SiaMessageRow[], addedCount: number) => void;
   /** Mapping writes from the info panel patch the shared group state. */
   onPatchGroup: (jid: string, patch: Partial<SiaGroupRow>) => void;
+  /** False for a queendom viewer: the info panel shows the link, not the mapping controls. */
+  canManage?: boolean;
 }) {
   const [messages, setMessages] = useState<SiaMessageRow[]>([]);
   // Ticket creation from selected messages (member-ticket-plan.md 7.8, phase 1): a selection
@@ -504,6 +507,7 @@ export function SiaChat({
             group={group}
             onClose={() => setInfoOpen(false)}
             onPatchGroup={onPatchGroup}
+            canManage={canManage}
           />
         )}
       </AnimatePresence>

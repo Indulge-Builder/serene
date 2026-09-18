@@ -55,6 +55,46 @@ the same expression. `members-service.ts` reads the mirror for both the filter a
 mirror. Verified: 614 of 614 members match the Sia link (343 linked, 271 not), and a hand-blanked
 mirror is restored by the trigger. The member page was already right (it shows the real group).
 
+## 2026-09-18 -- The concierge floor gets Sia and Freshdesk, each person only their own queendom
+
+**What the founder saw.** Logged in as a genie, the sidebar offered WhatsApp and Helpdesk, which are
+sales pages, and did not offer Sia or Freshdesk, which is where the floor works.
+
+**Why it was not a sidebar change.** `/sia` and `/freshdesk` were locked to admin and founder
+because both read through the admin client with no filter at all: every group and every ticket of
+every queendom. Opening the door without a filter would have shown a genie another queendom's
+member chats. Plan decision 6 already says what the filter is: the whole queendom sees its own
+members; admin and founder see all.
+
+**What changed.**
+
+- `src/lib/services/sia-access.ts` (new): THE one answer to "what of Sia and Freshdesk may this
+  person see". `all` for admin, founder and the tech workbench. `queendom` for a SEATED concierge
+  teammate (a Sia position and a queendom). Nobody else. The group to queendom answer is always
+  read from the database (`wag_groups.member_id` to `members.queendom_id`), never from the browser.
+- `src/lib/actions/sia.ts`: the five READ actions (groups, group info, messages, media, search) go
+  through that scope, and every one that names a group checks that group on the server. A search
+  across groups is cut to the viewer's queendom before it leaves the server. The console, restart,
+  repair and mapping actions stay admin and founder.
+- `/sia` page and `SiaWorkspace` / `SiaChat` / `SiaGroupInfoPanel`: a queendom viewer gets no
+  console gear, no health poll and no mapping controls; the info panel shows the linked member as
+  a link. An unlinked group belongs to no queendom, so only admin and founder see it.
+- `/freshdesk` list, summary strip and ticket page: a queendom viewer is pinned, on the server, to
+  their queendom's Freshdesk group (`sia.queendoms.freshdesk_group_id`), whatever the URL says.
+  Another group's ticket number answers "not found". The Sync now button is admin only.
+- `route-permissions.ts`: concierge loses `/whatsapp`, gains `/sia` and `/freshdesk`.
+  `DOMAIN_NAV_HIDDEN` hides `/helpdesk` from the concierge sidebar (it stays reachable; it is only
+  noise there). The sidebar section reads "Concierge" for them, "Admin" for admins.
+
+**Checked against the real accounts.** The seated genie: sidebar shows Sia, Freshdesk, Members,
+Tickets; 192 of 489 groups; own group opens, another queendom's group refused, an unlinked group
+refused, another queendom's member refused; Freshdesk pinned to 15,284 of 50,894 tickets.
+
+**Known edge.** A concierge account nobody has seated yet sees the two links and is sent back to
+the dashboard when it clicks them. Seating the person on the roster screen is the fix.
+
+---
+
 ## 2026-09-18 -- Member profiler: a made-up code is not a person's name (prompt profiler-v1.1)
 
 **What went wrong.** An hour into the history read, five groups stopped moving. Four said

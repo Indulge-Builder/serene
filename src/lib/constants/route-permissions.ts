@@ -42,6 +42,13 @@ export const FOUNDER_NAV_PREFIXES: string[] = [
  * /vendors but a write from that page still returns "unauthorized". Remove 'tech' here
  * to end the arrangement — nothing else needs to change.
  */
+/**
+ * Pages a domain can still REACH (ALWAYS_ALLOWED) but does not LIST in its nav. /helpdesk is the
+ * sales call-intelligence library; it is noise on the concierge floor (founder, 2026-09-18).
+ * Visibility only, like FOUNDER_NAV_PREFIXES. Admin and founder are not affected.
+ */
+export const DOMAIN_NAV_HIDDEN: Partial<Record<AppDomain, string[]>> = { concierge: ['/helpdesk'] };
+
 export const WORKBENCH_DOMAINS: AppDomain[] = ['tech'];
 /** Pages a workbench member still does not reach. /books is the organisation's money. */
 export const WORKBENCH_BLOCKED_PREFIXES: string[] = ['/books'];
@@ -80,7 +87,11 @@ export const DOMAIN_ROUTE_MAP: Record<AppDomain, string[]> = {
   // ── Non-Gia domains ───────────────────────────────────────────────────────
   // /subscriptions is the Subscriptions & Bills Tracker — Finance + Tech own it
   // (admin/founder reach it by bypassing this map in canAccessRoute).
-  concierge: ['/tasks', '/whatsapp', '/settings', '/members', '/tickets'],
+  // concierge (2026-09-18, founder): the floor works in Sia (the member WhatsApp groups) and
+  // Freshdesk, not in the Gia sales inbox, so /whatsapp is gone and /sia + /freshdesk are in.
+  // REACHABILITY only: both pages then ask sia-access.ts who the person is, and a seated
+  // teammate sees only their own queendom (an unseated account is sent home).
+  concierge: ['/tasks', '/settings', '/members', '/tickets', '/sia', '/freshdesk'],
   finance:   ['/tasks', '/subscriptions', '/settings'],
   marketing: ['/tasks', '/campaigns', '/settings'],
   tech:      ['/tasks', '/subscriptions', '/settings'],
