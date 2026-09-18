@@ -55,6 +55,40 @@ the same expression. `members-service.ts` reads the mirror for both the filter a
 mirror. Verified: 614 of 614 members match the Sia link (343 linked, 271 not), and a hand-blanked
 mirror is restored by the trigger. The member page was already right (it shows the real group).
 
+## 2026-09-18 -- Member profiler: a made-up code is not a person's name (prompt profiler-v1.1)
+
+**What went wrong.** An hour into the history read, five groups stopped moving. Four said
+"vault leak", one had a torn answer. No conversation was lost: the profiler was paused before any
+reached its third failure.
+
+**Why.** Two causes, both in the profiler's own code.
+
+- When a chat mentions someone without a name ("my son"), the model sometimes copied our code
+  style and wrote `PERSON_son`. The checker let it through and it was filed as a person. From then
+  on that member's people list held the word PERSON, which matches our real codes (`PERSON_1`) in
+  every later conversation, so the name-safety check stopped each one. Three such rows existed.
+- A staff contact whose WhatsApp name contains "Joker" is masked to `STAFF_JOKER_1`. The safety
+  check then read its own code as the name "Joker" having survived.
+
+Neither was a real leak. In both cases the check was looking at our own codes.
+
+**What changed** (`src/lib/services/member-profiler.ts`).
+
+- `nameParts()`: ONE function decides what the words of a name are. The masking table and the
+  safety check both use it, so they cannot disagree. Edge punctuation is cut ("Mehta." masks
+  "Mehta"), and a code-shaped name is nobody's name.
+- The safety check removes our own codes from the text before it looks for names.
+- The checker drops any person whose name is code-shaped, and turns a made-up `PERSON_son` inside
+  a fact or a summary into the plain word "son".
+- The prompt (now `profiler-v1.1`) says it plainly: someone with no name is not listed under
+  people and never gets a code; a durable detail about them is a family fact.
+
+**Proved on the real cases.** The exact conversation each of the five groups was stuck on was read
+again in dry run with the fix: all five read. The three junk people rows were deleted by id and the
+five failure counters reset, then the profiler was switched back on.
+
+---
+
 ## 2026-09-18 -- The member profiler reads three groups side by side, and the plans are brought up to date
 
 **Why.** The founder asked for the history read to go faster. At one group at a time and a four

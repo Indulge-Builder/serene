@@ -2,7 +2,7 @@
 // plan-sia-intelligence.md). Pure data; the prompt lives with the reader in the service.
 
 /** Bump on ANY prompt or output-shape change: every run records it, so a replay is comparable. */
-export const PROFILER_PROMPT_VERSION = "profiler-v1";
+export const PROFILER_PROMPT_VERSION = "profiler-v1.1";
 
 /** A conversation is over after this many quiet hours; only finished conversations are read. */
 export const PROFILER_QUIET_HOURS = 6;

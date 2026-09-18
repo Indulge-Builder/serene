@@ -129,14 +129,31 @@ async function codesFor(groupJid: string, senders: string[], contacts: Map<strin
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const NAME_NOISE = new Set(["mr", "mrs", "ms", "dr", "sir", "madam", "the", "and", "family", "indulge", "concierge", "team"]);
 
+/** Shaped like one of our codes (or one the model made up in their image, "PERSON_son"). */
+const CODE_SHAPED = /(?<![\p{L}\p{N}])(?:MEMBER|STAFF|VENDOR|PERSON)_[\p{L}\p{N}_]+/iu;
+/** Exactly our codes, as they appear in a masked line: MEMBER_1, STAFF_GENIE_2, PERSON_4. */
+const OUR_CODES = /(?<![\p{L}\p{N}_])(?:MEMBER|STAFF|VENDOR|PERSON)(?:_[A-Z]+)*_\d+(?![\p{L}\p{N}_])/gu;
+
+const cleanName = (name: string | null | undefined): string => (name ?? "").replace(/[^\p{L}\p{N} .'-]/gu, " ").replace(/\s+/g, " ").trim();
+/**
+ * The words of a name worth masking and worth checking. ONE function for both, so the table
+ * and the leak check can never disagree about what a name part is. Edge punctuation is cut
+ * ("Mehta." masks "Mehta"); a name that is itself code-shaped is nobody's name.
+ */
+function nameParts(name: string | null | undefined, minLen: number): string[] {
+  const full = cleanName(name);
+  if (CODE_SHAPED.test(name ?? "")) return [];
+  return full.split(" ").map((part) => part.replace(/^[.'-]+|[.'-]+$/g, "")).filter((part) => part.length >= minLen && !NAME_NOISE.has(part.toLowerCase()));
+}
+
 /** Name → code pairs, longest first, from the people we can actually name. */
 function nameTable(memberName: string, memberCode: string, contacts: Map<string, Contact>, codes: CodeMap, people: string[]): [RegExp, string][] {
   const pairs: [string, string][] = [];
   const add = (name: string | null | undefined, code: string) => {
-    const full = (name ?? "").replace(/[^\p{L}\p{N} .'-]/gu, " ").replace(/\s+/g, " ").trim();
-    if (full.length < 3) return;
+    const full = cleanName(name);
+    if (full.length < 3 || CODE_SHAPED.test(name ?? "")) return;
     pairs.push([full, code]);
-    for (const part of full.split(" ")) if (part.length >= 3 && !NAME_NOISE.has(part.toLowerCase())) pairs.push([part, code]);
+    for (const part of nameParts(name, 3)) pairs.push([part, code]);
   };
   add(memberName, memberCode);
   for (const [jid, c] of contacts) { const code = codes.get(jid)?.code; if (code) add(c.push_name, code); }
@@ -209,7 +226,7 @@ The rules that matter:
 1. A fact is something DURABLE about the member: a preference, a dislike, a dietary need, an allergy, a usual seat or room, a home city, a family detail, a brand they use, a budget signal, how they like to be contacted. A one-off logistic ("deliver by 5pm today", an order number, a flight time) is NOT a fact.
 2. Only what the MEMBER side said, or plainly confirmed, is a fact about the member. What staff or a vendor said is not, unless a member message agrees with it.
 3. Never infer beyond the words. "Book a table for two, vegetarian" supports dietary: vegetarian at confidence 0.6, not a spouse. Confidence: 0.8 stated plainly by the member, 0.65 strongly implied, 0.5 a single soft hint. Nothing below 0.5.
-4. People: a named human in the member's life (wife, son, assistant, driver). Not staff, not vendors, not the member. Use the name as written.
+4. People: a NAMED human in the member's life (wife, son, assistant, driver). Not staff, not vendors, not the member. Use the name as written. Someone with no name in the text ("my son", "mom") is NOT listed under people and never gets a code of your own making; if the detail is durable, file it as a family fact instead.
 5. coming_up needs a real date. Resolve "next Friday" or "on the 14th" from the message's own date. No date, no entry.
 6. Every item cites the message numbers it rests on. No evidence, no item.
 7. If the conversation teaches nothing durable, return empty arrays. An empty answer is a good answer. Do not repeat a fact listed under "Already on file".`;
@@ -220,7 +237,9 @@ function parseJson(text: string): Record<string, unknown> | null {
   try { return JSON.parse(text.slice(start, end + 1)) as Record<string, unknown>; } catch { return null; }
 }
 
-const str = (v: unknown, max: number): string => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, max) : "");
+/** "PERSON_son" is the model copying our code style for someone unnamed; the word is what it meant. */
+const INVENTED_CODE = /(?<![\p{L}\p{N}_])PERSON_([\p{L}][\p{L}-]*)(?![\p{L}\p{N}_])/giu;
+const str = (v: unknown, max: number): string => (typeof v === "string" ? v.replace(INVENTED_CODE, "$1").replace(/\s+/g, " ").trim().slice(0, max) : "");
 const idxs = (v: unknown, n: number): number[] => (Array.isArray(v) ? [...new Set(v.map(Number).filter((x) => Number.isInteger(x) && x >= 1 && x <= n))] : []);
 const isoDate = (v: unknown): string | null => { const s = str(v, 10); return /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.isNaN(new Date(s).getTime()) ? s : null; };
 
@@ -239,7 +258,10 @@ export function validateReading(raw: Record<string, unknown>, messageCount: numb
   const people: ProfiledPerson[] = [];
   for (const p of arr("people")) {
     const name = str(p.name, 120); const relation = str(p.relation, 20) as ProfiledPerson["relation"]; const evidence = idxs(p.evidence, messageCount);
-    if (name.length < 2 || /^(MEMBER|STAFF|VENDOR)_/i.test(name) || !PEOPLE_RELATIONS.includes(relation) || evidence.length === 0) continue;
+    // A person is someone NAMED. A code (ours, or one made up for "the son") is not a name; filed
+    // as one it sat in the member's people list and tripped the leak check on every later reading.
+    const rawName = typeof p.name === "string" ? p.name : "";
+    if (name.length < 2 || CODE_SHAPED.test(rawName) || NAME_NOISE.has(name.toLowerCase()) || !PEOPLE_RELATIONS.includes(relation) || evidence.length === 0) continue;
     people.push({ name, relation, note: str(p.note, 300) || null, evidence });
   }
   const relations: ProfiledRelation[] = [];
@@ -299,9 +321,7 @@ export async function profileWindow(w: ProfilerWindow, deps: ProfilerDeps): Prom
   const ownJid = [...contacts.values()].find((c) => c.member_id === w.member_id)?.jid;
   const memberCode = (ownJid && codes.get(ownJid)?.code) || [...codes.values()].find((c) => c.side === "member")?.code || "MEMBER_1";
   const table = nameTable(ctx.full_name, memberCode, contacts, codes, ctx.people);
-  const knownNames = [ctx.full_name, ...[...contacts.values()].map((c) => c.push_name ?? ""), ...ctx.people]
-    .flatMap((n) => n.replace(/[^\p{L}\p{N} .'-]/gu, " ").split(/\s+/))
-    .filter((part) => part.length >= 4 && !NAME_NOISE.has(part.toLowerCase()));
+  const knownNames = [ctx.full_name, ...[...contacts.values()].map((c) => c.push_name ?? ""), ...ctx.people].flatMap((n) => nameParts(n, 4));
   const depth = await getPiiMaskingDepth();
   const floor = depth === "off" ? "light" : depth; // the vault never runs with the regex floor off
   const mask = (t: string) => maskPii(maskText(t, table), floor);
@@ -315,7 +335,10 @@ export async function profileWindow(w: ProfilerWindow, deps: ProfilerDeps): Prom
   const userContent = `Already on file for this member (do not repeat these):\n${onFile}\n\nThe conversation (${w.messages.length} messages):\n${lines.join("\n")}`;
 
   // The vault's own guard: if any name we KNOW survived the masking, this window does not leave.
-  const leaked = [...new Set(knownNames.filter((n) => new RegExp(`(?<![\\p{L}\\p{N}])${esc(n)}(?![\\p{L}\\p{N}])`, "iu").test(lines.join("\n"))))];
+  // Our own codes are taken out first: a genie whose WhatsApp name is "Joker" is masked to
+  // STAFF_JOKER_1, and that code must not read as the name "Joker" having survived.
+  const visible = lines.join("\n").replace(OUR_CODES, " ");
+  const leaked = [...new Set(knownNames.filter((n) => new RegExp(`(?<![\\p{L}\\p{N}])${esc(n)}(?![\\p{L}\\p{N}])`, "iu").test(visible)))];
   if (leaked.length) {
     console.warn(`${LOG} vault leak in ${w.group_jid}: ${leaked.length} known name(s) survived masking; window not sent`);
     return { ...base, error: `vault leak (${leaked.length} name${leaked.length === 1 ? "" : "s"})` };
