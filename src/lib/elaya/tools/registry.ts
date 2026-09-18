@@ -1032,34 +1032,46 @@ const getMemberRecentMessages: ElayaTool = {
 const searchMemberHistory: ElayaTool = {
   name: 'search_member_history',
   description:
-    "Search a member's whole WhatsApp history for a word or topic (villa, goa, birthday, refund). " +
-    'Exact word matching over the real messages: returns the matching messages with dates and ' +
-    'senders, newest first. Use for "did X ever mention…", "when did X ask about…", "find the time ' +
-    'X talked about…". If it returns no hits, say nothing was found about that; never guess or ' +
-    'infer. Needs member_id from get_member_overview.',
-  schema: z.object({ member_id: z.string().uuid(), query: z.string().trim().min(2).max(120) }),
+    "Search everything on record about a member for a TOPIC: Serene's one-line summaries of each past " +
+    'conversation, the saved facts, and the real WhatsApp messages. The search matches words, it does not ' +
+    'understand meaning, so YOU supply the meaning: along with `query`, always pass `related`, 5 to 10 other ' +
+    'words the same thing could have been written as. Include synonyms, the concrete things it implies, and ' +
+    'Hindi or Hinglish spellings. Example: query "anniversary dinner" -> related ["wedding", "anniversary", ' +
+    '"shaadi", "saalgirah", "marriage", "celebration", "surprise", "table", "restaurant", "cake"]. ' +
+    'Use for "did X ever mention…", "when did X ask about…", "what does X like for…". ' +
+    '`conversations` tells you WHEN the topic came up and what happened; `hits` are the exact words to quote; ' +
+    '`facts` is what was saved. If all three are empty, try once more with different related words, and if ' +
+    'still empty say nothing was found; never guess or infer. Needs member_id from get_member_overview.',
+  schema: z.object({
+    member_id: z.string().uuid(),
+    query: z.string().trim().min(2).max(120),
+    related: z.array(z.string().trim().min(2).max(40)).max(12).optional().default([]),
+  }),
   jsonSchema: {
     type: 'object',
     properties: {
       member_id: { type: 'string', description: 'The member_id from get_member_overview' },
-      query: { type: 'string', description: 'The word or short phrase to look for, e.g. goa, birthday, villa' },
+      query: { type: 'string', description: 'The topic in a few words, e.g. anniversary dinner, goa villa, refund' },
+      related: { type: 'array', items: { type: 'string' }, description: 'Other words the same topic could have been written as: synonyms, concrete things it implies, Hindi/Hinglish spellings. 5 to 10 entries.' },
     },
     required: ['member_id', 'query'],
     additionalProperties: false,
   },
   run: async (principal, input) => {
-    const { member_id, query } = input as { member_id: string; query: string };
-    const res = await elayaData.searchMemberHistoryFor(principal, member_id, query);
+    const { member_id, query, related } = input as { member_id: string; query: string; related?: string[] };
+    const res = await elayaData.searchMemberHistoryFor(principal, member_id, query, related ?? []);
     if (!res) return { error: 'No such member, or outside what you can see.' };
+    const empty = res.conversations.length === 0 && res.facts.length === 0 && res.hits.length === 0;
     return {
       member: res.member.full_name,
       group: res.group_subject,
-      query,
+      searched_for: res.searched_for,
+      conversations: res.conversations,
+      facts: res.facts,
       hits: res.hits,
-      note:
-        res.hits.length === 0
-          ? `Nothing in this member's chat matches "${query}". Say so plainly.`
-          : 'Quote the matching message and its date; do not extend beyond what these hits say.',
+      note: empty
+        ? `Nothing on record matches those words. Try once with different related words; if still nothing, say so plainly.`
+        : 'Answer from these rows only. Give the date, quote the message when there is one, and do not extend beyond what they say.',
     };
   },
 };

@@ -579,7 +579,9 @@ T4  the profiler: reads chats, files facts / people / relations /
 T5  Elaya member tools on both channels: overview, recent messages,
     history search, full profile, finance                               DONE 2026-09-18
     Elaya ticket tools: list, get, add note, propose a status move      DONE 2026-09-15
-    meaning search (embeddings, member_chunks, Jina)                    NOT BUILT (word search works today)
+    topic search: Elaya supplies the related words, one search over
+    conversation summaries + facts + messages, ranked                  DONE 2026-09-18 (no new vendor, no extra model call)
+    true meaning search (embeddings, member_chunks)                     NOT BUILT: needs a provider decision (decision 4)
 T6  vendors learn from Freshdesk notes by themselves                    DONE 2026-09-18 (PR #4)
     ticket -> vendor ledger, ranker inside the ticket                   DONE 2026-09-18 (the job opens on pick, closes with the ticket)
     the review prompt at close                                          NOT BUILT

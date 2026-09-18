@@ -238,15 +238,27 @@ export async function getSiaMessages(
 // Hinglish/Marathi roman text is not stemmed). Optionally scoped to one group.
 // ─────────────────────────────────────────────
 
-export async function searchSiaMessages(query: string, groupJid?: string): Promise<SiaSearchHit[]> {
-  const term = query.trim();
+/**
+ * `anyOf` (2026-09-18): the words a topic could have been written as. With it the search matches a
+ * message holding ANY of them (websearch OR), not all the words of `query` (plain = AND, which is
+ * why "anniversary dinner" found nothing unless one message held both). A multi-word entry is
+ * matched as a phrase. Entries are reduced to letters, digits and spaces before they reach the query.
+ */
+export function anyOfQuery(terms: string[]): string {
+  const clean = [...new Set(terms.map((t) => t.replace(/[^\p{L}\p{N} ]+/gu, " ").replace(/\s+/g, " ").trim().toLowerCase()).filter((t) => t.length >= 2))].slice(0, 14);
+  return clean.map((t) => (t.includes(" ") ? `"${t}"` : t)).join(" OR ");
+}
+
+export async function searchSiaMessages(query: string, groupJid?: string, anyOf?: string[]): Promise<SiaSearchHit[]> {
+  const wide = anyOf && anyOf.length ? anyOfQuery([query, ...query.split(/\s+/), ...anyOf]) : "";
+  const term = wide || query.trim();
   if (term.length < 2) return [];
   const db = siaDb();
 
   let q = db
     .from("wag_messages")
     .select(`${MESSAGE_SELECT}, chat_jid`)
-    .textSearch("text", term, { type: "plain", config: "simple" })
+    .textSearch("text", term, { type: wide ? "websearch" : "plain", config: "simple" })
     .order("wa_timestamp", { ascending: false })
     .limit(SEARCH_LIMIT);
   if (groupJid) q = q.eq("chat_jid", groupJid);

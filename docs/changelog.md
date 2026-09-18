@@ -55,6 +55,39 @@ the same expression. `members-service.ts` reads the mirror for both the filter a
 mirror. Verified: 614 of 614 members match the Sia link (343 linked, 271 not), and a hand-blanked
 mirror is restored by the trigger. The member page was already right (it shows the real group).
 
+## 2026-09-18 -- Elaya searches a member's history by topic, not by exact words
+
+**Why.** `search_member_history` matched words with AND: "anniversary dinner" found a message only
+if that one message held both words, and knew nothing of "wedding", "shaadi" or "table for two".
+The founder's point: word for word cannot work; she has to understand what we meant.
+
+**How, with what we have today.** True meaning search needs an embedding model, and there is no
+embedding key in the project yet (the plan's decision 4, Jina or self-hosted, is still open).
+But Elaya is herself a language model, so she does the understanding and the database does the
+finding:
+
+- The tool now takes `related`: the other words the topic could have been written as. Its
+  description tells her to always pass 5 to 10, including synonyms, the concrete things the topic
+  implies and Hindi or Hinglish spellings. No extra model call, no extra cost, no new vendor.
+- One search looks in three places: Serene's one-line summaries of every finished conversation
+  (written by the profiler, in plain English, so they are a ready index of what each chat was
+  about), the saved facts, and the messages themselves (ANY of the words, `anyOfQuery` in
+  `sia-service.ts`).
+- Results are ranked by how many of the words a row really holds, as whole words. The database's
+  ILIKE is only the net; the whole-word check is the sieve ("out" no longer matches "checkout").
+  Filler words split from the query are ignored.
+- Both brains get it without a deploy of the Python side: it re-reads tool definitions from the
+  bridge every 60 seconds.
+
+**Checked on a real member:** "eating out" with related words found the halal restaurant request,
+a lunch reservation for 16 and the saved fact "Requires halal food", in under a second. Plain word
+search found none of those.
+
+**Still to come:** embeddings, once a provider is chosen. This makes the gap small; it does not
+close it (a chat about "celebrating 25 years together" with none of the words would still be missed).
+
+---
+
 ## 2026-09-18 -- The sentinel's judgement, and the vendor on a ticket
 
 Two builds the founder asked for together, with one rule over both: Serene does the work, a human

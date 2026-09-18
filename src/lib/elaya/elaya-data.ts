@@ -84,6 +84,7 @@ import {
   type ConversationHook,
 } from '@/lib/services/intelligence-service';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { mapRows } from '@/lib/utils/rows';
 import type { DealFilters } from '@/lib/types/database';
 
 // ─────────────────────────────────────────────
@@ -483,18 +484,73 @@ export async function getMemberMessagesFor(
 }
 
 /** Full-text hits in the member's group for a word or phrase (newest first). */
+/** Words that carry no topic. Kept tiny: it only guards the words split out of the caller's query. */
+const SEARCH_FILLER: ReadonlySet<string> = new Set(['with', 'from', 'that', 'this', 'have', 'about', 'plans', 'plan', 'want', 'wants', 'does', 'what', 'when', 'ever', 'their', 'them', 'they', 'some', 'like', 'likes', 'into', 'over', 'were', 'been', 'will', 'would', 'should', 'could', 'there', 'here', 'your', 'ours', 'mine', 'also', 'just', 'very', 'much', 'more', 'most', 'many', 'than', 'then', 'time', 'times', 'thing', 'things', 'stuff', 'eating', 'going', 'doing', 'getting', 'family', 'member', 'something', 'anything', 'everything', 'nothing', 'never', 'happened', 'happen', 'mention', 'mentioned', 'asked', 'said', 'talked', 'told']);
+
+export type MemberHistorySearch = {
+  member: MemberBrief;
+  group_subject: string | null;
+  /** Serene's one-line summary of each finished conversation (the profiler, 0215) that touches the topic. */
+  conversations: { date: string; summary: string; tone: string | null }[];
+  /** Saved facts that touch the topic. */
+  facts: { facet: string; key: string; value: string; polarity: string | null; date: string }[];
+  /** The raw messages holding any of the words, newest first. */
+  hits: MemberMessage[];
+  searched_for: string[];
+};
+
+/**
+ * Search a member's history BY TOPIC, not by exact phrase. Word search cannot know that
+ * "anniversary" and "wedding day" are one thing, so the CALLER (Elaya, who does know) passes
+ * `related`: the other words it could have been written as. One pass over three places:
+ * the conversation summaries, the saved facts, and the messages themselves (any of the words).
+ * Same gate as every member read: getMemberBriefFor decides whether this principal sees the member.
+ */
 export async function searchMemberHistoryFor(
   principal: StaffPrincipal,
   clientId: string,
   query: string,
+  related: string[] = [],
   limit = 30,
-): Promise<{ member: MemberBrief; group_subject: string | null; hits: MemberMessage[] } | null> {
+): Promise<MemberHistorySearch | null> {
   const brief = await getMemberBriefFor(principal, clientId);
   if (!brief) return null;
-  if (!brief.group) return { member: brief.member, group_subject: null, hits: [] };
-  const rows = await searchSiaMessages(query, brief.group.group_jid);
-  const hits = await shapeMessages(rows.slice(0, limit));
-  return { member: brief.member, group_subject: brief.group.subject, hits };
+  // Letters, digits and spaces only: these words go into a PostgREST `or=` filter and a tsquery.
+  const tidy = (t: string) => t.replace(/[^\p{L}\p{N} ]+/gu, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+  // The caller's own `related` words are trusted at 3 letters ("goa", "spa"); words split out of the
+  // query must be 4+ and not filler, or "eating out" would match every "about" and "checkout".
+  const words = [...new Set([
+    tidy(query),
+    ...tidy(query).split(' ').filter((w) => w.length >= 4 && !SEARCH_FILLER.has(w)),
+    ...related.map(tidy).filter((w) => w.length >= 3 && !SEARCH_FILLER.has(w)),
+  ].filter((w) => w.length >= 3))].slice(0, 14);
+  if (words.length === 0) return { member: brief.member, group_subject: brief.group?.subject ?? null, conversations: [], facts: [], hits: [], searched_for: [] };
+  const admin = createAdminClient();
+  const like = (col: string) => words.map((w) => `${col}.ilike.*${w}*`).join(',');
+  const [events, facts, rows] = await Promise.all([
+    memberDb(admin).from('member_events').select('occurred_at, summary, tone').eq('member_id', clientId).eq('source', 'whatsapp_group').or(like('summary')).order('occurred_at', { ascending: false }).limit(80),
+    memberDb(admin).from('member_facts').select('facet, key, value, polarity, created_at').eq('member_id', clientId).is('superseded_by', null).or(`${like('value')},${like('key')}`).order('confidence', { ascending: false }).limit(60),
+    brief.group ? searchSiaMessages(query, brief.group.group_jid, words) : Promise.resolve([]),
+  ]);
+  // Best match first: how many of the words a row really holds, as WHOLE words (the database's
+  // ILIKE is a substring net; this is the sieve). A row holding none as a whole word is dropped.
+  const res = words.map((w) => new RegExp(`(?<![\\p{L}\\p{N}])${w.replace(/ /g, '\\s+')}(?![\\p{L}\\p{N}])`, 'iu'));
+  const score = (text: string) => res.reduce((n, re) => n + (re.test(text) ? 1 : 0), 0);
+  const ranked = <T,>(list: T[], text: (r: T) => string, keep: number): T[] =>
+    list.map((r, i) => ({ r, i, n: score(text(r)) })).filter((x) => x.n > 0).sort((x, y) => y.n - x.n || x.i - y.i).slice(0, keep).map((x) => x.r);
+  type Ev = { occurred_at: string; summary: string | null; tone: string | null };
+  type Fa = { facet: string; key: string; value: string; polarity: string | null; created_at: string };
+  const topEvents = ranked(mapRows<Ev, Ev>(events.data, (e) => e), (e) => e.summary ?? '', 12);
+  const topFacts = ranked(mapRows<Fa, Fa>(facts.data, (f) => f), (f) => `${f.key.replace(/_/g, ' ')} ${f.value}`, 12);
+  const topRows = ranked(rows, (m) => m.text ?? '', limit);
+  return {
+    member: brief.member,
+    group_subject: brief.group?.subject ?? null,
+    conversations: topEvents.map((e) => ({ date: e.occurred_at.slice(0, 10), summary: clip(e.summary, 300) ?? '', tone: e.tone })),
+    facts: topFacts.map((f) => ({ facet: f.facet, key: f.key, value: clip(f.value) ?? '', polarity: f.polarity, date: f.created_at.slice(0, 10) })),
+    hits: await shapeMessages(topRows),
+    searched_for: words,
+  };
 }
 
 // ─── The member's profile: what Serene KNOWS, as opposed to what was said ──────
