@@ -57,11 +57,12 @@ async function main() {
   const after = await snapshot();
 
   console.log(`\n  ── the cycle ──`);
-  console.log(`  notes read     ${stats.notesRead}   failed ${stats.notesFailed}   skipped ${stats.notesSkipped}`);
+  console.log(`  notes read     ${stats.notesRead}   failed ${stats.notesFailed}   gave up ${stats.notesGivenUp}   skipped ${stats.notesSkipped}   deferred ${stats.notesDeferred}`);
   console.log(`  files read     ${stats.filesRead}`);
   console.log(`  vendors        ${stats.vendorsCreated} created · ${stats.vendorsMatched} matched to existing`);
   console.log(`  engagements    ${stats.engagementsWritten}`);
   console.log(`  duplicates     ${stats.duplicatesFlagged} flagged for review`);
+  console.log(`  outcomes       ${stats.outcomesSettled} job(s) closed because the ticket resolved`);
   console.log(`  elapsed        ${((Date.now() - t0) / 1000).toFixed(1)}s`);
   console.log(`\n  ── the tables ──`);
   console.log(`  vendors        ${before.vendors} -> ${after.vendors}`);
@@ -73,15 +74,15 @@ async function main() {
   const { data: made } = await db
     .from("vendors")
     .select("id, name, category, subcategory, primary_phone, home_city, contacts, identity_status, import_raw")
-    .contains("sources", ["ticket"])
+    .contains("sources", ["freshdesk_live"])
     .order("created_at", { ascending: false })
     .limit(40);
 
-  console.log(`\n  ── vendors this machine created (source 'ticket') ──`);
+  console.log(`\n  ── vendors this machine created (source 'freshdesk_live') ──`);
   if (!(made ?? []).length) console.log(`     none`);
   for (const v of (made ?? []) as Record<string, unknown>[]) {
     const contacts = (v.contacts as { name: string | null; phones: string[]; emails: string[] }[]) ?? [];
-    const raw = (v.import_raw as { ticket?: { ticket_id?: number; quote?: string } })?.ticket;
+    const raw = (v.import_raw as { freshdesk_live?: { ticket_id?: number; quote?: string } })?.freshdesk_live;
     console.log(`\n     ${v.name}`);
     console.log(`        category : ${v.category ?? "-"} / ${v.subcategory ?? "-"}   ${v.identity_status}`);
     if (v.primary_phone) console.log(`        phone    : ${v.primary_phone}`);

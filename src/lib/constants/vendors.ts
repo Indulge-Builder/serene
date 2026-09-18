@@ -50,13 +50,19 @@ export const VENDOR_IDENTITY_STATUS_LABELS = VENDOR_IDENTITY_STATUS_DEF.labels;
 export const VENDOR_IDENTITY_STATUS_ENUM   = VENDOR_IDENTITY_STATUS_DEF.zodEnum;
 
 // ONE source vocabulary for BOTH vendors.sources[] and
-// vendor_engagements.source (the two CHECKs mirror this list). `ticket` is
-// reserved for the in-app ticketing Sia will bring.
+// vendor_engagements.source (the two CHECKs mirror this list -- 0183 / 0185,
+// re-declared in 0213). `ticket` is reserved for Sia's in-app tickets, which
+// now exist. `freshdesk_live` is the live extractor (0213): its rows could not
+// share `freshdesk`, because load-vendors.ts --wipe deletes every `freshdesk`
+// row when the archive is re-run and would have taken the live rows with it;
+// and they could not borrow `ticket`, because a Sia job and a Freshdesk job
+// would then be indistinguishable and neither set reversible on its own.
 const VENDOR_SOURCE_DEF = defineEnum([
-  { id: "freshdesk", label: "Freshdesk archive" },
-  { id: "sia",       label: "Sia (WhatsApp)" },
-  { id: "manual",    label: "Entered by staff" },
-  { id: "ticket",    label: "In-app ticket" },
+  { id: "freshdesk",      label: "Freshdesk archive" },
+  { id: "freshdesk_live", label: "Freshdesk (live)" },
+  { id: "sia",            label: "Sia (WhatsApp)" },
+  { id: "manual",         label: "Entered by staff" },
+  { id: "ticket",         label: "In-app ticket" },
 ]);
 export const VENDOR_SOURCES = VENDOR_SOURCE_DEF.values;
 export type VendorSource = (typeof VENDOR_SOURCES)[number];
@@ -358,7 +364,39 @@ export const EXTRACT_CONCURRENCY = 3;
  */
 export const EXTRACT_FILES_PER_NOTE = 4;
 /** Bytes. Above this a file is skipped and said so — the model cannot read it usefully anyway. */
-export const EXTRACT_FILE_MAX_BYTES = 8 * 1024 * 1024;
+export const EXTRACT_FILE_MAX_BYTES = 5 * 1024 * 1024;
+/**
+ * All of a note's files together, raw bytes. Base64 inflates by a third and the
+ * model API refuses a request over ~32 MB outright -- and a refusal is not a
+ * transient failure, it is the same refusal on every retry. Four 8 MB photos
+ * would have hit it every time (reviewer, 2026-09-18). Files past the budget are
+ * skipped and counted, and the note still goes to the model with what fit.
+ */
+export const EXTRACT_FILES_TOTAL_MAX_BYTES = 16 * 1024 * 1024;
+/**
+ * How many times a note may FAIL to read before the queue stops offering it.
+ * Without a cap, a note that fails for a permanent reason comes back every five
+ * minutes forever -- and since the queue is oldest-first, forty such notes would
+ * block everything behind them, silently (reviewer, 2026-09-18). A note at the
+ * cap keeps vendor_extracted_at NULL, so "gave up" stays distinguishable from
+ * "read"; re-queue it by setting vendor_extract_attempts back to 0.
+ */
+export const EXTRACT_MAX_ATTEMPTS = 3;
+/**
+ * Per model call. The Elaya adapter's default is 30s, sized for a chat turn
+ * inside a 60s lambda; reading two photographed bills is slower than a chat
+ * turn and this job has a 300s budget of its own.
+ */
+export const EXTRACT_TIMEOUT_MS = 60_000;
+/**
+ * Wall-clock budget for one cycle, under the trigger's 300s maxDuration. When
+ * it runs out the remaining claimed notes are simply left NULL for the next
+ * pass -- nothing is half-done, because each note is marked the moment its own
+ * writes land.
+ */
+export const EXTRACT_CYCLE_BUDGET_MS = 240_000;
+/** Open live-extractor jobs checked against their ticket per cycle (no model, no cost). */
+export const EXTRACT_SETTLE_PER_CYCLE = 200;
 /** Characters of note text sent. Long threads are pasted email chains; the top carries the point. */
 export const EXTRACT_NOTE_CHAR_CAP = 6000;
 /** A JSON array of small objects. Generous, and a cap keeps a runaway reply cheap. */
@@ -406,13 +444,19 @@ export const INDULGE_OWN_ENTITIES: readonly string[] = [
 
 /** True when a name is one of ours rather than a supplier's. Punctuation-insensitive. */
 export function isOwnEntity(name: string | null | undefined): boolean {
-  const key = (name ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
-  if (!key) return false;
+  // Whole words, compared word by word from the front. A character prefix was
+  // wrong: "indulge" matched "Indulgence Spa" and would have dropped a real
+  // vendor (reviewer, 2026-09-18). "Indulge Global Pvt Ltd" still matches
+  // "indulge global" word for word; "Indulgence" is a different word.
+  const words = (name ?? "").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  if (!words.length) return false;
   return INDULGE_OWN_ENTITIES.some((e) => {
-    const ek = e.replace(/[^a-z0-9]+/g, "");
-    return key === ek || key.startsWith(ek);
+    const ew = e.split(/[^a-z0-9]+/).filter(Boolean);
+    return ew.length > 0 && ew.length <= words.length && ew.every((w, i) => words[i] === w);
   });
 }
 
 /** The sync_state key holding the extractor's own run record. */
 export const EXTRACT_SYNC_KEY = "vendor_extract";
+/** The `source` the live extractor writes on every vendor and job it creates. */
+export const EXTRACT_SOURCE = "freshdesk_live" as const satisfies VendorSource;

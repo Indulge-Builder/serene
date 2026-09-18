@@ -16,29 +16,54 @@
 // Nothing here touches a vendor table directly. Every write goes through the
 // cores in vendor-mutations.ts (R-01) — the same functions the /vendors form and
 // Elaya call — so a synced vendor is the same shape as a typed one. The cores
-// were extended (not copied) on 2026-09-17 to carry provenance: `source:'ticket'`,
-// the ticket id as `source_ref`, `identity_status:'unverified'`.
+// were extended (not copied) on 2026-09-17 to carry provenance: `source:
+// 'freshdesk_live'` (its own value -- `ticket` is Sia's and `freshdesk` is the
+// archive the loader wipes on re-run), the ticket id as `source_ref`,
+// `identity_status:'unverified'`.
 //
 // IDEMPOTENT by key, not by luck. `(vendor_id, source, source_ref)` is UNIQUE on
 // the ledger, and source_ref is the Freshdesk ticket id, so a ticket read twice
-// refines one engagement row rather than minting a second.
+// REFINES one engagement row -- fills what is still empty, never overwrites what
+// a bill already supplied -- rather than minting a second.
+//
+// EACH NOTE IS MARKED THE MOMENT ITS OWN WRITES LAND, not at the end of the
+// batch: a crash midway through forty notes must not re-bill the thirty it had
+// already read. A note that FAILS to read is counted (vendor_extract_attempts)
+// and the queue stops offering it at EXTRACT_MAX_ATTEMPTS, so one permanently
+// bad note cannot hold the oldest-first queue for everything behind it.
+//
+// OUTCOMES CATCH UP WITH THE TICKET. A job is logged when a note is read, and
+// at that moment the ticket is nearly always still open; Freshdesk resolves it
+// days later with no further note. settleOutcomes() closes the live extractor's
+// open jobs through closeEngagementCore once the mirrored ticket is Resolved or
+// Closed. No model, no cost.
 import { createAdminClient } from "@/lib/supabase/admin";
 import { freshdeskDb, getSyncState, setSyncState } from "@/lib/services/freshdesk-sync";
 import { getPiiMaskingDepth } from "@/lib/services/llm-providers-service";
 import { extractVendorsFromNote, type ExtractedVendor } from "@/lib/services/vendor-extract";
 import { searchVendors } from "@/lib/services/vendors-service";
-import { createVendorCore, logEngagementCore, upsertCapabilityCore } from "@/lib/services/vendor-mutations";
-import { updateVendorCore } from "@/lib/services/vendor-mutations";
+import {
+  closeEngagementCore,
+  createVendorCore,
+  logEngagementCore,
+  updateVendorCore,
+  upsertCapabilityCore,
+} from "@/lib/services/vendor-mutations";
 import { normalizeToE164 } from "@/lib/utils/phone";
 import { sanitizeText } from "@/lib/utils/sanitize";
 import { FRESHDESK_ATTACHMENT_BUCKET } from "@/lib/constants/freshdesk";
 import {
   EXTRACT_CONCURRENCY,
+  EXTRACT_CYCLE_BUDGET_MS,
   EXTRACT_FILE_MAX_BYTES,
   EXTRACT_FILES_PER_NOTE,
+  EXTRACT_FILES_TOTAL_MAX_BYTES,
   EXTRACT_MATCH_MIN_SIMILARITY,
+  EXTRACT_MAX_ATTEMPTS,
   EXTRACT_MIN_FUZZY_NAME_CHARS,
   EXTRACT_NOTES_PER_CYCLE,
+  EXTRACT_SETTLE_PER_CYCLE,
+  EXTRACT_SOURCE,
   EXTRACT_SYNC_KEY,
   EXTRACT_TICKET_CONTEXT_ROWS,
   toVocabularyKey,
@@ -57,12 +82,18 @@ export type ExtractCycleStats = {
   notesRead: number;
   notesSkipped: number;
   notesFailed: number;
+  /** Failed for the last permitted time this cycle; the queue will not offer them again. */
+  notesGivenUp: number;
+  /** Claimed but not reached before the cycle's wall-clock budget; still queued. */
+  notesDeferred: number;
   filesRead: number;
   vendorsCreated: number;
   vendorsMatched: number;
   engagementsWritten: number;
   capabilitiesWritten: number;
   duplicatesFlagged: number;
+  /** Open live-extractor jobs closed because their ticket is now Resolved/Closed. */
+  outcomesSettled: number;
 };
 
 // ─── The queue ────────────────────────────────────────────────────────────────
@@ -74,14 +105,19 @@ type QueuedNote = {
   body_html: string | null;
   attachments: FdAttachment[];
   fd_created_at: string;
+  vendor_extract_attempts: number;
 };
 
-/** Oldest first: a ticket's notes must be read in the order they were written. */
+/**
+ * Oldest first: a ticket's notes must be read in the order they were written.
+ * Notes at the attempts cap are not offered -- see recordFailure.
+ */
 async function claimNotes(limit: number): Promise<QueuedNote[]> {
   const { data, error } = await freshdeskDb()
     .from("conversations")
-    .select("id, ticket_id, body_text, body_html, attachments, fd_created_at")
+    .select("id, ticket_id, body_text, body_html, attachments, fd_created_at, vendor_extract_attempts")
     .is("vendor_extracted_at", null)
+    .lt("vendor_extract_attempts", EXTRACT_MAX_ATTEMPTS)
     .order("fd_created_at", { ascending: true })
     .limit(limit);
   if (error) {
@@ -100,6 +136,26 @@ async function markRead(ids: number[]): Promise<void> {
   if (error) console.error(`${LOG} marking notes read failed:`, error.message);
 }
 
+/**
+ * A read that failed. Counted on the row, immediately, so a permanent failure
+ * cannot come back every five minutes forever: at EXTRACT_MAX_ATTEMPTS the
+ * queue stops offering the note. vendor_extracted_at stays NULL on purpose --
+ * "gave up" is a state someone can query, not one that hides inside "read".
+ */
+async function recordFailure(note: QueuedNote, stats: ExtractCycleStats): Promise<void> {
+  const attempts = note.vendor_extract_attempts + 1;
+  const { error } = await freshdeskDb()
+    .from("conversations")
+    .update({ vendor_extract_attempts: attempts })
+    .eq("id", note.id);
+  if (error) console.error(`${LOG} counting a failed read failed:`, error.message);
+  stats.notesFailed++;
+  if (attempts >= EXTRACT_MAX_ATTEMPTS) {
+    stats.notesGivenUp++;
+    console.error(`${LOG} GAVE UP on note ${note.id} (ticket ${note.ticket_id}) after ${attempts} failed reads; reset vendor_extract_attempts to re-queue it`);
+  }
+}
+
 // ─── The ticket's own facts (free — already mirrored) ────────────────────────
 
 type TicketFacts = {
@@ -112,6 +168,8 @@ type TicketFacts = {
   responder_id: number | null;
   status: number | null;
   fd_created_at: string;
+  resolved_at: string | null;
+  closed_at: string | null;
 };
 
 async function readTickets(ids: number[]): Promise<Map<number, TicketFacts>> {
@@ -119,7 +177,7 @@ async function readTickets(ids: number[]): Promise<Map<number, TicketFacts>> {
   if (ids.length === 0) return out;
   const { data, error } = await freshdeskDb()
     .from("tickets")
-    .select("id, subject, category, sub_category, member_id, responder_id, status, fd_created_at")
+    .select("id, subject, category, sub_category, member_id, responder_id, status, fd_created_at, resolved_at, closed_at")
     .in("id", ids);
   if (error) {
     console.error(`${LOG} ticket read failed:`, error.message);
@@ -169,14 +227,23 @@ async function readFiles(atts: FdAttachment[]): Promise<{ files: LlmFilePart[]; 
   const storage = createAdminClient().storage.from(FRESHDESK_ATTACHMENT_BUCKET);
   const files: LlmFilePart[] = [];
   let skipped = 0;
+  // Two limits, both refusals rather than slowness: the API rejects one image
+  // over ~5 MB and one request over ~32 MB, and a rejection is identical on
+  // every retry -- so a note that exceeded either would burn all its attempts
+  // for nothing. Files past the budget are skipped; the note still goes with
+  // what fit.
+  let total = 0;
   const usable = atts.filter((a) => a.storage_path && READABLE.has(a.content_type ?? ""));
   for (const a of usable.slice(0, EXTRACT_FILES_PER_NOTE)) {
     if ((a.size ?? 0) > EXTRACT_FILE_MAX_BYTES) { skipped++; continue; }
+    if (total + (a.size ?? 0) > EXTRACT_FILES_TOTAL_MAX_BYTES) { skipped++; continue; }
     try {
       const { data, error } = await storage.download(a.storage_path as string);
       if (error || !data) { skipped++; continue; }
       const bytes = Buffer.from(await data.arrayBuffer());
       if (bytes.byteLength > EXTRACT_FILE_MAX_BYTES) { skipped++; continue; }
+      if (total + bytes.byteLength > EXTRACT_FILES_TOTAL_MAX_BYTES) { skipped++; continue; }
+      total += bytes.byteLength;
       files.push({ mediaType: a.content_type as string, dataBase64: bytes.toString("base64") });
     } catch {
       // One unreadable file never stalls a note, let alone a run.
@@ -306,7 +373,17 @@ function actorFor(profileId: string | null): MutationActor {
   };
 }
 
-const OUTCOME_BY_STATUS: Record<number, "completed" | "unknown"> = { 4: "completed", 5: "completed" };
+/** Freshdesk 4 = Resolved, 5 = Closed. Anything else is still a job in progress. */
+const OUTCOME_BY_STATUS: Record<number, "completed"> = { 4: "completed", 5: "completed" };
+
+/** When a resolved ticket closed, as the mirror recorded it; null while it is open. */
+function closedAtFor(t: { status: number | null; resolved_at: string | null; closed_at: string | null; fd_created_at: string }): string | null {
+  if (!(t.status != null && t.status in OUTCOME_BY_STATUS)) return null;
+  const at = t.resolved_at ?? t.closed_at ?? null;
+  // Never before it started -- the ledger CHECKs that, and a mirror row from
+  // the XML archive can carry an odd timestamp.
+  return at && at >= t.fd_created_at ? at : t.fd_created_at;
+}
 
 async function writeFinding(
   found: ExtractedVendor,
@@ -357,7 +434,7 @@ async function writeFinding(
         notes: null,
       } as never,
       {
-        source: "ticket",
+        source: EXTRACT_SOURCE,
         evidence: {
           ticket_id: ticket.id,
           quote: found.evidence,
@@ -392,13 +469,15 @@ async function writeFinding(
       service,
       city: found.city ? toVocabularyKey(found.city) : null,
       started_at: ticket.fd_created_at,
-      closed_at: null,
+      // Already resolved when read: the row is born closed. Still open: the
+      // settle pass closes it when the ticket resolves, days from now.
+      closed_at: closedAtFor(ticket),
       outcome: OUTCOME_BY_STATUS[ticket.status ?? 0] ?? "unknown",
       amount_inr: found.amountInr,
       note: found.evidence ? sanitizeText(found.evidence).slice(0, 4000) : null,
     } as never,
     {
-      source: "ticket",
+      source: EXTRACT_SOURCE,
       sourceRef: String(ticket.id),
       title: ticket.subject,
       agentNameRaw: agent?.profileId ? null : (agent?.name ?? null),
@@ -435,100 +514,180 @@ async function writeFinding(
   return vendorId;
 }
 
+// ─── Outcomes catch up with the ticket ───────────────────────────────────────
+
+/**
+ * Close the live extractor's open jobs whose ticket has since been Resolved or
+ * Closed. A job is logged the moment a note is read, and at that moment the
+ * ticket is nearly always still open -- so the row says `unknown`, the
+ * reliability score reads that, and Freshdesk resolves the ticket days later
+ * with no further note to trigger another read (reviewer, 2026-09-18).
+ *
+ * Through closeEngagementCore -- the ledger's ONE close, resolve-once -- and
+ * only rows this extractor wrote (source = freshdesk_live). Never the archive,
+ * never a hand-logged job. No model call, so it costs nothing to run every pass.
+ */
+async function settleOutcomes(stats: ExtractCycleStats): Promise<void> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("vendor_engagements")
+    .select("id, source_ref, amount_inr, invoice_paths, note")
+    .eq("source", EXTRACT_SOURCE)
+    .eq("outcome", "unknown")
+    .is("closed_at", null)
+    .order("started_at", { ascending: true })
+    .limit(EXTRACT_SETTLE_PER_CYCLE);
+  if (error) {
+    console.error(`${LOG} settle read failed:`, error.message);
+    return;
+  }
+  const open = (data ?? []) as { id: string; source_ref: string; amount_inr: number | null; invoice_paths: string[]; note: string | null }[];
+  if (open.length === 0) return;
+
+  const ticketIds = [...new Set(open.map((r) => Number(r.source_ref)).filter((n) => Number.isFinite(n)))];
+  const { data: tickets, error: tErr } = await freshdeskDb()
+    .from("tickets")
+    .select("id, status, resolved_at, closed_at, fd_created_at")
+    .in("id", ticketIds);
+  if (tErr) {
+    console.error(`${LOG} settle ticket read failed:`, tErr.message);
+    return;
+  }
+  const byId = new Map<number, { id: number; status: number | null; resolved_at: string | null; closed_at: string | null; fd_created_at: string }>();
+  for (const t of (tickets ?? []) as unknown as { id: number; status: number | null; resolved_at: string | null; closed_at: string | null; fd_created_at: string }[]) byId.set(t.id, t);
+
+  const actor = actorFor(null);
+  for (const row of open) {
+    const t = byId.get(Number(row.source_ref));
+    if (!t) continue;
+    const closedAt = closedAtFor(t);
+    if (!closedAt) continue;                              // still open -- next time
+    const res = await closeEngagementCore(actor, {
+      id: row.id,
+      closed_at: closedAt,
+      outcome: "completed",
+      // The close carries the row's own facts forward; it must not blank them.
+      amount_inr: row.amount_inr,
+      invoice_paths: row.invoice_paths ?? [],
+      note: row.note,
+    });
+    if (res.ok) stats.outcomesSettled++;
+    else if (res.error !== "already_closed") console.error(`${LOG} closeEngagementCore refused (${res.error}) for job ${row.id}`);
+  }
+}
+
 // ─── The cycle ───────────────────────────────────────────────────────────────
 
 /**
  * One pass: claim a batch of unread notes, read each with the model, write what
- * it found, mark the notes done. Notes are grouped by ticket and read oldest
- * first so that a phone arriving in note 6 can attach to a vendor named in note
- * 1 — the model is told what earlier notes on the same ticket already yielded.
+ * it found, mark THAT note done, move on. Notes are grouped by ticket and read
+ * oldest first so that a phone arriving in note 6 can attach to a vendor named
+ * in note 1 — the model is told what earlier notes on the same ticket already
+ * yielded. Then the settle pass closes jobs whose tickets have resolved.
  *
- * A note whose READ failed is left unmarked and comes back next pass. A note the
- * model read and found nothing in is marked done: that is an answer, not a
- * failure, and re-reading it would re-bill it forever.
+ * A note whose READ failed is counted (recordFailure) and comes back next pass
+ * until the attempts cap. A note the model read and found nothing in is marked
+ * done: that is an answer, not a failure, and re-reading it would re-bill it
+ * forever. Notes not reached before the wall-clock budget stay queued, untouched.
  */
 export async function runVendorExtractCycle(limit = EXTRACT_NOTES_PER_CYCLE): Promise<ExtractCycleStats> {
   const stats: ExtractCycleStats = {
-    notesRead: 0, notesSkipped: 0, notesFailed: 0, filesRead: 0,
+    notesRead: 0, notesSkipped: 0, notesFailed: 0, notesGivenUp: 0, notesDeferred: 0, filesRead: 0,
     vendorsCreated: 0, vendorsMatched: 0, engagementsWritten: 0, capabilitiesWritten: 0, duplicatesFlagged: 0,
+    outcomesSettled: 0,
   };
+  const deadline = Date.now() + EXTRACT_CYCLE_BUDGET_MS;
   const notes = await claimNotes(limit);
-  if (notes.length === 0) {
-    // A heartbeat even when there is nothing to do. Without it "alive and idle"
-    // and "not running at all" look identical from the outside, which is the
-    // shape every silent-failure incident in this codebase has taken.
-    await setSyncState(EXTRACT_SYNC_KEY, { last_run_at: new Date().toISOString(), idle: true, ...stats });
-    return stats;
-  }
 
-  const tickets = await readTickets([...new Set(notes.map((n) => n.ticket_id))]);
-  const agents = await resolveAgents([...tickets.values()].map((t) => t.responder_id).filter((n): n is number => n != null));
-  const maskingDepth = await getPiiMaskingDepth();
+  if (notes.length > 0) {
+    const tickets = await readTickets([...new Set(notes.map((n) => n.ticket_id))]);
+    const agents = await resolveAgents([...tickets.values()].map((t) => t.responder_id).filter((n): n is number => n != null));
+    const maskingDepth = await getPiiMaskingDepth();
 
-  // Per ticket, what previous notes in THIS run already found — the thread that
-  // lets a later detail find its owner.
-  const context = new Map<number, string[]>();
-  const done: number[] = [];
+    // Per ticket, what previous notes in THIS run already found — the thread that
+    // lets a later detail find its owner.
+    const context = new Map<number, string[]>();
 
-  const byTicket = new Map<number, QueuedNote[]>();
-  for (const n of notes) {
-    const list = byTicket.get(n.ticket_id) ?? [];
-    list.push(n);
-    byTicket.set(n.ticket_id, list);
-  }
+    const byTicket = new Map<number, QueuedNote[]>();
+    for (const n of notes) {
+      const list = byTicket.get(n.ticket_id) ?? [];
+      list.push(n);
+      byTicket.set(n.ticket_id, list);
+    }
 
-  // Tickets run in parallel; the notes WITHIN a ticket run in order, because
-  // each one's context depends on the one before it.
-  const queue = [...byTicket.entries()];
-  const worker = async () => {
-    for (;;) {
-      const entry = queue.shift();
-      if (!entry) return;
-      const [ticketId, ticketNotes] = entry;
-      const ticket = tickets.get(ticketId);
-      if (!ticket) { stats.notesSkipped += ticketNotes.length; done.push(...ticketNotes.map((n) => n.id)); continue; }
-      const agent = ticket.responder_id != null ? agents.get(ticket.responder_id) : undefined;
+    // Tickets run in parallel; the notes WITHIN a ticket run in order, because
+    // each one's context depends on the one before it.
+    const queue = [...byTicket.entries()];
+    const worker = async () => {
+      for (;;) {
+        const entry = queue.shift();
+        if (!entry) return;
+        const [ticketId, ticketNotes] = entry;
+        const ticket = tickets.get(ticketId);
+        if (!ticket) {
+          // No mirrored ticket to hang a job on. Marked read: it is not a failure
+          // of the model, and it will not be different next pass.
+          stats.notesSkipped += ticketNotes.length;
+          await markRead(ticketNotes.map((n) => n.id));
+          continue;
+        }
+        const agent = ticket.responder_id != null ? agents.get(ticket.responder_id) : undefined;
 
-      for (const note of ticketNotes) {
-        const text = (note.body_text ?? "").trim() || (note.body_html ?? "").replace(/<[^>]*>/g, " ").trim();
-        const atts = Array.isArray(note.attachments) ? note.attachments : [];
-        const { files, skipped } = await readFiles(atts);
-        stats.filesRead += files.length;
-        if (skipped) console.warn(`${LOG} note ${note.id}: ${skipped} file(s) skipped (size or unreadable type)`);
-
-        const result = await extractVendorsFromNote({
-          subject: ticket.subject,
-          noteText: text,
-          files,
-          ticketContext: (context.get(ticketId) ?? []).slice(0, EXTRACT_TICKET_CONTEXT_ROWS),
-          maskingDepth,
-        });
-
-        if (result == null) { stats.notesFailed++; continue; }   // left queued on purpose
-        stats.notesRead++;
-        done.push(note.id);
-
-        for (const found of result.vendors) {
-          try {
-            await writeFinding(found, ticket, agent, stats);
-            if (found.name) {
-              const line = [found.name, found.category, found.phones[0]].filter(Boolean).join(" · ");
-              context.set(ticketId, [line, ...(context.get(ticketId) ?? [])]);
-            }
-          } catch (e) {
-            console.error(`${LOG} write failed for ticket ${ticketId}:`, e instanceof Error ? e.message : e);
+        for (let i = 0; i < ticketNotes.length; i++) {
+          if (Date.now() > deadline) {
+            // Out of time. Whatever is left stays NULL and unattempted -- the next
+            // pass starts exactly here. Nothing is half-done, because every note
+            // before this one was marked the moment its own writes landed.
+            stats.notesDeferred += ticketNotes.length - i;
+            for (const [, rest] of queue) stats.notesDeferred += rest.length;
+            queue.length = 0;
+            return;
           }
+          const note = ticketNotes[i];
+          const text = (note.body_text ?? "").trim() || (note.body_html ?? "").replace(/<[^>]*>/g, " ").trim();
+          const atts = Array.isArray(note.attachments) ? note.attachments : [];
+          const { files, skipped } = await readFiles(atts);
+          stats.filesRead += files.length;
+          if (skipped) console.warn(`${LOG} note ${note.id}: ${skipped} file(s) skipped (size, budget or unreadable type)`);
+
+          const result = await extractVendorsFromNote({
+            subject: ticket.subject,
+            noteText: text,
+            files,
+            ticketContext: (context.get(ticketId) ?? []).slice(0, EXTRACT_TICKET_CONTEXT_ROWS),
+            maskingDepth,
+          });
+
+          if (result == null) { await recordFailure(note, stats); continue; }
+          stats.notesRead++;
+
+          for (const found of result.vendors) {
+            try {
+              await writeFinding(found, ticket, agent, stats);
+              if (found.name) {
+                const line = [found.name, found.category, found.phones[0]].filter(Boolean).join(" · ");
+                context.set(ticketId, [line, ...(context.get(ticketId) ?? [])]);
+              }
+            } catch (e) {
+              console.error(`${LOG} write failed for ticket ${ticketId}:`, e instanceof Error ? e.message : e);
+            }
+          }
+          // THIS note, now. A crash on the next one must not re-bill this one.
+          await markRead([note.id]);
         }
       }
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(EXTRACT_CONCURRENCY, queue.length) }, worker));
+    };
+    await Promise.all(Array.from({ length: Math.min(EXTRACT_CONCURRENCY, queue.length) }, worker));
+  }
 
-  await markRead(done);
-  await setSyncState(EXTRACT_SYNC_KEY, {
-    last_run_at: new Date().toISOString(),
-    ...stats,
-  });
+  // Runs whether or not there were notes: tickets resolve on their own clock.
+  if (Date.now() <= deadline) await settleOutcomes(stats);
+
+  const idle = notes.length === 0 && stats.outcomesSettled === 0;
+  // A heartbeat even when there is nothing to do. Without it "alive and idle"
+  // and "not running at all" look identical from the outside, which is the
+  // shape every silent-failure incident in this codebase has taken.
+  await setSyncState(EXTRACT_SYNC_KEY, { last_run_at: new Date().toISOString(), ...(idle ? { idle: true } : {}), ...stats });
   return stats;
 }
 

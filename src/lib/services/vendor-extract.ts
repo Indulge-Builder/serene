@@ -33,6 +33,7 @@ import {
   VENDOR_CATEGORIES,
   VENDOR_SERVICES,
   EXTRACT_MAX_OUTPUT_TOKENS,
+  EXTRACT_TIMEOUT_MS,
   EXTRACT_NOTE_CHAR_CAP,
 } from "@/lib/constants/vendors";
 
@@ -257,6 +258,10 @@ export async function extractVendorsFromNote(input: ExtractInput): Promise<Extra
       // The system prompt is byte-stable across every note, so the cache
       // breakpoint pays for itself from the second note of every run onward.
       cachePrefix: true,
+      // A photographed bill takes longer to read than a chat turn, and the
+      // adapter's 30s default is sized for the latter. Under 60s the same note
+      // would time out on every attempt and burn its retries for nothing.
+      timeoutMs: EXTRACT_TIMEOUT_MS,
     });
 
     const vendors = parseExtraction(result.text);

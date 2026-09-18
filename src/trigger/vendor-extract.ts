@@ -35,7 +35,7 @@ export const vendorExtractTask = schedules.task({
     const { runVendorExtractCycle } = await import("@/lib/services/vendor-extract-sync");
     const stats = await runVendorExtractCycle();
 
-    if (stats.notesRead === 0 && stats.notesFailed === 0) return { idle: true };
+    if (stats.notesRead === 0 && stats.notesFailed === 0 && stats.outcomesSettled === 0) return { idle: true };
 
     // Counts at every stage, on one line. Every silent-failure trap this codebase
     // has hit looked fine until someone counted; a number that looks wrong should
@@ -43,14 +43,18 @@ export const vendorExtractTask = schedules.task({
     const line = {
       notesRead: stats.notesRead,
       notesFailed: stats.notesFailed,
+      notesGivenUp: stats.notesGivenUp,
+      notesDeferred: stats.notesDeferred,
       notesSkipped: stats.notesSkipped,
       filesRead: stats.filesRead,
       vendorsCreated: stats.vendorsCreated,
       vendorsMatched: stats.vendorsMatched,
       engagements: stats.engagementsWritten,
       duplicatesFlagged: stats.duplicatesFlagged,
+      outcomesSettled: stats.outcomesSettled,
     };
-    if (stats.notesFailed > 0) console.error("[vendor-extract] cycle with failures", JSON.stringify(line));
+    // A give-up is the loudest line here: a note the queue will never offer again.
+    if (stats.notesGivenUp > 0 || stats.notesFailed > 0) console.error("[vendor-extract] cycle with failures", JSON.stringify(line));
     else console.log("[vendor-extract] cycle", JSON.stringify(line));
     return line;
   },

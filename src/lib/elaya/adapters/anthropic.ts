@@ -160,7 +160,7 @@ export const anthropicAdapter: LlmProviderAdapter = {
       // function killed mid-stream with no error event — M6). A turn makes up to
       // MAX_TOOL_ITERATIONS+1 calls, so each call is bounded well under the lambda
       // budget and retried at most once (a second backoff would blow the window).
-      { timeout: ELAYA_REQUEST_TIMEOUT_MS, maxRetries: 1 },
+      { timeout: req.timeoutMs ?? ELAYA_REQUEST_TIMEOUT_MS, maxRetries: 1 },
     );
 
     if (req.onTextDelta) {

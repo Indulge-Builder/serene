@@ -81,6 +81,8 @@ export type FdConversationRow = {
    * billed step in that pipeline, so clearing it re-bills the whole thread.
    */
   vendor_extracted_at: string | null;
+  /** 0213: failed extraction reads; the queue stops offering a note at EXTRACT_MAX_ATTEMPTS. */
+  vendor_extract_attempts: number;
 };
 
 export type FdContactRow = {
@@ -219,7 +221,7 @@ export type FreshdeskDatabase = {
   freshdesk: {
     Tables: {
       tickets: Table<FdTicketRow, Omit<FdTicketRow, "first_synced_at" | "synced_at" | "attachments"> & { synced_at?: string; attachments?: FdAttachment[] }>;
-      conversations: Table<FdConversationRow, Omit<FdConversationRow, "media_synced_at" | "vendor_extracted_at"> & { media_synced_at?: string | null; vendor_extracted_at?: string | null }>;
+      conversations: Table<FdConversationRow, Omit<FdConversationRow, "media_synced_at" | "vendor_extracted_at" | "vendor_extract_attempts"> & { media_synced_at?: string | null; vendor_extracted_at?: string | null; vendor_extract_attempts?: number }>;
       contacts: Table<FdContactRow>;
       agents: Table<FdAgentRow>;
       groups: Table<FdGroupRow>;

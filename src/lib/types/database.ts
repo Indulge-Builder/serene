@@ -139,6 +139,7 @@ export type Database = {
           ticket_id: number
           to_emails: Json
           user_id: number | null
+          vendor_extract_attempts: number
           vendor_extracted_at: string | null
         }
         Insert: {
@@ -159,6 +160,7 @@ export type Database = {
           ticket_id: number
           to_emails?: Json
           user_id?: number | null
+          vendor_extract_attempts?: number
           vendor_extracted_at?: string | null
         }
         Update: {
@@ -179,6 +181,7 @@ export type Database = {
           ticket_id?: number
           to_emails?: Json
           user_id?: number | null
+          vendor_extract_attempts?: number
           vendor_extracted_at?: string | null
         }
         Relationships: [

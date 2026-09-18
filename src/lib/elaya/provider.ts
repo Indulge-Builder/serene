@@ -72,6 +72,13 @@ export type LlmCompleteRequest = {
    * buildElayaTimeContext, which keeps the volatile "today" anchor OUT of `system`.
    */
   cachePrefix?: boolean;
+  /**
+   * Per-call wall-clock limit, ms. Optional: an adapter keeps its own default
+   * (sized for a chat turn inside a lambda) when this is absent. A batch job
+   * reading photographed invoices under its own 300s budget passes a longer
+   * one -- the same call is not "stalled" at 30s when it carries two images.
+   */
+  timeoutMs?: number;
   /** Streamed text deltas (assistant prose only — never tool-call JSON). */
   onTextDelta?: (delta: string) => void;
 };

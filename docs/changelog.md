@@ -144,6 +144,46 @@ Runs every five minutes (`trigger/vendor-extract.ts`), 40 notes a pass, which dr
 the ~680 notes a day this account produces. Not every minute like the mirror, because Freshdesk calls
 are free and model reads are not.
 
+**Reviewer round 2 (2026-09-18) -- seven findings, seven fixes, all proven without a model call.**
+
+1. **A later note could erase an earlier note's amount.** `logEngagementCore` used PostgREST's upsert
+   for a repeat, and an upsert sends the whole row: note 1 carries the bill (9,700 rupees), note 2 on
+   the same ticket merely names the vendor again, the second write nulls the amount, and the vendor
+   score reads that row. The payload also carried a fresh random `id`, so the row's id changed and any
+   review linked to it was orphaned. Now a repeat LOOKS UP the row and refines it: fills what is still
+   empty, changes nothing that is set, never sends `id`. Proven: 9,700 survives a null, `goa` fills a
+   null city, a later `mumbai` does not overwrite it, one row, same id. Outcome and `closed_at` are
+   deliberately NOT refined here -- they belong to `closeEngagementCore`. Decision Log row: the ledger
+   now has two sanctioned existing-row writes, and the second is narrow.
+2. **The rows carried the wrong source.** `ticket` is reserved for Sia's in-app tickets, which now
+   exist -- the extractor's rows would have rendered as "In-app ticket" and, once Sia jobs log, the two
+   sets would be inseparable. They could not share `freshdesk` either: the loader's `--wipe` deletes
+   every `freshdesk` row on a re-run. So: **`freshdesk_live`**, one line in `VENDOR_SOURCE_DEF` and the
+   two CHECKs re-declared in 0213 (0213 is applied nowhere but a rebuilt local database, so it was
+   extended rather than followed by a 0214 for the same feature). Proven on a fresh database: exactly
+   one constraint per table, both accepting the value.
+3. **A note that always failed was retried forever.** Oldest-first, so forty such notes would have
+   blocked the whole queue, silently. `vendor_extract_attempts` on the row, bumped on every failed
+   read; the queue stops offering a note at `EXTRACT_MAX_ATTEMPTS` (3). `vendor_extracted_at` stays
+   NULL on a give-up so it is a state you can query, and the trigger logs a give-up as an error naming
+   the note. The two *causes* the reviewer named are handled too: a per-note file **budget** (16 MB
+   raw, 5 MB per file -- the API refuses more, identically on every retry) and a **60 s** per-call
+   timeout -- `timeoutMs` is now an optional field on the provider contract, the adapter keeps its
+   30 s default when it is absent.
+4. **Outcomes now catch up with the ticket.** A job is logged when a note is read, when the ticket is
+   nearly always still open, so nearly every job would have stayed `unknown` forever. A settle pass
+   runs every cycle -- no model, no cost -- and closes the live extractor's open jobs through
+   `closeEngagementCore` once the mirrored ticket is Resolved or Closed, carrying the row's own amount
+   and files forward. Proven: open ticket → still unknown; resolved → exactly one job closed at the
+   ticket's `resolved_at`; a second pass closes nothing (resolve-once holds).
+5. **Each note is marked the moment its own writes land**, not at the end of the batch, so a crash
+   on note 31 no longer re-bills notes 1 to 30. The cycle also has a wall-clock budget (240 s under the
+   trigger's 300 s): notes not reached stay NULL and unattempted for the next pass.
+6. **`isOwnEntity` matched a character prefix**, so "Indulgence Spa" would have vanished. Now whole
+   words from the front: "Indulge Global Pvt. Ltd." still matches, "Indulgence" is a different word.
+7. Provenance `source` types now derive from the vocabulary (`Exclude<VendorSource, "manual">`)
+   instead of a hand-written union that could drift from it.
+
 ---
 
 ## 2026-09-17 — Decision: the profiling gate is the group link, not the members

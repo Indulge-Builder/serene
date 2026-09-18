@@ -122,7 +122,7 @@ async function upsertTolerant(
 async function main() {
   if (RESET) {
     // PostgREST needs a filter on an update; `id > 0` is every copied row.
-    const { error } = await localFd.from("conversations").update({ vendor_extracted_at: null }).gt("id", 0);
+    const { error } = await localFd.from("conversations").update({ vendor_extracted_at: null, vendor_extract_attempts: 0 }).gt("id", 0);
     if (error) { console.error(`  reset failed: ${error.message}`); process.exit(1); }
     const { count } = await localFd.from("conversations").select("id", { count: "exact", head: true });
     console.log(`  re-queued every copied note (${count ?? 0}). Run the extractor again.`);
@@ -215,7 +215,7 @@ async function main() {
   console.log(`  files copied:   ${copiedFiles}`);
 
   // ── the notes themselves, queued ──
-  const notesForLocal = notes.map((n) => ({ ...n, vendor_extracted_at: null }));
+  const notesForLocal = notes.map((n) => ({ ...n, vendor_extracted_at: null, vendor_extract_attempts: 0 }));
   const cRes = await upsertTolerant("conversations", notesForLocal, "id");
   if (cRes.dropped.length) console.log(`  notes: dropped ${cRes.dropped.join(", ")} (not in the local schema)`);
   if (!cRes.ok) process.exit(1);
