@@ -545,13 +545,46 @@ Freshdesk, Zoho or the app.
 
 #### The order of the build, restated
 
+Status as of 2026-09-18, checked against the code and the live database, not from memory.
+
 ```text
-M0  the spine from the two sheets + queendoms + the roster accounts + facts seeded      DONE 2026-09-15 (accounts wait on the roster gaps)
-M1  /members list + dossier + New member form + link/unlink (also from the Sia page)      BUILT 2026-09-15, awaiting the first walk-through
-M2  the app webhook + zoho-service + the Activity, App and Money cards                    (1 week)
-T1  the ticketing core, the list, the new-ticket page, message selection, the help window    BUILT 2026-09-15 (awaiting 0195 push + walk-through; Realtime + settings page follow)
-T2  the sentinel; then T3 intake; then T4 the profiler and the twin's model loop; T5 …
+M0  the spine, queendoms, facts seeded                                  DONE 2026-09-15
+M1  /members list + dossier + New member form + link/unlink             DONE, live. Renamed clients -> members 2026-09-17.
+                                                                        Founder walk-through still to do
+M2  zoho-service + the Money page                                       DONE 2026-09-15 (live Zoho, read only)
+    the member app webhook + the App card                               NOT BUILT (needs a change on the app server)
+T0  Freshdesk mirror live in the cloud, files copied, history loaded    DONE (file backlog still draining by itself)
+    staff roster screen: domain -> role -> queendom, one seat each      DONE 2026-09-16 (0201)
+    ... but nobody is seated yet: 0 staff hold a Concierge seat         DATA WORK, founder + team
+    WhatsApp groups linked to members: 420 linked, 45 still open        DATA WORK, in progress in the other session
+    176 members have no queendom                                        DATA WORK
+T1  ticket tables, state machine, list, board (live drag), ticket page,
+    new ticket from selected messages, help window, SLA + labels settings   DONE, live. 0 real tickets yet: waits on the roster
+T2  the sentinel: rules pass + reading pass, runs every minute in cloud DONE 2026-09-16
+    the judgement pass (the sentinel proposes a status move)            NOT BUILT
+T3  intake phase 1: the genie selects messages -> a ticket draft        DONE
+    intake phase 2: Serene reads the groups and proposes tickets itself NOT BUILT
+T4  the profiler: reads chats, files facts / people / relations /
+    coming up, names hidden from the AI                                 DONE, SWITCHED ON 2026-09-18 (whole history,
+                                                                        Active members only, about a day to finish)
+    the Observation box: a teammate types, facts are filed              DONE 2026-09-15
+    health score with reasons, access log                               DONE
+    the scored exam (golden set) for the profiler                       NOT BUILT (the founder's pilot review stood in for it)
+    the fast snapshot per member                                        NOT BUILT (table exists, nothing fills it; reads are live and fast enough today)
+    per-person tagging inside a group (husband vs wife)                 NOT BUILT (known limit of the profiler)
+T5  Elaya member tools on both channels: overview, recent messages,
+    history search, full profile, finance                               DONE 2026-09-18
+    Elaya ticket tools: list, get, add note, propose a status move      DONE 2026-09-15
+    meaning search (embeddings, member_chunks, Jina)                    NOT BUILT (word search works today)
+T6  vendors learn from Freshdesk notes by themselves                    DONE 2026-09-18 (PR #4)
+    ticket -> vendor ledger, ranker inside the ticket, review at close  NOT BUILT
+    member app reads Serene tickets, pilot queendom, Freshdesk cutover  NOT STARTED
+T7  anticipation, Joker suggestions, staff response metrics, autonomy   NOT STARTED (the profiler already files "coming up" items)
 ```
+
+**Small open items:** rotate the Freshdesk API key and webhook secret (decision 12); the memberships
+history table and the won-deal to member bridge; drop the old `get_client_*` tool aliases in the
+Elaya bridge once the brain has run a week on the new names.
 
 Members before tickets, because the ticket creator, the help window and the board all read
 the member dossier. The profiler (T4) comes after tickets; its stores and loop are created in M0

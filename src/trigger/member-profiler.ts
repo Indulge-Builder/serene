@@ -10,14 +10,15 @@
  *
  * One run at a time and a time budget, the lesson of 2026-09-18 (a cycle longer than its
  * schedule with one run at a time can only grow a queue): new windows stop being started
- * after four minutes, and a run that starts long after its minute leaves at once.
+ * after seven and a half minutes (PROFILER_RUN_BUDGET_MS), the hard stop is just under the ten
+ * minute schedule, and a run that starts long after its minute leaves at once.
  */
 import { schedules } from "@trigger.dev/sdk/v3";
 
 export const memberProfilerTask = schedules.task({
   id: "member-profiler",
   cron: { pattern: "*/10 * * * *" },
-  maxDuration: 420,
+  maxDuration: 590,
   queue: { concurrencyLimit: 1 },
   run: async (payload) => {
     const lateMs = Date.now() - new Date(payload.timestamp).getTime();
@@ -28,7 +29,8 @@ export const memberProfilerTask = schedules.task({
     if (!(await getMemberProfilerEnabled())) return { skipped: "disabled" };
 
     const { runProfilerSweep } = await import("@/lib/services/member-profiler");
-    const sweep = await runProfilerSweep({ apply: true, deadlineMs: 240_000 });
+    const { PROFILER_RUN_BUDGET_MS } = await import("@/lib/constants/member-profiler");
+    const sweep = await runProfilerSweep({ apply: true, deadlineMs: PROFILER_RUN_BUDGET_MS });
     const line = {
       groups: sweep.groups,
       windows: sweep.windows,

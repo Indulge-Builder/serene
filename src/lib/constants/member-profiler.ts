@@ -33,12 +33,19 @@ export const PROFILER_BROAD_SENDER_MIN_GROUPS = 6;
 /** The cloud task's budget per run: groups looked at, windows sent to the model. */
 export const PROFILER_GROUPS_PER_RUN = 12;
 /**
- * Conversations sent to the model per run. One reading takes about five seconds, so forty fit
- * inside the task's four-minute budget. At this pace the approved history run (about 87,000
- * messages across 281 Active members, 2026-09-18) drains in a day or two; afterwards the day's
- * new conversations are far fewer than this and the number stops mattering.
+ * Conversations sent to the model per run: a ceiling, not a target. The task's time budget is
+ * what usually ends a run (a reading takes about nine seconds in the cloud).
  */
-export const PROFILER_WINDOWS_PER_RUN = 40;
+export const PROFILER_WINDOWS_PER_RUN = 180;
+/**
+ * Groups read side by side. Inside a group the order is strict; across groups nothing is
+ * shared, so this is the safe axis to widen. Three keeps well inside the provider's rate limit
+ * and, with the longer run budget, takes the approved history read from about 28 hours to
+ * about 5 (2026-09-18). Same conversations, same cost, sooner.
+ */
+export const PROFILER_PARALLEL_GROUPS = 3;
+/** How long one cloud run keeps STARTING new readings. The task's hard stop sits above it. */
+export const PROFILER_RUN_BUDGET_MS = 450_000;
 /**
  * Whose groups are read: `member.members.membership_status` values (the CLIENT_STATUSES ids).
  * The founder's call on 2026-09-18: Active members only, for now. Passed to

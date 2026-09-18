@@ -30,6 +30,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { memberDb } from "@/lib/supabase/schemas";
 import { resolveLlmForJob } from "@/lib/elaya/registry";
+import { mapWithConcurrency } from "@/lib/utils/concurrency";
 import { maskPii } from "@/lib/elaya/pii";
 import { getPiiMaskingDepth } from "@/lib/services/llm-providers-service";
 import { upsertMemberRelation } from "@/lib/services/member-relations";
@@ -43,7 +44,7 @@ import {
   PROFILER_MESSAGE_CHAR_CAP, PROFILER_FETCH_LIMIT, PROFILER_CONFIDENCE_CAP, PROFILER_CONFIDENCE_FLOOR,
   PROFILER_BROAD_SENDER_MIN_GROUPS, PROFILER_GROUPS_PER_RUN, PROFILER_WINDOWS_PER_RUN, PROFILER_RUN_KIND,
   PROFILER_COST_PER_MTOK, PROFILER_MAX_OUTPUT_TOKENS, PROFILER_CALL_TIMEOUT_MS,
-  PROFILER_MEMBER_STATUSES, PROFILER_MAX_ATTEMPTS, PROFILER_OUTAGE_STOP,
+  PROFILER_MEMBER_STATUSES, PROFILER_MAX_ATTEMPTS, PROFILER_OUTAGE_STOP, PROFILER_PARALLEL_GROUPS,
 } from "@/lib/constants/member-profiler";
 
 const LOG = "[member-profiler]";
@@ -487,13 +488,21 @@ export async function runProfilerSweep(opts: SweepOptions): Promise<{ groups: nu
     return true;
   };
 
-  sweep: for (const g of groups) {
-    if (sent >= maxWindows || Date.now() >= deadline) break;
+  // Groups are read side by side (PROFILER_PARALLEL_GROUPS at a time); inside one group the
+  // conversations stay strictly in order, because each reading builds on the people and facts the
+  // one before it filed. Two groups of the SAME member never run together: they would race on
+  // that member's facts. The second one waits for the next run.
+  const seenMembers = new Set<string>();
+  const runnable = groups.filter((g) => (seenMembers.has(g.member_id) ? false : (seenMembers.add(g.member_id), true)));
+  let stop = false;
+
+  const readGroup = async (g: (typeof groups)[number]): Promise<void> => {
+    if (stop || sent >= maxWindows || Date.now() >= deadline) return;
     const after = opts.startAt ?? g.cursor_at;
     let q = sia().from("wag_messages").select("id, sender_jid, text, type, wa_timestamp").eq("chat_jid", g.group_jid).eq("is_revoked", false).not("text", "is", null).order("wa_timestamp", { ascending: true }).limit(PROFILER_FETCH_LIMIT);
     if (after) q = q.gt("wa_timestamp", after);
     const { data: rows, error: mErr } = await q;
-    if (mErr) { console.warn(`${LOG} messages read failed`, g.group_jid, mErr.message); continue; }
+    if (mErr) { console.warn(`${LOG} messages read failed`, g.group_jid, mErr.message); return; }
     const msgs = ((rows ?? []) as Msg[]).filter((m) => m.text.trim().length > 0);
     let windows = buildWindows(g.group_jid, g.member_id, msgs, Date.now());
     // A full page means the last conversation may be cut by the page, not by a quiet gap. Leave
@@ -503,7 +512,7 @@ export async function runProfilerSweep(opts: SweepOptions): Promise<{ groups: nu
     let failCount = Number(g.fail_count ?? 0);
 
     for (const w of windows) {
-      if (sent >= maxWindows || Date.now() >= deadline) break;
+      if (stop || sent >= maxWindows || Date.now() >= deadline) break;
       const o = await profileWindow(w, { broad, apply: opts.apply });
       outcomes.push(o); opts.onWindow?.(o);
       if (o.status !== "thin") sent += 1;
@@ -516,7 +525,7 @@ export async function runProfilerSweep(opts: SweepOptions): Promise<{ groups: nu
           providerFailed.push({ group_jid: g.group_jid, fail_count: failCount, w, o });
           await state(g.group_jid, { last_error: o.error?.slice(0, 300) ?? "failed" });
           providerFailsInARow += 1;
-          if (providerFailsInARow >= PROFILER_OUTAGE_STOP) { console.warn(`${LOG} the provider looks down; stopping this run`); break sweep; }
+          if (providerFailsInARow >= PROFILER_OUTAGE_STOP) { console.warn(`${LOG} the provider looks down; stopping this run`); stop = true; }
           break;
         }
         if (await countFailure(g.group_jid, failCount, w, o)) { failCount = 0; continue; }
@@ -526,7 +535,8 @@ export async function runProfilerSweep(opts: SweepOptions): Promise<{ groups: nu
       const { data: st } = await sia().from("profiler_group_state").select("windows_done").eq("group_jid", g.group_jid).maybeSingle();
       await state(g.group_jid, { last_message_at: w.to_at, windows_done: Number((st as { windows_done: number } | null)?.windows_done ?? 0) + 1, last_run_id: o.run_id, last_error: null, fail_count: 0 });
     }
-  }
+  };
+  await mapWithConcurrency(runnable, opts.apply ? PROFILER_PARALLEL_GROUPS : 1, readGroup);
 
   if (opts.apply && providerFailed.length && outcomes.some((o) => o.status === "read")) {
     for (const f of providerFailed) await countFailure(f.group_jid, f.fail_count, f.w, f.o);

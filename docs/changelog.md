@@ -55,6 +55,30 @@ the same expression. `members-service.ts` reads the mirror for both the filter a
 mirror. Verified: 614 of 614 members match the Sia link (343 linked, 271 not), and a hand-blanked
 mirror is restored by the trigger. The member page was already right (it shows the real group).
 
+## 2026-09-18 -- The member profiler reads three groups side by side, and the plans are brought up to date
+
+**Why.** The founder asked for the history read to go faster. At one group at a time and a four
+minute run it was covering about 3,000 messages an hour: roughly 28 hours for the 87,000 messages
+of the Active members.
+
+**What changed.** Same conversations, same cost, sooner.
+
+- `src/lib/services/member-profiler.ts`: groups are read side by side through
+  `mapWithConcurrency` (`PROFILER_PARALLEL_GROUPS` = 3). Inside one group the conversations stay
+  strictly in order, because each reading builds on the people and facts the one before it filed.
+  Two groups of the same member never run together; the second waits for the next run. The dry-run
+  pilot stays one at a time so its report reads in order.
+- `src/trigger/member-profiler.ts`: a run keeps starting readings for 7.5 minutes
+  (`PROFILER_RUN_BUDGET_MS`) instead of 4, with the hard stop just under the ten minute schedule.
+  One run at a time and the late-start guard are unchanged, so a queue still cannot build.
+- `PROFILER_WINDOWS_PER_RUN` is now a ceiling of 180; the time budget is what ends a run.
+
+**The plans.** `member-ticket-plan.md` 5.9 now carries a status block checked against the code and
+the live database (what is done, what is data work, what is not built), and
+`plan-sia-intelligence.md` has a short progress note pointing to it.
+
+---
+
 ## 2026-09-18 -- Freshdesk movement history: a due date written two ways is not a change
 
 **What the founder saw.** The Movement list on a ticket was full of rows like "Resolve due 14 Sep

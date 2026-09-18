@@ -1,5 +1,15 @@
 # The Sia Intelligence Plan
 
+> **Progress, 2026-09-18** (the live tracker is the status block in `member-ticket-plan.md` 5.9):
+> S0 coverage: 420 groups linked, 45 open, staff roster screen built but nobody seated yet.
+> S1: the codename vault, the conversation builder and the run ledger are DONE; the scored exam is NOT built.
+> S2: fact extraction is DONE and SWITCHED ON (whole history, Active members, founder approved the
+> 20-group pilot, decision 4). Requests became native tickets instead (`member-ticket-plan.md` 7).
+> S3 digests and alerts: NOT built (the ticket sentinel covers deadlines and silence on tickets).
+> S4: Elaya's member tools are DONE on both channels; embeddings are NOT built.
+> S5: agent notes as facts DONE (the Observation box), Freshdesk connected DONE, vendors from
+> Freshdesk DONE; vendor groups on WhatsApp and voice notes NOT built.
+>
 > **Status:** planning draft, 2026-09-04. Written after the Step 3 Python brain shipped on both
 > channels and the client identity spine (migration 0181) landed with 207 groups mapped.
 > This is the detailed spec that `plan-whatsapp.md` Phase W5 and `plan-elaya.md` Phase 3c both
