@@ -10,6 +10,7 @@ import { createNotification } from "@/lib/services/notifications-service";
 import { memberDb } from "@/lib/supabase/schemas";
 import { ticketsAdminDb, resolveSlaPolicy } from "@/lib/services/tickets-service";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { closeTicketEngagement, outcomeForResolution } from "@/lib/services/ticket-vendor";
 import {
   canTransition, checklistForCategory, TICKET_SLA_STOPPED_STATUSES, TICKETS_PATH, type TicketPriority, type TicketStatus, TICKET_SETTING_KEYS, TICKET_STATUSES,
 } from "@/lib/constants/tickets";
@@ -115,6 +116,12 @@ export async function moveTicketStatusCore(ticketId: string, to: TicketStatus, a
     p_event: humanEvent(actor, eventType, opts.note ?? null, { from: t.status, to, resolution: patch.resolution ?? null }, opts.actorKind ?? "human"),
   });
   if (error || !data) return fail("Could not move the ticket.", error);
+  // The ticket ended: its vendor's job ends with it, with the outcome the ending implies
+  // (ticket-vendor.ts). Whoever moved it (a person, Elaya, the sentinel's auto-close), the
+  // ledger is closed here, in the core, so no path forgets. Never throws.
+  if ((to === "resolved" || to === "closed" || to === "dropped") && t.vendor_id) {
+    await closeTicketEngagement(data as TicketRow, outcomeForResolution(to, (patch.resolution as string | undefined) ?? null), opts.note ?? null);
+  }
   return { data: data as TicketRow, error: null };
 }
 
@@ -314,4 +321,29 @@ export async function updateTicketSettingsCore(input: UpdateTicketSettingsInput,
     if (error) return fail("Could not save the settings.", error);
   }
   return { data: { keys: writes.map((w) => w.key) }, error: null };
+}
+
+/**
+ * The human's answer to the sentinel's suggestion (plan 7.6: the sentinel proposes, a person
+ * decides). Approve = the ordinary status move, by the human, noted as the sentinel's idea.
+ * Dismiss = the suggestion is taken off the ticket and the refusal is kept as an event: that
+ * pair is how we learn whether its judgement can be trusted with more.
+ */
+export async function resolveSentinelProposalCore(ticketId: string, decision: "approve" | "dismiss", actor: MutationActor): Promise<TicketMutationResult<TicketRow>> {
+  const db = ticketsAdminDb();
+  const { data: cur } = await db.from("tickets").select("*").eq("id", ticketId).maybeSingle();
+  if (!cur) return fail("Ticket not found.");
+  const t = cur as TicketRow;
+  const state = (t.sentinel_state ?? {}) as { proposal?: { status: TicketStatus; from_status: TicketStatus; reason: string; run_id: string | null } };
+  const p = state.proposal;
+  if (!p || p.from_status !== t.status) return fail("That suggestion is no longer current.");
+  if (decision === "approve") return moveTicketStatusCore(ticketId, p.status, actor, { note: `Approved the sentinel's suggestion. ${p.reason}` });
+  const { proposal: _gone, ...rest } = state;
+  void _gone;
+  const { data, error } = await db.rpc("apply_ticket_change", {
+    p_ticket_id: ticketId, p_patch: { sentinel_state: rest },
+    p_event: humanEvent(actor, "observation", `Dismissed the sentinel's suggestion to move this to ${p.status}.`, { proposal_dismissed: p.status, from: t.status, run_id: p.run_id }),
+  });
+  if (error) return fail("Could not dismiss that suggestion.", error);
+  return { data: data as TicketRow, error: null };
 }

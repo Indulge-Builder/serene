@@ -563,7 +563,7 @@ T0  Freshdesk mirror live in the cloud, files copied, history loaded    DONE (fi
 T1  ticket tables, state machine, list, board (live drag), ticket page,
     new ticket from selected messages, help window, SLA + labels settings   DONE, live. 0 real tickets yet: waits on the roster
 T2  the sentinel: rules pass + reading pass, runs every minute in cloud DONE 2026-09-16
-    the judgement pass (the sentinel proposes a status move)            NOT BUILT
+    the judgement pass (the sentinel proposes a status move)            DONE 2026-09-18: suggests, a human approves or dismisses
 T3  intake phase 1: the genie selects messages -> a ticket draft        DONE
     intake phase 2: Serene reads the groups and proposes tickets itself DONE 2026-09-18 (0219), training phase: cards only, a human
                                                                         creates or dismisses; the numbers sit on the Tickets page
@@ -581,7 +581,8 @@ T5  Elaya member tools on both channels: overview, recent messages,
     Elaya ticket tools: list, get, add note, propose a status move      DONE 2026-09-15
     meaning search (embeddings, member_chunks, Jina)                    NOT BUILT (word search works today)
 T6  vendors learn from Freshdesk notes by themselves                    DONE 2026-09-18 (PR #4)
-    ticket -> vendor ledger, ranker inside the ticket, review at close  NOT BUILT
+    ticket -> vendor ledger, ranker inside the ticket                   DONE 2026-09-18 (the job opens on pick, closes with the ticket)
+    the review prompt at close                                          NOT BUILT
     member app reads Serene tickets, pilot queendom, Freshdesk cutover  NOT STARTED
 T7  anticipation, Joker suggestions, staff response metrics, autonomy   NOT STARTED (the profiler already files "coming up" items)
 ```

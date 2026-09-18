@@ -2,6 +2,7 @@
 // and the help window (what the twin and the mirror know that matters to this ticket).
 
 import Link from 'next/link';
+import { SentinelProposal } from '@/components/tickets/SentinelProposal';
 import { MessageCircle, Compass, MapPin, Ban, HeartPulse, Ticket as TicketIcon, CalendarClock, Eye } from 'lucide-react';
 import { SENTINEL_TOKEN_BUDGET } from '@/lib/constants/tickets';
 import type { SentinelState } from '@/lib/types/ticket';
@@ -106,6 +107,9 @@ export function TicketSentinelCard({ ticket }: { ticket: TicketDetail['ticket'] 
           <p style={{ margin: 0, lineHeight: 1.6 }}>{ticket.summary}</p>
         ) : (
           <EmptyState variant="inline" title={live ? 'Watching. Nothing to say yet.' : 'Retired with the ticket.'} description={live ? 'A summary appears after the first note or member message.' : undefined} />
+        )}
+        {live && st.proposal && st.proposal.from_status === ticket.status && (
+          <SentinelProposal ticketId={ticket.id} toLabel={TICKET_STATUSES.labels[st.proposal.status] ?? st.proposal.status} reason={st.proposal.reason} />
         )}
         {tone && <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: tone === 'praise' ? 'var(--color-success-text)' : 'var(--color-danger-text)' }}>The member last sounded {tone}.</p>}
         {fired.length > 0 && (

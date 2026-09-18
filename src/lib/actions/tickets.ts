@@ -18,16 +18,17 @@ import { TICKETS_PATH } from "@/lib/constants/tickets";
 import { CLIENTS_PATH } from "@/lib/constants/sia-roles";
 import { draftTicketFromMessages } from "@/lib/services/ticket-creator";
 import { getIntakeProposal, resolveIntakeProposal } from "@/lib/services/intake-service";
+import { searchVendorsForTicket, setTicketVendorCore, suggestVendorsForTicket, type TicketVendorOption } from "@/lib/services/ticket-vendor";
 import { getTicketHelp, listQueendomStaff, listBoardTickets } from "@/lib/services/tickets-service";
 import {
   addTicketNoteCore, assignTicketCore, createTicketCore, linkTicketMessagesCore, moveTicketStatusCore,
   setTicketPriorityCore, tickChecklistCore, updateTicketBriefCore, updateTicketMoneyCore,
-  updateTicketTagsCore, createTicketTaskCore,
+  updateTicketTagsCore, createTicketTaskCore, resolveSentinelProposalCore,
 } from "@/lib/services/ticket-mutations";
 import {
   AddTicketNoteSchema, AssignTicketSchema, CreateTicketSchema, DraftTicketSchema, LinkTicketMessagesSchema,
   MoveTicketStatusSchema, SetTicketPrioritySchema, TickChecklistSchema, UpdateTicketBriefSchema, UpdateTicketMoneySchema,
-  UpdateTicketTagsSchema, CreateTicketTaskSchema, DismissIntakeProposalSchema, AcceptIntakeUpdateSchema,
+  UpdateTicketTagsSchema, CreateTicketTaskSchema, DismissIntakeProposalSchema, AcceptIntakeUpdateSchema, ResolveSentinelProposalSchema, SetTicketVendorSchema, SearchTicketVendorsSchema, TicketIdSchema,
 } from "@/lib/validations/ticket-schema";
 import type { ActionResult } from "@/lib/types";
 import { wakeTicketNow } from "@/lib/services/ticket-sentinel";
@@ -281,4 +282,56 @@ export async function listBoardTicketsAction(input: { queendom_id: string | null
   const privileged = auth.profile.role === "admin" || auth.profile.role === "founder";
   const scope = privileged ? q : (auth.profile.queendom_id ?? null);
   return { data: await listBoardTickets(scope), error: null };
+}
+
+/** Approve or dismiss the sentinel's suggested status move. The move itself is the ordinary, gated one. */
+export async function resolveSentinelProposalAction(input: unknown): Promise<ActionResult<TicketRow>> {
+  const parsed = parseActionInput(ResolveSentinelProposalSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
+  const g = await gateTicket(parsed.data.ticket_id);
+  if (!g.ok) return g.result;
+  const res = await resolveSentinelProposalCore(parsed.data.ticket_id, parsed.data.decision, actorFromProfile(g.profile));
+  if (res.error !== null || !res.data) return { data: null, error: res.error ?? formErrors.generic };
+  revalidateTicket(parsed.data.ticket_id, g.member_id);
+  return { data: res.data, error: null };
+}
+
+// ─── The vendor on a ticket (ticket-vendor.ts) ───────────────────────────────
+// Gated by the TICKET (the queendom), not by the vendor module's admin/founder gate: a teammate
+// working a ticket must be able to pick who does the job. What comes back is a trimmed vendor.
+
+async function loadTicketRow(ticketId: string): Promise<TicketRow | null> {
+  const { data } = await createAdminClient().schema("sia").from("tickets").select("*").eq("id", ticketId).maybeSingle();
+  return (data as unknown as TicketRow | null) ?? null;
+}
+
+export async function suggestTicketVendorsAction(input: unknown): Promise<ActionResult<TicketVendorOption[]>> {
+  const parsed = parseActionInput(TicketIdSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
+  const g = await gateTicket(parsed.data.ticket_id);
+  if (!g.ok) return g.result;
+  const t = await loadTicketRow(parsed.data.ticket_id);
+  if (!t) return { data: null, error: formErrors.generic };
+  try { return { data: await suggestVendorsForTicket(t, g.profile.id), error: null }; }
+  catch (e) { console.error("[tickets-action] vendor suggestions failed:", e); return { data: null, error: "Could not look for vendors just now." }; }
+}
+
+export async function searchTicketVendorsAction(input: unknown): Promise<ActionResult<TicketVendorOption[]>> {
+  const parsed = parseActionInput(SearchTicketVendorsSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
+  const g = await gateTicket(parsed.data.ticket_id);
+  if (!g.ok) return g.result;
+  try { return { data: await searchVendorsForTicket(parsed.data.q), error: null }; }
+  catch (e) { console.error("[tickets-action] vendor search failed:", e); return { data: null, error: "Could not search vendors just now." }; }
+}
+
+export async function setTicketVendorAction(input: unknown): Promise<ActionResult<TicketRow>> {
+  const parsed = parseActionInput(SetTicketVendorSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
+  const g = await gateTicket(parsed.data.ticket_id);
+  if (!g.ok) return g.result;
+  const res = await setTicketVendorCore(parsed.data.ticket_id, parsed.data.vendor_id, actorFromProfile(g.profile));
+  if (res.error !== null) return { data: null, error: res.error };
+  revalidateTicket(parsed.data.ticket_id, g.member_id);
+  return { data: res.data, error: null };
 }

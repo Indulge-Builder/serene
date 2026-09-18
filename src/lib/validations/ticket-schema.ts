@@ -75,6 +75,9 @@ export const DismissIntakeProposalSchema = z.object({
 });
 export const AcceptIntakeUpdateSchema = z.object({ proposal_id: uuidField(formErrors.generic) });
 
+/** The human's answer to the sentinel's suggested status move. */
+export const ResolveSentinelProposalSchema = z.object({ ticket_id: uuidField(formErrors.generic), decision: z.enum(["approve", "dismiss"]) });
+
 export const TicketIdSchema = z.object({ ticket_id: uuidField(formErrors.generic) });
 
 export const MoveTicketStatusSchema = z.object({
@@ -198,3 +201,7 @@ export const UpdateTicketSettingsSchema = z.object({
   tags: z.array(tagField).max(60).transform((xs) => [...new Set(xs)]).optional(),
 }).refine((v) => v.status_labels !== undefined || v.tags !== undefined, { message: formErrors.generic });
 export type UpdateTicketSettingsInput = z.infer<typeof UpdateTicketSettingsSchema>;
+
+/** The vendor on a ticket (ticket-vendor.ts). null takes the vendor off. */
+export const SetTicketVendorSchema = z.object({ ticket_id: uuidField(formErrors.generic), vendor_id: uuidField(formErrors.generic).nullable() });
+export const SearchTicketVendorsSchema = z.object({ ticket_id: uuidField(formErrors.generic), q: z.string().trim().min(2).max(80) });

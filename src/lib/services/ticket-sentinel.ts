@@ -32,7 +32,7 @@ import { businessMinutesBetween } from "@/lib/utils/sla";
 import {
   SENTINEL_BATCH, SENTINEL_CLOSE_AFTER_MIN, SENTINEL_LEASE_MIN, SENTINEL_MAX_SLEEP_MIN, SENTINEL_PROMPT_VERSION,
   SENTINEL_PROPOSAL_NUDGE_MIN, SENTINEL_READ_MAX_CHARS, SENTINEL_TOKEN_BUDGET, SENTINEL_WARN_BEFORE_MIN,
-  TICKET_ACTIVE_STATUSES, TICKET_SLA_STOPPED_STATUSES, TICKETS_PATH, type TicketStatus,
+  TICKET_ACTIVE_STATUSES, TICKET_SLA_STOPPED_STATUSES, TICKET_STATUSES, TICKET_TRANSITIONS, TICKETS_PATH, type TicketStatus,
 } from "@/lib/constants/tickets";
 import type { SentinelState, TicketEventRow, TicketMessageLinkRow, TicketRow, TicketSlaPolicyRow } from "@/lib/types/ticket";
 import type { NotificationType } from "@/lib/types/database";
@@ -56,6 +56,7 @@ export function normalizeState(raw: unknown): SentinelState {
     last_read_at: r.last_read_at,
     last_tone: r.last_tone,
     proposed_brief: r.proposed_brief,
+    proposal: r.proposal && typeof r.proposal === "object" ? r.proposal : undefined,
   };
 }
 
@@ -286,6 +287,9 @@ type Reading = {
   money: Record<string, unknown>;
   delivered: boolean;
   observation: string | null;
+  /** The judgement: a legal next status the text clearly supports, or null. A human decides. */
+  suggested_status: TicketStatus | null;
+  suggested_reason: string | null;
 };
 
 const READ_SYSTEM = `You are the sentinel on ONE concierge ticket at Indulge (luxury concierge for wealthy members). New text arrived: internal notes by the team and/or WhatsApp messages from the member. Read it against the ticket and answer ONLY a JSON object, no prose, no code fence:
@@ -298,12 +302,15 @@ const READ_SYSTEM = `You are the sentinel on ONE concierge ticket at Indulge (lu
   "brief_changes": { field: new value } for details the CLIENT changed (a new date, a different count, a cancellation); {} when nothing changed. Never invent.
   "money": { "cost_inr": number, "price_inr": number, "quote_inr": number, "payment_status": "unpaid"|"partial"|"paid" } — only the fields the notes state plainly (e.g. "Cost 8250, selling 9500, paid via card"); {} otherwise,
   "delivered": true only when the member confirms they received or enjoyed the thing,
-  "observation": one short line worth keeping in the diary, or null
+  "observation": one short line worth keeping in the diary, or null,
+  "suggested_status": one of the LEGAL NEXT STATUSES listed with the ticket, or null,
+  "suggested_reason": one plain sentence quoting what in the new text supports it, or null
 }
 
-Rules: quote the notes, never guess; a note about another ticket is ignored; a team note does not carry the member's tone.`;
+Rules: quote the notes, never guess; a note about another ticket is ignored; a team note does not carry the member's tone.
+On suggested_status: you only SUGGEST, a person decides, so suggest only when the new text plainly says it. "Sent the options, waiting for sir to pick" supports awaiting_member. "Vendor will confirm by evening" supports awaiting_vendor. "Out for delivery" supports in_delivery. "Delivered, member happy" or the member confirming receipt supports resolved. "Invoice sent, payment pending" supports payment_due. The member cancelling supports dropped. When nothing plainly supports a move, or the ticket is already there, answer null. Never suggest a status that is not in the legal list.`;
 
-function parseReading(raw: string, checklistLen: number): Reading | null {
+function parseReading(raw: string, checklistLen: number, legalNext: readonly TicketStatus[]): Reading | null {
   const fenced = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
   const a = fenced.indexOf("{"); const b = fenced.lastIndexOf("}");
   if (a === -1 || b <= a) return null;
@@ -323,10 +330,13 @@ function parseReading(raw: string, checklistLen: number): Reading | null {
     money,
     delivered: o.delivered === true,
     observation: typeof o.observation === "string" && o.observation.trim() ? o.observation.trim().slice(0, 300) : null,
+    // Believed only when it is a move the state machine allows from here.
+    suggested_status: typeof o.suggested_status === "string" && (legalNext as readonly string[]).includes(o.suggested_status) ? (o.suggested_status as TicketStatus) : null,
+    suggested_reason: typeof o.suggested_reason === "string" && o.suggested_reason.trim() ? o.suggested_reason.trim().slice(0, 300) : null,
   };
 }
 
-async function readNewText(t: TicketRow, input: NonNullable<WakePlan["readInput"]>, state: SentinelState): Promise<{ reading: Reading | null; runId: string | null }> {
+export async function readNewText(t: TicketRow, input: NonNullable<WakePlan["readInput"]>, state: SentinelState): Promise<{ reading: Reading | null; runId: string | null }> {
   const admin = createAdminClient();
   const { data: runRow } = await admin.schema("sia").from("extraction_runs").insert({
     kind: "sentinel", member_id: t.member_id, prompt_version: SENTINEL_PROMPT_VERSION,
@@ -338,16 +348,18 @@ async function readNewText(t: TicketRow, input: NonNullable<WakePlan["readInput"
     const [depth, llm] = await Promise.all([getPiiMaskingDepth(), resolveLlmForJob("routing")]);
     const clip = (xs: string[]) => xs.join("\n---\n").slice(-SENTINEL_READ_MAX_CHARS);
     const checklist = t.checklist.map((c, i) => `${i}. [${c.done_at ? "x" : " "}] ${c.label}`).join("\n");
+    // The sentinel never suggests closing (the quiet-after-resolved rule owns that) or re-opening.
+    const legalNext = (TICKET_TRANSITIONS[t.status] ?? []).filter((x) => x !== "closed" && x !== "open" && x !== "proposed");
     const user = maskPii(
-      `Ticket ${t.ticket_no}: ${t.title}\nCategory: ${t.category}${t.sub_category ? ` / ${t.sub_category}` : ""} · status ${t.status} · priority ${t.priority}\nRequested for: ${t.requested_for ?? "not set"}\nBrief: ${JSON.stringify(t.brief)}\nMoney so far: ${JSON.stringify(t.money)}\nChecklist:\n${checklist || "(none)"}\nSummary so far: ${t.summary ?? "(none)"}\n\nNEW TEAM NOTES:\n${clip(input.notes) || "(none)"}\n\nNEW CLIENT MESSAGES:\n${clip(input.memberMessages) || "(none)"}\n\nNEW STAFF REPLIES TO THE CLIENT:\n${clip(input.staffMessages) || "(none)"}\n\nReturn the JSON.`,
+      `Ticket ${t.ticket_no}: ${t.title}\nCategory: ${t.category}${t.sub_category ? ` / ${t.sub_category}` : ""} · status ${t.status} · priority ${t.priority}\nRequested for: ${t.requested_for ?? "not set"}\nLEGAL NEXT STATUSES from ${t.status}: ${legalNext.join(", ") || "(none)"}\nBrief: ${JSON.stringify(t.brief)}\nMoney so far: ${JSON.stringify(t.money)}\nChecklist:\n${checklist || "(none)"}\nSummary so far: ${t.summary ?? "(none)"}\n\nNEW TEAM NOTES:\n${clip(input.notes) || "(none)"}\n\nNEW CLIENT MESSAGES:\n${clip(input.memberMessages) || "(none)"}\n\nNEW STAFF REPLIES TO THE CLIENT:\n${clip(input.staffMessages) || "(none)"}\n\nReturn the JSON.`,
       depth,
     );
-    const result = await llm.adapter.complete({ model: llm.model, maxTokens: Math.min(llm.maxTokens, 700), system: READ_SYSTEM, messages: [{ role: "user", content: user }], cachePrefix: true });
+    const result = await llm.adapter.complete({ model: llm.model, maxTokens: Math.min(llm.maxTokens, 900), system: READ_SYSTEM, messages: [{ role: "user", content: user }], cachePrefix: true });
     state.reads += 1;
     state.tokens_in += result.usage.inputTokens;
     state.tokens_out += result.usage.outputTokens;
     state.last_read_at = new Date().toISOString();
-    const reading = parseReading(result.text, t.checklist.length);
+    const reading = parseReading(result.text, t.checklist.length, legalNext);
     await finish(Boolean(reading), { model: llm.model, tokens_in: result.usage.inputTokens, tokens_out: result.usage.outputTokens, output: reading ?? {}, error: reading ? null : "unparseable" });
     return { reading, runId };
   } catch (e) {
@@ -417,6 +429,8 @@ export async function wakeTicket(t: TicketRow): Promise<WakeOutcome> {
   const state = normalizeState(t.sentinel_state);
   try {
     const [policy, mailbox] = await Promise.all([resolveSlaPolicy(t), loadMailbox(t, state)]);
+    // A suggestion is only about the status it was made in; once the ticket moved, it is stale.
+    if (state.proposal && state.proposal.from_status !== t.status) state.proposal = undefined;
     const plan = planWake({ ticket: t, policy, state, now, ...mailbox });
 
     // 1. Fires: each one = an event + the state, one transaction; notifications after.
@@ -474,9 +488,17 @@ export async function wakeTicket(t: TicketRow): Promise<WakeOutcome> {
         if (reading.asks_status) events.push({ event_type: "reminder_sent", body: "The member is asking where things stand.", meta: { which: "member_asks_status" }, notify: [
           { to: "assignee", type: "ticket_member_replied", title: `${t.ticket_no}: the member asks for an update`, body: t.title },
         ] });
-        if (reading.delivered && TICKET_ACTIVE_STATUSES.includes(t.status)) events.push({ event_type: "observation", body: "The member says it was delivered. Mark the ticket resolved if so.", meta: { proposal: "resolved" }, notify: [
-          { to: "assignee", type: "ticket_member_replied", title: `${t.ticket_no}: the member says delivered`, body: "Mark it resolved if so." },
-        ] });
+        // The judgement: a suggestion a human approves or dismisses on the ticket page. "Delivered"
+        // from the member is the plainest case of it.
+        const canResolve = (TICKET_TRANSITIONS[t.status] ?? []).includes("resolved");
+        const suggest = reading.suggested_status ?? (reading.delivered && canResolve && TICKET_ACTIVE_STATUSES.includes(t.status) ? ("resolved" as TicketStatus) : null);
+        if (suggest && suggest !== t.status && plan.state.proposal?.status !== suggest) {
+          const reason = reading.suggested_reason ?? (reading.delivered ? "The member says it was delivered." : "The new text points there.");
+          plan.state.proposal = { status: suggest, from_status: t.status, reason, at: now.toISOString(), run_id: runId };
+          events.push({ event_type: "observation", body: `Suggests moving this to ${TICKET_STATUSES.labels[suggest]}: ${reason}`, meta: { proposal: suggest, from: t.status, run_id: runId }, notify: [
+            { to: "assignee", type: "ticket_member_replied", title: `${t.ticket_no}: move to ${TICKET_STATUSES.labels[suggest]}?`, body: reason },
+          ] });
+        }
         if (reading.observation) events.push({ event_type: "observation", body: reading.observation, meta: { run_id: runId }, notify: [] });
         if (events.length === 0) events.push({ event_type: "observation", body: "Read the new text; nothing to change.", meta: { run_id: runId }, notify: [] });
         const rec = recipients ?? (events.some((e) => e.notify.length) ? await resolveRecipients(t) : null);

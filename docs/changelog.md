@@ -55,6 +55,52 @@ the same expression. `members-service.ts` reads the mirror for both the filter a
 mirror. Verified: 614 of 614 members match the Sia link (343 linked, 271 not), and a hand-blanked
 mirror is restored by the trigger. The member page was already right (it shows the real group).
 
+## 2026-09-18 -- The sentinel's judgement, and the vendor on a ticket
+
+Two builds the founder asked for together, with one rule over both: Serene does the work, a human
+makes the call.
+
+**The sentinel suggests a status move.** It already read every new note and member message on a
+ticket. It now also answers one more question: does this text plainly support moving the ticket?
+"Sent the options, waiting for sir to pick" supports Awaiting member; the member saying "dinner was
+superb" supports Resolved; a cancellation supports Dropped. The suggestion appears in the Sentinel
+card with exactly two buttons, Approve and Dismiss.
+
+- It can only name a move the state machine allows from the current status (checked in code, not
+  trusted from the model), and never closing or re-opening.
+- Approve is the ordinary status move, made by that person, noted as the sentinel's idea. The
+  sentinel never moves a ticket itself.
+- Dismiss takes the suggestion off and keeps the refusal as an event. Approvals against dismissals
+  is how we will know when its judgement can be trusted with more (plan decision 9).
+- A suggestion belongs to the status it was made in; once the ticket moves, the next wake drops it.
+- Tested on four written scenarios with the real model: three correct moves, and no suggestion at
+  all for "line busy, will try again", which is the answer that matters most.
+- `ticket-sentinel.ts` (prompt `sentinel-read-v2`, `suggested_status` + `suggested_reason`,
+  `SentinelState.proposal`), `resolveSentinelProposalCore` in `ticket-mutations.ts`,
+  `resolveSentinelProposalAction`, `components/tickets/SentinelProposal.tsx`.
+
+**The vendor on a ticket.** The schema was ready (`sia.tickets.vendor_id`, and `ticket` as a source
+on the vendor ledger, 0185); the screen and the wiring were missing.
+
+- `src/lib/services/ticket-vendor.ts`: suggestions come from THE one vendor ranking
+  (`rankVendorsForRequest`), asked with the ticket's own words, its city and the member, so a past
+  job for this member is a reason. Nothing is re-ranked. There is also a search by name.
+- Choosing a vendor writes `vendor_id` on the ticket (event `vendor_chosen`) and opens the job on
+  the vendor's ledger through `logEngagementCore` with provenance `ticket:<ticket_no>`, so picking
+  the same vendor twice refines one row. Changing vendor closes the first job as cancelled.
+- When a ticket reaches resolved, closed or dropped, `moveTicketStatusCore` closes the job with the
+  outcome the ending implies (delivered = completed, could not source = failed, cancelled or dropped
+  = cancelled) and the cost from the Money card. It lives in the core, so a person, Elaya and the
+  sentinel's auto-close all do it. This is what feeds the vendor's score without anyone typing it twice.
+- The actions are gated by the TICKET (the queendom), not by the vendor module's admin/founder
+  gate: a teammate working a ticket must be able to pick who does the job. They get a trimmed
+  vendor (name, category, city, phone, score, reasons). The vendor dossier stays admin/founder.
+- `components/tickets/TicketVendorCard.tsx` on the ticket page.
+- Known weakness, not from this change: the ranker matched "AC technician" to airline jobs on the
+  letters "AC". Villa and iPhone requests ranked well. Search by name covers it meanwhile.
+
+---
+
 ## 2026-09-18 -- Ticket intake, phase 2: Serene reads the groups and proposes tickets (migration 0219)
 
 **Why.** Until now a ticket started only when a genie noticed a request and selected its messages.

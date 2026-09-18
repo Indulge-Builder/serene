@@ -227,7 +227,7 @@ export const SENTINEL_MAX_SLEEP_MIN = 720;
 export const SENTINEL_TOKEN_BUDGET = 60_000;
 /** How much new text a single reading takes (characters); older text is already in the summary. */
 export const SENTINEL_READ_MAX_CHARS = 6_000;
-export const SENTINEL_PROMPT_VERSION = "sentinel-read-v1";
+export const SENTINEL_PROMPT_VERSION = "sentinel-read-v2";
 
 // ─── The board, settings and tags (0200) ─────────────────────────────────────
 

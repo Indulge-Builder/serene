@@ -81,6 +81,12 @@ export type SentinelState = {
   last_tone?: "praise" | "neutral" | "frustrated" | "angry";
   /** Brief changes the reader proposed and nobody has applied yet. */
   proposed_brief?: Record<string, unknown>;
+  /**
+   * The judgement (plan 7.6): a status move the sentinel SUGGESTS and a human approves or
+   * dismisses. One at a time. It is only live while the ticket is still in `from_status`;
+   * any status change makes it stale, and the next wake drops it.
+   */
+  proposal?: { status: TicketStatus; from_status: TicketStatus; reason: string; at: string; run_id: string | null };
 };
 
 export type TicketEventRow = {

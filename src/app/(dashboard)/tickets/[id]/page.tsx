@@ -11,6 +11,8 @@ import { TicketChecklistCard } from '@/components/tickets/TicketChecklistCard';
 import { TicketTimeline } from '@/components/tickets/TicketTimeline';
 import { TicketMoneyCard } from '@/components/tickets/TicketMoneyCard';
 import { TicketLinkedMessagesCard, TicketHelpPanel, TicketSentinelCard } from '@/components/tickets/TicketSideCards';
+import { TicketVendorCard } from '@/components/tickets/TicketVendorCard';
+import { getTicketVendor } from '@/lib/services/ticket-vendor';
 import { TicketTasksCard } from '@/components/tickets/TicketTasksCard';
 import { TicketTagsCard } from '@/components/tickets/TicketTagsCard';
 import { TICKETS_PATH } from '@/lib/constants/tickets';
@@ -29,7 +31,10 @@ export default async function TicketPage({ params, searchParams }: Props) {
 
   const detail = await getTicketDetail(id);
   if (!detail) notFound();
-  const [help, settings] = await Promise.all([getTicketHelp(detail.member.id, detail.ticket.category, detail.ticket.id), getTicketSettings()]);
+  const [help, settings, vendor] = await Promise.all([
+    getTicketHelp(detail.member.id, detail.ticket.category, detail.ticket.id), getTicketSettings(),
+    detail.ticket.vendor_id ? getTicketVendor(detail.ticket.vendor_id) : Promise.resolve(null),
+  ]);
   await logMemberAccess(detail.member.id, profile.id, 'ticket_help');
   const canApprove = profile.role !== 'agent';
   const t = detail.ticket;
@@ -59,6 +64,7 @@ export default async function TicketPage({ params, searchParams }: Props) {
       <div className="serene-dossier-grid serene-dossier-grid--340 serene-dossier-grid--aside-left" style={{ alignItems: 'start' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', minWidth: 0 }}>
           <TicketSentinelCard ticket={t} />
+          <TicketVendorCard ticketId={t.id} vendor={vendor} live={!['resolved', 'closed', 'dropped'].includes(t.status)} />
           <TicketTagsCard ticketId={t.id} tags={t.tags ?? []} vocabulary={settings.tags} />
           <TicketHelpPanel help={help} clientId={detail.member.id} memberName={detail.member.full_name} />
         </div>
