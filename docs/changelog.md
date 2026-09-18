@@ -386,6 +386,18 @@ plus PostgREST (every embed returns the name; `email` no longer resolves). Typec
 and the production build clean. Not covered on real data: the revival marker, since no task
 carries one yet.
 
+The Python brain had its own copy of the overdue-escalations read with the same cross-schema
+embed; it now uses `get_gia_links_for_tasks` in `backend/app/core/supa.py` (the mirror of the
+Node helper) and returns row-for-row the same list as the Node service for every Gia domain.
+
+Checked for damage: the SLA engine's dedup guard fails by answering "no open task", so a broken
+guard could have created duplicate follow-ups. It did not — the engine has created no tasks
+since the move. The one lead with two open follow-ups for the same agent (legacy, 18 Sep) is
+the agent's own doing: they logged a call and booked the next one without closing the old task.
+
+Deploy note: the SLA engine, the revival sweep and the task reminders run on Trigger.dev's copy
+of this code, and the brain on Fargate, so both need redeploying to pick this up.
+
 ## 2026-09-17 — The leads page came back empty: PostgREST cannot embed across schemas
 
 Why: a resource embed resolves only inside the schema of the request. `gia.leads` asking for
