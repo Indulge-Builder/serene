@@ -15,6 +15,7 @@ import { mapRows }           from '@/lib/utils/rows';
 import { isCadenceCode }     from '@/lib/constants/sla';
 import { goingColdCutoff } from '@/lib/constants/leads';
 import type { LeadSlaTimer, Profile, Task, AppDomain, SlaPolicy, SlaHoursMode, SlaRecipientRole } from '@/lib/types/database';
+import { getTaskIdsForLead, getGiaLinksForTasks } from '@/lib/services/gia-task-links';
 
 // Engine rule codes are free text since the config-driven engine (0111):
 // SLA-xx, CAD-xx, TASK-xx all ride the same timer/idempotency machinery.
@@ -202,11 +203,16 @@ export async function getOpenGiaFollowupTask(
   assignedTo: string,
 ): Promise<Task | null> {
   const admin = createAdminClient();
+  // Every task linked to THIS lead (gia), then the newest open one for this agent —
+  // the same guard as the old inner join, in two reads (gia-task-links.ts).
+  const taskIds = await getTaskIdsForLead(admin, leadId);
+  if (!taskIds || taskIds.length === 0) return null;
+
   const { data, error } = await admin
     .from('tasks')
-    .select('*, task_gia_meta!inner(lead_id)')
+    .select('*')
+    .in('id', taskIds)
     .eq('assigned_to', assignedTo)
-    .eq('task_gia_meta.lead_id', leadId)
     .not('status', 'in', '("completed","cancelled","error")')
     .order('created_at', { ascending: false })
     .limit(1)
@@ -216,11 +222,7 @@ export async function getOpenGiaFollowupTask(
     console.error('[sla-service] getOpenGiaFollowupTask error:', error);
     return null;
   }
-  if (!data) return null;
-
-  // Strip the joined meta — callers expect a plain Task row
-  const { task_gia_meta: _meta, ...task } = data as Task & { task_gia_meta: unknown };
-  return task as Task;
+  return (data as Task | null) ?? null;
 }
 
 /**
@@ -702,6 +704,10 @@ interface OverdueTaskJoinRow {
   } | null;
 }
 
+
+/** Safety cap on the open past-due task scan in getOverdueGiaTasks (187 rows on 2026-09-18). */
+const OVERDUE_SCAN_CAP = 1000;
+
 /**
  * Open Gia follow-up tasks that are past due. Newest overdue first.
  *
@@ -721,20 +727,17 @@ export async function getOverdueGiaTasks(
   const admin = createAdminClient();
   const nowIso = new Date().toISOString();
 
+  // Two reads across the public ↔ gia boundary (gia-task-links.ts): the open, past-due
+  // tasks first — a small set (hundreds) — then their lead links, filtered in code to
+  // live leads in scope. OVERDUE_SCAN_CAP is a safety net, not an expected limit.
   let query = admin
     .from('tasks')
-    .select(
-      `id, title, due_at, overdue_at, priority, assigned_to,
-       task_gia_meta!inner(lead_id,
-         leads!inner(id, slug, first_name, last_name, domain))`,
-    )
+    .select('id, title, due_at, overdue_at, priority, assigned_to')
     // stamped overdue OR deadline already passed (stamp may simply not have run)
     .or(`overdue_at.not.is.null,and(due_at.not.is.null,due_at.lte.${nowIso})`)
     .in('status', ['to_do', 'in_progress', 'in_review'])
-    .is('task_gia_meta.leads.archived_at', null)
     .order('due_at', { ascending: false })
-    .limit(100);
-  if (domain) query = query.eq('task_gia_meta.leads.domain', domain);
+    .limit(OVERDUE_SCAN_CAP);
   // Self-scope (the agent escalations view): only tasks assigned to this agent.
   if (assignedTo) query = query.eq('assigned_to', assignedTo);
 
@@ -743,8 +746,29 @@ export async function getOverdueGiaTasks(
     console.error('[sla-service] getOverdueGiaTasks error:', error);
     return [];
   }
+  if ((data ?? []).length === OVERDUE_SCAN_CAP) {
+    console.warn('[sla-service] getOverdueGiaTasks hit OVERDUE_SCAN_CAP — some rows may be missing');
+  }
 
-  const rows = mapRows<OverdueTaskJoinRow, OverdueTaskJoinRow>(data, (r) => r)
+  const links = await getGiaLinksForTasks(admin, (data ?? []).map((t) => t.id));
+  if (!links) return [];
+
+  const joined: OverdueTaskJoinRow[] = [];
+  for (const t of data ?? []) {
+    const lead = links.get(t.id)?.lead;
+    if (!lead || lead.archived_at !== null) continue;       // not a lead task / archived lead
+    if (domain && lead.domain !== domain) continue;         // domain scope
+    joined.push({
+      ...t,
+      task_gia_meta: {
+        lead_id: lead.id,
+        leads: { id: lead.id, slug: lead.slug, first_name: lead.first_name, last_name: lead.last_name, domain: lead.domain },
+      },
+    } as OverdueTaskJoinRow);
+    if (joined.length === 100) break;                       // the list's old page size, in due_at order
+  }
+
+  const rows = joined
     .filter((r) => r.task_gia_meta?.leads)
     // Resolve the breach moment: the stamp if present, else the past due_at.
     .map((r) => ({

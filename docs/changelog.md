@@ -385,6 +385,60 @@ compile crawl and is the first thing to fix before judging local speed.
 
 ---
 
+## 2026-09-18 — Freshdesk cloud task: a time budget, so the queue can never grow
+
+Why: the cloud `freshdesk-sync` task stopped keeping up. Read from the Trigger.dev production
+run log: each cycle took 90 to 116 seconds once it copied files, a new run is created every
+60, and the task runs one at a time. So the queue only grew: 173 stale runs waiting and the
+newest work starting 17 hours late. That was yesterday's change (one run at a time, without a
+bound on the cycle's length).
+
+What changed: `createFdBudget(maxCalls, reserve, deadlineMs?)` — the budget is now calls AND
+time; past the deadline `budgetHasRoom()` is false, so every step stops starting new work the
+same clean way it does when calls run out, and in-flight downloads finish. The task passes
+40 seconds; `maxDuration` 120 → 90 as the backstop only. The 173 queued runs were cancelled.
+
+## 2026-09-18 — Elaya reads the member twin: what we know, and the money
+
+Why: Elaya could read a member's WhatsApp chat but not what Serene has saved about them. The
+founder asked "what does she like", "who is her genie", "does he owe anything" and got
+nothing, while 6,757 facts, the health scores, 50,000 mirrored requests and the live Zoho
+ledger sat one read away.
+
+What changed:
+
+- `services/members-service.ts` — the dossier read is now one function on a given client:
+  `getMemberDetail` (session, the page) and `getMemberDetailAsAdmin` (admin client, for
+  callers with no session). Same rows, same fact collapsing, same health math; the queendom
+  and health-policy helpers take the client too. The caller of the admin twin gates first.
+- `elaya/elaya-data.ts` — `getMemberProfileFor` (the queendom gate, then the dossier, trimmed
+  to a bounded shape: facts by facet, most confident first, capped 80; people; the serving
+  team; health; open and recent requests; what is coming up; relations; observations) and
+  `getMemberFinanceFor` (`canSeeMemberFinance`, the gate, then live Zoho: totals, unpaid
+  invoices, latest invoices and payments).
+- `elaya/tools/registry.ts` — `get_member_profile` and `get_member_finance`, bridged so both
+  brains carry them; `get_member_overview` now points at all four follow-ups. Python brain:
+  the two names, their roles, and the members specialist rewritten around "what we KNOW,
+  what was SAID, the money".
+- Fix from the rename: `ZbInvoice.is_viewed_by_client` is Zoho's own field name and is back.
+- Exercised against production as the founder: profile in about a second (28 facts across
+  five facets, 301 past requests), finance live from Zoho, an outsider gets nothing, a guest
+  is refused money.
+
+## 2026-09-18 — Freshdesk: tuned to the corrected rate limit
+
+Why: Freshdesk support fixed the account's API allowance (it had been throttled at the trial
+50 calls a minute on a Pro plan). The headers now say 400 a minute for the account, and 100 a
+minute on every ticket endpoint (list, view, conversations), which is the only kind the mirror
+calls. The old numbers left most of that unused.
+
+What changed: `lib/constants/freshdesk.ts` — `FD_RUN_MAX_CALLS` 42 → 80, `FD_RATE_RESERVE`
+6 → 15 (the member app's share of the 100), `FD_THREAD_CONCURRENCY` 4 → 12,
+`FD_THREADS_PER_CYCLE` 60 → 300, `FD_MEDIA_FLAG_BATCH` 150 → 400, so the budget, not a fixed
+count, decides how many threads a cycle takes. Also found today: the cloud task stopped at
+21:55 IST on 09-17 with no error visible from here (the laptop holds the development key);
+the laptop loop was restarted as a stopgap until the Trigger.dev production run log is read.
+
 ## 2026-09-17 — Freshdesk: the attachment backlog moves to the cloud
 
 Why: Trigger.dev was deployed today, so the minute poll runs in the cloud and takes 42 of
@@ -491,6 +545,45 @@ What changed:
 - Not yet applied: 0201 (with 0199 and 0200) waits for the next `db push`; the forms render
   today, the write lands once the CHECKs and the trigger are in. The 176 clients without a
   queendom and the Concierge accounts themselves are the next data step.
+
+## 2026-09-18 — The last cross-schema queries fixed; the profile view narrowed to a name lookup
+
+Why: after 0212 restored the 21 `→ profiles` embeds, six queries still started in `public`
+and reached into `gia`, returning PGRST200 in production: the task list on a lead's page,
+the SLA follow-up dedup guard, the overdue escalation list, the revival guard, the dashboard
+agent-tasks widget, and the agent roster in settings. And the 0212 view mirrored every column
+of `profiles` when every caller wants only the name. Decided the same evening: keep the
+schemas (one per business area) and finish them, not reverse them — plan §12.1.
+
+What changed:
+
+- `src/lib/services/gia-task-links.ts` — `getTaskIdsForLead` (lead → its task ids, optionally
+  only a `call_outcome` marker) and `getGiaLinksForTasks` (task ids → lead link + lead row, the
+  within-gia embed, chunked). THE read across the task↔lead boundary; registered in CLAUDE.md.
+- tasks-service `getAllLeadTasks`, sla-service `getOpenGiaFollowupTask` + `getOverdueGiaTasks`,
+  revival-service `getOpenRevivedTask`, dashboard-service `getAgentTasksSummary` moved onto it;
+  agent-routing-service `getAgentRosterByDomain` reads `gia.agent_routing_config` separately
+  and keeps the old inner-join rule. Each keeps its documented failure posture.
+- Migration `20260918000213_narrow_profile_views.sql` — the two views become `id, full_name`.
+
+Verified against production through the real service functions (read-only), each against an
+independent calculation — exact task-id match on the overdue list per domain, the dossier's
+7 of 7 tasks, the dedup guard, the dashboard labels, the roster — and 0213 through Postgres
+plus PostgREST (every embed returns the name; `email` no longer resolves). Typecheck, lint
+and the production build clean. Not covered on real data: the revival marker, since no task
+carries one yet.
+
+The Python brain had its own copy of the overdue-escalations read with the same cross-schema
+embed; it now uses `get_gia_links_for_tasks` in `backend/app/core/supa.py` (the mirror of the
+Node helper) and returns row-for-row the same list as the Node service for every Gia domain.
+
+Checked for damage: the SLA engine's dedup guard fails by answering "no open task", so a broken
+guard could have created duplicate follow-ups. It did not — the engine has created no tasks
+since the move. The one lead with two open follow-ups for the same agent (legacy, 18 Sep) is
+the agent's own doing: they logged a call and booked the next one without closing the old task.
+
+Deploy note: the SLA engine, the revival sweep and the task reminders run on Trigger.dev's copy
+of this code, and the brain on Fargate, so both need redeploying to pick this up.
 
 ## 2026-09-17 — The leads page came back empty: PostgREST cannot embed across schemas
 

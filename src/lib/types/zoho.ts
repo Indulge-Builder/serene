@@ -20,7 +20,7 @@ export type ZbInvoice = {
   reference_number?: string;
   last_payment_date?: string;
   payment_expected_date?: string;
-  is_viewed_by_member?: boolean;
+  is_viewed_by_client?: boolean;   // Zoho's own field name — never rename
   cf_queendon?: string;
 };
 

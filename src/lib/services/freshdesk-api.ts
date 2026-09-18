@@ -61,13 +61,22 @@ export type FdBudget = {
   calls: number;
   /** X-RateLimit-Remaining after the last call; null until the first call. */
   remaining: number | null;
+  /** Epoch ms after which no new work starts (see createFdBudget). */
+  deadlineAt?: number;
 };
 
-export function createFdBudget(maxCalls = FD_RUN_MAX_CALLS, reserve = FD_RATE_RESERVE): FdBudget {
-  return { maxCalls, reserve, calls: 0, remaining: null };
+/**
+ * `deadlineMs` makes the budget a TIME budget too: past it, budgetHasRoom() is false, so every
+ * step stops starting new work exactly as it does when the calls run out. The minute task
+ * passes one so a cycle always ends inside its minute (2026-09-18: cycles that copied files
+ * ran 90–116s against a 60s schedule with one run at a time, and the queue only ever grew).
+ */
+export function createFdBudget(maxCalls = FD_RUN_MAX_CALLS, reserve = FD_RATE_RESERVE, deadlineMs?: number): FdBudget {
+  return { maxCalls, reserve, calls: 0, remaining: null, deadlineAt: deadlineMs ? Date.now() + deadlineMs : undefined };
 }
 
 export function budgetHasRoom(b: FdBudget, needed = 1): boolean {
+  if (b.deadlineAt && Date.now() >= b.deadlineAt) return false;
   if (b.calls + needed > b.maxCalls) return false;
   if (b.remaining != null && b.remaining - needed < b.reserve) return false;
   return true;

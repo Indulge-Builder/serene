@@ -37,6 +37,7 @@ import type {
   TaskPriority,
   Profile,
 } from '@/lib/types/database';
+import { getTaskIdsForLead } from '@/lib/services/gia-task-links';
 
 // ─────────────────────────────────────────────
 // Composite types returned by service functions
@@ -763,10 +764,15 @@ export async function getGiaTasksForUser(
 export async function getAllLeadTasks(leadId: string): Promise<Task[]> {
   const supabase = await createClient();
 
+  // The task↔lead link lives in gia; tasks in public. PostgREST cannot embed across
+  // schemas, so resolve the lead's task ids first (gia-task-links.ts), then read them.
+  const taskIds = await getTaskIdsForLead(supabase, leadId);
+  if (!taskIds || taskIds.length === 0) return [];
+
   const { data, error } = await supabase
     .from('tasks')
-    .select('*, task_gia_meta!inner(lead_id)')
-    .eq('task_gia_meta.lead_id', leadId)
+    .select('*')
+    .in('id', taskIds)
     .order('due_at', { ascending: true, nullsFirst: false });
 
   if (error) {

@@ -62,22 +62,7 @@ export async function getAgentRosterByDomain(
 
   let query = admin
     .from('profiles')
-    .select(`
-      id,
-      full_name,
-      avatar_url,
-      job_title,
-      domain,
-      is_active,
-      is_on_leave,
-      agent_routing_config!inner (
-        id,
-        is_active,
-        shift_start,
-        shift_end,
-        shift_days
-      )
-    `)
+    .select('id, full_name, avatar_url, job_title, domain, is_active, is_on_leave')
     .in('role', ROUTING_POOL_ROLES)
     .order('domain', { ascending: true })
     .order('full_name', { ascending: true });
@@ -88,11 +73,23 @@ export async function getAgentRosterByDomain(
 
   const { data, error } = await query;
   if (error || !data) return [];
+  if (data.length === 0) return [];
 
-  return data.map((row) => {
-    const config = Array.isArray(row.agent_routing_config)
-      ? row.agent_routing_config[0]
-      : row.agent_routing_config;
+  // profiles is public, agent_routing_config is gia: PostgREST cannot embed across
+  // schemas, so read the configs for this roster separately and join here. The old
+  // `!inner` rule is kept — a pool member with no config row is left out.
+  const { data: configs, error: configError } = await giaDb(admin)
+    .from('agent_routing_config')
+    .select('id, agent_id, is_active, shift_start, shift_end, shift_days')
+    .in('agent_id', data.map((row) => row.id));
+  if (configError || !configs) {
+    console.error('[agent-routing-service] getAgentRosterByDomain config read failed:', configError?.message);
+    return [];
+  }
+  const configByAgent = new Map(configs.map((c) => [c.agent_id, c]));
+
+  return data.filter((row) => configByAgent.has(row.id)).map((row) => {
+    const config = configByAgent.get(row.id);
     return {
       id:                 row.id,
       full_name:          row.full_name,

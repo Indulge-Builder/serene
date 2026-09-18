@@ -54,7 +54,9 @@ import { getBudgetSummary, type BudgetCampaignRow } from '@/lib/services/ad-spen
 import { rankVendorsForRequest, getVendorDetail } from '@/lib/services/vendors-service';
 import { listTicketsForElaya, getTicketByRefForElaya } from '@/lib/services/tickets-service';
 import { getSiaGroupForMember, getSiaMessages, searchSiaMessages, getSiaSenderRoles } from '@/lib/services/sia-service';
-import { canAccessMember } from '@/lib/elaya/access';
+import { canAccessMember, canSeeMemberFinance } from '@/lib/elaya/access';
+import { getMemberDetailAsAdmin } from '@/lib/services/members-service';
+import { getMemberFinance } from '@/lib/services/zoho-service';
 import type { TicketStatus } from '@/lib/constants/tickets';
 import type { RankVendorsRequest } from '@/lib/services/vendors-service';
 import { GIA_DOMAINS } from '@/lib/constants/domains';
@@ -493,4 +495,76 @@ export async function searchMemberHistoryFor(
   const rows = await searchSiaMessages(query, brief.group.group_jid);
   const hits = await shapeMessages(rows.slice(0, limit));
   return { member: brief.member, group_subject: brief.group.subject, hits };
+}
+
+// ─── The member's profile: what Serene KNOWS, as opposed to what was said ──────
+// get_member_recent_messages reads the chat; this reads the twin (0194): the facts by facet,
+// the people around the member, the health score, their Freshdesk requests, what is coming
+// up. One dossier read (getMemberDetailAsAdmin — the SAME read the member page renders), then
+// trimmed to a bounded shape: a model gets the newest and the most confident, never a dump.
+
+const PROFILE_FACTS_MAX = 80;
+const PROFILE_TEXT_CAP = 240;
+const clip = (v: string | null | undefined, n = PROFILE_TEXT_CAP) => (v && v.length > n ? v.slice(0, n) + '…' : (v ?? null));
+
+export type MemberProfileForElaya = NonNullable<Awaited<ReturnType<typeof getMemberProfileFor>>>;
+
+export async function getMemberProfileFor(principal: StaffPrincipal, memberId: string) {
+  const brief = await getMemberBriefFor(principal, memberId); // the queendom gate, once
+  if (!brief) return null;
+  const d = await getMemberDetailAsAdmin(memberId);
+  if (!d) return null;
+
+  // Most confident first, then newest; grouped by facet so the model reads a profile, not a list.
+  const ranked = [...d.facts].sort((a, b) => b.confidence - a.confidence || b.observed_at.localeCompare(a.observed_at));
+  const shown = ranked.slice(0, PROFILE_FACTS_MAX);
+  const facts: Record<string, { key: string; value: string | null; polarity: string; sources: string[]; confidence: number; observed_at: string }[]> = {};
+  for (const f of shown) {
+    (facts[f.facet] ??= []).push({ key: f.key, value: clip(f.value), polarity: f.polarity, sources: f.sources, confidence: f.confidence, observed_at: f.observed_at });
+  }
+  const ticket = (t: (typeof d.tickets.recent)[number]) => ({
+    id: t.id, subject: clip(t.subject, 140), status: t.status_label ?? String(t.status), category: t.category,
+    agent: t.agent_name, created: t.fd_created_at, resolved: t.resolved_at, escalated: t.is_escalated,
+  });
+  const m = d.member;
+  return {
+    member: {
+      id: m.id, name: m.full_name, tier: m.tier, membership_type: m.membership_type, membership_status: m.membership_status,
+      membership_start: m.membership_start, membership_end: m.membership_end, queendom: d.queendom?.name ?? null,
+      identity_status: m.identity_status, whatsapp_group: brief.group?.subject ?? null,
+    },
+    team: { queen: d.team.queen?.full_name ?? null, bishop: d.team.bishop?.full_name ?? null, joker: d.team.joker?.full_name ?? null, genies: d.team.genies.map((g) => g.full_name) },
+    facts,
+    facts_shown: shown.length,
+    facts_total: d.facts.length,
+    observations: d.notes.slice(0, 8).map((n) => ({ at: n.observed_at, by: n.created_by_name, text: clip(n.value, 400) })),
+    people: d.people.slice(0, 20).map((x) => ({ name: x.name, relation: x.relation, can_request: x.can_request, note: clip(x.note) })),
+    health: { score: d.health.score, trend_30d: d.health.trend30d, reasons: d.health.reasons.slice(0, 5) },
+    requests: { total: d.tickets.total, open: d.tickets.open.slice(0, 8).map(ticket), recent: d.tickets.recent.slice(0, 8).map(ticket) },
+    coming_up: d.anticipations.slice(0, 10).map((a) => ({ kind: a.kind, title: a.title, due_at: a.due_at, status: a.status, suggested_action: clip(a.suggested_action) })),
+    relations: d.relations.slice(0, 12).map((r) => ({ kind: r.entity_kind, label: r.entity_label, relation: r.relation, strength: Number(r.strength), last_seen_at: r.last_seen_at })),
+    timeline: d.events.slice(0, 12).map((e) => ({ at: e.occurred_at, kind: e.kind, tone: e.tone, summary: clip(e.summary) })),
+  };
+}
+
+/** The member's money, live from Zoho Books (1-minute Redis copy). Same gate as the finance page. */
+export async function getMemberFinanceFor(principal: StaffPrincipal, memberId: string) {
+  if (!canSeeMemberFinance({ role: principal.role })) return { denied: true as const };
+  const brief = await getMemberBriefFor(principal, memberId);
+  if (!brief) return null;
+  const { data } = await memberDb(createAdminClient()).from('members').select('zoho_customer_id, membership_amount_inr').eq('id', memberId).maybeSingle();
+  const row = data as { zoho_customer_id: string | null; membership_amount_inr: number | null } | null;
+  if (!row?.zoho_customer_id) return { member: brief.member.full_name, linked: false as const, membership_amount_inr: row?.membership_amount_inr ?? null };
+  const f = await getMemberFinance(row.zoho_customer_id);
+  if (!f) return { member: brief.member.full_name, linked: true as const, unavailable: true as const };
+  return {
+    member: brief.member.full_name,
+    linked: true as const,
+    currency: 'INR',
+    totals: f.totals,
+    unpaid_invoices: f.invoices.filter((i) => Number(i.balance) > 0).slice(0, 10).map((i) => ({ number: i.invoice_number, date: i.date, due_date: i.due_date, status: i.status, total: i.total, balance: i.balance })),
+    latest_invoices: f.invoices.slice(0, 6).map((i) => ({ number: i.invoice_number, date: i.date, status: i.status, total: i.total, balance: i.balance })),
+    latest_payments: f.payments.slice(0, 6).map((x) => ({ date: x.date, amount: x.amount, mode: x.payment_mode, invoices: x.invoice_numbers })),
+    fetched_at: f.fetchedAt,
+  };
 }

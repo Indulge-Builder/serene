@@ -770,29 +770,34 @@ async def _overdue_gia_tasks(domain: str | None) -> list[dict[str, Any]]:
     from datetime import datetime, timezone
 
     now_iso = datetime.now(timezone.utc).isoformat()
-    params: dict[str, str] = {
-        "select": (
-            "id, title, due_at, overdue_at, priority, assigned_to, "
-            "task_gia_meta!inner(lead_id, leads!inner(id, slug, first_name, last_name, domain))"
-        ),
-        "or": f"(overdue_at.not.is.null,and(due_at.not.is.null,due_at.lte.{now_iso}))",
-        "status": "in.(to_do,in_progress,in_review)",
-        "task_gia_meta.leads.archived_at": "is.null",
-        "order": "due_at.desc",
-        "limit": "100",
-    }
-    if domain:
-        params["task_gia_meta.leads.domain"] = f"eq.{domain}"
-    rows = await supa.select("tasks", params)
+    # Two reads across the public ↔ gia boundary (PostgREST cannot embed across schemas):
+    # the open, past-due tasks first — a small set — then their lead links, filtered here to
+    # live leads in scope. Mirrors getOverdueGiaTasks in src/lib/services/sla-service.ts.
+    rows = await supa.select(
+        "tasks",
+        {
+            "select": "id, title, due_at, overdue_at, priority, assigned_to",
+            "or": f"(overdue_at.not.is.null,and(due_at.not.is.null,due_at.lte.{now_iso}))",
+            "status": "in.(to_do,in_progress,in_review)",
+            "order": "due_at.desc",
+            "limit": "1000",
+        },
+    )
+    links = await supa.get_gia_links_for_tasks([r["id"] for r in rows])
+
+    in_scope = []
+    for r in rows:
+        lead = (links.get(r["id"]) or {}).get("lead")
+        if not lead or lead.get("archived_at") is not None:
+            continue  # not a lead task, or the lead is archived
+        if domain and lead.get("domain") != domain:
+            continue
+        in_scope.append((r, lead))
+        if len(in_scope) == 100:  # the list's old page size, in due_at order
+            break
 
     shaped = []
-    for r in rows:
-        meta = r.get("task_gia_meta") or {}
-        if isinstance(meta, list):  # !inner can come back as a 1-list
-            meta = meta[0] if meta else {}
-        lead = meta.get("leads")
-        if not lead:
-            continue
+    for r, lead in in_scope:
         overdue_at = r.get("overdue_at") or (
             r.get("due_at") if r.get("due_at") and r["due_at"] <= now_iso else None
         )
@@ -1088,6 +1093,8 @@ BRIDGED_READ_TOOL_NAMES: frozenset[str] = frozenset({
     # Members (2026-09-16): a member's WhatsApp history, raw. The sia archive and the
     # queendom gate (canAccessMember) live in Node; this brain decides WHEN to read.
     "get_member_overview", "get_member_recent_messages", "search_member_history",
+    # The twin and the money (2026-09-18): the dossier read and the Zoho read live in Node.
+    "get_member_profile", "get_member_finance",
 })
 
 # The ticket pair (2026-09-15) is bridged for the same reason: the sentinel's ledger and the
@@ -1102,6 +1109,8 @@ _BRIDGED_READ_ROLES: dict[str, frozenset[str]] = {
     "get_member_overview": frozenset({"agent", "manager", "admin", "founder"}),
     "get_member_recent_messages": frozenset({"agent", "manager", "admin", "founder"}),
     "search_member_history": frozenset({"agent", "manager", "admin", "founder"}),
+    "get_member_profile": frozenset({"agent", "manager", "admin", "founder"}),
+    "get_member_finance": frozenset({"agent", "manager", "admin", "founder"}),
 }
 
 

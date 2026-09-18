@@ -26,6 +26,7 @@ import { REDIS_KEYS, REDIS_TTL } from '@/lib/constants/redis-keys';
 import type { AppDomain, LeadStatus, UserRole } from '@/lib/types/database';
 import type { DashboardSummary } from '@/lib/types';
 import type { DateRange } from '@/lib/utils/date-range';
+import { getGiaLinksForTasks, type GiaTaskLink } from '@/lib/services/gia-task-links';
 
 // ─────────────────────────────────────────────
 // getDashboardSummary — single RPC, per-request memoised
@@ -93,13 +94,19 @@ export async function getAgentTasksSummary(agentId: string): Promise<import('@/l
       .from('tasks')
       .select(`
         id, title, task_category, task_type, priority, status, due_at,
-        task_gia_meta(lead_id, lead:leads!task_gia_meta_lead_id_fkey(first_name, last_name)),
         task_groups(title)
       `)
       .eq('assigned_to', agentId)
       .in('status', ['to_do', 'in_progress', 'in_review'])
       .order('due_at', { ascending: true, nullsFirst: false })
       .limit(30);
+
+    // The lead link lives in gia — a second read instead of a cross-schema embed
+    // (gia-task-links.ts). On a link error the widget still lists the tasks; lead
+    // tasks just lose their lead label for this refresh.
+    const links =
+      (await getGiaLinksForTasks(supabase, (taskRows ?? []).map((r) => r.id))) ??
+      new Map<string, GiaTaskLink>();
 
     type TaskCategory = 'personal' | 'group_subtask';
     type Priority     = 'urgent' | 'high' | 'normal';
@@ -108,9 +115,9 @@ export async function getAgentTasksSummary(agentId: string): Promise<import('@/l
     return (taskRows ?? [])
       .map((row) => {
         const category = row.task_category as TaskCategory;
-        const meta     = Array.isArray(row.task_gia_meta) ? row.task_gia_meta[0] : row.task_gia_meta;
+        const meta     = links.get(row.id) ?? null;
         const group    = Array.isArray(row.task_groups) ? row.task_groups[0] : row.task_groups;
-        const lead     = meta?.lead as { first_name: string; last_name: string | null } | null;
+        const lead     = meta?.lead ?? null;
 
         // A task_gia_meta row exists IFF the task is a lead follow-up (single-writer
         // invariant) — meta-presence is the lead-task signal, replacing the retired
@@ -134,7 +141,7 @@ export async function getAgentTasksSummary(agentId: string): Promise<import('@/l
           due_at:        row.due_at,
           is_overdue:    !!row.due_at && row.due_at < now,
           context_label: contextLabel,
-          lead_id:       isLeadTask ? ((meta?.lead_id as string) ?? null) : null,
+          lead_id:       isLeadTask ? (meta?.lead_id ?? null) : null,
         };
       })
       .sort((a, b) => {
