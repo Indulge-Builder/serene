@@ -12,6 +12,22 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-18 — 58 more groups linked to their member (the orphan batch)
+
+Why: every Sia group now has a type (465 member, 24 internal), but 122 member-type groups
+pointed at no member while 271 members had no group. The corrected "No WhatsApp group" filter
+(0217) made the gap visible.
+
+What changed: the three-signal matcher ran over exactly those two lists
+(`mapping-review-orphans.csv`: 14 AUTO, 44 SUGGEST, 25 ambiguous, 39 no match). The founder
+approved AUTO and SUGGEST; all 58 rows were re-validated against the live tables and applied
+with `scripts/import-members-and-map-groups.py --review … --skip-import --apply`. After: 401
+groups linked, the member mirror carries all 401 with no mismatch (the 0217 trigger did it on
+the real write path), 213 members still without a group (69 of them Active), 64 member-type
+groups still unlinked (mostly spelling variants and members not in the list yet). Also fixed:
+the rename had rewritten the importer's two export FILE names to "Member"; the files on disk
+are still the founder's "Client" exports, so the script could not start.
+
 ## 2026-09-18 — Fix: the members "No WhatsApp group" filter told the wrong story (migration 0217)
 
 Why: the filter and the WhatsApp chip on each row read `wa_invite_link`, the invite URL from

@@ -35,8 +35,9 @@ import urllib.request
 BASE = os.environ.get("NEXT_PUBLIC_SUPABASE_URL", "").rstrip("/")
 KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 
-SUB_CSV = "Subscription Manager Member Export.csv"
-APP_CSV = "app-member-export.csv"
+# The files keep the names the founder exported them under ("Client"), whatever the code calls the entity.
+SUB_CSV = "Subscription Manager Client Export.csv"
+APP_CSV = "app-client-export.csv"
 # The 2026-09-15 sheets (the founder's member list of record; member-ticket-plan.md 5.6/5.9):
 # export-1.csv = the subscription sheet (queendom, tier, dates, amount, status);
 # export-2.csv = the app member list (Zoho / Freshdesk / WhatsApp ids, app member id, tier, city).
