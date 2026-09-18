@@ -316,3 +316,27 @@ showing the joined name come back.
 | A moved table embeds `public.profiles` (21 sites) | `gia.profiles` / `member.profiles`, read-only views with `security_invoker = true` (migration 0212) | `profiles` is shared infrastructure that every schema needs to name. PostgREST traces a view's columns to its base table, so the existing foreign keys resolve and no application code changes. `security_invoker` keeps RLS with the caller; only SELECT is granted. |
 | `public` reaches INTO a moved schema (5 sites: `tasks` → `task_gia_meta` / `leads`, `profiles` → `agent_routing_config`) | split the query in code | That direction is public code reaching into a module's private data, which is what the restructure exists to make explicit. A `public.leads` view would undo the move in all but name. |
 
+### 12.1 Finished (2026-09-18)
+
+The decision after the evening's debate: KEEP the schemas. The founder's model is one kind of
+work per domain (a lead in Gia, a ticket in Sia, a task for tech), which is what a schema per
+business area expresses — the "modular monolith" pattern. The friction is confined to the
+API layer's embed rule and now has exactly two standard answers, both in place:
+
+- **A moved table needs a staff name** → the `profiles` view in its schema. Narrowed to
+  `id, full_name` by 0213, because that is all any caller asks for.
+- **`public` code needs a lead's link** → two reads through `src/lib/services/gia-task-links.ts`.
+  Six queries moved onto it: the lead dossier's task list, the SLA follow-up dedup guard, the
+  overdue escalation list, the revival guard, the dashboard agent-tasks widget, and the agent
+  roster (`profiles` → `gia.agent_routing_config`, joined in `agent-routing-service.ts`).
+
+Verified against production through the real service functions (read-only), each against an
+independent calculation: the dossier list (7 of 7 tasks), the dedup guard (same task id), the
+overdue list per Gia domain (exact task-id match: onboarding 24, house 23, shop 4, legacy 70),
+the dashboard lead labels, and the roster (20 rostered; the two config rows left out belong
+to an admin and a founder, as the pool rule says). The revival marker path runs cleanly, but
+no task carries a marker in production yet, so only the empty case is proven on real data.
+
+Future work, not a fix: the founder's per-domain task model (lead tasks owned by gia, the
+ticket itself as the Sia task) would retire `task_gia_meta` and today's ticket spin-off tasks.
+

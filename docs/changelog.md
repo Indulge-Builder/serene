@@ -359,6 +359,33 @@ What changed:
   today, the write lands once the CHECKs and the trigger are in. The 176 clients without a
   queendom and the Concierge accounts themselves are the next data step.
 
+## 2026-09-18 — The last cross-schema queries fixed; the profile view narrowed to a name lookup
+
+Why: after 0212 restored the 21 `→ profiles` embeds, six queries still started in `public`
+and reached into `gia`, returning PGRST200 in production: the task list on a lead's page,
+the SLA follow-up dedup guard, the overdue escalation list, the revival guard, the dashboard
+agent-tasks widget, and the agent roster in settings. And the 0212 view mirrored every column
+of `profiles` when every caller wants only the name. Decided the same evening: keep the
+schemas (one per business area) and finish them, not reverse them — plan §12.1.
+
+What changed:
+
+- `src/lib/services/gia-task-links.ts` — `getTaskIdsForLead` (lead → its task ids, optionally
+  only a `call_outcome` marker) and `getGiaLinksForTasks` (task ids → lead link + lead row, the
+  within-gia embed, chunked). THE read across the task↔lead boundary; registered in CLAUDE.md.
+- tasks-service `getAllLeadTasks`, sla-service `getOpenGiaFollowupTask` + `getOverdueGiaTasks`,
+  revival-service `getOpenRevivedTask`, dashboard-service `getAgentTasksSummary` moved onto it;
+  agent-routing-service `getAgentRosterByDomain` reads `gia.agent_routing_config` separately
+  and keeps the old inner-join rule. Each keeps its documented failure posture.
+- Migration `20260918000213_narrow_profile_views.sql` — the two views become `id, full_name`.
+
+Verified against production through the real service functions (read-only), each against an
+independent calculation — exact task-id match on the overdue list per domain, the dossier's
+7 of 7 tasks, the dedup guard, the dashboard labels, the roster — and 0213 through Postgres
+plus PostgREST (every embed returns the name; `email` no longer resolves). Typecheck, lint
+and the production build clean. Not covered on real data: the revival marker, since no task
+carries one yet.
+
 ## 2026-09-17 — The leads page came back empty: PostgREST cannot embed across schemas
 
 Why: a resource embed resolves only inside the schema of the request. `gia.leads` asking for

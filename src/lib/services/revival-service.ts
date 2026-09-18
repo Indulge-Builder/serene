@@ -31,6 +31,7 @@ import type {
   RevivalVerdict,
 } from "@/lib/types/revival";
 import type { Task } from "@/lib/types/database";
+import { getTaskIdsForLead } from "@/lib/services/gia-task-links";
 
 // ─────────────────────────────────────────────
 // Config — read PER sweep run, never module-cached (sla_policies convention).
@@ -67,11 +68,15 @@ export async function getActiveRevivalPolicies(): Promise<RevivalPolicyRow[]> {
  */
 export async function getOpenRevivedTask(leadId: string): Promise<Task | null> {
   const admin = createAdminClient();
+  // The 'revived' marker lives on the gia link; tasks in public — two reads, no
+  // cross-schema embed (gia-task-links.ts). Null = error, already logged: fail OPEN.
+  const taskIds = await getTaskIdsForLead(admin, leadId, { callOutcome: REVIVAL_TASK_MARKER });
+  if (!taskIds || taskIds.length === 0) return null;
+
   const { data, error } = await admin
     .from("tasks")
-    .select("*, task_gia_meta!inner(lead_id, call_outcome)")
-    .eq("task_gia_meta.lead_id", leadId)
-    .eq("task_gia_meta.call_outcome", REVIVAL_TASK_MARKER)
+    .select("*")
+    .in("id", taskIds)
     .not("status", "in", '("completed","cancelled","error")')
     .order("created_at", { ascending: false })
     .limit(1)
@@ -81,12 +86,7 @@ export async function getOpenRevivedTask(leadId: string): Promise<Task | null> {
     console.error("[revival-service] getOpenRevivedTask error:", error.message);
     return null;
   }
-  if (!data) return null;
-
-  // Strip the joined meta — callers expect a plain Task row (mirrors
-  // getOpenGiaFollowupTask in sla-service).
-  const { task_gia_meta: _meta, ...task } = data as Task & { task_gia_meta: unknown };
-  return task as Task;
+  return (data as Task | null) ?? null;
 }
 
 /** All revival policies (incl. inactive) for the settings panel. Admin client. */
