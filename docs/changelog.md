@@ -12,6 +12,18 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-18 — Fix: the member page's WhatsApp group link now opens that group in Sia
+
+Why: both links on the member page (the identity card row and the WhatsApp card) pointed at
+bare `/sia`, and the Sia workspace keeps the open group in browser state that always starts
+empty, so the click landed on the group list with nothing open.
+
+What changed: a deep link. `siaGroupHref(jid)` in `src/lib/constants/sia-roles.ts` builds
+`/sia?group=<jid>` (with `SIA_PATH` and `SIA_GROUP_PARAM`); `/sia` reads the param and honours
+it only when that jid is really in the loaded list (a stale or hand-typed value lands on the
+list); `SiaWorkspace` takes `initialGroupJid`, opens the chat on arrival and scrolls the rail
+row into view. Both member links use the builder.
+
 ## 2026-09-18 — 58 more groups linked to their member (the orphan batch)
 
 Why: every Sia group now has a type (465 member, 24 internal), but 122 member-type groups

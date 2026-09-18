@@ -52,6 +52,14 @@ export const QUEENDOM_SLUGS = ["anishqa", "ananyshree", "sanika"] as const;
 export type QueendomSlug = (typeof QUEENDOM_SLUGS)[number];
 
 export const CLIENTS_PATH = "/members";
+
+/** THE Sia page path + its deep link: /sia?group=<jid> opens that group's chat (the page
+ *  validates the jid against the loaded groups; an unknown one just lands on the list). */
+export const SIA_PATH = "/sia";
+export const SIA_GROUP_PARAM = "group";
+export function siaGroupHref(groupJid: string): string {
+  return `${SIA_PATH}?${SIA_GROUP_PARAM}=${encodeURIComponent(groupJid)}`;
+}
 /** The member's finance page (membership money today; Zoho wallet, invoices and payments with M2). */
 export function memberFinancePath(clientId: string): string {
   return `${CLIENTS_PATH}/${clientId}/finance`;

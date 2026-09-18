@@ -33,17 +33,24 @@ const RAIL_REFRESH_MS = 60_000;
 const HEALTH_REFRESH_MS = 60_000;
 const HEALTH_REFRESH_OPEN_MS = 20_000;
 
-export function SiaWorkspace({ groups: initialGroups }: { groups: SiaGroupRow[] }) {
+export function SiaWorkspace({ groups: initialGroups, initialGroupJid = null }: { groups: SiaGroupRow[]; initialGroupJid?: string | null }) {
   const [groups, setGroups] = useState<SiaGroupRow[]>(initialGroups);
   const [filter, setFilter] = useState<KindFilter>("all");
   const [railSearch, setRailSearch] = useState("");
-  const [selectedJid, setSelectedJid] = useState<string | null>(null);
+  const [selectedJid, setSelectedJid] = useState<string | null>(initialGroupJid);
   const [health, setHealth] = useState<SiaHealth | null>(null);
   const [consoleOpen, setConsoleOpen] = useState(false);
   const isMobile = useMediaQuery(MQ.mobile);
   const debouncedRailSearch = useDebounce(railSearch, 200);
 
   const selected = groups.find((g) => g.group_jid === selectedJid) ?? null;
+
+  // Arrived by deep link (/sia?group=…): the chat is already open; bring its rail row into view
+  // too (the rail holds hundreds of groups). Once, on mount.
+  useEffect(() => {
+    if (!initialGroupJid) return;
+    document.querySelector(`[data-sia-jid="${CSS.escape(initialGroupJid)}"]`)?.scrollIntoView({ block: "center" });
+  }, [initialGroupJid]);
 
   // ── Patch one group locally (mapping saves, live previews) ──
   const patchGroup = useCallback((jid: string, patch: Partial<SiaGroupRow>) => {
@@ -304,6 +311,7 @@ function RailRow({
   return (
     <motion.button
       type="button"
+      data-sia-jid={group.group_jid}
       onClick={onSelect}
       initial={{ opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}

@@ -20,6 +20,7 @@ import { formatCount } from '@/lib/utils/numbers';
 import { formatRelativeTime } from '@/lib/utils/dates';
 import type { MemberGroupSummary } from '@/lib/types/member';
 import type { SiaGroupRow } from '@/lib/services/sia-service';
+import { siaGroupHref } from '@/lib/constants/sia-roles';
 
 export function MemberWhatsAppCard({ clientId, group, canLink }: { clientId: string; group: MemberGroupSummary | null; canLink: boolean }) {
   const router = useRouter();
@@ -67,7 +68,7 @@ export function MemberWhatsAppCard({ clientId, group, canLink }: { clientId: str
       <div style={{ padding: 'var(--space-4) var(--space-6) var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
         {group ? (
           <>
-            <InfoRow label="Group" value={<Link href="/sia" style={{ color: 'var(--neu-accent-deep)' }}>{group.subject ?? group.group_jid}</Link>} />
+            <InfoRow label="Group" value={<Link href={siaGroupHref(group.group_jid)} style={{ color: 'var(--neu-accent-deep)' }}>{group.subject ?? group.group_jid}</Link>} />
             <InfoRow label="Messages" value={formatCount(group.message_count)} />
             <InfoRow label="Last message" value={group.last_message_at ? formatRelativeTime(group.last_message_at) : '—'} />
             <InfoRow label="Members" value={group.member_count != null ? String(group.member_count) : '—'} />

@@ -16,7 +16,7 @@ import { formatDate } from '@/lib/utils/dates';
 import { formatCurrency } from '@/lib/utils/numbers';
 import { CLIENT_TIERS, type MemberTier } from '@/lib/constants/member-facets';
 import { FRESHDESK_PATH } from '@/lib/constants/freshdesk';
-import { memberFinancePath } from '@/lib/constants/sia-roles';
+import { memberFinancePath, siaGroupHref } from '@/lib/constants/sia-roles';
 import { RevealId } from '@/components/ui/RevealId';
 import { MemberFormModal } from './MemberFormModal';
 import type { MemberDetail, QueendomSummary } from '@/lib/types/member';
@@ -112,7 +112,7 @@ export function MemberIdentityCard({ detail, queendoms, canPickQueendom }: { det
         <InfoRow label="Membership" value={`${c.membership_start ? formatDate(c.membership_start, 'd MMM yyyy') : '—'} to ${c.membership_end ? formatDate(c.membership_end, 'd MMM yyyy') : '—'}`} />
         <InfoRow label="Amount" value={c.membership_amount_inr != null ? formatCurrency(Number(c.membership_amount_inr)) : '—'} divider />
 
-        <LinkRow icon={MessageCircle} label="WhatsApp group" value={group ? (group.subject ?? group.group_jid) : (c.wa_invite_link ? 'Invite link saved, group not matched' : null)} href={group ? '/sia' : undefined} hint="Not linked" />
+        <LinkRow icon={MessageCircle} label="WhatsApp group" value={group ? (group.subject ?? group.group_jid) : (c.wa_invite_link ? 'Invite link saved, group not matched' : null)} href={group ? siaGroupHref(group.group_jid) : undefined} hint="Not linked" />
         <SystemRow icon={Ticket} label="Freshdesk" id={c.freshdesk_contact_id} idLabel="Freshdesk contact id" action="See tickets" href={`${FRESHDESK_PATH}?member=${c.id}`} hint="No contact id" />
         <SystemRow icon={Landmark} label="Zoho customer" id={c.zoho_customer_id} idLabel="Zoho customer id" action="See finance" href={memberFinancePath(c.id)} hint="No customer id" />
         <SystemRow icon={Smartphone} label="App member" id={c.app_member_id} idLabel="App member id" action="Linked" hint="No app account" />
