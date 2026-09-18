@@ -43,6 +43,7 @@ import {
   PROFILER_MESSAGE_CHAR_CAP, PROFILER_FETCH_LIMIT, PROFILER_CONFIDENCE_CAP, PROFILER_CONFIDENCE_FLOOR,
   PROFILER_BROAD_SENDER_MIN_GROUPS, PROFILER_GROUPS_PER_RUN, PROFILER_WINDOWS_PER_RUN, PROFILER_RUN_KIND,
   PROFILER_COST_PER_MTOK, PROFILER_MAX_OUTPUT_TOKENS, PROFILER_CALL_TIMEOUT_MS,
+  PROFILER_MEMBER_STATUSES, PROFILER_MAX_ATTEMPTS, PROFILER_OUTAGE_STOP,
 } from "@/lib/constants/member-profiler";
 
 const LOG = "[member-profiler]";
@@ -86,6 +87,8 @@ export type WindowOutcome = {
   written: { facts: number; facts_known: number; people: number; relations: number; events: number; coming_up: number } | null;
   tokens: { in: number; out: number } | null;
   error: string | null;
+  /** A thrown failure that was the provider's fault (outage, rate limit, credit), not the conversation's. */
+  provider_side?: boolean;
 };
 
 // ─── The vault (decision 2) ──────────────────────────────────────────────────
@@ -357,8 +360,21 @@ export async function profileWindow(w: ProfilerWindow, deps: ProfilerDeps): Prom
     const msg = e instanceof Error ? e.message : String(e);
     await finish(false, { error: msg.slice(0, 500) });
     console.warn(`${LOG} window failed`, w.group_jid, msg);
-    return { ...base, run_id: runId, error: msg };
+    return { ...base, run_id: runId, error: msg, provider_side: isProviderSide(e, msg) };
   }
+}
+
+/**
+ * Was this failure the provider's (down, rate limited, out of credit, the network) and not
+ * this conversation's? It decides whether the failure counts toward stepping over the
+ * conversation. Only a request the provider REJECTS AS INVALID is the conversation's fault;
+ * an empty credit balance arrives as a 400 too, so it is named explicitly. The error is read
+ * by shape, never by class: the SDK may only be imported inside the adapter.
+ */
+function isProviderSide(e: unknown, msg: string): boolean {
+  if (/credit balance|billing/i.test(msg)) return true;
+  const status = (e as { status?: unknown } | null)?.status;
+  return !(status === 400 || status === 413 || status === 422);
 }
 
 // ─── The writer (rule 1: append only; every row points at its run) ───────────
@@ -445,13 +461,33 @@ export async function runProfilerSweep(opts: SweepOptions): Promise<{ groups: nu
   const deadline = opts.deadlineMs ? Date.now() + opts.deadlineMs : Infinity;
   if (opts.apply && (opts.startAt || opts.newestPerGroup)) throw new Error("startAt / newestPerGroup are pilot options; they cannot be combined with apply");
 
-  const [{ data: due, error }, broad] = await Promise.all([sia().rpc("profiler_due_groups", { p_limit: maxGroups }), getBroadSenders()]);
+  const [{ data: due, error }, broad] = await Promise.all([
+    sia().rpc("profiler_due_groups", { p_limit: maxGroups, p_statuses: [...PROFILER_MEMBER_STATUSES] }),
+    getBroadSenders(),
+  ]);
   if (error) throw new Error(`${LOG} due groups failed: ${error.message}`);
-  const groups = (due ?? []) as { group_jid: string; member_id: string; cursor_at: string | null }[];
+  const groups = (due ?? []) as { group_jid: string; member_id: string; cursor_at: string | null; fail_count: number | null }[];
   const outcomes: WindowOutcome[] = [];
   let sent = 0;
+  let providerFailsInARow = 0;
+  // Groups whose reading failed on the provider's side this run. They count as a failed
+  // attempt ONLY if something else was read in the same run: that is the proof the provider
+  // was up, so the trouble is this conversation (a timeout it always hits, say).
+  const providerFailed: { group_jid: string; fail_count: number; w: ProfilerWindow; o: WindowOutcome }[] = [];
+  const state = (groupJid: string, patch: Record<string, unknown>) =>
+    sia().from("profiler_group_state").upsert({ group_jid: groupJid, ...patch }, { onConflict: "group_jid" });
 
-  for (const g of groups) {
+  /** One more failed attempt at this conversation; at the limit, step over it. True = stepped over. */
+  const countFailure = async (groupJid: string, failCount: number, w: ProfilerWindow, o: WindowOutcome): Promise<boolean> => {
+    const attempts = failCount + 1;
+    const why = o.error?.slice(0, 200) ?? "failed";
+    if (attempts < PROFILER_MAX_ATTEMPTS) { await state(groupJid, { fail_count: attempts, last_error: why }); return false; }
+    console.warn(`${LOG} stepping over a conversation after ${attempts} failed readings`, groupJid, w.from_at, w.to_at, why);
+    await state(groupJid, { last_message_at: w.to_at, fail_count: 0, last_run_id: o.run_id, last_error: `stepped over ${w.from_at} to ${w.to_at} after ${attempts} failed readings: ${why}`.slice(0, 300) });
+    return true;
+  };
+
+  sweep: for (const g of groups) {
     if (sent >= maxWindows || Date.now() >= deadline) break;
     const after = opts.startAt ?? g.cursor_at;
     let q = sia().from("wag_messages").select("id, sender_jid, text, type, wa_timestamp").eq("chat_jid", g.group_jid).eq("is_revoked", false).not("text", "is", null).order("wa_timestamp", { ascending: true }).limit(PROFILER_FETCH_LIMIT);
@@ -460,22 +496,41 @@ export async function runProfilerSweep(opts: SweepOptions): Promise<{ groups: nu
     if (mErr) { console.warn(`${LOG} messages read failed`, g.group_jid, mErr.message); continue; }
     const msgs = ((rows ?? []) as Msg[]).filter((m) => m.text.trim().length > 0);
     let windows = buildWindows(g.group_jid, g.member_id, msgs, Date.now());
+    // A full page means the last conversation may be cut by the page, not by a quiet gap. Leave
+    // it for the next pass, which starts right after the conversation before it and reads it whole.
+    if ((rows ?? []).length >= PROFILER_FETCH_LIMIT && windows.length > 1) windows = windows.slice(0, -1);
     if (opts.newestPerGroup) windows = windows.slice(-opts.newestPerGroup);
+    let failCount = Number(g.fail_count ?? 0);
 
     for (const w of windows) {
       if (sent >= maxWindows || Date.now() >= deadline) break;
       const o = await profileWindow(w, { broad, apply: opts.apply });
       outcomes.push(o); opts.onWindow?.(o);
       if (o.status !== "thin") sent += 1;
-      if (opts.apply) {
-        if (o.status === "failed") {
-          await sia().from("profiler_group_state").upsert({ group_jid: g.group_jid, last_error: o.error?.slice(0, 300) ?? "failed" }, { onConflict: "group_jid" });
-          break; // fails closed: the cursor stays; the same conversation is read again next pass
+      if (o.status !== "failed") providerFailsInARow = 0;
+      if (!opts.apply) continue;
+
+      if (o.status === "failed") {
+        // Fails closed: the bookmark stays, so the same conversation is read again next pass.
+        if (o.provider_side) {
+          providerFailed.push({ group_jid: g.group_jid, fail_count: failCount, w, o });
+          await state(g.group_jid, { last_error: o.error?.slice(0, 300) ?? "failed" });
+          providerFailsInARow += 1;
+          if (providerFailsInARow >= PROFILER_OUTAGE_STOP) { console.warn(`${LOG} the provider looks down; stopping this run`); break sweep; }
+          break;
         }
-        const { data: st } = await sia().from("profiler_group_state").select("windows_done").eq("group_jid", g.group_jid).maybeSingle();
-        await sia().from("profiler_group_state").upsert({ group_jid: g.group_jid, last_message_at: w.to_at, windows_done: Number((st as { windows_done: number } | null)?.windows_done ?? 0) + 1, last_run_id: o.run_id, last_error: null }, { onConflict: "group_jid" });
+        if (await countFailure(g.group_jid, failCount, w, o)) { failCount = 0; continue; }
+        break;
       }
+      failCount = 0;
+      const { data: st } = await sia().from("profiler_group_state").select("windows_done").eq("group_jid", g.group_jid).maybeSingle();
+      await state(g.group_jid, { last_message_at: w.to_at, windows_done: Number((st as { windows_done: number } | null)?.windows_done ?? 0) + 1, last_run_id: o.run_id, last_error: null, fail_count: 0 });
     }
   }
+
+  if (opts.apply && providerFailed.length && outcomes.some((o) => o.status === "read")) {
+    for (const f of providerFailed) await countFailure(f.group_jid, f.fail_count, f.w, f.o);
+  }
+
   return { groups: groups.length, windows: sent, outcomes };
 }

@@ -43,6 +43,50 @@ the same expression. `members-service.ts` reads the mirror for both the filter a
 mirror. Verified: 614 of 614 members match the Sia link (343 linked, 271 not), and a hand-blanked
 mirror is restored by the trigger. The member page was already right (it shows the real group).
 
+## 2026-09-18 -- The member profiler is switched on: whole history, Active members only (migration 0218)
+
+**Why.** The founder read the dry-run report, approved the quality, and asked for two things: read
+the whole chat history, and for now only for members whose membership is Active.
+
+**The whole history needed no new code.** A group with no bookmark starts from its first message,
+so switching on reads everything, oldest first. (An earlier note to the founder said switching on
+would only read new chats. That was wrong and was corrected before the switch.)
+
+**What changed.**
+
+- `supabase/migrations/20260918000218_member_profiler_active_only.sql`:
+  `sia.profiler_due_groups(p_limit, p_statuses)` joins `member.members` and offers only groups
+  whose member has one of the given statuses. Measured that day: 292 due groups for Active
+  members, 114 Expired left alone. The list is a parameter, fed from
+  `PROFILER_MEMBER_STATUSES` in `src/lib/constants/member-profiler.ts`, so widening it later is
+  one line and no migration. It answers in about 0.2 seconds.
+- **A conversation can no longer block its group.** A failed reading keeps the bookmark where it
+  is, which is right for a blip and wrong for a conversation that fails every time. The new
+  `fail_count` on `sia.profiler_group_state` counts failed readings of the same conversation. At 3
+  the sweep steps over it and says so in `last_error`. The failed runs stay in
+  `sia.extraction_runs`, so a skipped conversation is always findable.
+- **An outage is not a failed reading.** If Anthropic is down, rate limited or out of credit, the
+  failure does not count, and three of those in a row stop the run. Without this, one empty credit
+  balance would have stepped over a conversation in every group within half an hour. A
+  provider-side failure only counts when something else was read in the same run, which proves
+  the provider was up and the trouble is that one conversation.
+- **A page boundary no longer cuts a conversation.** The sweep reads 600 messages of a group at a
+  time. On old history the last conversation of a full page could be cut by the page, not by a
+  quiet gap. It is now left for the next pass, which reads it whole.
+- **Pace.** 40 conversations per run instead of 8. One reading takes about five seconds, so 40 fit
+  in the four minute budget. The history is about 87,000 messages, roughly 40 dollars, and drains
+  in a day or two. After that a day's new conversations are far fewer than the cap.
+
+**First real run, checked by hand.** One group, three conversations, written for real: 4 facts,
+2 people, 3 relations, 3 timeline events. Every fact carries `source = whatsapp_group`, its run
+id and the message it came from. People are added with `can_request = false`. The bookmark moved
+and `fail_count` stayed 0.
+
+**Then the switch.** `elaya_settings.member_profiler_enabled` set to `true` after the new code was
+deployed to Trigger.dev. Setting it back to `false` stops it within ten minutes, no deploy.
+
+---
+
 ## 2026-09-18 -- The member profiler: Serene reads the chats and fills the member's profile (migrations 0215, 0216)
 
 **Why.** Elaya can already open a member's profile, but most of it is empty. The only way a fact

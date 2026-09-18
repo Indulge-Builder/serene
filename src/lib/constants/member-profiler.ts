@@ -32,7 +32,27 @@ export const PROFILER_BROAD_SENDER_MIN_GROUPS = 6;
 
 /** The cloud task's budget per run: groups looked at, windows sent to the model. */
 export const PROFILER_GROUPS_PER_RUN = 12;
-export const PROFILER_WINDOWS_PER_RUN = 8;
+/**
+ * Conversations sent to the model per run. One reading takes about five seconds, so forty fit
+ * inside the task's four-minute budget. At this pace the approved history run (about 87,000
+ * messages across 281 Active members, 2026-09-18) drains in a day or two; afterwards the day's
+ * new conversations are far fewer than this and the number stops mattering.
+ */
+export const PROFILER_WINDOWS_PER_RUN = 40;
+/**
+ * Whose groups are read: `member.members.membership_status` values (the CLIENT_STATUSES ids).
+ * The founder's call on 2026-09-18: Active members only, for now. Passed to
+ * sia.profiler_due_groups (0218), so widening it is this one line and no migration.
+ */
+export const PROFILER_MEMBER_STATUSES: readonly string[] = ["Active"];
+/**
+ * Failed readings of the SAME conversation before the sweep steps over it, so one bad
+ * conversation can never hold a group's bookmark forever. A provider outage is not a failed
+ * reading (see the sweep).
+ */
+export const PROFILER_MAX_ATTEMPTS = 3;
+/** Provider-side failures in a row, within one run, that mean "the provider is down": stop. */
+export const PROFILER_OUTAGE_STOP = 3;
 
 export const PROFILER_SETTING_KEY = "member_profiler_enabled";
 export const PROFILER_RUN_KIND = "profiler";
