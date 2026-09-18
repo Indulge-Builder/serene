@@ -55,6 +55,38 @@ the same expression. `members-service.ts` reads the mirror for both the filter a
 mirror. Verified: 614 of 614 members match the Sia link (343 linked, 271 not), and a hand-blanked
 mirror is restored by the trigger. The member page was already right (it shows the real group).
 
+## 2026-09-18 -- The vendor module opens to the concierge floor (migration 0221)
+
+**Why.** Vendors were admin and founder only while the module was being built. The people who
+pick, call and rate vendors are the concierge team, and tickets now carry a vendor. Founder:
+everyone in the concierge domain sees the vendor pages, adds notes and uses every feature.
+
+**What changed.**
+
+- `src/lib/utils/route-access.ts`: `hasVendorAccess` (the three `/vendors` pages: admin, founder,
+  the concierge domain, and the tech workbench for the page only) and `hasVendorActionAccess`
+  (every vendor action: the same minus the workbench, which by its own rule only ever widens
+  pages). One predicate each, no role lists scattered in files.
+- `src/lib/actions/vendors.ts`: all sixteen actions go through `requireVendorAccess()`. The one
+  exception is `setVendorStatusAction`: pausing or blacklisting removes a vendor from everybody's
+  ranking, so it stays admin and founder.
+- `route-permissions.ts`: `/vendors` joins the concierge route list, so the sidebar shows it.
+- `supabase/migrations/20260918000221_vendors_for_concierge.sql`: `public.can_access_vendors()`,
+  the SQL mirror, and the six vendor SELECT policies plus the invoice bucket's read policy
+  re-declared on it. The app reads vendors through the admin client behind its gate; these
+  policies are the defence in depth, and the next change of audience is that one function.
+- The vendor on a ticket (`TicketVendorCard`) now links to the vendor's page.
+
+**Checked by signing in as real accounts:** a concierge agent and a concierge manager get the
+sidebar link, the pages, the actions, and the database lets them read all 21,647 vendors; a tech
+agent opens the page and cannot write; a sales agent gets nothing at all.
+
+**Not in this change.** Elaya's `find_vendors` and `get_vendor_details` are still admin and
+founder. Her tools are gated by role only, in the Node and the Python registry; letting the
+concierge floor ask her for a vendor needs a domain dimension in both and a brain redeploy.
+
+---
+
 ## 2026-09-18 -- The profiler reads the longest-waiting group first (migration 0220)
 
 **What went wrong.** The history read slowed from about 150 readings a run to about 25, with 304

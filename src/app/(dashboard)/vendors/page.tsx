@@ -4,7 +4,7 @@ import Link from 'next/link';
 import type { SearchParams } from 'next/dist/server/request/search-params';
 import { Search } from 'lucide-react';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
-import { hasElevatedPageAccess } from '@/lib/utils/route-access';
+import { hasVendorAccess } from '@/lib/utils/route-access';
 import { listVendors, getVendorCategories } from '@/lib/services/vendors-service';
 import { VendorsFilters } from '@/components/vendors/VendorsFilters';
 import { AddVendorButton } from '@/components/vendors/AddVendorButton';
@@ -56,9 +56,9 @@ export default async function VendorsPage({
 }) {
   const profile = await getCurrentProfile();
   if (!profile) redirect('/login');
-  // Admin/founder (+ the tech workbench, 2026-09-16 — page access only; the actions'
-  // requireProfile gate and the 0183–0186 policies stay admin/founder).
-  if (!hasElevatedPageAccess(profile)) redirect('/dashboard');
+  // Admin, founder, the whole concierge domain (founder, 2026-09-18) and the tech workbench for the
+  // page only. The actions ask hasVendorActionAccess; the SQL mirror is can_access_vendors() (0221).
+  if (!hasVendorAccess(profile)) redirect('/dashboard');
 
   const resolved = await searchParams;
   const filters = parseFilters(resolved);

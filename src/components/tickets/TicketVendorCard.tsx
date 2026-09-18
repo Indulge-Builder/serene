@@ -7,6 +7,7 @@
 
 import { useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Building2 } from 'lucide-react';
 import { CardHeader } from '@/components/leads/CardHeader';
 import { Button } from '@/components/ui/Button';
@@ -14,6 +15,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { toast } from '@/lib/toast';
 import { useDebounce } from '@/hooks/useDebounce';
 import { searchTicketVendorsAction, setTicketVendorAction, suggestTicketVendorsAction } from '@/lib/actions/tickets';
+import { VENDORS_PATH } from '@/lib/constants/vendors';
 import type { TicketVendorOption } from '@/lib/services/ticket-vendor';
 
 const SHELL: React.CSSProperties = { background: 'var(--theme-paper)', border: '1px solid var(--theme-paper-border)', borderRadius: 'var(--neu-radius-card)', boxShadow: 'var(--shadow-1)', overflow: 'hidden' };
@@ -65,7 +67,7 @@ export function TicketVendorCard({ ticketId, vendor, live }: { ticketId: string;
         {vendor && !finding && (
           <>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)' }}>{vendor.name}</span>
+              <Link href={`${VENDORS_PATH}/${vendor.id}`} style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', color: 'var(--neu-accent-deep)' }}>{vendor.name}</Link>
               <span style={{ fontSize: 'var(--text-xs)', color: 'var(--theme-text-secondary)' }}>{[vendor.category, vendor.city, vendor.phone].filter(Boolean).join(' · ') || 'No details on file'}</span>
             </div>
             {live

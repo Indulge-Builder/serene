@@ -1,6 +1,6 @@
 import { redirect, notFound } from 'next/navigation';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
-import { hasElevatedPageAccess } from '@/lib/utils/route-access';
+import { hasVendorAccess } from '@/lib/utils/route-access';
 import { getVendorDetail, getVendorInvoices, getVendorCategories } from '@/lib/services/vendors-service';
 import { BackButton } from '@/components/ui/BackButton';
 import { VendorIdentityCard } from '@/components/vendors/VendorIdentityCard';
@@ -17,7 +17,7 @@ type Props = {
 export default async function VendorPage({ params, searchParams }: Props) {
   const profile = await getCurrentProfile();
   if (!profile) redirect('/login');
-  if (!hasElevatedPageAccess(profile)) redirect('/dashboard');
+  if (!hasVendorAccess(profile)) redirect('/dashboard');
 
   const [{ id }, sp] = await Promise.all([params, searchParams]);
   // Where Back goes. A vendor is reached from the list AND from Find a vendor,

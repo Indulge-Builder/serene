@@ -91,7 +91,9 @@ export const DOMAIN_ROUTE_MAP: Record<AppDomain, string[]> = {
   // Freshdesk, not in the Gia sales inbox, so /whatsapp is gone and /sia + /freshdesk are in.
   // REACHABILITY only: both pages then ask sia-access.ts who the person is, and a seated
   // teammate sees only their own queendom (an unseated account is sent home).
-  concierge: ['/tasks', '/settings', '/members', '/tickets', '/sia', '/freshdesk'],
+  // /vendors (2026-09-18, founder): the whole concierge floor uses the vendor module; the pages
+  // and actions ask hasVendorAccess (route-access.ts).
+  concierge: ['/tasks', '/settings', '/members', '/tickets', '/sia', '/freshdesk', '/vendors'],
   finance:   ['/tasks', '/subscriptions', '/settings'],
   marketing: ['/tasks', '/campaigns', '/settings'],
   tech:      ['/tasks', '/subscriptions', '/settings'],

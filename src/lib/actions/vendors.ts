@@ -2,10 +2,10 @@
 
 // actions/vendors.ts — the Vendors module's server actions (migrations 0183–0185).
 //
-// Every write: Zod (parseActionInput) → requireProfile(VENDOR_ROLES) →
+// Every write: Zod (parseActionInput) → requireVendorAccess() →
 // actorFromProfile → the shared core in services/vendor-mutations.ts →
 // revalidatePath(VENDORS_PATH) → { data, error } (Rule 10). Every read: Zod →
-// requireProfile(VENDOR_ROLES) → vendors-service. VENDOR_ROLES mirrors the
+// requireVendorAccess() → vendors-service. VENDOR_ROLES mirrors the
 // 0183–0185 SELECT policies + the 0184 bucket policy (admin/founder for now —
 // the concierge / shop floor widens this with the Sia UI, as its own
 // migration + a one-line change here). The action IS the trust boundary: the
@@ -13,6 +13,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireProfile, actorFromProfile } from "@/lib/actions/_auth";
+import { hasVendorActionAccess } from "@/lib/utils/route-access";
 import { parseActionInput } from "@/lib/actions/_validation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formErrors } from "@/lib/validations/form-errors";
@@ -69,8 +70,20 @@ import type {
   RankedVendor,
 } from "@/lib/types/vendor";
 
-/** Who may read or write vendors — the SQL mirror is the 0183–0185 SELECT policies. */
-const VENDOR_ROLES: readonly UserRole[] = ["admin", "founder"];
+/** Pausing or blacklisting removes a vendor from EVERYBODY's ranking: that one stays admin/founder. */
+const VENDOR_STATUS_ROLES: readonly UserRole[] = ["admin", "founder"];
+
+/**
+ * Who may read or write vendors (founder, 2026-09-18): admin, founder and the whole concierge
+ * domain (NOT the tech workbench, which only ever widens pages). hasVendorActionAccess is the one predicate; its SQL mirror is
+ * public.can_access_vendors() (0221). Same shape as requireProfile, so every action reads the same.
+ */
+async function requireVendorAccess() {
+  const auth = await requireProfile();
+  if (!auth.ok) return auth;
+  if (!hasVendorActionAccess(auth.profile)) return { ok: false as const, result: { data: null, error: formErrors.unauthorized } };
+  return auth;
+}
 
 /** Core refusal → user copy. */
 function mutationError(code: VendorMutationError): string {
@@ -89,7 +102,7 @@ function mutationError(code: VendorMutationError): string {
 export async function createVendorAction(input: unknown): Promise<ActionResult<VendorRow>> {
   const parsed = parseActionInput(CreateVendorSchema, input);
   if (!parsed.ok) return { data: null, error: parsed.error };
-  const auth = await requireProfile(VENDOR_ROLES);
+  const auth = await requireVendorAccess();
   if (!auth.ok) return auth.result;
 
   const result = await createVendorCore(actorFromProfile(auth.profile), parsed.data);
@@ -101,7 +114,7 @@ export async function createVendorAction(input: unknown): Promise<ActionResult<V
 export async function updateVendorAction(input: unknown): Promise<ActionResult<VendorRow>> {
   const parsed = parseActionInput(UpdateVendorSchema, input);
   if (!parsed.ok) return { data: null, error: parsed.error };
-  const auth = await requireProfile(VENDOR_ROLES);
+  const auth = await requireVendorAccess();
   if (!auth.ok) return auth.result;
 
   const result = await updateVendorCore(actorFromProfile(auth.profile), parsed.data);
@@ -117,7 +130,7 @@ export async function updateVendorAction(input: unknown): Promise<ActionResult<V
 export async function setVendorStatusAction(input: unknown): Promise<ActionResult<VendorRow>> {
   const parsed = parseActionInput(SetVendorStatusSchema, input);
   if (!parsed.ok) return { data: null, error: parsed.error };
-  const auth = await requireProfile(VENDOR_ROLES);
+  const auth = await requireProfile(VENDOR_STATUS_ROLES);
   if (!auth.ok) return auth.result;
 
   const result = await setVendorStatusCore(actorFromProfile(auth.profile), parsed.data.id, parsed.data.status);
@@ -131,7 +144,7 @@ export async function setVendorStatusAction(input: unknown): Promise<ActionResul
 export async function upsertCapabilityAction(input: unknown): Promise<ActionResult<VendorCapabilityRow>> {
   const parsed = parseActionInput(UpsertCapabilitySchema, input);
   if (!parsed.ok) return { data: null, error: parsed.error };
-  const auth = await requireProfile(VENDOR_ROLES);
+  const auth = await requireVendorAccess();
   if (!auth.ok) return auth.result;
 
   const result = await upsertCapabilityCore(actorFromProfile(auth.profile), parsed.data);
@@ -143,7 +156,7 @@ export async function upsertCapabilityAction(input: unknown): Promise<ActionResu
 export async function deleteCapabilityAction(input: unknown): Promise<ActionResult<{ id: string }>> {
   const parsed = parseActionInput(DeleteCapabilitySchema, input);
   if (!parsed.ok) return { data: null, error: parsed.error };
-  const auth = await requireProfile(VENDOR_ROLES);
+  const auth = await requireVendorAccess();
   if (!auth.ok) return auth.result;
 
   const result = await deleteCapabilityCore(actorFromProfile(auth.profile), parsed.data.id);
@@ -159,7 +172,7 @@ export async function deleteCapabilityAction(input: unknown): Promise<ActionResu
 export async function logEngagementAction(input: unknown): Promise<ActionResult<VendorEngagementRow>> {
   const parsed = parseActionInput(LogEngagementSchema, input);
   if (!parsed.ok) return { data: null, error: parsed.error };
-  const auth = await requireProfile(VENDOR_ROLES);
+  const auth = await requireVendorAccess();
   if (!auth.ok) return auth.result;
 
   const result = await logEngagementCore(actorFromProfile(auth.profile), parsed.data);
@@ -171,7 +184,7 @@ export async function logEngagementAction(input: unknown): Promise<ActionResult<
 export async function closeEngagementAction(input: unknown): Promise<ActionResult<VendorEngagementRow>> {
   const parsed = parseActionInput(CloseEngagementSchema, input);
   if (!parsed.ok) return { data: null, error: parsed.error };
-  const auth = await requireProfile(VENDOR_ROLES);
+  const auth = await requireVendorAccess();
   if (!auth.ok) return auth.result;
 
   const result = await closeEngagementCore(actorFromProfile(auth.profile), parsed.data);
@@ -187,7 +200,7 @@ export async function closeEngagementAction(input: unknown): Promise<ActionResul
 export async function addReviewAction(input: unknown): Promise<ActionResult<VendorReviewRow>> {
   const parsed = parseActionInput(AddReviewSchema, input);
   if (!parsed.ok) return { data: null, error: parsed.error };
-  const auth = await requireProfile(VENDOR_ROLES);
+  const auth = await requireVendorAccess();
   if (!auth.ok) return auth.result;
 
   const result = await addReviewCore(actorFromProfile(auth.profile), parsed.data);
@@ -203,7 +216,7 @@ export async function addReviewAction(input: unknown): Promise<ActionResult<Vend
 export async function addVendorNoteAction(input: unknown): Promise<ActionResult<VendorNoteRow>> {
   const parsed = parseActionInput(AddVendorNoteSchema, input);
   if (!parsed.ok) return { data: null, error: parsed.error };
-  const auth = await requireProfile(VENDOR_ROLES);
+  const auth = await requireVendorAccess();
   if (!auth.ok) return auth.result;
 
   const result = await addVendorNoteCore(actorFromProfile(auth.profile), parsed.data);
@@ -216,7 +229,7 @@ export async function addVendorNoteAction(input: unknown): Promise<ActionResult<
 export async function setAgentPreferenceAction(input: unknown): Promise<ActionResult<VendorAgentPreferenceRow>> {
   const parsed = parseActionInput(SetAgentPreferenceSchema, input);
   if (!parsed.ok) return { data: null, error: parsed.error };
-  const auth = await requireProfile(VENDOR_ROLES);
+  const auth = await requireVendorAccess();
   if (!auth.ok) return auth.result;
 
   const result = await setAgentPreferenceCore(actorFromProfile(auth.profile), parsed.data);
@@ -230,7 +243,7 @@ export async function removeAgentPreferenceAction(
 ): Promise<ActionResult<{ vendor_id: string; agent_id: string }>> {
   const parsed = parseActionInput(RemoveAgentPreferenceSchema, input);
   if (!parsed.ok) return { data: null, error: parsed.error };
-  const auth = await requireProfile(VENDOR_ROLES);
+  const auth = await requireVendorAccess();
   if (!auth.ok) return auth.result;
 
   const result = await removeAgentPreferenceCore(
@@ -246,7 +259,7 @@ export async function removeAgentPreferenceAction(
 export async function searchVendorsAction(input: unknown): Promise<ActionResult<VendorRow[]>> {
   const parsed = parseActionInput(SearchVendorsSchema, input);
   if (!parsed.ok) return { data: null, error: parsed.error };
-  const auth = await requireProfile(VENDOR_ROLES);
+  const auth = await requireVendorAccess();
   if (!auth.ok) return auth.result;
 
   const rows = await searchVendors({
@@ -261,7 +274,7 @@ export async function searchVendorsAction(input: unknown): Promise<ActionResult<
 export async function getVendorDetailAction(input: unknown): Promise<ActionResult<VendorDetail>> {
   const parsed = parseActionInput(VendorIdSchema, input);
   if (!parsed.ok) return { data: null, error: parsed.error };
-  const auth = await requireProfile(VENDOR_ROLES);
+  const auth = await requireVendorAccess();
   if (!auth.ok) return auth.result;
 
   const detail = await getVendorDetail(parsed.data.id);
@@ -273,7 +286,7 @@ export async function getVendorDetailAction(input: unknown): Promise<ActionResul
 export async function rankVendorsAction(input: unknown): Promise<ActionResult<RankedVendor[]>> {
   const parsed = parseActionInput(RankVendorsSchema, input);
   if (!parsed.ok) return { data: null, error: parsed.error };
-  const auth = await requireProfile(VENDOR_ROLES);
+  const auth = await requireVendorAccess();
   if (!auth.ok) return auth.result;
 
   const ranked = await rankVendorsForRequest({
@@ -294,7 +307,7 @@ export async function rankVendorsAction(input: unknown): Promise<ActionResult<Ra
 export async function signVendorInvoiceAction(input: unknown): Promise<ActionResult<{ url: string }>> {
   const parsed = parseActionInput(SignVendorInvoiceSchema, input);
   if (!parsed.ok) return { data: null, error: formErrors.generic };
-  const auth = await requireProfile(VENDOR_ROLES);
+  const auth = await requireVendorAccess();
   if (!auth.ok) return auth.result;
 
   const admin = createAdminClient();

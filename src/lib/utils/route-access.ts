@@ -67,3 +67,23 @@ export function isNavVisible(profile: RouteProfile, href: string): boolean {
   if (profile.role !== 'admin' && startsWithAny(href, DOMAIN_NAV_HIDDEN[profile.domain] ?? [])) return false;
   return true;
 }
+
+/**
+ * THE vendor module's audience (founder, 2026-09-18): admin, founder, the tech workbench, and
+ * everyone in the concierge domain, whatever their role. The /vendors pages and every vendor
+ * action ask this; the SQL mirror is public.can_access_vendors() (migration 0221). The one
+ * exception is pausing or blacklisting a vendor, which stays admin/founder because it removes
+ * the vendor from everybody's ranking.
+ */
+export function hasVendorAccess(profile: RouteProfile): boolean {
+  return hasElevatedPageAccess(profile) || profile.domain === 'concierge';
+}
+
+/**
+ * The same audience for vendor ACTIONS, minus the tech workbench: the workbench widens PAGE
+ * access only (see WORKBENCH_DOMAINS), so a tech account opens /vendors but cannot write there.
+ * This is the exact mirror of public.can_access_vendors().
+ */
+export function hasVendorActionAccess(profile: RouteProfile): boolean {
+  return profile.role === 'admin' || profile.role === 'founder' || profile.domain === 'concierge';
+}
