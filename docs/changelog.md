@@ -396,7 +396,10 @@ bound on the cycle's length).
 What changed: `createFdBudget(maxCalls, reserve, deadlineMs?)` — the budget is now calls AND
 time; past the deadline `budgetHasRoom()` is false, so every step stops starting new work the
 same clean way it does when calls run out, and in-flight downloads finish. The task passes
-40 seconds; `maxDuration` 120 → 90 as the backstop only. The 173 queued runs were cancelled.
+30 seconds (40 measured 29 to 72s in production, too close to the minute); `maxDuration`
+120 → 90 as the backstop only. A run that starts more than 150 seconds after its scheduled
+minute now exits at once, so a slow stretch can delay the mirror but never build a backlog.
+The 168 queued runs were cancelled.
 
 ## 2026-09-18 — Elaya reads the member twin: what we know, and the money
 
