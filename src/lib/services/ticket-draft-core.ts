@@ -111,7 +111,8 @@ export async function draftTicketCore(input: DraftCoreInput, broad?: Set<string>
     const vault = await openVault(input.group_jid, input.member_id, [...input.messages, ...(input.context ?? [])].map((m) => m.sender_jid), broad ?? (await getBroadSenders()));
     if (!vault) { await finish(false, { error: "member not found" }); return null; }
     const facts = vault.ctx.facts;
-    const line = (f: (typeof facts)[number], withFacet: boolean) => `${withFacet ? `${f.facet}.` : ""}${f.key}: ${f.polarity === "dislikes" ? "AVOIDS " : ""}${vault.mask(f.value)}`;
+    // The KEY is masked too: a key can carry a name ("daughter_rumi"), and an unmasked one trips the leak check.
+    const line = (f: (typeof facts)[number], withFacet: boolean) => `${withFacet ? `${f.facet}.` : ""}${vault.mask(f.key)}: ${f.polarity === "dislikes" ? "AVOIDS " : ""}${vault.mask(f.value)}`;
     const essentials = facts.filter((f) => ["address", "dietary", "family", "contact_rule"].includes(f.facet)).slice(0, 30).map((f) => line(f, true));
     const preferences = facts.filter((f) => ["preference", "travel", "interest"].includes(f.facet)).slice(0, 30).map((f) => line(f, false));
     const thread = input.messages.map((m) => `[${m.at.slice(0, 16).replace("T", " ")}] ${vault.codeOf(m.sender_jid)}: ${vault.mask(m.text.slice(0, 1200))}`).join("\n");

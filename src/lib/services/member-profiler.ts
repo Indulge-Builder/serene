@@ -372,7 +372,7 @@ export async function profileWindow(w: ProfilerWindow, deps: ProfilerDeps): Prom
     const text = m.text.length > PROFILER_MESSAGE_CHAR_CAP ? m.text.slice(0, PROFILER_MESSAGE_CHAR_CAP) + "…" : m.text;
     return `[#${i + 1} ${m.wa_timestamp.slice(0, 16).replace("T", " ")}] ${code}: ${mask(text)}`;
   });
-  const onFile = ctx.facts.slice(0, 60).map((f) => `- ${f.facet} / ${f.key}: ${mask(f.value).slice(0, 120)}`).join("\n") || "- nothing yet";
+  const onFile = ctx.facts.slice(0, 60).map((f) => `- ${f.facet} / ${mask(f.key)}: ${mask(f.value).slice(0, 120)}`).join("\n") || "- nothing yet";
   const userContent = `Already on file for this member (do not repeat these):\n${onFile}\n\nThe conversation (${w.messages.length} messages):\n${lines.join("\n")}`;
 
   // The vault's own guard: if any name we KNOW survived the masking, this window does not leave.
