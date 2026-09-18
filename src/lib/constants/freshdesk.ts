@@ -98,8 +98,12 @@ export type FdTrackedField = (typeof FD_TRACKED_FIELDS)[number];
 // stops a run when the window has fewer than FD_RATE_RESERVE calls left (room for a human
 // using the API or a stray integration) and never spends more than FD_RUN_MAX_CALLS in one
 // run. Founder's call 2026-09-15: the mirror is the priority consumer of this allowance.
-export const FD_RATE_RESERVE = 6;
-export const FD_RUN_MAX_CALLS = 42;
+// 2026-09-18: Freshdesk corrected the account to its Pro allowance: 400 calls a minute in
+// total, BUT every ticket endpoint (list, view, conversations) reports its own sub-limit of
+// 100 a minute in x-ratelimit-total, shared with the member app. The mirror only ever calls
+// ticket endpoints, so 100 is its real ceiling; the reserve is what the member app keeps.
+export const FD_RATE_RESERVE = 15;
+export const FD_RUN_MAX_CALLS = 80;
 /** How far behind the watermark an incremental poll re-reads (idempotent upserts absorb the overlap). */
 export const FD_POLL_OVERLAP_MS = 3 * 60_000;
 /** Freshdesk's list page cap (per_page max 100, at most 300 pages per query). */
@@ -139,7 +143,7 @@ export const FD_ATTACHMENT_SIGNED_TTL_SECONDS = 3600;
 /** Files copied per thread pull; a bigger thread finishes on its next pull (the backlog flag re-queues it). */
 export const FD_MEDIA_PER_THREAD_MAX = 40;
 /** How many backlog tickets the laptop loop queues per minute when run with --media. */
-export const FD_MEDIA_FLAG_BATCH = 150;
+export const FD_MEDIA_FLAG_BATCH = 400;
 /**
  * Parallelism of the copy (2026-09-16). The loop was serial at every level and ran ~8 backlog
  * tickets a minute against a 50-calls-a-minute allowance: the minute went to waiting on
@@ -147,8 +151,8 @@ export const FD_MEDIA_FLAG_BATCH = 150;
  * and a cycle takes as many threads as the budget allows instead of a fixed 20.
  */
 export const FD_MEDIA_COPY_CONCURRENCY = 6;
-export const FD_THREAD_CONCURRENCY = 4;
-export const FD_THREADS_PER_CYCLE = 60;
+export const FD_THREAD_CONCURRENCY = 12;
+export const FD_THREADS_PER_CYCLE = 300;
 
 const FD_EXT_BY_MIME: Record<string, string> = {
   "image/jpeg": "jpg", "image/png": "png", "image/gif": "gif", "image/webp": "webp", "image/heic": "heic", "image/svg+xml": "svg",

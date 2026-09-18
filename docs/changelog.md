@@ -211,6 +211,20 @@ compile crawl and is the first thing to fix before judging local speed.
 
 ---
 
+## 2026-09-18 — Freshdesk: tuned to the corrected rate limit
+
+Why: Freshdesk support fixed the account's API allowance (it had been throttled at the trial
+50 calls a minute on a Pro plan). The headers now say 400 a minute for the account, and 100 a
+minute on every ticket endpoint (list, view, conversations), which is the only kind the mirror
+calls. The old numbers left most of that unused.
+
+What changed: `lib/constants/freshdesk.ts` — `FD_RUN_MAX_CALLS` 42 → 80, `FD_RATE_RESERVE`
+6 → 15 (the member app's share of the 100), `FD_THREAD_CONCURRENCY` 4 → 12,
+`FD_THREADS_PER_CYCLE` 60 → 300, `FD_MEDIA_FLAG_BATCH` 150 → 400, so the budget, not a fixed
+count, decides how many threads a cycle takes. Also found today: the cloud task stopped at
+21:55 IST on 09-17 with no error visible from here (the laptop holds the development key);
+the laptop loop was restarted as a stopgap until the Trigger.dev production run log is read.
+
 ## 2026-09-17 — Freshdesk: the attachment backlog moves to the cloud
 
 Why: Trigger.dev was deployed today, so the minute poll runs in the cloud and takes 42 of
