@@ -1103,6 +1103,8 @@ BRIDGED_READ_TOOL_NAMES: frozenset[str] = frozenset({
     # Ask the database + the live pulse (2026-09-19): the locked runner (0223), its log and the
     # pulse reads live in Node. Founder and admin only, on both sides.
     "describe_database", "query_database", "get_live_pulse",
+    # Everything on one member in one call (2026-09-19); the queendom gate lives in Node.
+    "get_member_360",
 })
 
 # The ticket pair (2026-09-15) is bridged for the same reason: the sentinel's ledger and the
@@ -1133,6 +1135,7 @@ _BRIDGED_READ_ROLES: dict[str, frozenset[str]] = {
     "describe_database": _FOUNDER_UP,
     "query_database": _FOUNDER_UP,
     "get_live_pulse": _FOUNDER_UP,
+    "get_member_360": frozenset({"agent", "manager", "admin", "founder"}),
 }
 
 

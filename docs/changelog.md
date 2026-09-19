@@ -85,6 +85,30 @@ is their first real run.
 
 ---
 
+## 2026-09-19 — One call loads everything on a member: `get_member_360`
+
+Why: the founder's main concern. "When I ask Elaya about a client she should load all the data
+around the client, the latest, and then handle any twisted question or analysis from it." Before
+this she picked one or two of five member tools from the wording ("from his chats" gave chats
+only) and answered from part of the picture.
+
+What changed: `get_member_360` (`src/lib/elaya/elaya-data.ts` `getMember360For`) composes the
+member reads that already exist into ONE live picture: identity and team, health, the state of
+the WhatsApp conversation right now (who spoke last, waiting on us or not, "Ok" and "Noted" not
+counted as waiting), the latest 25 messages, open and recent Freshdesk requests, open Sia
+tickets and suggestions, what is coming up, every current fact by facet, people, relations,
+timeline, observations, vendor jobs, deals, money. It takes the member's name straight from the
+user, so nothing is asked back unless several members match. The result carries a larger
+allowance (24,000 chars, `maxResultChars` on the tool, mirrored in the Python loop) and fits
+itself by shortening lists, never dropping a section. The `members` specialist calls it first
+for any member question; founders and admins also carry `query_database` there for the analysis.
+
+Tested through the real brain locally: "tell me about Aakash Oza" gave one complete picture
+leading with the live thread (a DJ booking to close today); "how many requests did he raise
+each month since he joined, and how fast do we reply to him" made her write three queries
+(peak 70 in March, median reply 1.1 minutes) and flag that his requests fell to 17 and 8 in
+August and September. A genie asking about another queendom's member is refused.
+
 ## 2026-09-19 — Elaya works answers out: ask the database, the live pulse, the daily briefing
 
 Why: the founder wants an Elaya that does not depend on a ready tool for every question, and

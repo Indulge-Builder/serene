@@ -88,7 +88,9 @@ export type ElayaReadToolName =
   // Ask the database (0223) — founder and admin only
   | 'describe_database'
   | 'query_database'
-  | 'get_live_pulse';
+  | 'get_live_pulse'
+  // Everything on one member, live, in one call (2026-09-19)
+  | 'get_member_360';
 
 /** Every tool name the principal may carry — read tools (this file) + write tools. */
 export type ElayaToolName = ElayaReadToolName | ElayaWriteToolName;
@@ -102,6 +104,9 @@ type ElayaTool = {
   schema: z.ZodTypeAny;
   /** JSON Schema mirror of `schema` — handed to the provider adapter. */
   jsonSchema: Record<string, unknown>;
+  /** A larger result allowance for a tool that is a whole picture by design (get_member_360).
+   *  Default TOOL_RESULT_MAX_CHARS. Keep it rare: every char is paid for on every later turn. */
+  maxResultChars?: number;
   // `channel` is threaded so a tool can react to the sessionless WhatsApp context
   // (e.g. tools whose backing query needs auth.uid() must use a principal-scoped
   // admin path or refer the user to the app — H1). Defaults to in_app at the seam.
@@ -1123,6 +1128,7 @@ export const BRIDGED_READ_TOOL_NAMES: ReadonlySet<string> = new Set([
   'describe_database',
   'query_database',
   'get_live_pulse',
+  'get_member_360',
 ]);
 
 // ── Tickets (Sia, 0195/0199/0200) — the genie's queue and one ticket's whole story ──
@@ -1558,6 +1564,50 @@ const getLivePulseTool: ElayaTool = {
   },
 };
 
+// ── Member 360 — everything on one member, live, in ONE call ──
+
+const getMember360: ElayaTool = {
+  name: 'get_member_360',
+  description:
+    'EVERYTHING Serene holds on one member, live, in one call: who they are (tier, membership, queendom, ' +
+    'team), health score with reasons, the state of their WhatsApp conversation RIGHT NOW (who spoke last, ' +
+    'whether they are waiting on us) with the latest messages, their open and recent Freshdesk requests, ' +
+    'open Sia tickets and ticket suggestions, what is coming up (birthdays, trips, renewal), what we know ' +
+    '(facts by facet with source and confidence), the people around them, places and brands tied to them, ' +
+    'the timeline of past conversations, team observations, vendor jobs done for them, deals, and their ' +
+    'money (when your role may see it). `member` is the NAME as the user said it, or a member_id: call ' +
+    'this FIRST and straight away for ANY question about a member ("tell me about X", "brief me on X", ' +
+    '"what is going on with X", "is X happy", "what should I know before I call X"), then answer from ALL ' +
+    'of it, leading with what is live (waiting on us, open requests, what is coming up). Do not ask which ' +
+    'aspect they want. Several matches come back as `candidates`: ask which one, never pick. Go to the ' +
+    'other member tools only for DEPTH: older chat (get_member_recent_messages with `before`), a topic ' +
+    'across the whole history (search_member_history), every saved fact (get_member_profile). `trimmed` ' +
+    'names the lists that were shortened to fit. State only what is here; an empty list means nothing on ' +
+    'record, never a guess.',
+  schema: z.object({ member: z.string().trim().min(2).max(120) }),
+  jsonSchema: {
+    type: 'object',
+    properties: { member: { type: 'string', description: "The member's name as the user said it, or a member_id" } },
+    required: ['member'],
+    additionalProperties: false,
+  },
+  maxResultChars: 24_000, // a whole client picture; elaya-data fits it to 22,000 by trimming lists
+  run: async (principal, input) => {
+    const { member } = input as { member: string };
+    const r = await elayaData.getMember360For(principal, member);
+    if (!r.found) {
+      if (r.reason === 'several') return { found: false, candidates: r.candidates, note: 'Several members match. Ask the user which one they mean, naming them.' };
+      return { found: false, note: `No member matching "${member}" that you can see. Say so; never describe anyone.` };
+    }
+    return {
+      found: true,
+      ...r.data,
+      trimmed: r.trimmed.length ? r.trimmed : undefined,
+      note: 'Live as of `as_of`. Cite dates. Anything not here is not on record.' + (r.trimmed.length ? ' Shortened lists: use the detailed member tools if the user wants more of them.' : ''),
+    };
+  },
+};
+
 const ALL_TOOLS = [
   searchLeads,
   getColdLeads,
@@ -1590,6 +1640,7 @@ const ALL_TOOLS = [
   describeDatabase,
   queryDatabase,
   getLivePulseTool,
+  getMember360,
 ] as const;
 
 const TOOL_REGISTRY = new Map<string, ElayaTool>(ALL_TOOLS.map((t) => [t.name, t]));
@@ -1674,8 +1725,9 @@ export async function executeTool(
       : await writeTool!.run(principal, parsed.data as Record<string, unknown>, ctx);
     const masked = maskPii(result, maskingDepth);
     let serialized = JSON.stringify(masked);
-    if (serialized.length > TOOL_RESULT_MAX_CHARS) {
-      serialized = `${serialized.slice(0, TOOL_RESULT_MAX_CHARS)}…(truncated)`;
+    const cap = readTool?.maxResultChars ?? TOOL_RESULT_MAX_CHARS;
+    if (serialized.length > cap) {
+      serialized = `${serialized.slice(0, cap)}…(truncated)`;
     }
     return { content: serialized, isError: false };
   } catch (e) {

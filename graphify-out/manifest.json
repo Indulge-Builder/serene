@@ -1890,8 +1890,8 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/tools/registry.ts": {
-    "mtime": 1789816182.742189,
-    "ast_hash": "bf03d97c47e6a790f03d911e176dc6d3",
+    "mtime": 1789818218.347495,
+    "ast_hash": "521211be93be5a058ccc276aa76bd3d6",
     "semantic_hash": ""
   },
   "src/lib/elaya/tools/write-registry.ts": {
@@ -3085,8 +3085,8 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1789816805.2232313,
-    "ast_hash": "baec428fed1e17ec383c5ba39683ce70",
+    "mtime": 1789818450.7202895,
+    "ast_hash": "aa607e2578b7a594a9330c546d41f072",
     "semantic_hash": ""
   },
   "README.md": {
@@ -3170,8 +3170,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1789816837.176738,
-    "ast_hash": "bd360166d629c7f0362b5ecad4a0fd5e",
+    "mtime": 1789818450.7190647,
+    "ast_hash": "dd406a4484da748ec1abc3087cde43b0",
     "semantic_hash": ""
   },
   "docs/claude-project/1-product-and-status.md": {
@@ -3495,8 +3495,8 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/CLAUDE.md": {
-    "mtime": 1789816805.2222688,
-    "ast_hash": "27436ed070d4d09f33fba329cc887728",
+    "mtime": 1789818450.7098594,
+    "ast_hash": "3b6ed941212293eebc9b9c0e627e323d",
     "semantic_hash": ""
   },
   "src/lib/services/CLAUDE.md": {
@@ -3990,8 +3990,8 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/elaya-data.ts": {
-    "mtime": 1789816182.7415195,
-    "ast_hash": "c315858c21829030d14d12e458c23ff8",
+    "mtime": 1789818248.6258237,
+    "ast_hash": "1ec3d6fe416d9f13ab9dd1f58fae326c",
     "semantic_hash": ""
   },
   "src/lib/elaya/memory.ts": {
@@ -6475,8 +6475,8 @@
     "semantic_hash": ""
   },
   "backend/app/brain/loop.py": {
-    "mtime": 1789626186.0520418,
-    "ast_hash": "c0e5e5ab8ede20ac8bb2a302fcce986b",
+    "mtime": 1789818248.6252759,
+    "ast_hash": "9aab2fa5269d270330aac164a0a768e5",
     "semantic_hash": ""
   },
   "backend/app/brain/pii.py": {
@@ -6495,8 +6495,8 @@
     "semantic_hash": ""
   },
   "backend/app/brain/specialists.py": {
-    "mtime": 1789816469.8965466,
-    "ast_hash": "b47f837f086c6919ee5bdb28829ee96b",
+    "mtime": 1789818358.487001,
+    "ast_hash": "ec16f674018068b0ade26bbd2ec1a116",
     "semantic_hash": ""
   },
   "backend/app/core/__init__.py": {
@@ -6535,8 +6535,8 @@
     "semantic_hash": ""
   },
   "backend/app/tools/registry.py": {
-    "mtime": 1789816469.8959196,
-    "ast_hash": "029d256c873c107b439ba48d2b91da08",
+    "mtime": 1789818358.4862363,
+    "ast_hash": "be24079f272d8441cdc7c40ff7d0a142",
     "semantic_hash": ""
   },
   "supabase/migrations/20260828000176_llm_heavy_tier.sql": {

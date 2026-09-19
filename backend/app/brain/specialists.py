@@ -162,7 +162,7 @@ SPECIALISTS: dict[str, Specialist] = {
                "(what was counted, the dates, the filter) so it can be sanity-checked, and say when a list "
                "was cut at the row cap. A number you did not get from a tool is never stated."),
         toolset=["get_live_pulse", "describe_database", "query_database", "get_books_overview",
-                 "get_freshdesk_overview", "get_member_overview", "find_teammate"],
+                 "get_freshdesk_overview", "get_member_360", "get_member_overview", "find_teammate"],
         job="heavy",  # the deepest tier: planning and writing queries is the hardest work she does
         roles=frozenset({"admin", "founder"}),
     ),
@@ -215,18 +215,24 @@ SPECIALISTS: dict[str, Specialist] = {
             "renewal), what they said in their WhatsApp group (asked for lately, ever mentioned a topic, "
             "summarise the chat), and their money (owes anything, paid, invoice due)"
         ),
-        focus=("Focus for this conversation: MEMBERS — one member's story from Serene's own records. "
-               "Always call get_member_overview first to find the member and their member_id. Then pick by "
-               "the question: get_member_profile for what we KNOW (saved facts, people, team, health, "
-               "requests, what is coming up); get_member_recent_messages or search_member_history for what "
-               "was SAID in their WhatsApp group; get_member_finance for money. A briefing uses the profile "
-               "first and the recent messages second. Every statement must come from a returned field or "
-               "message, with its date or source; if a tool returns nothing, say nothing is on record — never "
-               "fill the gap from memory, and never describe a member the tool did not return. Several "
-               "matching members means ask which one."),
-        # All five run in Node through the bridge; Node scopes rows to the reader's queendom.
-        toolset=["get_member_overview", "get_member_profile", "get_member_recent_messages",
-                 "search_member_history", "get_member_finance", "find_teammate"],
+        focus=("Focus for this conversation: MEMBERS — one member's story from Serene's own records, LIVE. "
+               "For ANY question about a member, call get_member_360 FIRST with the name the user said: it "
+               "loads everything at once (who they are, health, the state of their WhatsApp chat right now, "
+               "the latest messages, open Freshdesk requests, what is coming up, facts, people, timeline, "
+               "vendor jobs, money). Answer from ALL of it: lead with what is live and actionable (waiting on "
+               "us, open requests, what is coming up), then what matters for the question. Never ask which "
+               "aspect they want; ask only when several members match, naming them. Go deeper only when the "
+               "answer needs it: older chat with get_member_recent_messages and `before`, a topic across the "
+               "whole history with search_member_history, every saved fact with get_member_profile. For a "
+               "twisted or analytical question about the member (how often, how fast we reply, trends over "
+               "months, compared with others) and you hold query_database: work it out with your own SQL, "
+               "filtering by the member_id you were given, and say in one line how. Every statement must come "
+               "from a returned field or message, with its date or source; if a tool returns nothing, say "
+               "nothing is on record — never fill the gap from memory, and never describe a member the tool "
+               "did not return."),
+        # Founders and admins also carry the analyst's SQL here (the role gate cuts it for everyone else).
+        toolset=["get_member_360", "get_member_overview", "get_member_profile", "get_member_recent_messages",
+                 "search_member_history", "get_member_finance", "find_teammate", "describe_database", "query_database"],
     ),
     "general": Specialist(
         id="general",
@@ -240,6 +246,7 @@ SPECIALISTS: dict[str, Specialist] = {
             "find_teammate",
             "get_helpdesk_content",
             "search_leads",
+            "get_member_360",
             "get_member_overview",
             "get_member_profile",
             "get_member_finance",
