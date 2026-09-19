@@ -85,6 +85,46 @@ is their first real run.
 
 ---
 
+## 2026-09-19 — Elaya works answers out: ask the database, the live pulse, the daily briefing
+
+Why: the founder wants an Elaya that does not depend on a ready tool for every question, and
+that tells him what is happening without being asked. Founders only for now: an agent must
+never be able to pull every answer.
+
+**Ask the database (migration 0223).** Two tools, `describe_database` and `query_database`. The
+model reads a catalog, then writes its own read-only SQL, in several small steps when the
+question is hard, and says in one line how it worked the answer out. Safety does not depend on
+the prompt. The query runs as a separate database role, `elaya_reader`, that can see only the
+40 cleaned views of schema `elaya_read` (no phone, email, password, login, raw payload or
+WhatsApp id; long text cut short), in a read-only transaction, as one wrapped SELECT, with a row
+cap and the 8 second timeout. Every query is kept in `public.elaya_query_log`. Before applying
+it, the whole migration was rehearsed on production inside a transaction that rolls back: 6 real
+questions ran, 14 attacks were refused (raw tables, phones, passwords, delete, update, sleep, a
+second statement, escaping the role), and the role could not read a single real table.
+Code: `src/lib/services/elaya-query-service.ts`, the gate in `src/lib/elaya/elaya-data.ts`, the
+tools in `src/lib/elaya/tools/registry.ts`. Decision Log row 2026-09-19 in `docs/rules/The_Rules.md`.
+
+**The analyst (Python brain).** New `analyst` specialist on the deepest model tier, offered by
+the router to admin and founder only (`Specialist.roles`; the router now takes the user's role,
+`backend/app/brain/router.py`). Tested locally through the real brain: "which genie handled the
+most Freshdesk tickets in August and how long did they take" → she read the catalog, ran three
+queries, noticed only one Freshdesk agent is tagged as a genie, gave both readings and her
+working. A manager asking for the same got no such tool.
+
+**Live pulse (migration 0224).** `get_live_pulse` → `src/lib/services/pulse-service.ts`: sales
+today, work, members WAITING for a reply in their group (`sia.groups_waiting_for_reply()`, minus
+a last word that is only "ok" or "noted", intake's own rule), and Freshdesk with the page's own
+numbers. About 1.6 seconds. Founder and admin.
+
+**Daily briefing (migration 0225).** `src/lib/services/elaya-briefing.ts` +
+`src/trigger/elaya-briefing.ts`: 09:00 and 19:00 India time, the pulse in a few calm lines, to
+every active founder. The words come from the small model and fall back to a plain, numbers-only
+text if the model is down. WhatsApp only when the founder messaged Elaya in the last 24 hours
+(WhatsApp's own rule; a Meta template is needed outside that window and does not exist yet), and
+always an in-app notification. Ships OFF:
+`UPDATE elaya_settings SET value = 'true' WHERE key = 'daily_briefing_enabled';`
+Needs `pnpm trigger:deploy` for the schedule to exist.
+
 ## 2026-09-19 — Fix: Elaya could find a group but not read it, and asked too much
 
 Why: on WhatsApp the founder asked for the "Indulge tech group". Elaya first said it had 0

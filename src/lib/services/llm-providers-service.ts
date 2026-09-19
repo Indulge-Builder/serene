@@ -105,3 +105,11 @@ export async function getMemberProfilerEnabled(): Promise<boolean> {
 export async function getTicketIntakeEnabled(): Promise<boolean> {
   try { return (await getSettingValue('ticket_intake_enabled')) === true; } catch { return false; }
 }
+
+/**
+ * The daily briefing's switch (row `daily_briefing_enabled`). OFF unless the row says exactly
+ * `true`, like the profiler: nothing is sent to a founder's WhatsApp until someone turns it on.
+ */
+export async function getDailyBriefingEnabled(): Promise<boolean> {
+  try { return (await getSettingValue('daily_briefing_enabled')) === true; } catch { return false; }
+}

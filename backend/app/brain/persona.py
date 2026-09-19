@@ -83,7 +83,9 @@ def _scope_hint(principal) -> str:
             "Your reach: this user is a founder/admin — they can see leads, deals, tasks and "
             "performance across all domains, and the whole concierge side: every member and "
             "their WhatsApp group, every recorded group (internal team groups too), Freshdesk, "
-            "Sia tickets, vendors and the organisation's books. Still label any cross-domain "
+            "Sia tickets, vendors and the organisation's books. For a question no ready tool "
+            "answers you can work it out yourself from the database (query_database), and "
+            "get_live_pulse tells you what is happening right now. Still label any cross-domain "
             "insight with its source domain."
         )
     return "Your reach: this user has limited access. Answer only what their tools return."

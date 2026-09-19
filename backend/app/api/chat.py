@@ -161,7 +161,7 @@ async def chat(body: ChatRequest, authorization: str = Header(default="")) -> St
                 full_prefix = resolver_line + "\n\n"
                 await emit_delta(full_prefix)
 
-            specialist_id, route_ms = await brain_router.route(content)
+            specialist_id, route_ms = await brain_router.route(content, getattr(principal, "role", None))
             result = await run_turn(
                 principal,
                 SPECIALISTS[specialist_id],

@@ -32,6 +32,10 @@ class Specialist:
     focus: str  # the ONE line that varies per specialist inside the shared persona
     toolset: list[str] = field(default_factory=list)
     job: JobType = "reasoning"
+    # Roles the ROUTER may offer this specialist to (None = everyone). A menu entry, not a
+    # permission: the tool gate still decides what runs. It only stops the router from sending
+    # a manager to a specialist whose every tool the role gate would then cut.
+    roles: frozenset[str] | None = None
 
 
 SPECIALISTS: dict[str, Specialist] = {
@@ -137,6 +141,31 @@ SPECIALISTS: dict[str, Specialist] = {
                "the user confirms with a yes, never a done deed until the system says so."),
         toolset=["list_tickets", "get_ticket", "add_ticket_note", "move_ticket_status", "find_teammate"],
     ),
+    "analyst": Specialist(
+        id="analyst",
+        description=(
+            "the founder's analyst: what is happening right now across the company (the pulse, how is "
+            "today going, anything I should know, recent activity with nobody named), and any complex, "
+            "unusual or cross-cutting question that has to be WORKED OUT from the data: rankings and top "
+            "lists, trends over weeks or months, averages and how long things take, comparisons between "
+            "people, queendoms, domains or months, which genie or agent did the most of something, "
+            "questions that mix members, tickets, chats, vendors, tasks and sales together"
+        ),
+        focus=("Focus for this conversation: THE FOUNDER'S ANALYST. You are not limited to ready-made "
+               "answers: you can work things out. For 'what is happening' use get_live_pulse. For anything "
+               "that needs working out, read the catalog once with describe_database, then write your own "
+               "read-only SQL with query_database. Think like a careful analyst: restate the question as "
+               "what must be counted, over which dates and which filter; break a hard question into two "
+               "or three small queries; look at each result before the next; when a query errors, read the "
+               "error, fix it and retry. Check that a filter value exists before trusting a zero (status "
+               "names, capitalisation). Give the answer first, then ONE line on how you worked it out "
+               "(what was counted, the dates, the filter) so it can be sanity-checked, and say when a list "
+               "was cut at the row cap. A number you did not get from a tool is never stated."),
+        toolset=["get_live_pulse", "describe_database", "query_database", "get_books_overview",
+                 "get_freshdesk_overview", "get_member_overview", "find_teammate"],
+        job="heavy",  # the deepest tier: planning and writing queries is the hardest work she does
+        roles=frozenset({"admin", "founder"}),
+    ),
     "freshdesk": Specialist(
         id="freshdesk",
         description=(
@@ -240,6 +269,11 @@ SPECIALISTS: dict[str, Specialist] = {
             "list_sia_groups",
             "get_sia_group_messages",
             "search_sia_messages",
+            # A follow-up ("break that down by queendom") is routed on its own words and can land
+            # here: the analyst's tools come along (the role gate cuts them for everyone else).
+            "get_live_pulse",
+            "describe_database",
+            "query_database",
         ],
     ),
 }

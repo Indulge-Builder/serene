@@ -67,6 +67,8 @@ import type { FdTicketListFilters } from '@/lib/types/freshdesk';
 import { canAccessMember, canSeeMemberFinance } from '@/lib/elaya/access';
 import { getMemberDetailAsAdmin } from '@/lib/services/members-service';
 import { getMemberFinance, getBooksOverview } from '@/lib/services/zoho-service';
+import { runElayaQuery, logElayaQuery, getElayaCatalog } from '@/lib/services/elaya-query-service';
+import { getLivePulse } from '@/lib/services/pulse-service';
 import type { TicketStatus } from '@/lib/constants/tickets';
 import type { RankVendorsRequest } from '@/lib/services/vendors-service';
 import { GIA_DOMAINS } from '@/lib/constants/domains';
@@ -998,4 +1000,36 @@ export async function searchSiaMessagesFor(principal: StaffPrincipal, query: str
   hits = hits.slice(0, 30);
   const shaped = await shapeMessages(hits);
   return { ok: true as const, hits: hits.map((h, i) => ({ group: siaGroupHandle(h.group_jid), group_name: h.group_subject, ...shaped[i] })) };
+}
+
+// ─────────────────────────────────────────────
+// Ask the database (0223) — founder and admin ONLY
+//
+// The model writes a SELECT over the cleaned `elaya_read` views. The database enforces what can
+// be read (a role with no rights on any real table, a read-only transaction, a row cap); this
+// gate decides WHO may ask. Every query is logged with who ran it and why.
+// ─────────────────────────────────────────────
+
+const mayQueryDatabase = (principal: StaffPrincipal) => principal.role === 'founder' || principal.role === 'admin';
+
+export async function describeDatabaseFor(principal: StaffPrincipal) {
+  if (!mayQueryDatabase(principal)) return { denied: true as const };
+  const views = await getElayaCatalog();
+  return views ? { views } : { unavailable: true as const };
+}
+
+export async function queryDatabaseFor(principal: StaffPrincipal, sql: string, purpose: string | null, channel: ElayaChannel, maxRows?: number) {
+  if (!mayQueryDatabase(principal)) return { denied: true as const };
+  const result = await runElayaQuery(sql, maxRows);
+  await logElayaQuery({ userId: principal.userId, channel, purpose, sql, result });
+  return result;
+}
+
+// ─────────────────────────────────────────────
+// The live pulse — founder and admin only (it is company-wide: every domain, every queendom)
+// ─────────────────────────────────────────────
+
+export async function getLivePulseFor(principal: StaffPrincipal) {
+  if (!mayQueryDatabase(principal)) return { denied: true as const };
+  return { pulse: await getLivePulse() };
 }

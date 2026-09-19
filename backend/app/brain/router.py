@@ -18,25 +18,35 @@ from app.brain.specialists import DEFAULT_SPECIALIST, SPECIALISTS
 from app.llm import registry
 from app.llm.provider import ChatMessage, CompleteRequest
 
-_MENU = "\n".join(f"- {s.id}: {s.description}" for s in SPECIALISTS.values())
-
-_SYSTEM = (
+_PREAMBLE = (
     "Classify the user's message into exactly one category. Reply with ONLY "
-    "the category id, nothing else.\n\nCategories:\n" + _MENU
+    "the category id, nothing else.\n\nCategories:\n"
 )
 
 
-async def route(message: str) -> tuple[str, int]:
+def _offered(role: str | None) -> list[str]:
+    """The specialists this role's menu lists. A role-restricted one (the founder's analyst) is
+    simply absent for everyone else, so the router cannot pick it for them."""
+    return [s.id for s in SPECIALISTS.values() if s.roles is None or (role is not None and role in s.roles)]
+
+
+def _system(role: str | None) -> str:
+    offered = set(_offered(role))
+    return _PREAMBLE + "\n".join(f"- {s.id}: {s.description}" for s in SPECIALISTS.values() if s.id in offered)
+
+
+async def route(message: str, role: str | None = None) -> tuple[str, int]:
     """→ (specialist_id, latency_ms). Fail-open to 'general' on any error —
     a routing hiccup must degrade to a broader brain, never to a dead turn."""
     started = time.monotonic()
+    offered = set(_offered(role))
     try:
         llm = await registry.resolve("routing")
         result = await llm.complete(
             CompleteRequest(
                 model=llm.model,
                 max_tokens=8,
-                system=_SYSTEM,
+                system=_system(role),
                 messages=[ChatMessage(role="user", content=message[:2000])],
             )
         )
@@ -44,4 +54,4 @@ async def route(message: str) -> tuple[str, int]:
     except Exception:
         picked = DEFAULT_SPECIALIST
     latency_ms = int((time.monotonic() - started) * 1000)
-    return (picked if picked in SPECIALISTS else DEFAULT_SPECIALIST, latency_ms)
+    return (picked if picked in offered else DEFAULT_SPECIALIST, latency_ms)
