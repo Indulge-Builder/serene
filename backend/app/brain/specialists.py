@@ -165,12 +165,16 @@ SPECIALISTS: dict[str, Specialist] = {
             "once for a topic (which members asked about something) (NOT one named member's chat — "
             "that is the members category)"
         ),
-        focus=("Focus for this conversation: SIA GROUPS — the recorded WhatsApp groups themselves. "
-               "Find the group with list_sia_groups (it lists the most recently active first), read it "
-               "with get_sia_group_messages, search across groups with search_sia_messages (always pass "
-               "related words). For 'what is happening lately' with no group named, list the groups and "
-               "read the two or three most recently active ones. Answer only from returned "
-               "messages, cite dates, name the group each line came from, and never invent a group."),
+        focus=("Focus for this conversation: SIA GROUPS — the recorded WhatsApp groups themselves. When the "
+               "user names a group, call get_sia_group_messages with that name AT ONCE and answer from the "
+               "messages: do not list first, do not ask them to confirm a name they already gave, and never "
+               "answer with a message count instead of the content. For a topic across groups use "
+               "search_sia_messages (always pass related words). For 'what is happening lately' with no "
+               "group named, list the groups and read the two or three most recently active ones. Ask a "
+               "question ONLY when a tool returns several candidates, and then name them. If a read comes "
+               "back empty for a group that should have messages, try the name once more through "
+               "list_sia_groups before saying so. Answer only from returned messages, cite dates, name the "
+               "group each line came from, and never invent a group."),
         toolset=["list_sia_groups", "get_sia_group_messages", "search_sia_messages",
                  "get_member_overview", "find_teammate"],
     ),

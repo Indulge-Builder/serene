@@ -1334,15 +1334,30 @@ const getBooksOverviewTool: ElayaTool = {
 
 // ── Sia by the GROUP (not by a member): internal team groups, vendor groups, groups linked to nobody ──
 
+/** One wording for "which group?" so the model hears the same thing from both group tools. */
+function siaGroupRefusal(r: { reason: 'no_access' | 'not_found' } | { reason: 'several'; candidates: unknown[] }) {
+  if (r.reason === 'no_access') return { error: 'This user cannot see the Sia groups. Say so plainly.' };
+  if (r.reason === 'several') {
+    return {
+      error: 'Several groups match that name.',
+      candidates: r.candidates,
+      note: 'If one candidate is clearly what the user meant, call again with its `group` value. Otherwise ask ONE short question naming the candidates.',
+    };
+  }
+  return { error: 'No group with that name that this user can see.', note: 'Try list_sia_groups with one distinctive word from the name before telling the user it does not exist.' };
+}
+
 const listSiaGroups: ElayaTool = {
   name: 'list_sia_groups',
   description:
-    'The WhatsApp groups Sia records, as this user may see them: name, kind (member / vendor / internal / ' +
-    'unmapped), whether a member is linked, people, message count, last activity; plus counts per kind. ' +
-    'Use to find a group BY ITS NAME ("the ops team group", "the Goa villa vendor group"), to list the ' +
-    'internal team groups (`kind: "internal"`), or the groups linked to no member (`unlinked_only: true`). ' +
-    "Returns the group_jid the two tools below need. When the user names a MEMBER, use get_member_overview " +
-    'instead: it finds their group for you.',
+    'The WhatsApp groups Sia records, as this user may see them, most recently active first: name, kind ' +
+    '(member / vendor / internal), whether a member is linked, people, message count, last activity; plus ' +
+    'counts per kind. Use to LIST groups (the internal team groups with `kind: "internal"`, the groups ' +
+    'linked to no member with `unlinked_only: true`, the most active groups right now) or to look a name ' +
+    'up. Each row carries a `group` value to pass to the two tools below. You do NOT need this tool to ' +
+    'read a group the user named: get_sia_group_messages takes the name directly. If `activity_known` is ' +
+    'false the message counts are unavailable right now (shown as null): that never means a group is ' +
+    'empty, so go and read it. When the user names a MEMBER, use get_member_overview instead.',
   schema: z.object({
     search: z.string().trim().min(2).max(80).optional(),
     kind: z.enum(['member', 'vendor', 'internal', 'unmapped']).optional(),
@@ -1351,7 +1366,7 @@ const listSiaGroups: ElayaTool = {
   jsonSchema: {
     type: 'object',
     properties: {
-      search: { type: 'string', description: 'Words from the group name' },
+      search: { type: 'string', description: 'One or two distinctive words from the group name' },
       kind: { type: 'string', enum: ['member', 'vendor', 'internal', 'unmapped'], description: 'Only this kind of group' },
       unlinked_only: { type: 'boolean', description: 'true = only groups that point at no member' },
     },
@@ -1367,25 +1382,28 @@ const listSiaGroups: ElayaTool = {
 const getSiaGroupMessages: ElayaTool = {
   name: 'get_sia_group_messages',
   description:
-    "The latest messages of ONE WhatsApp group by its group_jid (from list_sia_groups), oldest to newest, " +
-    'each with its date, who sent it (member / staff / other), the name and the text. Use for "what is ' +
-    'going on in the ops group", "summarise the vendor group today". Answer ONLY from these messages and ' +
-    'cite the dates; an empty list means say there are no messages. Pass `before` (the `oldest_at` you were ' +
-    'given) to read the page before it.',
-  schema: z.object({ group_jid: z.string().trim().min(5).max(80), before: z.string().datetime({ offset: true }).optional() }),
+    'Read ONE WhatsApp group: the latest messages, oldest to newest, each with its date, who sent it ' +
+    '(member / staff / other), the name and the text. `group` is EITHER the name as the user said it ' +
+    '("Indulge tech group", "ops team") OR a `group` value from list_sia_groups: call this straight away ' +
+    'with the name, do not list first and do not ask the user to confirm a name they already gave. Use ' +
+    'for "what is going on in the tech group", "tell me about the ops group", "summarise the vendor ' +
+    'group today". Answer ONLY from these messages, cite the dates, and lead with what was discussed, ' +
+    'not with counts. An empty list means say there are no messages. Pass `before` (the `oldest_at` you ' +
+    'were given) to read the page before it when the user wants more or older.',
+  schema: z.object({ group: z.string().trim().min(2).max(120), before: z.string().datetime({ offset: true }).optional() }),
   jsonSchema: {
     type: 'object',
     properties: {
-      group_jid: { type: 'string', description: 'The group_jid from list_sia_groups' },
+      group: { type: 'string', description: "The group's name as the user said it, or a `group` value from list_sia_groups" },
       before: { type: 'string', description: 'Optional ISO timestamp: return the page of messages before this moment' },
     },
-    required: ['group_jid'],
+    required: ['group'],
     additionalProperties: false,
   },
   run: async (principal, input) => {
-    const { group_jid, before } = input as { group_jid: string; before?: string };
-    const page = await elayaData.getSiaGroupMessagesFor(principal, group_jid, { before });
-    if (!page) return { error: 'No such group, or outside what you can see.' };
+    const { group, before } = input as { group: string; before?: string };
+    const page = await elayaData.getSiaGroupMessagesFor(principal, group, { before });
+    if (!page.ok) return siaGroupRefusal(page);
     return { ...page, note: page.messages.length === 0 ? 'No messages on record for this group. Say exactly that.' : 'Ground every statement in these messages and cite the date.' };
   },
 };
@@ -1394,32 +1412,33 @@ const searchSiaMessagesTool: ElayaTool = {
   name: 'search_sia_messages',
   description:
     'Search the real WhatsApp messages for a TOPIC across every group this user may see, or inside one ' +
-    'group when `group_jid` is given. The search matches words, not meaning, so along with `query` always ' +
-    'pass `related`: 5 to 10 other words the same thing could have been written as (synonyms, the concrete ' +
-    'things it implies, Hindi or Hinglish spellings). Use for "which members asked about Maldives this ' +
-    'month", "did anyone mention a refund in the ops group". Each hit names its group. Newest first, at most ' +
-    "30. Empty means try once with other words, then say nothing was found. For ONE member's history use " +
+    'group when `group` is given (its name, or a `group` value from list_sia_groups). The search matches ' +
+    'words, not meaning, so along with `query` always pass `related`: 5 to 10 other words the same thing ' +
+    'could have been written as (synonyms, the concrete things it implies, Hindi or Hinglish spellings). ' +
+    'Use for "which members asked about Maldives this month", "did anyone mention a refund in the ops ' +
+    'group", "the talk we had about the app update". Each hit names its group. Newest first, at most 30. ' +
+    "Empty means try once with other words, then say nothing was found. For ONE member's history use " +
     'search_member_history (it also reads the saved facts and summaries).',
   schema: z.object({
     query: z.string().trim().min(2).max(120),
     related: z.array(z.string().trim().min(2).max(40)).max(12).optional().default([]),
-    group_jid: z.string().trim().min(5).max(80).optional(),
+    group: z.string().trim().min(2).max(120).optional(),
   }),
   jsonSchema: {
     type: 'object',
     properties: {
       query: { type: 'string', description: 'The topic in a few words' },
       related: { type: 'array', items: { type: 'string' }, description: 'Other words the same topic could have been written as. 5 to 10 entries.' },
-      group_jid: { type: 'string', description: 'Optional: search only this group' },
+      group: { type: 'string', description: "Optional: search only this group (its name, or a `group` value from list_sia_groups)" },
     },
     required: ['query'],
     additionalProperties: false,
   },
   run: async (principal, input) => {
-    const { query, related, group_jid } = input as { query: string; related: string[]; group_jid?: string };
-    const hits = await elayaData.searchSiaMessagesFor(principal, query, related ?? [], group_jid);
-    if (!hits) return { error: 'This user cannot see that, or there is no such group.' };
-    return { hits, note: hits.length === 0 ? 'Nothing found. Try once with different related words, then say nothing was found.' : 'Quote the words and the date; name the group each hit came from.' };
+    const { query, related, group } = input as { query: string; related: string[]; group?: string };
+    const r = await elayaData.searchSiaMessagesFor(principal, query, related ?? [], group);
+    if (!r.ok) return siaGroupRefusal(r);
+    return { hits: r.hits, note: r.hits.length === 0 ? 'Nothing found. Try once with different related words, then say nothing was found.' : 'Quote the words and the date; name the group each hit came from.' };
   },
 };
 

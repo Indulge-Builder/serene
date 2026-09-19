@@ -85,6 +85,29 @@ is their first real run.
 
 ---
 
+## 2026-09-19 — Fix: Elaya could find a group but not read it, and asked too much
+
+Why: on WhatsApp the founder asked for the "Indulge tech group". Elaya first said it had 0
+messages, then "336 messages, but pulling the content returns none". Two bugs, both ours.
+
+- The group id was eaten by the privacy mask. A WhatsApp group id is a long number plus `@g.us`,
+  so `maskPii` masked it like a phone. The model received `1•••@g.us`, sent that back, and the
+  read found nothing. The earlier test called the data layer directly and never went through the
+  mask, so it missed this. Now the model never sees a group id: it gets a HANDLE, the same id
+  written in letters only (`siaGroupHandle()` in `src/lib/elaya/elaya-data.ts`), which no masker
+  touches. The test now runs through `executeTool` with strict masking.
+- The "0 messages" came from `sia.wag_group_activity()` running past the 8 second timeout, after
+  which `getSiaGroups()` reports 0 for every group. Migration 0222 rewrites the function (one
+  index-only count, one index probe per group; same rows, 516 of 516 identical). When the numbers
+  are still unavailable the tool now says so (`activity_known: false`, counts `null`) and never
+  reports a false 0. The /sia rail gets its previews back too.
+
+Asking less: `get_sia_group_messages` and `search_sia_messages` take the group's NAME as the
+user said it, so "tell me about the tech team group" is one call, not list, confirm, then read.
+Several matches come back as choices and only then does she ask. The `groups` focus in
+`backend/app/brain/specialists.py` says the same. A sender whose name carries "Indulge" is now
+labelled staff in every chat read, even when untagged.
+
 ## 2026-09-19 — Elaya reads Freshdesk as a whole, the books, and any Sia group
 
 Why: Elaya could tell one member's story but could not answer "what is happening in Freshdesk",

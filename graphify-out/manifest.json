@@ -1890,8 +1890,8 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/tools/registry.ts": {
-    "mtime": 1789812254.4756088,
-    "ast_hash": "6de2d0a891623c554dd2c31cae4aa924",
+    "mtime": 1789814475.296864,
+    "ast_hash": "f7f313944c25f60c76cffe1374ccebda",
     "semantic_hash": ""
   },
   "src/lib/elaya/tools/write-registry.ts": {
@@ -3155,8 +3155,8 @@
     "semantic_hash": ""
   },
   "docs/architecture/migrations.md": {
-    "mtime": 1789742983.1805735,
-    "ast_hash": "77e88a8b67e1391ccdd0d428ea810cf8",
+    "mtime": 1789814631.5133748,
+    "ast_hash": "f41efe3a5beec695362930e38d8edf7c",
     "semantic_hash": ""
   },
   "docs/architecture/overview.md": {
@@ -3170,8 +3170,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1789813978.9578488,
-    "ast_hash": "87bb73619058e8a7003d661bc9c7d0cb",
+    "mtime": 1789814631.5249758,
+    "ast_hash": "0d7ffa229e52e966b8ebe1dc761968e0",
     "semantic_hash": ""
   },
   "docs/claude-project/1-product-and-status.md": {
@@ -3495,8 +3495,8 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/CLAUDE.md": {
-    "mtime": 1789810318.8222392,
-    "ast_hash": "103fea1a9f24e114b9ba2854ce599e19",
+    "mtime": 1789814631.5151978,
+    "ast_hash": "209633e26df4593f667528e12d87c2ff",
     "semantic_hash": ""
   },
   "src/lib/services/CLAUDE.md": {
@@ -3505,8 +3505,8 @@
     "semantic_hash": ""
   },
   "supabase/migrations/CLAUDE.md": {
-    "mtime": 1789742983.181359,
-    "ast_hash": "6beb4881e96dd8213accd8fa2fb8d7e1",
+    "mtime": 1789814631.514119,
+    "ast_hash": "d6d864d70187c9c5c33a62d87fcebc90",
     "semantic_hash": ""
   },
   "imgs/DB-Schema-img-2.png": {
@@ -3990,8 +3990,8 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/elaya-data.ts": {
-    "mtime": 1789812254.4748747,
-    "ast_hash": "0a3d1fcf011aa0c644bba2347955df6e",
+    "mtime": 1789814557.9035702,
+    "ast_hash": "be9f24605c39d989bba7de26678ebdca",
     "semantic_hash": ""
   },
   "src/lib/elaya/memory.ts": {
@@ -6495,8 +6495,8 @@
     "semantic_hash": ""
   },
   "backend/app/brain/specialists.py": {
-    "mtime": 1789810466.0903382,
-    "ast_hash": "ee94435e30cccb5c30196aa80f9057e2",
+    "mtime": 1789814475.298046,
+    "ast_hash": "30e007e4cc1e24fb9e48616d80b0581e",
     "semantic_hash": ""
   },
   "backend/app/core/__init__.py": {
@@ -8222,6 +8222,11 @@
   "src/lib/services/queendom-seats.ts": {
     "mtime": 1789812136.8148942,
     "ast_hash": "2216c57c90b0379da39a6a021692b1c7",
+    "semantic_hash": ""
+  },
+  "supabase/migrations/20260919000222_wag_group_activity_fast.sql": {
+    "mtime": 1789814439.8642778,
+    "ast_hash": "50530bb0ee68f15e52772b4c9006c024",
     "semantic_hash": ""
   }
 }

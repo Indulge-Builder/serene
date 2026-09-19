@@ -55,7 +55,7 @@ import { rankVendorsForRequest, getVendorDetail } from '@/lib/services/vendors-s
 import { hasVendorActionAccess } from '@/lib/utils/route-access';
 import { listTicketsForElaya, getTicketByRefForElaya } from '@/lib/services/tickets-service';
 import { getSiaGroupForMember, getSiaGroups, getSiaMessages, searchSiaMessages, getSiaSenderRoles, type SiaGroupKind } from '@/lib/services/sia-service';
-import { getSiaViewerScope, getQueendomGroupJids, canViewSiaGroup, pinnedFreshdeskGroup, type SiaViewerScope } from '@/lib/services/sia-access';
+import { getSiaViewerScope, getQueendomGroupJids, pinnedFreshdeskGroup, type SiaViewerScope } from '@/lib/services/sia-access';
 import {
   getFreshdeskOverview,
   getFreshdeskFilterVocab,
@@ -445,8 +445,10 @@ async function shapeMessages(
   const roles = await getSiaSenderRoles(rows.map((r) => r.sender_jid));
   return rows.map((r) => {
     const who = roles.get(r.sender_jid);
+    // The founder's guard (plan-sia-intelligence rule 4): a name carrying "Indulge" is staff even untagged.
     const from: MemberMessage['from'] =
-      who?.role === 'member' ? 'member' : who && (who.is_staff || STAFF_ROLES.has(who.role)) ? 'staff' : 'other';
+      who?.role === 'member' ? 'member'
+        : (who && (who.is_staff || STAFF_ROLES.has(who.role))) || /\bindulge\b/i.test(r.sender_name ?? '') ? 'staff' : 'other';
     const text = r.text && r.text.length > MESSAGE_TEXT_CAP ? r.text.slice(0, MESSAGE_TEXT_CAP) + '…' : r.text;
     return { at: r.wa_timestamp, from, name: r.sender_name, type: r.type, text, deleted: r.is_revoked };
   });
@@ -863,6 +865,82 @@ export async function getBooksFor(principal: StaffPrincipal) {
 
 const SIA_GROUP_ROWS = 25;
 
+// The model never sees a group_jid. A jid is a long digit run plus "@g.us", so the PII gateway
+// (rightly) masks it as a phone/email, and the model then hands back "1•••@g.us": on 2026-09-19
+// that made a 336-message group read as empty. The HANDLE is the same jid written in letters
+// only (0-9 → a-j, "-" → x), which no masker touches and which decodes without a lookup.
+const HANDLE_PREFIX = 'grp_';
+const HANDLE_RE = /^grp_[a-jx]{5,48}$/;
+const GROUP_JID_RE = /^[0-9-]{5,48}@g\.us$/;
+
+export function siaGroupHandle(groupJid: string): string {
+  const local = groupJid.replace(/@g\.us$/, '');
+  return HANDLE_PREFIX + [...local].map((ch) => (ch === '-' ? 'x' : String.fromCharCode(97 + Number(ch)))).join('');
+}
+
+function jidFromHandle(handle: string): string | null {
+  if (!HANDLE_RE.test(handle)) return null;
+  const local = [...handle.slice(HANDLE_PREFIX.length)].map((ch) => (ch === 'x' ? '-' : String(ch.charCodeAt(0) - 97))).join('');
+  const jid = `${local}@g.us`;
+  return GROUP_JID_RE.test(jid) ? jid : null;
+}
+
+/** Words people add around a group's name that are never part of it. */
+const GROUP_NAME_FILLER: ReadonlySet<string> = new Set(['group', 'groups', 'grp', 'whatsapp', 'wa', 'chat', 'chats', 'the', 'of', 'our', 'wala', 'wali', 'ka', 'ki', 'and']);
+const nameWords = (v: string) => v.toLowerCase().replace(/[^\p{L}\p{N} ]+/gu, ' ').split(/\s+/).filter((w) => w.length >= 2 && !GROUP_NAME_FILLER.has(w));
+
+type VisibleGroup = Awaited<ReturnType<typeof getSiaGroups>>[number];
+
+async function visibleSiaGroups(scope: SiaViewerScope): Promise<VisibleGroup[]> {
+  const groups = await getSiaGroups();
+  if (scope.kind === 'all') return groups;
+  const mine = await getQueendomGroupJids(scope.queendomId);
+  return groups.filter((g) => mine.has(g.group_jid));
+}
+
+/** getSiaGroups falls back to "0 messages everywhere" when its activity query fails; never report that as fact. */
+const activityKnown = (groups: VisibleGroup[]) => groups.some((g) => g.message_count > 0);
+
+const groupCard = (g: VisibleGroup, known: boolean) => ({
+  group: siaGroupHandle(g.group_jid),
+  name: g.subject,
+  kind: g.group_kind,
+  linked_member_id: g.member_id,
+  people: g.member_count,
+  messages: known ? g.message_count : null,
+  last_message_at: known ? g.last_message_at : null,
+});
+
+export type SiaGroupRef =
+  | { ok: true; group: VisibleGroup; known: boolean }
+  | { ok: false; reason: 'no_access' | 'not_found' }
+  | { ok: false; reason: 'several'; candidates: ReturnType<typeof groupCard>[] };
+
+/**
+ * A group from what the model holds: the handle list_sia_groups gave it, or simply the NAME the
+ * user said. Only groups the viewer may open are ever matched, so this is the access gate too.
+ * Every name word must be in the group's name; one match opens it, several come back as choices.
+ */
+async function resolveSiaGroupFor(principal: StaffPrincipal, ref: string): Promise<SiaGroupRef> {
+  const scope = await siaScopeFor(principal);
+  if (!scope) return { ok: false, reason: 'no_access' };
+  const groups = await visibleSiaGroups(scope);
+  const known = activityKnown(groups);
+  const jid = jidFromHandle(ref.trim());
+  if (jid) {
+    const g = groups.find((x) => x.group_jid === jid);
+    return g ? { ok: true, group: g, known } : { ok: false, reason: 'not_found' };
+  }
+  const words = nameWords(ref);
+  if (words.length === 0) return { ok: false, reason: 'not_found' };
+  const subjectWords = (g: VisibleGroup) => new Set(nameWords(g.subject ?? ''));
+  let hits = groups.filter((g) => { const sw = subjectWords(g); return words.every((w) => sw.has(w)); });
+  if (hits.length === 0) hits = groups.filter((g) => { const s = (g.subject ?? '').toLowerCase(); return words.every((w) => s.includes(w)); });
+  if (hits.length === 0) return { ok: false, reason: 'not_found' };
+  if (hits.length === 1) return { ok: true, group: hits[0], known };
+  return { ok: false, reason: 'several', candidates: hits.slice(0, 8).map((g) => groupCard(g, known)) };
+}
+
 /** The groups this viewer may open (their names matched loosely), newest activity first. */
 export async function listSiaGroupsFor(
   principal: StaffPrincipal,
@@ -870,17 +948,14 @@ export async function listSiaGroupsFor(
 ) {
   const scope = await siaScopeFor(principal);
   if (!scope) return { ok: false as const, reason: 'no_access' as const };
-  let groups = await getSiaGroups();
-  if (scope.kind === 'queendom') {
-    const mine = await getQueendomGroupJids(scope.queendomId);
-    groups = groups.filter((g) => mine.has(g.group_jid));
-  }
+  const groups = await visibleSiaGroups(scope);
+  const known = activityKnown(groups);
   const counts = { member: 0, vendor: 0, internal: 0, unmapped: 0, member_type_with_no_member: 0 };
   for (const g of groups) {
     counts[g.group_kind] += 1;
     if (g.group_kind === 'member' && !g.member_id) counts.member_type_with_no_member += 1;
   }
-  const words = (opts.search ?? '').toLowerCase().split(/\s+/).filter((w) => w.length >= 2);
+  const words = nameWords(opts.search ?? '');
   const hits = groups
     .filter((g) => !opts.kind || g.group_kind === opts.kind)
     .filter((g) => !opts.unlinked_only || !g.member_id)
@@ -891,37 +966,36 @@ export async function listSiaGroupsFor(
     visible_groups: groups.length,
     counts,
     matched: hits.length,
-    groups: hits.slice(0, SIA_GROUP_ROWS).map((g) => ({
-      group_jid: g.group_jid,
-      name: g.subject,
-      kind: g.group_kind,
-      linked_member_id: g.member_id,
-      people: g.member_count,
-      messages: g.message_count,
-      last_message_at: g.last_message_at,
-    })),
+    activity_known: known,
+    groups: hits.slice(0, SIA_GROUP_ROWS).map((g) => groupCard(g, known)),
   };
 }
 
 /** The latest page of ONE group's chat (oldest → newest); `before` pages further back. */
-export async function getSiaGroupMessagesFor(principal: StaffPrincipal, groupJid: string, opts: { before?: string } = {}) {
-  const scope = await siaScopeFor(principal);
-  if (!scope || !(await canViewSiaGroup(scope, groupJid))) return null;
-  const page = await getSiaMessages(groupJid, { before: opts.before });
+export async function getSiaGroupMessagesFor(principal: StaffPrincipal, ref: string, opts: { before?: string } = {}) {
+  const r = await resolveSiaGroupFor(principal, ref);
+  if (!r.ok) return r;
+  const page = await getSiaMessages(r.group.group_jid, { before: opts.before });
   const messages = await shapeMessages(page.messages);
-  return { messages, has_more: page.hasMore, oldest_at: messages[0]?.at ?? null };
+  return { ok: true as const, group: groupCard(r.group, r.known), messages, has_more: page.hasMore, oldest_at: messages[0]?.at ?? null };
 }
 
 /** A topic across every group the viewer may open, or inside one of them (newest first). */
-export async function searchSiaMessagesFor(principal: StaffPrincipal, query: string, related: string[], groupJid?: string) {
+export async function searchSiaMessagesFor(principal: StaffPrincipal, query: string, related: string[], ref?: string) {
   const scope = await siaScopeFor(principal);
-  if (!scope) return null;
-  if (groupJid && !(await canViewSiaGroup(scope, groupJid))) return null;
+  if (!scope) return { ok: false as const, reason: 'no_access' as const };
+  let groupJid: string | undefined;
+  if (ref) {
+    const r = await resolveSiaGroupFor(principal, ref);
+    if (!r.ok) return r;
+    groupJid = r.group.group_jid;
+  }
   let hits = await searchSiaMessages(query, groupJid, related);
   if (scope.kind === 'queendom' && !groupJid) {
     const mine = await getQueendomGroupJids(scope.queendomId);
     hits = hits.filter((h) => mine.has(h.group_jid));
   }
+  hits = hits.slice(0, 30);
   const shaped = await shapeMessages(hits);
-  return hits.slice(0, 30).map((h, i) => ({ group_jid: h.group_jid, group: h.group_subject, ...shaped[i] }));
+  return { ok: true as const, hits: hits.map((h, i) => ({ group: siaGroupHandle(h.group_jid), group_name: h.group_subject, ...shaped[i] })) };
 }
