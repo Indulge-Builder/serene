@@ -1095,6 +1095,11 @@ BRIDGED_READ_TOOL_NAMES: frozenset[str] = frozenset({
     "get_member_overview", "get_member_recent_messages", "search_member_history",
     # The twin and the money (2026-09-18): the dossier read and the Zoho read live in Node.
     "get_member_profile", "get_member_finance",
+    # Freshdesk as a whole, the books, Sia by the group (2026-09-19): the mirror, the Zoho
+    # client and the archive live in Node, and so does the scope rule (sia-access.ts).
+    "get_freshdesk_overview", "search_freshdesk_tickets", "get_freshdesk_ticket",
+    "get_books_overview",
+    "list_sia_groups", "get_sia_group_messages", "search_sia_messages",
 })
 
 # The ticket pair (2026-09-15) is bridged for the same reason: the sentinel's ledger and the
@@ -1111,6 +1116,15 @@ _BRIDGED_READ_ROLES: dict[str, frozenset[str]] = {
     "search_member_history": frozenset({"agent", "manager", "admin", "founder"}),
     "get_member_profile": frozenset({"agent", "manager", "admin", "founder"}),
     "get_member_finance": frozenset({"agent", "manager", "admin", "founder"}),
+    # Every staff role may CARRY these; Node decides what each person sees (all / their
+    # queendom / nothing). The books mirror the /books page: admin and founder only.
+    "get_freshdesk_overview": frozenset({"agent", "manager", "admin", "founder"}),
+    "search_freshdesk_tickets": frozenset({"agent", "manager", "admin", "founder"}),
+    "get_freshdesk_ticket": frozenset({"agent", "manager", "admin", "founder"}),
+    "get_books_overview": _FOUNDER_UP,
+    "list_sia_groups": frozenset({"agent", "manager", "admin", "founder"}),
+    "get_sia_group_messages": frozenset({"agent", "manager", "admin", "founder"}),
+    "search_sia_messages": frozenset({"agent", "manager", "admin", "founder"}),
 }
 
 

@@ -424,11 +424,13 @@ export async function profileWindow(w: ProfilerWindow, deps: ProfilerDeps): Prom
  * Was this failure the provider's (down, rate limited, out of credit, the network) and not
  * this conversation's? It decides whether the failure counts toward stepping over the
  * conversation. Only a request the provider REJECTS AS INVALID is the conversation's fault;
- * an empty credit balance arrives as a 400 too, so it is named explicitly. The error is read
- * by shape, never by class: the SDK may only be imported inside the adapter.
+ * an empty credit balance and a reached monthly spend limit ("You have reached your specified
+ * API usage limits") arrive as a 400 too, so both are named explicitly: on 2026-09-18 the limit
+ * was read as the conversation's fault and 1,616 conversations were stepped over unread. The
+ * error is read by shape, never by class: the SDK may only be imported inside the adapter.
  */
 export function isProviderSide(e: unknown, msg: string): boolean {
-  if (/credit balance|billing/i.test(msg)) return true;
+  if (/credit balance|billing|usage limits?|spend(ing)? limit|regain access/i.test(msg)) return true;
   const status = (e as { status?: unknown } | null)?.status;
   return !(status === 400 || status === 413 || status === 422);
 }

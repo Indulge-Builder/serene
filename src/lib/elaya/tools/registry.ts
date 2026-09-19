@@ -76,7 +76,15 @@ export type ElayaReadToolName =
   | 'search_member_history'
   // The twin itself (0194): what Serene knows, and the money (Zoho, live)
   | 'get_member_profile'
-  | 'get_member_finance';
+  | 'get_member_finance'
+  // Freshdesk as a whole, the books, and Sia by the group (2026-09-19)
+  | 'get_freshdesk_overview'
+  | 'search_freshdesk_tickets'
+  | 'get_freshdesk_ticket'
+  | 'get_books_overview'
+  | 'list_sia_groups'
+  | 'get_sia_group_messages'
+  | 'search_sia_messages';
 
 /** Every tool name the principal may carry — read tools (this file) + write tools. */
 export type ElayaToolName = ElayaReadToolName | ElayaWriteToolName;
@@ -1096,6 +1104,14 @@ export const BRIDGED_READ_TOOL_NAMES: ReadonlySet<string> = new Set([
   'get_member_finance',
   'get_member_recent_messages',
   'search_member_history',
+  // Freshdesk, the books and the Sia groups: the mirror, the Zoho client and the archive all live in Node.
+  'get_freshdesk_overview',
+  'search_freshdesk_tickets',
+  'get_freshdesk_ticket',
+  'get_books_overview',
+  'list_sia_groups',
+  'get_sia_group_messages',
+  'search_sia_messages',
 ]);
 
 // ── Tickets (Sia, 0195/0199/0200) — the genie's queue and one ticket's whole story ──
@@ -1194,6 +1210,216 @@ const getTicket: ElayaTool = {
   },
 };
 
+// ── Freshdesk as a whole (the mirror, 0193) ──
+// The SAME filters and the SAME numbers as the /freshdesk page. Scope is sia-access.ts:
+// admin / founder / the tech workbench see every group; a seated concierge teammate is
+// pinned to their queendom's Freshdesk group whatever they ask for; nobody else sees it.
+
+const FRESHDESK_ASK_PROPS = {
+  search: { type: 'string', description: 'Words in the subject or the requester name, or a ticket number' },
+  only_open: { type: 'boolean', description: 'true = leave out Resolved and Closed' },
+  status: { type: 'string', description: 'One Freshdesk status by its name, e.g. Open, Pending, Resolved, Closed, Waiting on Customer' },
+  group: { type: 'string', description: 'A Freshdesk group by name (a queendom or a team)' },
+  agent: { type: 'string', description: 'A Freshdesk agent by name' },
+  category: { type: 'string', description: 'The category of request, by name' },
+  created_from: { type: 'string', description: 'ISO date or timestamp: only tickets created on or after this' },
+  created_to: { type: 'string', description: 'ISO date or timestamp: only tickets created on or before this' },
+} as const;
+
+const freshdeskAskSchema = z.object({
+  search: z.string().trim().min(1).max(120).optional(),
+  only_open: z.boolean().optional(),
+  status: z.string().trim().min(2).max(60).optional(),
+  group: z.string().trim().min(2).max(80).optional(),
+  agent: z.string().trim().min(2).max(80).optional(),
+  category: z.string().trim().min(2).max(80).optional(),
+  created_from: z.string().trim().min(8).max(40).optional(),
+  created_to: z.string().trim().min(8).max(40).optional(),
+});
+
+/** One refusal wording for the three Freshdesk tools, so the model hears the same thing each time. */
+function freshdeskRefusal(r: { reason: 'no_access' | 'no_group' } | { reason: 'unknown'; field: string; asked: string; choices: string[] }) {
+  if (r.reason === 'no_access') return { error: 'This user cannot see Freshdesk. Say so plainly.' };
+  if (r.reason !== 'unknown') return { error: "This user's queendom has no Freshdesk group yet, so there is nothing to show." };
+  return { error: `No Freshdesk ${r.field} called "${r.asked}".`, choices: r.choices, note: 'Pick the closest of these and call again, or ask the user which one they mean.' };
+}
+
+const getFreshdeskOverviewTool: ElayaTool = {
+  name: 'get_freshdesk_overview',
+  description:
+    'The state of Freshdesk (the helpdesk where member requests are ticketed) as numbers: how many tickets ' +
+    'in total, how many open, created today, resolved today, escalated and still open, and the count in ' +
+    'every status. Use for "what is happening in Freshdesk", "how many tickets are open / pending", "how ' +
+    'is the Anishqa queendom doing on tickets", "how many tickets did Isha get this week". Every filter is ' +
+    'optional; with none you get the whole desk. `applied` tells you which filters were really used (a ' +
+    "queendom teammate is always pinned to their own queendom's group). Quote the numbers exactly; for the " +
+    'tickets themselves call search_freshdesk_tickets. These are Freshdesk tickets, NOT Sia tickets ' +
+    '(list_tickets).',
+  schema: freshdeskAskSchema,
+  jsonSchema: { type: 'object', properties: FRESHDESK_ASK_PROPS, additionalProperties: false },
+  run: async (principal, input) => {
+    const r = await elayaData.getFreshdeskOverviewFor(principal, input as elayaData.FreshdeskAsk);
+    if (!r.ok) return freshdeskRefusal(r);
+    return { ...r, note: 'Live from the Freshdesk mirror. If last_sync_at is more than 15 minutes old, say the numbers may be behind.' };
+  },
+};
+
+const searchFreshdeskTickets: ElayaTool = {
+  name: 'search_freshdesk_tickets',
+  description:
+    'Freshdesk tickets as a list, most recently updated first: id, subject, status, priority, category, ' +
+    'group, agent, requester, created / updated / due dates, `overdue` (past its due date and not ' +
+    'resolved), `escalated`, and the number of replies. Same optional filters as get_freshdesk_overview. ' +
+    'Use for "show me the open tickets", "which tickets are overdue", "find the ticket about the Dubai ' +
+    'visa", "what is Rutika working on". `total` is the true count; only the first 20 rows are shown, so ' +
+    'say "showing 20 of N" when there are more and offer to narrow. For one ticket\'s thread call ' +
+    'get_freshdesk_ticket with its id.',
+  schema: freshdeskAskSchema,
+  jsonSchema: { type: 'object', properties: FRESHDESK_ASK_PROPS, additionalProperties: false },
+  run: async (principal, input) => {
+    const r = await elayaData.listFreshdeskTicketsFor(principal, input as elayaData.FreshdeskAsk);
+    if (!r.ok) return freshdeskRefusal(r);
+    return { ...r, note: r.total === 0 ? 'No ticket matches. Say exactly that.' : undefined };
+  },
+};
+
+const getFreshdeskTicket: ElayaTool = {
+  name: 'get_freshdesk_ticket',
+  description:
+    'One Freshdesk ticket by its number: the fields (status, priority, category, group, agent, requester, ' +
+    'the linked member, dates), the last 10 notes of the thread (who wrote it, when, whether it was a ' +
+    'private note) and the last movements (status / agent / group / due-date changes with their times). ' +
+    'Use for "where does Freshdesk ticket 48211 stand", "what was the last reply on it", "who moved it". ' +
+    'Answer only from what is returned and cite the times.',
+  schema: z.object({ ticket_id: z.number().int().positive() }),
+  jsonSchema: {
+    type: 'object',
+    properties: { ticket_id: { type: 'integer', description: 'The Freshdesk ticket number' } },
+    required: ['ticket_id'],
+    additionalProperties: false,
+  },
+  run: async (principal, input) => {
+    const { ticket_id } = input as { ticket_id: number };
+    const r = await elayaData.getFreshdeskTicketFor(principal, ticket_id);
+    if (!r.ok) return { error: r.reason === 'no_access' ? 'This user cannot see Freshdesk.' : `No Freshdesk ticket ${ticket_id} that you can see.` };
+    return r;
+  },
+};
+
+// ── The books (Zoho Books, organisation-wide) — the /books page's numbers, same gate ──
+
+const getBooksOverviewTool: ElayaTool = {
+  name: 'get_books_overview',
+  roles: FOUNDER_UP,
+  description:
+    "The organisation's money, read live from Zoho Books: receivables (total due, overdue, due today, due " +
+    'within 30 days, average days to pay, the aging buckets), payables, cash in banks and cards, this ' +
+    'month (invoiced, received, expenses), the financial year to date (income, expenses, net profit), the ' +
+    'overdue invoices, and the latest invoices and payments. Use for "how much are we owed", "who owes us ' +
+    'the most", "what came in this month", "how much cash do we have", "are we profitable this year". ' +
+    "Amounts are in the organisation's currency. Quote figures exactly as given; never estimate or add up " +
+    "rows yourself when a total is given. For ONE member's ledger use get_member_finance.",
+  schema: z.object({}),
+  jsonSchema: { type: 'object', properties: {}, additionalProperties: false },
+  run: async (principal) => {
+    const b = await elayaData.getBooksFor(principal);
+    if ('denied' in b) return { error: 'Only admin and founder can see the books.' };
+    if ('unavailable' in b) return { error: 'Zoho Books did not answer just now. Say so; do not guess.' };
+    return { ...b, note: 'Live from Zoho Books (a copy up to 5 minutes old). Quote figures exactly.' };
+  },
+};
+
+// ── Sia by the GROUP (not by a member): internal team groups, vendor groups, groups linked to nobody ──
+
+const listSiaGroups: ElayaTool = {
+  name: 'list_sia_groups',
+  description:
+    'The WhatsApp groups Sia records, as this user may see them: name, kind (member / vendor / internal / ' +
+    'unmapped), whether a member is linked, people, message count, last activity; plus counts per kind. ' +
+    'Use to find a group BY ITS NAME ("the ops team group", "the Goa villa vendor group"), to list the ' +
+    'internal team groups (`kind: "internal"`), or the groups linked to no member (`unlinked_only: true`). ' +
+    "Returns the group_jid the two tools below need. When the user names a MEMBER, use get_member_overview " +
+    'instead: it finds their group for you.',
+  schema: z.object({
+    search: z.string().trim().min(2).max(80).optional(),
+    kind: z.enum(['member', 'vendor', 'internal', 'unmapped']).optional(),
+    unlinked_only: z.boolean().optional(),
+  }),
+  jsonSchema: {
+    type: 'object',
+    properties: {
+      search: { type: 'string', description: 'Words from the group name' },
+      kind: { type: 'string', enum: ['member', 'vendor', 'internal', 'unmapped'], description: 'Only this kind of group' },
+      unlinked_only: { type: 'boolean', description: 'true = only groups that point at no member' },
+    },
+    additionalProperties: false,
+  },
+  run: async (principal, input) => {
+    const r = await elayaData.listSiaGroupsFor(principal, input as { search?: string; kind?: 'member' | 'vendor' | 'internal' | 'unmapped'; unlinked_only?: boolean });
+    if (!r.ok) return { error: 'This user cannot see the Sia groups. Say so plainly.' };
+    return { ...r, note: r.matched === 0 ? 'No group matches. Say so; never invent a group.' : r.matched > r.groups.length ? `Showing ${r.groups.length} of ${r.matched}; ask the user to narrow.` : undefined };
+  },
+};
+
+const getSiaGroupMessages: ElayaTool = {
+  name: 'get_sia_group_messages',
+  description:
+    "The latest messages of ONE WhatsApp group by its group_jid (from list_sia_groups), oldest to newest, " +
+    'each with its date, who sent it (member / staff / other), the name and the text. Use for "what is ' +
+    'going on in the ops group", "summarise the vendor group today". Answer ONLY from these messages and ' +
+    'cite the dates; an empty list means say there are no messages. Pass `before` (the `oldest_at` you were ' +
+    'given) to read the page before it.',
+  schema: z.object({ group_jid: z.string().trim().min(5).max(80), before: z.string().datetime({ offset: true }).optional() }),
+  jsonSchema: {
+    type: 'object',
+    properties: {
+      group_jid: { type: 'string', description: 'The group_jid from list_sia_groups' },
+      before: { type: 'string', description: 'Optional ISO timestamp: return the page of messages before this moment' },
+    },
+    required: ['group_jid'],
+    additionalProperties: false,
+  },
+  run: async (principal, input) => {
+    const { group_jid, before } = input as { group_jid: string; before?: string };
+    const page = await elayaData.getSiaGroupMessagesFor(principal, group_jid, { before });
+    if (!page) return { error: 'No such group, or outside what you can see.' };
+    return { ...page, note: page.messages.length === 0 ? 'No messages on record for this group. Say exactly that.' : 'Ground every statement in these messages and cite the date.' };
+  },
+};
+
+const searchSiaMessagesTool: ElayaTool = {
+  name: 'search_sia_messages',
+  description:
+    'Search the real WhatsApp messages for a TOPIC across every group this user may see, or inside one ' +
+    'group when `group_jid` is given. The search matches words, not meaning, so along with `query` always ' +
+    'pass `related`: 5 to 10 other words the same thing could have been written as (synonyms, the concrete ' +
+    'things it implies, Hindi or Hinglish spellings). Use for "which members asked about Maldives this ' +
+    'month", "did anyone mention a refund in the ops group". Each hit names its group. Newest first, at most ' +
+    "30. Empty means try once with other words, then say nothing was found. For ONE member's history use " +
+    'search_member_history (it also reads the saved facts and summaries).',
+  schema: z.object({
+    query: z.string().trim().min(2).max(120),
+    related: z.array(z.string().trim().min(2).max(40)).max(12).optional().default([]),
+    group_jid: z.string().trim().min(5).max(80).optional(),
+  }),
+  jsonSchema: {
+    type: 'object',
+    properties: {
+      query: { type: 'string', description: 'The topic in a few words' },
+      related: { type: 'array', items: { type: 'string' }, description: 'Other words the same topic could have been written as. 5 to 10 entries.' },
+      group_jid: { type: 'string', description: 'Optional: search only this group' },
+    },
+    required: ['query'],
+    additionalProperties: false,
+  },
+  run: async (principal, input) => {
+    const { query, related, group_jid } = input as { query: string; related: string[]; group_jid?: string };
+    const hits = await elayaData.searchSiaMessagesFor(principal, query, related ?? [], group_jid);
+    if (!hits) return { error: 'This user cannot see that, or there is no such group.' };
+    return { hits, note: hits.length === 0 ? 'Nothing found. Try once with different related words, then say nothing was found.' : 'Quote the words and the date; name the group each hit came from.' };
+  },
+};
+
 const ALL_TOOLS = [
   searchLeads,
   getColdLeads,
@@ -1216,6 +1442,13 @@ const ALL_TOOLS = [
   getMemberFinance,
   getMemberRecentMessages,
   searchMemberHistory,
+  getFreshdeskOverviewTool,
+  searchFreshdeskTickets,
+  getFreshdeskTicket,
+  getBooksOverviewTool,
+  listSiaGroups,
+  getSiaGroupMessages,
+  searchSiaMessagesTool,
 ] as const;
 
 const TOOL_REGISTRY = new Map<string, ElayaTool>(ALL_TOOLS.map((t) => [t.name, t]));

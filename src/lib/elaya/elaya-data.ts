@@ -53,10 +53,19 @@ import { getCampaignMetrics } from '@/lib/services/leads-service';
 import { getBudgetSummary, type BudgetCampaignRow } from '@/lib/services/ad-spend-service';
 import { rankVendorsForRequest, getVendorDetail } from '@/lib/services/vendors-service';
 import { listTicketsForElaya, getTicketByRefForElaya } from '@/lib/services/tickets-service';
-import { getSiaGroupForMember, getSiaMessages, searchSiaMessages, getSiaSenderRoles } from '@/lib/services/sia-service';
+import { getSiaGroupForMember, getSiaGroups, getSiaMessages, searchSiaMessages, getSiaSenderRoles, type SiaGroupKind } from '@/lib/services/sia-service';
+import { getSiaViewerScope, getQueendomGroupJids, canViewSiaGroup, pinnedFreshdeskGroup, type SiaViewerScope } from '@/lib/services/sia-access';
+import {
+  getFreshdeskOverview,
+  getFreshdeskFilterVocab,
+  listFreshdeskTickets,
+  getFreshdeskTicketDetail,
+} from '@/lib/services/freshdesk-service';
+import { FD_TERMINAL_STATUSES, fdPriorityLabel, fdStatusLabel } from '@/lib/constants/freshdesk';
+import type { FdTicketListFilters } from '@/lib/types/freshdesk';
 import { canAccessMember, canSeeMemberFinance } from '@/lib/elaya/access';
 import { getMemberDetailAsAdmin } from '@/lib/services/members-service';
-import { getMemberFinance } from '@/lib/services/zoho-service';
+import { getMemberFinance, getBooksOverview } from '@/lib/services/zoho-service';
 import type { TicketStatus } from '@/lib/constants/tickets';
 import type { RankVendorsRequest } from '@/lib/services/vendors-service';
 import { GIA_DOMAINS } from '@/lib/constants/domains';
@@ -623,4 +632,285 @@ export async function getMemberFinanceFor(principal: StaffPrincipal, memberId: s
     latest_payments: f.payments.slice(0, 6).map((x) => ({ date: x.date, amount: x.amount, mode: x.payment_mode, invoices: x.invoice_numbers })),
     fetched_at: f.fetchedAt,
   };
+}
+
+// ─────────────────────────────────────────────
+// Sia and Freshdesk as a whole, and the books (2026-09-19)
+//
+// ONE scope answer for all of it: sia-access.ts (the same rule /sia and /freshdesk apply).
+//   all       admin, founder, the tech workbench: every group, every Freshdesk ticket
+//   queendom  a seated concierge teammate: only groups linked to their queendom's members,
+//             only their queendom's Freshdesk group
+//   null      nobody else sees either
+// The books are the /books page's gate: admin and founder only.
+// ─────────────────────────────────────────────
+
+async function siaScopeFor(principal: StaffPrincipal): Promise<SiaViewerScope | null> {
+  const { queendom_id, sia_role } = await principalQueendom(principal);
+  return getSiaViewerScope({ role: principal.role, domain: principal.domain, sia_role, queendom_id });
+}
+
+// ── Freshdesk ──
+
+export type FreshdeskAsk = {
+  search?: string | null;
+  only_open?: boolean;
+  status?: string | null;
+  group?: string | null;
+  agent?: string | null;
+  category?: string | null;
+  created_from?: string | null;
+  created_to?: string | null;
+};
+
+type FreshdeskFilterResult =
+  | { ok: true; filters: FdTicketListFilters; applied: Record<string, string> }
+  | { ok: false; reason: 'no_access' | 'no_group' }
+  | { ok: false; reason: 'unknown'; field: 'status' | 'group' | 'agent' | 'category'; asked: string; choices: string[] };
+
+/** One name out of a small vocabulary: exact first, then contains; several or none = the caller says so. */
+function pickByName<T>(items: T[], label: (t: T) => string, asked: string): T | null {
+  const want = asked.trim().toLowerCase();
+  const exact = items.filter((i) => label(i).toLowerCase() === want);
+  if (exact.length === 1) return exact[0];
+  const near = items.filter((i) => label(i).toLowerCase().includes(want));
+  return near.length === 1 ? near[0] : null;
+}
+
+/** The ask, in the words a person uses, turned into the page's own filters. The scope pin always wins. */
+async function freshdeskFiltersFor(principal: StaffPrincipal, ask: FreshdeskAsk): Promise<FreshdeskFilterResult> {
+  const scope = await siaScopeFor(principal);
+  if (!scope) return { ok: false, reason: 'no_access' };
+  const pin = pinnedFreshdeskGroup(scope);
+  if (pin.pinned && pin.groupId == null) return { ok: false, reason: 'no_group' };
+
+  const vocab = await getFreshdeskFilterVocab();
+  const applied: Record<string, string> = {};
+  const filters: FdTicketListFilters = {
+    search: ask.search?.trim() || null, status: [], group: null, agent: null, category: null,
+    priority: null, dateFrom: ask.created_from ?? null, dateTo: ask.created_to ?? null, member: null, page: 1,
+  };
+
+  if (ask.status) {
+    const s = pickByName(vocab.statuses, (x) => x.label, ask.status);
+    if (!s) return { ok: false, reason: 'unknown', field: 'status', asked: ask.status, choices: vocab.statuses.map((x) => x.label) };
+    filters.status = [s.id]; applied.status = s.label;
+  } else if (ask.only_open) {
+    filters.status = vocab.statuses.map((x) => x.id).filter((id) => !FD_TERMINAL_STATUSES.includes(id));
+    applied.status = 'every status except Resolved and Closed';
+  }
+  if (pin.pinned) {
+    filters.group = pin.groupId;
+    applied.group = vocab.groups.find((g) => g.id === pin.groupId)?.name ?? 'your queendom';
+  } else if (ask.group) {
+    const g = pickByName(vocab.groups, (x) => x.name, ask.group);
+    if (!g) return { ok: false, reason: 'unknown', field: 'group', asked: ask.group, choices: vocab.groups.map((x) => x.name) };
+    filters.group = g.id; applied.group = g.name;
+  }
+  if (ask.agent) {
+    const a = pickByName(vocab.agents, (x) => x.name, ask.agent);
+    if (!a) return { ok: false, reason: 'unknown', field: 'agent', asked: ask.agent, choices: vocab.agents.map((x) => x.name).slice(0, 60) };
+    filters.agent = a.id; applied.agent = a.name;
+  }
+  if (ask.category) {
+    const c = pickByName(vocab.categories, (x) => x, ask.category);
+    if (!c) return { ok: false, reason: 'unknown', field: 'category', asked: ask.category, choices: vocab.categories };
+    filters.category = c; applied.category = c;
+  }
+  if (filters.search) applied.search = filters.search;
+  if (filters.dateFrom) applied.created_from = filters.dateFrom;
+  if (filters.dateTo) applied.created_to = filters.dateTo;
+  return { ok: true, filters, applied };
+}
+
+/** The /freshdesk overview strip for the ask: the SAME numbers the page shows for the same filters. */
+export async function getFreshdeskOverviewFor(principal: StaffPrincipal, ask: FreshdeskAsk) {
+  const f = await freshdeskFiltersFor(principal, ask);
+  if (!f.ok) return f;
+  const o = await getFreshdeskOverview(f.filters);
+  return {
+    ok: true as const,
+    applied: f.applied,
+    total: o.totalTickets,
+    open: o.openTotal,
+    created_today: o.createdToday,
+    resolved_today: o.resolvedToday,
+    escalated_open: o.escalatedOpen,
+    by_status: o.byStatus.map((s) => ({ status: s.label, count: s.count })),
+    mirror: { last_sync_at: o.sync.lastPollAt, last_sync_ok: o.sync.lastPollOk, last_webhook_at: o.sync.lastWebhookAt },
+  };
+}
+
+const FD_TOOL_ROWS = 20;
+
+/** The first rows of the /freshdesk list for the ask (most recently updated first) + the true total. */
+export async function listFreshdeskTicketsFor(principal: StaffPrincipal, ask: FreshdeskAsk) {
+  const f = await freshdeskFiltersFor(principal, ask);
+  if (!f.ok) return f;
+  const { tickets, totalCount } = await listFreshdeskTickets(f.filters);
+  const now = Date.now();
+  return {
+    ok: true as const,
+    applied: f.applied,
+    total: totalCount,
+    shown: Math.min(tickets.length, FD_TOOL_ROWS),
+    tickets: tickets.slice(0, FD_TOOL_ROWS).map((t) => ({
+      id: t.id,
+      subject: clip(t.subject, 160),
+      status: t.status_label ?? fdStatusLabel(t.status),
+      priority: fdPriorityLabel(t.priority),
+      category: t.category,
+      sub_category: t.sub_category,
+      group: t.group_name,
+      agent: t.agent_name,
+      requester: t.requester_name,
+      member_id: t.member_id,
+      created_at: t.fd_created_at,
+      updated_at: t.fd_updated_at,
+      due_by: t.due_by,
+      overdue: Boolean(t.due_by && !FD_TERMINAL_STATUSES.includes(t.status) && new Date(t.due_by).getTime() < now),
+      escalated: t.is_escalated,
+      replies: t.conversation_count,
+    })),
+  };
+}
+
+const FD_THREAD_NOTES = 10;
+const FD_THREAD_TEXT_CAP = 600;
+
+/** One Freshdesk ticket: the fields, the last notes of the thread, the last movements. */
+export async function getFreshdeskTicketFor(principal: StaffPrincipal, id: number) {
+  const scope = await siaScopeFor(principal);
+  if (!scope) return { ok: false as const, reason: 'no_access' as const };
+  const d = await getFreshdeskTicketDetail(id);
+  if (!d) return { ok: false as const, reason: 'not_found' as const };
+  const pin = pinnedFreshdeskGroup(scope);
+  // A pinned viewer learns nothing about another queendom's ticket, not even that it exists.
+  if (pin.pinned && d.ticket.group_id !== pin.groupId) return { ok: false as const, reason: 'not_found' as const };
+  const t = d.ticket;
+  const notes = d.conversations.slice(-FD_THREAD_NOTES);
+  return {
+    ok: true as const,
+    ticket: {
+      id: t.id,
+      subject: t.subject,
+      description: clip(t.description_text, 1200),
+      status: t.status_label ?? fdStatusLabel(t.status),
+      priority: fdPriorityLabel(t.priority),
+      type: t.ticket_type,
+      category: t.category,
+      sub_category: t.sub_category,
+      tags: t.tags,
+      group: d.group?.name ?? null,
+      agent: d.agent?.name ?? null,
+      requester: t.requester_name,
+      member: d.member,
+      created_at: t.fd_created_at,
+      updated_at: t.fd_updated_at,
+      due_by: t.due_by,
+      first_responded_at: t.first_responded_at,
+      resolved_at: t.resolved_at,
+      closed_at: t.closed_at,
+      escalated: t.is_escalated,
+    },
+    thread_total: d.conversations.length,
+    thread: notes.map((c) => ({
+      at: c.fd_created_at,
+      from: c.incoming ? 'requester' : c.user_id != null ? (d.agentNames[c.user_id] ?? 'agent') : 'agent',
+      private_note: c.private,
+      text: clip(c.body_text, FD_THREAD_TEXT_CAP),
+      files: c.attachments.length,
+    })),
+    movements: d.changes.slice(-12).map((m) => ({ at: m.fd_updated_at ?? m.observed_at, field: m.field, from: m.old_value, to: m.new_value })),
+  };
+}
+
+// ── The books (Zoho, organisation-wide) ──
+
+/** The /books overview, live from Zoho (5-minute Redis copy). Admin and founder only, like the page. */
+export async function getBooksFor(principal: StaffPrincipal) {
+  if (principal.role !== 'admin' && principal.role !== 'founder') return { denied: true as const };
+  const b = await getBooksOverview();
+  if (!b) return { unavailable: true as const };
+  const inv = (i: (typeof b.overdueInvoices)[number]) => ({ number: i.invoice_number, customer: i.customer_name, date: i.date, due_date: i.due_date, status: i.status, total: i.total, balance: i.balance });
+  return {
+    org: b.org.name,
+    currency: b.org.currency,
+    receivables: b.receivables,
+    payables: b.payables,
+    cash: { banks: b.cash.banks, cards: b.cash.cards, clearing: b.cash.clearing, accounts: b.cash.accounts.slice(0, 12).map((a) => ({ name: a.account_name, type: a.account_type, balance: a.balance })) },
+    this_month: b.thisMonth,
+    financial_year_to_date: b.fyToDate,
+    overdue_invoices: b.overdueInvoices.slice(0, 10).map(inv),
+    recent_invoices: b.recentInvoices.slice(0, 8).map(inv),
+    recent_payments: b.recentPayments.slice(0, 8).map((p) => ({ date: p.date, customer: p.customer_name, amount: p.amount, mode: p.payment_mode, invoices: p.invoice_numbers })),
+    fetched_at: b.fetchedAt,
+  };
+}
+
+// ── Sia groups by the GROUP, not by a member ──
+
+const SIA_GROUP_ROWS = 25;
+
+/** The groups this viewer may open (their names matched loosely), newest activity first. */
+export async function listSiaGroupsFor(
+  principal: StaffPrincipal,
+  opts: { search?: string | null; kind?: SiaGroupKind | null; unlinked_only?: boolean },
+) {
+  const scope = await siaScopeFor(principal);
+  if (!scope) return { ok: false as const, reason: 'no_access' as const };
+  let groups = await getSiaGroups();
+  if (scope.kind === 'queendom') {
+    const mine = await getQueendomGroupJids(scope.queendomId);
+    groups = groups.filter((g) => mine.has(g.group_jid));
+  }
+  const counts = { member: 0, vendor: 0, internal: 0, unmapped: 0, member_type_with_no_member: 0 };
+  for (const g of groups) {
+    counts[g.group_kind] += 1;
+    if (g.group_kind === 'member' && !g.member_id) counts.member_type_with_no_member += 1;
+  }
+  const words = (opts.search ?? '').toLowerCase().split(/\s+/).filter((w) => w.length >= 2);
+  const hits = groups
+    .filter((g) => !opts.kind || g.group_kind === opts.kind)
+    .filter((g) => !opts.unlinked_only || !g.member_id)
+    .filter((g) => words.every((w) => (g.subject ?? '').toLowerCase().includes(w)))
+    .sort((a, b) => (b.last_message_at ?? '').localeCompare(a.last_message_at ?? ''));
+  return {
+    ok: true as const,
+    visible_groups: groups.length,
+    counts,
+    matched: hits.length,
+    groups: hits.slice(0, SIA_GROUP_ROWS).map((g) => ({
+      group_jid: g.group_jid,
+      name: g.subject,
+      kind: g.group_kind,
+      linked_member_id: g.member_id,
+      people: g.member_count,
+      messages: g.message_count,
+      last_message_at: g.last_message_at,
+    })),
+  };
+}
+
+/** The latest page of ONE group's chat (oldest → newest); `before` pages further back. */
+export async function getSiaGroupMessagesFor(principal: StaffPrincipal, groupJid: string, opts: { before?: string } = {}) {
+  const scope = await siaScopeFor(principal);
+  if (!scope || !(await canViewSiaGroup(scope, groupJid))) return null;
+  const page = await getSiaMessages(groupJid, { before: opts.before });
+  const messages = await shapeMessages(page.messages);
+  return { messages, has_more: page.hasMore, oldest_at: messages[0]?.at ?? null };
+}
+
+/** A topic across every group the viewer may open, or inside one of them (newest first). */
+export async function searchSiaMessagesFor(principal: StaffPrincipal, query: string, related: string[], groupJid?: string) {
+  const scope = await siaScopeFor(principal);
+  if (!scope) return null;
+  if (groupJid && !(await canViewSiaGroup(scope, groupJid))) return null;
+  let hits = await searchSiaMessages(query, groupJid, related);
+  if (scope.kind === 'queendom' && !groupJid) {
+    const mine = await getQueendomGroupJids(scope.queendomId);
+    hits = hits.filter((h) => mine.has(h.group_jid));
+  }
+  const shaped = await shapeMessages(hits);
+  return hits.slice(0, 30).map((h, i) => ({ group_jid: h.group_jid, group: h.group_subject, ...shaped[i] }));
 }

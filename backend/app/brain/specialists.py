@@ -89,8 +89,11 @@ SPECIALISTS: dict[str, Specialist] = {
         description=(
             "performance numbers, team roster, domain health scorecards, campaign performance, "
             "ad spend and budget, revenue and deals, escalations / SLA breaches / overdue follow-ups "
-            "/ what needs attention or is slipping, trends, comparisons, reports (NOT simple "
-            "lead lookups or lead counts — those are the leads category)"
+            "/ what needs attention or is slipping, trends, comparisons, reports, and the "
+            "organisation's books from Zoho (how much we are owed, overdue invoices, payables, cash, "
+            "what was invoiced or received this month, profit this year) (NOT simple "
+            "lead lookups or lead counts — those are the leads category; NOT one member's dues — "
+            "that is the members category)"
         ),
         focus=("Focus for this conversation: ANALYTICAL questions over business data — "
                "performance, escalations, domain health, campaigns, budget, and deals. Ground "
@@ -102,6 +105,7 @@ SPECIALISTS: dict[str, Specialist] = {
             "get_campaigns",
             "get_budget",
             "search_deals",
+            "get_books_overview",
         ],
         job="heavy",  # the Opus tier — deep reasoning turns (DB-switchable)
     ),
@@ -132,6 +136,43 @@ SPECIALISTS: dict[str, Specialist] = {
                "Read with list_tickets / get_ticket before answering; a status move is a proposal "
                "the user confirms with a yes, never a done deed until the system says so."),
         toolset=["list_tickets", "get_ticket", "add_ticket_note", "move_ticket_status", "find_teammate"],
+    ),
+    "freshdesk": Specialist(
+        id="freshdesk",
+        description=(
+            "Freshdesk, the helpdesk: what is happening in Freshdesk, how many tickets are open / "
+            "pending / resolved / escalated, tickets by status, by queendom or group, by agent, by "
+            "category, what came in today or this week, which tickets are overdue, finding a "
+            "Freshdesk ticket by its number, subject or requester, one Freshdesk ticket's thread "
+            "and movements (NOT Sia tickets like T-000042 — those are the tickets category)"
+        ),
+        focus=("Focus for this conversation: FRESHDESK — the helpdesk as mirrored in Serene. Numbers "
+               "come from get_freshdesk_overview, rows from search_freshdesk_tickets, one ticket's "
+               "story from get_freshdesk_ticket. Quote counts exactly, say which filters were applied, "
+               "and say 'showing N of M' when the list is longer than what you were given. Serene never "
+               "writes to Freshdesk: you can read, never change."),
+        toolset=["get_freshdesk_overview", "search_freshdesk_tickets", "get_freshdesk_ticket",
+                 "get_member_overview", "find_teammate"],
+    ),
+    "groups": Specialist(
+        id="groups",
+        description=(
+            "a WhatsApp group by ITS NAME or kind rather than by a member: the internal team groups, "
+            "vendor groups, groups not linked to any member, listing the groups Sia records, what was "
+            "said in a named group, what is happening lately across the groups or the recent group "
+            "activity when no member is named, a recent team discussion or talk about a topic (the "
+            "talk we had about the app, what did the tech team discuss), and searching ALL groups at "
+            "once for a topic (which members asked about something) (NOT one named member's chat — "
+            "that is the members category)"
+        ),
+        focus=("Focus for this conversation: SIA GROUPS — the recorded WhatsApp groups themselves. "
+               "Find the group with list_sia_groups (it lists the most recently active first), read it "
+               "with get_sia_group_messages, search across groups with search_sia_messages (always pass "
+               "related words). For 'what is happening lately' with no group named, list the groups and "
+               "read the two or three most recently active ones. Answer only from returned "
+               "messages, cite dates, name the group each line came from, and never invent a group."),
+        toolset=["list_sia_groups", "get_sia_group_messages", "search_sia_messages",
+                 "get_member_overview", "find_teammate"],
     ),
     "members": Specialist(
         id="members",
@@ -189,6 +230,12 @@ SPECIALISTS: dict[str, Specialist] = {
             "get_ticket",
             "add_ticket_note",
             "move_ticket_status",
+            "get_freshdesk_overview",
+            "search_freshdesk_tickets",
+            "get_freshdesk_ticket",
+            "list_sia_groups",
+            "get_sia_group_messages",
+            "search_sia_messages",
         ],
     ),
 }

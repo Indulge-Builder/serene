@@ -1890,8 +1890,8 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/tools/registry.ts": {
-    "mtime": 1789810157.5080235,
-    "ast_hash": "006c15625af7ed3ddd3889ab4b1f5797",
+    "mtime": 1789741227.4910626,
+    "ast_hash": "7cb6a6c9232bb6176486f0515a8404ac",
     "semantic_hash": ""
   },
   "src/lib/elaya/tools/write-registry.ts": {
@@ -3170,8 +3170,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1789810318.8305807,
-    "ast_hash": "94111ed5e78ffc7f6fec8f5463912461",
+    "mtime": 1789742983.1796799,
+    "ast_hash": "0f780c940822ee92cdb1ce8f4127dbab",
     "semantic_hash": ""
   },
   "docs/claude-project/1-product-and-status.md": {
@@ -3495,8 +3495,8 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/CLAUDE.md": {
-    "mtime": 1789810318.8222392,
-    "ast_hash": "103fea1a9f24e114b9ba2854ce599e19",
+    "mtime": 1789741419.7727885,
+    "ast_hash": "c847691276e47cb1a38a43386906af6d",
     "semantic_hash": ""
   },
   "src/lib/services/CLAUDE.md": {
@@ -3990,8 +3990,8 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/elaya-data.ts": {
-    "mtime": 1789810052.3060515,
-    "ast_hash": "a84f923bbc464411d27a60deec8a803d",
+    "mtime": 1789741419.7664692,
+    "ast_hash": "7657e2c35048c0d3a8fce6b4f75da101",
     "semantic_hash": ""
   },
   "src/lib/elaya/memory.ts": {
@@ -6495,8 +6495,8 @@
     "semantic_hash": ""
   },
   "backend/app/brain/specialists.py": {
-    "mtime": 1789810184.363493,
-    "ast_hash": "8ed0988d64100b2607bb80ff8539d4e0",
+    "mtime": 1789717889.751708,
+    "ast_hash": "0ccaf78c82c6cc90838f7a046be4d763",
     "semantic_hash": ""
   },
   "backend/app/core/__init__.py": {
@@ -6535,8 +6535,8 @@
     "semantic_hash": ""
   },
   "backend/app/tools/registry.py": {
-    "mtime": 1789810184.362785,
-    "ast_hash": "e348d294e65bf26159ad01024536966a",
+    "mtime": 1789717889.7536893,
+    "ast_hash": "9a8a9c2c48730c4377b94dc89bcaf478",
     "semantic_hash": ""
   },
   "supabase/migrations/20260828000176_llm_heavy_tier.sql": {
@@ -8075,8 +8075,8 @@
     "semantic_hash": ""
   },
   "src/lib/services/member-profiler.ts": {
-    "mtime": 1789809339.3069134,
-    "ast_hash": "a5cdf7de3714bdba94622daba0a5e4fb",
+    "mtime": 1789741705.3441799,
+    "ast_hash": "a1c5ff3a847310c48b4ea291dc4952ff",
     "semantic_hash": ""
   },
   "src/lib/services/member-relations.ts": {

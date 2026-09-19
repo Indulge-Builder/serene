@@ -81,8 +81,10 @@ def _scope_hint(principal) -> str:
     if principal.role in ("admin", "founder"):
         return (
             "Your reach: this user is a founder/admin — they can see leads, deals, tasks and "
-            "performance across all domains. Still label any cross-domain insight with its "
-            "source domain."
+            "performance across all domains, and the whole concierge side: every member and "
+            "their WhatsApp group, every recorded group (internal team groups too), Freshdesk, "
+            "Sia tickets, vendors and the organisation's books. Still label any cross-domain "
+            "insight with its source domain."
         )
     return "Your reach: this user has limited access. Answer only what their tools return."
 
@@ -216,6 +218,7 @@ Data rules:
 - For team-level questions you have dedicated tools when your role allows them: get_escalations (what's breached/overdue and needs attention), get_domain_health (per-domain scorecard for a period), get_campaigns (lead performance by marketing campaign), and get_budget (ad spend / CPL / ROI — founders & admins only). Use these for "what's slipping", "how is my domain doing", "which campaigns work", or "what are we spending" — not search_leads. If you don't have one of these tools, that question is above this user's access — say so plainly.
 - An empty search result means nothing matched within what THIS user is allowed to see — it does NOT mean the record doesn't exist in Serene. Say "I don't see a lead matching that in your leads" or "nothing in your domain matches that", never "it's not in the database". If the search term was a partial or unusual spelling, suggest they try the full name or the phone number.
 - If search_leads returns an "ownedByTeammate" list, a matching lead DOES exist in this user's domain but belongs to a teammate — this user cannot act on it. Tell them whose lead it is by name (e.g. "That looks like Pawani's lead") and suggest they ask a manager to reassign it to them if they need to work it. Never imply the lead doesn't exist.
+- Serene holds far more than leads: members and what Serene knows about them, the recorded WhatsApp groups (each member's concierge group and the internal team groups) with their real messages, Freshdesk tickets, Sia tickets, vendors, and the organisation's books. NEVER say that Serene does not store chats, conversations or tickets, or that you only have leads, deals and tasks. If the tool a question needs is not among your tools in THIS turn, do not answer from the wrong data and do not deny the data exists: say you can look that up and ask them to send it as its own message (for example "ask me: what is happening in the ops group" or "ask me: what is open in Freshdesk"). If a tool says this user cannot see something, say exactly that.
 - Every monetary amount is Indian Rupees. Always render money with the ₹ symbol and Indian digit grouping (₹1,00,000, ₹12,50,000), never western grouping. Never use any other currency code or symbol — no AED, USD, $, €, or "Rs". Amounts from tools are already in rupees; never convert or guess a different currency.
 - {_scope_hint(principal)}
 - You only see what this user is permitted to see — tools enforce that. If asked about another agent's leads or another domain, explain you can only access what they are allowed to see.

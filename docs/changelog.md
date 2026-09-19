@@ -12,6 +12,55 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-19 — Elaya reads Freshdesk as a whole, the books, and any Sia group
+
+Why: Elaya could tell one member's story but could not answer "what is happening in Freshdesk",
+"how much are we owed", or "what was said in the ops group". The pages had the data; she had no
+tool for it.
+
+What changed: seven read tools, all thin wrappers over reads that already exist (no new query).
+
+- Freshdesk: `get_freshdesk_overview`, `search_freshdesk_tickets`, `get_freshdesk_ticket`. They
+  use the /freshdesk page's own filters and overview, so her numbers equal the page's numbers.
+  The ask arrives as names ("Anishqa's Queendom", "Pending") and is resolved against the synced
+  vocabulary; an unknown name returns the real choices.
+- Books: `get_books_overview` over `getBooksOverview` (live Zoho). Admin and founder only, the
+  same gate as /books.
+- Sia by the group: `list_sia_groups`, `get_sia_group_messages`, `search_sia_messages`. This
+  covers the internal team groups and the groups linked to no member.
+- Who sees what is NOT new: `src/lib/services/sia-access.ts` decides, exactly as on the /sia and
+  /freshdesk pages. Admin, founder and the tech workbench see everything; a seated concierge
+  teammate sees only their queendom's groups and their queendom's Freshdesk group; nobody else
+  sees either. Checked on live data as a founder, a genie and an outsider: the genie was refused
+  an internal group and another queendom's ticket.
+- Code: `src/lib/elaya/elaya-data.ts` (the reads), `src/lib/elaya/tools/registry.ts` (the tools +
+  `BRIDGED_READ_TOOL_NAMES`), `backend/app/tools/registry.py` (names + roles),
+  `backend/app/brain/specialists.py` (new `freshdesk` and `groups` specialists; the books join
+  `analytics`). Rows in `src/lib/elaya/CLAUDE.md`.
+- Her self-description was out of date too (`backend/app/brain/persona.py`): a founder's reach
+  read "leads, deals, tasks and performance", so on WhatsApp she answered "group chat activity
+  mere paas nahi hai, Serene sirf leads, deals aur tasks dikhata hai". The reach line now names
+  the concierge side, and one data rule forbids denying that chats or tickets exist: when the
+  needed tool is not in the turn she asks for the question on its own message instead.
+- Needs `copilot svc deploy` from `backend/` for the Python brain to carry the new names.
+- Not yet run through the model: the Anthropic spend limit was still blocking every call.
+
+## 2026-09-19 — Fix: a reached Anthropic spend limit no longer makes the profiler and intake skip chats
+
+Why: on 2026-09-18 at about 22:15 IST the Anthropic account reached its monthly spend limit
+(80 dollars). Every model call was refused with a 400 "You have reached your specified API usage
+limits". Elaya went silent on both channels. Worse, `isProviderSide()` only knew the "credit
+balance" wording, so the profiler and ticket intake read each refusal as the conversation's own
+fault, and after three tries stepped over it unread: 1,616 profiler conversations (27,524
+messages, 186 groups) and 178 intake bursts (574 messages, 67 groups).
+
+What changed: `isProviderSide()` in `src/lib/services/member-profiler.ts` (shared by
+`ticket-intake.ts`) now names the usage-limit wording too, so a reached limit counts as an outage:
+the bookmark stays, three in a row stop the run. Both switches (`member_profiler_enabled`,
+`ticket_intake_enabled`) were set to false on 2026-09-19 14:50 IST to stop further skipping.
+Recovery (after the limit is raised and this build is on Trigger.dev): move each hit group's
+bookmark back to the start of its first skipped conversation, then switch both back on.
+
 ## 2026-09-18 — Fix: the member page's WhatsApp group link now opens that group in Sia
 
 Why: both links on the member page (the identity card row and the WhatsApp card) pointed at
