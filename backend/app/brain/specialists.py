@@ -42,7 +42,7 @@ SPECIALISTS: dict[str, Specialist] = {
     "leads": Specialist(
         id="leads",
         description=(
-            "lead lookups, HOW MANY leads / lead counts, lead status/details/notes, cold or "
+            "what a lead said or we said on the official WhatsApp line with the lead, the chat with a lead, lead lookups, HOW MANY leads / lead counts, lead status/details/notes, cold or "
             "stale leads, member/prospect questions, talking points or case studies for pitching, "
             "logging a call on a lead, adding a note to a lead, changing a lead's status, "
             "reassigning a lead, recording/closing a deal, creating a follow-up or reminder for a "
@@ -54,6 +54,7 @@ SPECIALISTS: dict[str, Specialist] = {
         toolset=[
             "search_leads",
             "get_lead_details",
+            "get_lead_whatsapp_chat",
             "get_cold_leads",
             "get_helpdesk_content",
             "find_teammate",
@@ -95,7 +96,9 @@ SPECIALISTS: dict[str, Specialist] = {
             "ad spend and budget, revenue and deals, escalations / SLA breaches / overdue follow-ups "
             "/ what needs attention or is slipping, trends, comparisons, reports, and the "
             "organisation's books from Zoho (how much we are owed, overdue invoices, payables, cash, "
-            "what was invoiced or received this month, profit this year) (NOT simple "
+            "what was invoiced or received this month, profit this year), what the team did lately (the "
+            "activity feed: what happened in the last hour, today's movement in a domain), and the software "
+            "subscriptions and bills the company pays for (what renews, what is overdue) (NOT simple "
             "lead lookups or lead counts — those are the leads category; NOT one member's dues — "
             "that is the members category)"
         ),
@@ -110,6 +113,8 @@ SPECIALISTS: dict[str, Specialist] = {
             "get_budget",
             "search_deals",
             "get_books_overview",
+            "get_activity_feed",
+            "get_subscriptions",
         ],
         job="heavy",  # the Opus tier — deep reasoning turns (DB-switchable)
     ),
@@ -162,7 +167,7 @@ SPECIALISTS: dict[str, Specialist] = {
                "(what was counted, the dates, the filter) so it can be sanity-checked, and say when a list "
                "was cut at the row cap. A number you did not get from a tool is never stated."),
         toolset=["get_live_pulse", "describe_database", "query_database", "get_books_overview",
-                 "get_freshdesk_overview", "get_member_360", "get_member_overview", "find_teammate"],
+                 "get_freshdesk_overview", "get_member_360", "get_member_overview", "get_activity_feed", "find_teammate"],
         job="heavy",  # the deepest tier: planning and writing queries is the hardest work she does
         roles=frozenset({"admin", "founder"}),
     ),
@@ -281,6 +286,9 @@ SPECIALISTS: dict[str, Specialist] = {
             "get_live_pulse",
             "describe_database",
             "query_database",
+            "get_lead_whatsapp_chat",
+            "get_subscriptions",
+            "get_activity_feed",
         ],
     ),
 }

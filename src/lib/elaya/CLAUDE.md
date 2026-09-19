@@ -207,6 +207,15 @@ Never remove the UUID guard without moving id surfacing off the string-mask path
    `ElayaActionPayload.target`.
 7. Log it in `docs/changelog.md` + update `docs/modules/elaya.md`.
 
+## When a turn fails (2026-09-19)
+
+The brain never answers with silence or a generic line. `backend/app/api/chat.py`
+`classify_turn_failure()` reads the provider's error by shape (`model_limit` = the account's spend
+limit / credit, `model_busy` = 429 / 529 / overloaded, `model_timeout`, else `failed`), SAVES the
+line as her reply (`meta.turnError`) and delivers it as a normal delta + done, so both channels
+speak it and the transcript shows it. Node's `REPLY_UNAVAILABLE` (elaya-whatsapp.ts) is only for a
+failure BEFORE the brain answered (brain unreachable). Never surface a raw provider string.
+
 ## Ticket tools (Sia, 2026-09-15)
 
 | Tool | Tier | Roles | What it wraps |
@@ -229,6 +238,9 @@ Never remove the UUID guard without moving id surfacing off the string-mask path
 | `query_database` | read (bridged) | admin / founder | **The model writes the SQL.** `elayaData.queryDatabaseFor` → `runElayaQuery` → `public.elaya_run_query()` (0223). What can be read is enforced by the DATABASE, not by this code: a role with no rights on any real table, cleaned views, a read-only transaction, a row cap. Every call is appended to `elaya_query_log` with who and why. Results pass `maskPii` like every tool. The SQL rules live in the tool description; the analyst method lives in the `analyst` specialist's focus. Exact tools stay the first choice (their numbers equal the pages) |
 | `get_live_pulse` | read (bridged) | admin / founder (company-wide) | `elayaData.getLivePulseFor` → `getLivePulse()` (`pulse-service.ts`): one read-only query over the `elaya_read` views for the counters + `getFreshdeskOverview()` (the page's numbers) + `sia.groups_waiting_for_reply()` (0224, minus acknowledgement-only last words via intake's `isOnlyAcknowledgement`). Every section fails soft to null |
 | `get_member_360` | read (bridged) | all staff (the queendom gate inside) | **THE first call for any question about a member.** `elayaData.getMember360For(principal, nameOrId)` composes the reads that already exist (`getMemberProfileFor` = the gate + the dossier, `getMemberMessagesFor`, `getMemberFinanceFor`, one read-only query over the `elaya_read` views for vendor jobs / Sia tickets / suggestions / deals) into ONE live picture, plus `conversation_now` (who spoke last, `waiting_on_us` minus acknowledgement-only last words). Name in → one match opens, several → `candidates`. Carries `maxResultChars: 24_000` (mirrored in `backend/app/brain/loop.py` `TOOL_RESULT_MAX_CHARS_BY_TOOL`) and fits itself to 22,000 by shortening lists, never dropping a section (`trimmed` names them). The detailed member tools remain for depth. Founders and admins also carry `query_database` in the `members` specialist for the analytical follow-up |
+| `get_lead_whatsapp_chat` | read (bridged) | all staff; gate = `canAccessLead` (the leads rule) | `elayaData.getLeadWhatsAppChatFor` → `getLeadByRefForElaya` + `canAccessLead` → `getLeadWhatsAppThreadForElaya` (whatsapp-service, ADMIN client, the SAME mappers as the /whatsapp page; no media signing). The official line with a LEAD, not a member group. Sender embed = the gia `profiles` view (id + full_name only: asking it for avatar_url broke the page read from 0213 until 2026-09-19) |
+| `get_subscriptions` | read (bridged) | admin / founder, or domain finance / tech (the RLS rule, in code: `maySeeSubscriptions`) | `elayaData.getSubscriptionsFor` → `getSubscriptionsForElaya` (subscriptions-service: the list mapper now takes the client, `getSubscriptionsWith`; session for the page, admin for Elaya). The tool shape carries NO login / password / raw notes beyond 200 chars |
+| `get_activity_feed` | read (bridged) | manager and above (`MANAGER_UP`) | `elayaData.getActivityFeedFor` → `getActivityFeed(domain)` per Gia domain (admin/founder: one or all four merged; a manager is PINNED to their own domain whatever they ask), newest first, `hours` window, actor names resolved once |
 | `add_ticket_note` | write, inline | all staff | `addTicketNoteCore`; an `executed` ledger row with an `ElayaTicketTarget` |
 | `move_ticket_status` | write, propose-only | all staff | checks `canTransition` at propose time; the resolver (`executeProposedTicketMove`) re-gates, checks the status is unchanged, runs `moveTicketStatusCore` |
 

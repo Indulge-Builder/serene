@@ -74,8 +74,11 @@ const REPLY_NO_SPEECH =
   'I couldn’t catch anything in that voice note — try again, or send it as a message.';
 const REPLY_CAP_REACHED =
   'You’ve reached your Elaya message limit for today. The count resets at midnight — see you then.';
+// The line for a failure BEFORE the brain answered (the brain unreachable, the send path
+// broken). A failure inside the brain gets a more specific line from the brain itself
+// (backend/app/api/chat.py: the model's limit, overload, timeout), delivered as a normal reply.
 const REPLY_UNAVAILABLE =
-  'Something went wrong on my side just now. Give me a moment and try again.';
+  'I could not reach my brain just now, so I cannot answer yet. Your message is saved: try again in a minute, and tell the tech team if it keeps happening.';
 const REPLY_EMPTY = 'I don’t have an answer for that one — try rephrasing?';
 
 /**

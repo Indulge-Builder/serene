@@ -90,7 +90,11 @@ export type ElayaReadToolName =
   | 'query_database'
   | 'get_live_pulse'
   // Everything on one member, live, in one call (2026-09-19)
-  | 'get_member_360';
+  | 'get_member_360'
+  // The lead WhatsApp line, subscriptions, the live activity feed (2026-09-19)
+  | 'get_lead_whatsapp_chat'
+  | 'get_subscriptions'
+  | 'get_activity_feed';
 
 /** Every tool name the principal may carry — read tools (this file) + write tools. */
 export type ElayaToolName = ElayaReadToolName | ElayaWriteToolName;
@@ -1129,6 +1133,9 @@ export const BRIDGED_READ_TOOL_NAMES: ReadonlySet<string> = new Set([
   'query_database',
   'get_live_pulse',
   'get_member_360',
+  'get_lead_whatsapp_chat',
+  'get_subscriptions',
+  'get_activity_feed',
 ]);
 
 // ── Tickets (Sia, 0195/0199/0200) — the genie's queue and one ticket's whole story ──
@@ -1608,6 +1615,84 @@ const getMember360: ElayaTool = {
   },
 };
 
+// ── The lead WhatsApp line, subscriptions, the live activity feed ──
+
+const getLeadWhatsAppChat: ElayaTool = {
+  name: 'get_lead_whatsapp_chat',
+  description:
+    "The official WhatsApp conversation with a LEAD (the /whatsapp page: our business number talking to a " +
+    'prospect), oldest to newest: who wrote (lead / staff / elaya), when, the text, delivery status, whether ' +
+    "Elaya's auto-replies are on. Use for \"what did that lead say on WhatsApp\", \"did we reply to X\", " +
+    '"show me the chat with X". Pass the lead id or slug from search_leads (search first when you only have ' +
+    'a name). Refuses leads this user may not see. A member\'s concierge GROUP is a different thing: use ' +
+    'get_member_360 / get_member_recent_messages for members.',
+  schema: z.object({ lead: z.string().trim().min(1).max(160), limit: z.number().int().min(5).max(80).optional() }),
+  jsonSchema: {
+    type: 'object',
+    properties: {
+      lead: { type: 'string', description: 'The lead id or slug (from search_leads)' },
+      limit: { type: 'integer', description: 'How many of the latest messages (default 40, max 80)' },
+    },
+    required: ['lead'],
+    additionalProperties: false,
+  },
+  run: async (principal, input) => {
+    const { lead, limit } = input as { lead: string; limit?: number };
+    const r = await elayaData.getLeadWhatsAppChatFor(principal, lead, limit);
+    if (!r.ok) return { error: 'Lead not found or you are not permitted to view it.' };
+    return { ...r, note: !r.conversation ? 'No WhatsApp conversation exists with this lead. Say exactly that.' : r.messages.length === 0 ? 'The conversation exists but holds no messages.' : 'Answer only from these messages and cite the times.' };
+  },
+};
+
+const getSubscriptionsTool: ElayaTool = {
+  name: 'get_subscriptions',
+  description:
+    'The software and services the company pays for (the Subscriptions & Bills tracker): name, tool, type ' +
+    '(monthly / yearly / top-up), departments, amount and currency, status (paid / due / overdue), the current ' +
+    'due date, the latest payment. Use for "what are we paying for", "what renews this month", "which bills ' +
+    'are overdue", "how much do we spend on Claude". Visible to admin, founder and the finance and tech ' +
+    'domains, as on the page. Logins and passwords are never available here; say so if asked.',
+  schema: z.object({ search: z.string().trim().min(2).max(80).optional(), include_archived: z.boolean().optional() }),
+  jsonSchema: {
+    type: 'object',
+    properties: {
+      search: { type: 'string', description: 'Words from the subscription or tool name' },
+      include_archived: { type: 'boolean', description: 'true = archived (cancelled) subscriptions instead of the live ones' },
+    },
+    additionalProperties: false,
+  },
+  run: async (principal, input) => {
+    const r = await elayaData.getSubscriptionsFor(principal, input as { search?: string; include_archived?: boolean });
+    if ('denied' in r) return { error: 'Subscriptions are visible to admin, founder and the finance and tech teams only.' };
+    return { ...r, note: r.count === 0 ? 'No subscription matches. Say exactly that.' : 'Amounts are in each row\'s currency; latest_paid_inr is always INR.' };
+  },
+};
+
+const getActivityFeedTool: ElayaTool = {
+  name: 'get_activity_feed',
+  roles: MANAGER_UP,
+  description:
+    'The live activity feed: what the team did, newest first (lead created / assigned / won, deal recorded, ' +
+    'task created / completed), each with who, when and the domain. Use for "what happened in the last ' +
+    'hour", "what did the team do today", "any movement on Onboarding this morning". `hours` limits how far ' +
+    'back; `domain` picks one Gia domain (a manager is always pinned to their own). Summarise by person or ' +
+    'by kind; do not read out every line.',
+  schema: z.object({ domain: z.string().trim().min(2).max(40).optional(), hours: z.number().int().min(1).max(168).optional() }),
+  jsonSchema: {
+    type: 'object',
+    properties: {
+      domain: { type: 'string', description: 'onboarding / house / shop / legacy (admin and founder only; managers are pinned)' },
+      hours: { type: 'integer', description: 'Only events in the last N hours (max 168)' },
+    },
+    additionalProperties: false,
+  },
+  run: async (principal, input) => {
+    const r = await elayaData.getActivityFeedFor(principal, input as { domain?: string; hours?: number });
+    if ('denied' in r) return { error: 'The activity feed is for managers and above.' };
+    return { ...r, shown: r.events.length, note: r.events.length === 0 ? 'Nothing in that window. Say exactly that.' : `Newest first, at most ${r.events.length} shown.` };
+  },
+};
+
 const ALL_TOOLS = [
   searchLeads,
   getColdLeads,
@@ -1641,9 +1726,19 @@ const ALL_TOOLS = [
   queryDatabase,
   getLivePulseTool,
   getMember360,
+  getLeadWhatsAppChat,
+  getSubscriptionsTool,
+  getActivityFeedTool,
 ] as const;
 
 const TOOL_REGISTRY = new Map<string, ElayaTool>(ALL_TOOLS.map((t) => [t.name, t]));
+
+/** A READ tool's definition (description + Zod schema) by name, or undefined for a write tool or an
+ *  unknown name. The MCP connector (lib/mcp/server.ts) publishes the principal's toolset through
+ *  this so it never keeps a list of its own; it still CALLS every tool through executeTool. */
+export function getReadTool(name: string): Pick<ElayaTool, 'name' | 'description' | 'schema'> | undefined {
+  return TOOL_REGISTRY.get(name);
+}
 
 // READ tools permitted for a role. Most are all-staff (no `roles` field); the Phase-4
 // oversight/business tools carry a `roles` set, so a manager never sees get_budget and

@@ -120,6 +120,36 @@ is their first real run.
 
 ---
 
+## 2026-09-19 — Elaya says why she cannot answer; she reads lead chats, subscriptions and the activity feed
+
+Why: on 2026-09-18 the model account hit its spend limit and for twelve hours every reply was
+"Something went wrong on my side", never saved, so the transcript looked like silence and nobody
+learned the cause. Separately, three areas had no tool at all: the WhatsApp line with leads (the
+/whatsapp page), the Subscriptions tracker, and the live activity feed.
+
+What changed:
+
+- **A failure inside the brain now answers with the reason** (`backend/app/api/chat.py`,
+  `classify_turn_failure`): the account's usage limit ("my AI account has reached its usage limit,
+  please tell the tech team"), an overloaded provider, a timeout, or a plain failure. The line is
+  saved as her reply and delivered like a normal one on both channels. Node's own line
+  (`REPLY_UNAVAILABLE` in `elaya-whatsapp.ts`) now says the brain could not be reached and that the
+  message is saved.
+- **`get_lead_whatsapp_chat`**: the official WhatsApp thread with a LEAD, gated by `canAccessLead`,
+  read on the admin client with the page's own mappers (`getLeadWhatsAppThreadForElaya`).
+- **`get_subscriptions`**: the tracker for admin, founder and the finance and tech domains (the
+  RLS rule in code). The list mapper now takes the client (`getSubscriptionsWith`), so the page and
+  Elaya share one mapper. Never a login or password.
+- **`get_activity_feed`**: what the team did, newest first, for managers and above; a manager is
+  pinned to their own domain, admin and founder may ask for one domain or all four merged.
+- **Fix found on the way:** the `/whatsapp` page's message read asked the gia `profiles` view for
+  `avatar_url`, a column the view does not carry since migration 0213, so PostgREST refused the
+  read and the page showed no messages since 2026-09-17. Both reads now ask for `full_name` only.
+
+Tested through the real tools with masking as founder, an onboarding agent (refused another
+agent's lead), a genie (refused subscriptions and the feed) and a manager (pinned to onboarding
+when asking for house).
+
 ## 2026-09-19 — One call loads everything on a member: `get_member_360`
 
 Why: the founder's main concern. "When I ask Elaya about a client she should load all the data

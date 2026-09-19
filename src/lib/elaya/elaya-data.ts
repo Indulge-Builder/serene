@@ -70,6 +70,11 @@ import { getMemberFinance, getBooksOverview } from '@/lib/services/zoho-service'
 import { runElayaQuery, logElayaQuery, getElayaCatalog } from '@/lib/services/elaya-query-service';
 import { getLivePulse } from '@/lib/services/pulse-service';
 import { isOnlyAcknowledgement } from '@/lib/services/ticket-intake';
+import { getLeadWhatsAppThreadForElaya } from '@/lib/services/whatsapp-service';
+import { getSubscriptionsForElaya } from '@/lib/services/subscriptions-service';
+import { getActivityFeed, type ActivityFeedResult } from '@/lib/services/activity-service';
+import { canAccessLead } from '@/lib/elaya/access';
+import type { GiaDomain } from '@/lib/constants/domains';
 import type { TicketStatus } from '@/lib/constants/tickets';
 import type { RankVendorsRequest } from '@/lib/services/vendors-service';
 import { GIA_DOMAINS } from '@/lib/constants/domains';
@@ -1151,4 +1156,81 @@ export async function getMember360For(principal: StaffPrincipal, ref: string): P
   ];
   for (const step of steps) { if (size() <= M360_BUDGET_CHARS) break; step(); }
   return { found: true, data, trimmed };
+}
+
+// ─────────────────────────────────────────────
+// Three areas Elaya could not read before 2026-09-19: the lead WhatsApp line, subscriptions,
+// the live activity feed. Each mirrors the page's own access rule, in code.
+// ─────────────────────────────────────────────
+
+const LEAD_CHAT_TEXT_CAP = 300;
+
+/** The official WhatsApp thread with a LEAD (not a member group). Gate = canAccessLead, the leads rule. */
+export async function getLeadWhatsAppChatFor(principal: StaffPrincipal, leadRef: string, limit = 40) {
+  const lead = await getLeadByRefForElaya(leadRef);
+  if (!lead || !canAccessLead(principal, lead)) return { ok: false as const, reason: 'not_found' as const };
+  const thread = await getLeadWhatsAppThreadForElaya(lead.id, limit);
+  const name = [lead.first_name, lead.last_name].filter(Boolean).join(' ') || 'this lead';
+  if (!thread) return { ok: true as const, lead: { id: lead.id, name, slug: lead.slug, status: lead.status, domain: lead.domain }, conversation: null, messages: [], total: 0 };
+  const c = thread.conversation;
+  return {
+    ok: true as const,
+    lead: { id: lead.id, name, slug: lead.slug, status: lead.status, domain: lead.domain },
+    conversation: { status: c.status, bot_active: c.bot_active, last_message_at: c.last_message_at },
+    total: thread.total,
+    messages: thread.messages.map((m) => ({
+      at: m.created_at,
+      from: m.direction === 'inbound' ? 'lead' : m.is_bot ? 'elaya' : 'staff',
+      name: m.direction === 'inbound' ? name : m.is_bot ? 'Elaya' : (m.sender_name ?? 'staff'),
+      type: m.message_type === 'text' ? undefined : m.message_type,
+      text: clip(m.content, LEAD_CHAT_TEXT_CAP),
+      status: m.status,
+    })),
+  };
+}
+
+const SUBSCRIPTION_DOMAINS: readonly AppDomain[] = ['finance', 'tech'];
+const maySeeSubscriptions = (p: StaffPrincipal) => p.role === 'admin' || p.role === 'founder' || SUBSCRIPTION_DOMAINS.includes(p.domain);
+
+/** The Subscriptions & Bills tracker, the RLS rule in code: admin/founder, or the finance/tech domains. Never a login or password. */
+export async function getSubscriptionsFor(principal: StaffPrincipal, opts: { search?: string | null; include_archived?: boolean }) {
+  if (!maySeeSubscriptions(principal)) return { denied: true as const };
+  const rows = await getSubscriptionsForElaya({ search: opts.search ?? undefined, archived: opts.include_archived ? true : false });
+  return {
+    count: rows.length,
+    subscriptions: rows.map((r) => ({
+      id: r.id, name: r.name, tool: r.toolName, type: r.type, departments: r.departments, currency: r.currency, amount: r.amount,
+      status: r.status, days_overdue: r.daysOverdue, current_due_date: r.currentDueDate, due_day: r.due_day,
+      latest_paid_inr: r.latestPaidInr, latest_paid_at: r.latestPaidAt, archived: r.is_archived, notes: clip(r.notes, 200),
+    })),
+  };
+}
+
+const FEED_SHOWN = 40;
+
+/** The live activity feed. admin/founder: any or every Gia domain; manager: pinned to their own; agents: nothing. */
+export async function getActivityFeedFor(principal: StaffPrincipal, opts: { domain?: string | null; hours?: number | null }) {
+  const privileged = principal.role === 'admin' || principal.role === 'founder';
+  if (!privileged && principal.role !== 'manager') return { denied: true as const };
+  const asked = (opts.domain ?? '').toLowerCase();
+  const domains: GiaDomain[] = privileged
+    ? (GIA_DOMAINS as readonly string[]).includes(asked) ? [asked as GiaDomain] : [...GIA_DOMAINS]
+    : (GIA_DOMAINS as readonly string[]).includes(principal.domain) ? [principal.domain as GiaDomain] : [];
+  if (domains.length === 0) return { domains: [], events: [] };
+  const pages: ActivityFeedResult[] = await Promise.all(domains.map((d) => getActivityFeed(d)));
+  const since = opts.hours ? Date.now() - opts.hours * 3_600_000 : null;
+  const events = pages.flatMap((p) => p.items)
+    .filter((e) => !since || new Date(e.created_at).getTime() >= since)
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    .slice(0, FEED_SHOWN);
+  const actorIds = [...new Set(events.map((e) => e.actor_id).filter((x): x is string => Boolean(x)))];
+  const names = new Map<string, string>();
+  if (actorIds.length) {
+    const { data } = await createAdminClient().from('profiles').select('id, full_name').in('id', actorIds);
+    mapRows<{ id: string; full_name: string }, void>(data, (r) => { names.set(r.id, r.full_name); });
+  }
+  return {
+    domains,
+    events: events.map((e) => ({ at: e.created_at, domain: e.domain, who: e.actor_id ? (names.get(e.actor_id) ?? null) : null, event: e.event_type, about: e.subject_type, title: e.title })),
+  };
 }

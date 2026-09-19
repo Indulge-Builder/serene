@@ -68,6 +68,35 @@ class ChatRequest(BaseModel):
     wa_message_id: str | None = Field(default=None, min_length=1, max_length=128)
 
 
+# ── What Elaya says when her own turn fails (never an internal string) ──────────
+_FAILURE_LINES: dict[str, str] = {
+    "model_limit": (
+        "I cannot think right now: my AI account has reached its usage limit, so every question "
+        "is being refused until the tech team raises it. Your message is saved. Please tell them."
+    ),
+    "model_busy": "My AI provider is overloaded at the moment. Please try again in a minute.",
+    "model_timeout": "That took too long and I had to stop. Please try again, or ask a smaller piece of it.",
+    "failed": (
+        "Something went wrong on my side and I could not finish. Please try again in a moment; "
+        "if it keeps happening, tell the tech team."
+    ),
+}
+
+
+def classify_turn_failure(exc: BaseException) -> tuple[str, str]:
+    """→ (code, the line she says). Read by shape from the provider's message, never surfaced raw."""
+    msg = f"{type(exc).__name__}: {exc}".lower()
+    if "usage limit" in msg or "credit balance" in msg or "billing" in msg or "regain access" in msg:
+        code = "model_limit"
+    elif "429" in msg or "rate limit" in msg or "overloaded" in msg or "529" in msg or "503" in msg:
+        code = "model_busy"
+    elif "timeout" in msg or "timed out" in msg:
+        code = "model_timeout"
+    else:
+        code = "failed"
+    return code, _FAILURE_LINES[code]
+
+
 def _frame(payload: dict) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
@@ -197,13 +226,23 @@ async def chat(body: ChatRequest, authorization: str = Header(default="")) -> St
                     }
                 )
             )
-        except Exception:
-            # The traceback goes to the service logs; the wire carries only a
-            # generic marker — an internal exception string must never reach a
-            # chat surface (the Node proxy rewrites error frames to user copy
-            # anyway; this keeps the frame clean for any direct consumer too).
+        except Exception as exc:
+            # The traceback goes to the service logs; the wire never carries an internal
+            # string. But silence is worse than a reason (2026-09-18: the model account hit
+            # its spend limit and every reply was a blank "something went wrong" for 12
+            # hours): the failure is CLASSIFIED into a short, honest line, saved as her
+            # reply so the transcript shows it, and delivered as a normal delta + done so
+            # both channels speak it. The Node proxy still maps a transport-level failure.
             print(f"[chat] turn failed:\n{traceback.format_exc()}")
-            await queue.put(_frame({"type": "error", "message": "turn failed"}))
+            code, line = classify_turn_failure(exc)
+            try:
+                await elaya_store.insert_assistant_message(
+                    conversation_id, line, [], {"brain": "python", "turnError": code}, channel=body.channel
+                )
+            except Exception:
+                print("[chat] could not save the failure reply")
+            await emit_delta(line)
+            await queue.put(_frame({"type": "done", "messageId": None, "specialist": None, "toolsUsed": [], "turnError": code}))
         finally:
             await queue.put(None)
 
