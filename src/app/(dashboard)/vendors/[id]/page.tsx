@@ -1,13 +1,15 @@
 import { redirect, notFound } from 'next/navigation';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
-import { hasVendorAccess } from '@/lib/utils/route-access';
+import { hasVendorAccess, hasElevatedPageAccess } from '@/lib/utils/route-access';
 import { getVendorDetail, getVendorInvoices, getVendorCategories } from '@/lib/services/vendors-service';
 import { BackButton } from '@/components/ui/BackButton';
 import { VendorIdentityCard } from '@/components/vendors/VendorIdentityCard';
 import { VendorScoreCard } from '@/components/vendors/VendorScoreCard';
 import { VendorInvoicesCard } from '@/components/vendors/VendorInvoicesCard';
 import { VendorNotesCard } from '@/components/vendors/VendorNotesCard';
+import { VendorAdminActions } from '@/components/vendors/VendorAdminActions';
 import { VENDORS_PATH } from '@/lib/constants/vendors';
+import { formatDate } from '@/lib/utils/dates';
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -51,7 +53,38 @@ export default async function VendorPage({ params, searchParams }: Props) {
           {detail.vendor.name}
           <span className="page-title-dot">.</span>
         </h1>
+        {/* Merge and Remove are admin/founder only — the two writes here that are not
+            additive. Everyone else on the concierge floor (0221) gets the page without
+            them, rather than a button that refuses. */}
+        {hasElevatedPageAccess(profile) && (
+          <VendorAdminActions
+            vendor={detail.vendor}
+            history={{
+              jobs: detail.engagements.length,
+              reviews: detail.reviews.length,
+              notes: detail.notes.length,
+            }}
+          />
+        )}
       </div>
+
+      {/* A removed vendor still opens by direct link, on purpose: that is how someone
+          restores it. It must never be mistaken for a live one. */}
+      {detail.vendor.deleted_at && (
+        <div
+          style={{
+            padding: 'var(--space-3) var(--space-4)',
+            marginBottom: 'var(--space-6)',
+            borderRadius: 'var(--radius-sm)',
+            background: 'var(--color-warning-light)',
+            color: 'var(--color-warning-text)',
+            fontSize: 'var(--text-sm)',
+          }}
+        >
+          This vendor was hidden on {formatDate(detail.vendor.deleted_at)}. It does not appear in the vendor list, in
+          search, or in Find a vendor. Everything it knows is still here, and Restore puts it back.
+        </div>
+      )}
 
       {/* Top row: identity and score side by side, level with each other — the
           shared dossier grid (1fr + 320px), the same one /leads/[id] uses. Its

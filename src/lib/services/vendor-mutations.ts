@@ -28,6 +28,8 @@ import { getEngagementById } from "@/lib/services/vendors-service";
 import type { MutationActor } from "@/lib/services/lead-mutations";
 import type {
   CreateVendorInput,
+  MergeVendorsInput,
+  SetVendorDeletedInput,
   UpdateVendorInput,
   UpsertCapabilityInput,
   LogEngagementInput,
@@ -172,6 +174,129 @@ export async function setVendorStatusCore(
   }
   if (!data) return { ok: false, error: "not_found" };
   return { ok: true, row: data as VendorRow };
+}
+
+/**
+ * Restore a removed vendor, or hide one outright (0223).
+ *
+ * Since 0226 the Remove BUTTON goes through removeVendorCore, which decides between
+ * deleting and hiding. This stays the plain setter: it is what Restore calls, and it
+ * is the way to hide a vendor deliberately without asking for that decision.
+ *
+ * Not a DELETE, and not a status. The ledger is ON DELETE RESTRICT, so a vendor
+ * with any history cannot be hard-deleted at all -- and should not be: those rows
+ * record money that moved, and someone having filed them under the wrong name
+ * does not make them untrue. Setting `deleted_at` takes the row out of
+ * search_vendors, count_vendors and get_vendor_candidates and leaves every fact
+ * where it is, which is what makes the button safe to put in front of people.
+ */
+/** What Remove actually did. `deleted` means the spine row is gone (0226). */
+export type VendorRemoveResult = {
+  mode: "deleted" | "hidden";
+  vendor_id: string;
+  vendor_name: string;
+  history: { jobs: number; reviews: number; notes: number };
+};
+
+/**
+ * Remove a vendor: genuinely delete it when nothing is attached, hide it when
+ * something is (0226).
+ *
+ * The decision is NOT taken here and never in the browser. `remove_vendor` counts
+ * the engagements, reviews and notes inside its own transaction under a row lock,
+ * so a job written between the page rendering and the click still wins. The page
+ * shows the same counts only so the warning can say which of the two is coming.
+ */
+export async function removeVendorCore(
+  actor: MutationActor,
+  input: { id: string },
+): Promise<VendorMutationResult<VendorRemoveResult>> {
+  const admin = createAdminClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (admin as any).rpc("remove_vendor", {
+    p_vendor: input.id,
+    p_actor: actor.userId || null,
+  });
+  if (error || !data) {
+    console.error(`${LOG} removeVendorCore failed:`, error);
+    return { ok: false, error: error?.code === "P0002" ? "not_found" : classify(error ?? null) };
+  }
+  return { ok: true, row: data as VendorRemoveResult };
+}
+
+export async function setVendorDeletedCore(
+  actor: MutationActor,
+  input: SetVendorDeletedInput,
+): Promise<VendorMutationResult<VendorRow>> {
+  const admin = createAdminClient();
+  const { data, error } = await from(admin, "vendors")
+    .update(
+      input.deleted
+        ? { deleted_at: new Date().toISOString(), deleted_by: actor.userId || null }
+        : { deleted_at: null, deleted_by: null },
+    )
+    .eq("id", input.id)
+    .select("*")
+    .maybeSingle();
+  if (error) {
+    console.error(`${LOG} setVendorDeletedCore failed:`, error);
+    return { ok: false, error: classify(error) };
+  }
+  if (!data) return { ok: false, error: "not_found" };
+  return { ok: true, row: data as VendorRow };
+}
+
+/** What a merge moved, as the RPC reports it back. Every number is a row count. */
+export type VendorMergeResult = {
+  kept_vendor_id: string;
+  merged_vendor_id: string;
+  merged_name: string;
+  engagements_moved: number;
+  engagements_folded: number;
+  capabilities_moved: number;
+  capabilities_folded: number;
+  reviews: number;
+  notes: number;
+  preferences_moved: number;
+  preferences_dropped: number;
+  tickets: number;
+  wa_groups: number;
+  wa_contacts: number;
+};
+
+/**
+ * Two rows, one supplier: fold `merge_id` into `keep_id` (0223).
+ *
+ * The whole thing is one SQL function on purpose. Seven tables point at a vendor
+ * id and three of them carry a UNIQUE the move can collide with, so a merge run
+ * as a series of calls from here could fail on the sixth table with five already
+ * moved -- leaving jobs under a vendor that no longer exists. `merge_vendors`
+ * does it in one transaction or not at all, and writes a `vendor_merges` row
+ * holding the deleted spine row.
+ *
+ * The keeper only ever absorbs: every fold is a COALESCE, so nothing it already
+ * knew is replaced by the duplicate's version. The loser's NAME becomes an alias,
+ * which is what stops the live extractor recreating it on the next note.
+ */
+export async function mergeVendorsCore(
+  actor: MutationActor,
+  input: MergeVendorsInput,
+): Promise<VendorMutationResult<VendorMergeResult>> {
+  if (input.keep_id === input.merge_id) return { ok: false, error: "invalid" };
+  const admin = createAdminClient();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data, error } = await (admin as any).rpc("merge_vendors", {
+    p_keep: input.keep_id,
+    p_merge: input.merge_id,
+    // NULL is the honest value for a machine caller; the column allows it.
+    p_actor: actor.userId || null,
+  });
+  if (error || !data) {
+    console.error(`${LOG} mergeVendorsCore failed:`, error);
+    // P0002 is the function's own "one of these vendors is gone" (see 0223).
+    return { ok: false, error: error?.code === "P0002" ? "not_found" : classify(error ?? null) };
+  }
+  return { ok: true, row: data as VendorMergeResult };
 }
 
 // ── Capabilities (editable config) ─────────────────────────────────────────────

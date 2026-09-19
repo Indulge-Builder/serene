@@ -34,6 +34,11 @@ import {
   addVendorNoteCore,
   setAgentPreferenceCore,
   removeAgentPreferenceCore,
+  mergeVendorsCore,
+  setVendorDeletedCore,
+  removeVendorCore,
+  type VendorMergeResult,
+  type VendorRemoveResult,
   type VendorMutationError,
 } from "@/lib/services/vendor-mutations";
 import {
@@ -41,6 +46,8 @@ import {
   UpdateVendorSchema,
   SetVendorStatusSchema,
   VendorIdSchema,
+  MergeVendorsSchema,
+  SetVendorDeletedSchema,
   UpsertCapabilitySchema,
   DeleteCapabilitySchema,
   LogEngagementSchema,
@@ -86,6 +93,13 @@ async function requireVendorAccess() {
 }
 
 /** Core refusal → user copy. */
+/** A merge only fails in ways the person can act on; everything else is the generic. */
+function mergeError(e: VendorMutationError): string {
+  if (e === "not_found") return formErrors.vendorNotFound;
+  if (e === "invalid") return formErrors.vendorMergeSameRow;
+  return formErrors.vendorMergeFailed;
+}
+
 function mutationError(code: VendorMutationError): string {
   switch (code) {
     case "duplicate":      return formErrors.vendorNameTaken;
@@ -255,6 +269,75 @@ export async function removeAgentPreferenceAction(
 }
 
 // ── Reads ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Fold one vendor into another (0223). ADMIN/FOUNDER ONLY, unlike the rest of the
+ * module: 0221 opened vendors to the whole concierge floor, but a merge deletes a
+ * spine row and cannot be undone from the UI. It is gated with the status change,
+ * the other write here that is not additive.
+ *
+ * Revalidates both pages. The merged vendor's page is gone after this, and
+ * revalidating it is what stops a cached copy of a dead row being served.
+ */
+export async function mergeVendorsAction(input: unknown): Promise<ActionResult<VendorMergeResult>> {
+  const parsed = parseActionInput(MergeVendorsSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
+
+  const auth = await requireProfile(VENDOR_STATUS_ROLES);
+  if (!auth.ok) return auth.result;
+
+  const result = await mergeVendorsCore(actorFromProfile(auth.profile), parsed.data);
+  if (!result.ok) return { data: null, error: mergeError(result.error) };
+
+  revalidatePath(VENDORS_PATH);
+  revalidatePath(`${VENDORS_PATH}/${parsed.data.keep_id}`);
+  revalidatePath(`${VENDORS_PATH}/${parsed.data.merge_id}`);
+  return { data: result.row, error: null };
+}
+
+/**
+ * Remove a vendor from the product, or put it back (0223). ADMIN/FOUNDER, with the
+ * status change and the merge: the other two writes here that are not additive.
+ *
+ * Nothing is destroyed — see setVendorDeletedCore — but the row leaves every list
+ * and the ranker, so it is a decision that belongs with the people who own the data.
+ */
+/**
+ * Remove a vendor (0226). ADMIN/FOUNDER, with the merge and the status change.
+ *
+ * Returns which of the two happened, because the two deserve different words: a
+ * vendor with nothing attached is deleted and cannot be restored, and one with jobs
+ * is hidden and can. The SQL decides — see removeVendorCore.
+ */
+export async function removeVendorAction(input: unknown): Promise<ActionResult<VendorRemoveResult>> {
+  const parsed = parseActionInput(VendorIdSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
+
+  const auth = await requireProfile(VENDOR_STATUS_ROLES);
+  if (!auth.ok) return auth.result;
+
+  const result = await removeVendorCore(actorFromProfile(auth.profile), parsed.data);
+  if (!result.ok) return { data: null, error: mutationError(result.error) };
+
+  revalidatePath(VENDORS_PATH);
+  revalidatePath(`${VENDORS_PATH}/${parsed.data.id}`);
+  return { data: result.row, error: null };
+}
+
+export async function setVendorDeletedAction(input: unknown): Promise<ActionResult<VendorRow>> {
+  const parsed = parseActionInput(SetVendorDeletedSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
+
+  const auth = await requireProfile(VENDOR_STATUS_ROLES);
+  if (!auth.ok) return auth.result;
+
+  const result = await setVendorDeletedCore(actorFromProfile(auth.profile), parsed.data);
+  if (!result.ok) return { data: null, error: mutationError(result.error) };
+
+  revalidatePath(VENDORS_PATH);
+  revalidatePath(`${VENDORS_PATH}/${parsed.data.id}`);
+  return { data: result.row, error: null };
+}
 
 export async function searchVendorsAction(input: unknown): Promise<ActionResult<VendorRow[]>> {
   const parsed = parseActionInput(SearchVendorsSchema, input);
