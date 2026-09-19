@@ -584,7 +584,7 @@ T5  Elaya member tools on both channels: overview, recent messages,
     true meaning search (embeddings, member_chunks)                     NOT BUILT: needs a provider decision (decision 4)
 T6  vendors learn from Freshdesk notes by themselves                    DONE 2026-09-18 (PR #4)
     ticket -> vendor ledger, ranker inside the ticket                   DONE 2026-09-18 (the job opens on pick, closes with the ticket)
-    the review prompt at close                                          NOT BUILT
+    a vendor stage needs a vendor; the review asked after resolving     DONE 2026-09-19 (first real ticket is its first real run)
     member app reads Serene tickets, pilot queendom, Freshdesk cutover  NOT STARTED
 T7  anticipation, Joker suggestions, staff response metrics, autonomy   NOT STARTED (the profiler already files "coming up" items)
 ```

@@ -26,6 +26,15 @@ export const TICKET_STATUSES = defineEnum([
 ] as const);
 export type TicketStatus = (typeof TICKET_STATUSES.values)[number];
 
+/**
+ * Statuses a ticket may only enter with a vendor on it (founder, 2026-09-19): nobody can "wait on
+ * a vendor" that was never named. Enforced in moveTicketStatusCore, so the ticket page, the board,
+ * Elaya and the sentinel's approved suggestion all obey it; the ticket page asks for the vendor
+ * in a dialog instead of refusing.
+ */
+export const TICKET_VENDOR_REQUIRED_STATUSES: readonly TicketStatus[] = ["awaiting_vendor"];
+export const TICKET_VENDOR_REQUIRED_MESSAGE = "Choose the vendor first. Open the ticket and pick who is doing this job.";
+
 /** Which statuses count as live work (the board columns, the open counts). */
 export const TICKET_ACTIVE_STATUSES: readonly TicketStatus[] = ["open", "sourcing", "awaiting_member", "awaiting_vendor", "in_delivery", "payment_due"];
 export const TICKET_TERMINAL_STATUSES: readonly TicketStatus[] = ["resolved", "closed", "dropped"];

@@ -52,6 +52,7 @@ import {
 import { getCampaignMetrics } from '@/lib/services/leads-service';
 import { getBudgetSummary, type BudgetCampaignRow } from '@/lib/services/ad-spend-service';
 import { rankVendorsForRequest, getVendorDetail } from '@/lib/services/vendors-service';
+import { hasVendorActionAccess } from '@/lib/utils/route-access';
 import { listTicketsForElaya, getTicketByRefForElaya } from '@/lib/services/tickets-service';
 import { getSiaGroupForMember, getSiaGroups, getSiaMessages, searchSiaMessages, getSiaSenderRoles, type SiaGroupKind } from '@/lib/services/sia-service';
 import { getSiaViewerScope, getQueendomGroupJids, canViewSiaGroup, pinnedFreshdeskGroup, type SiaViewerScope } from '@/lib/services/sia-access';
@@ -346,6 +347,16 @@ export type { ElayaChannel };
 // call one ranking, and none of them re-rank. A second ordering here would
 // drift from the page within a week.
 // ─────────────────────────────────────────────
+
+/**
+ * Who may ask Elaya about vendors: the vendor module's own audience (hasVendorActionAccess in
+ * route-access.ts, SQL mirror public.can_access_vendors(), 0221): admin, founder and the whole
+ * concierge domain. Every staff role CARRIES the two vendor tools; this decides, per person, in
+ * Node, on both channels. The model never supplies identity: `principal` is the verified profile.
+ */
+export function canAskAboutVendors(principal: StaffPrincipal): boolean {
+  return hasVendorActionAccess({ role: principal.role, domain: principal.domain });
+}
 
 export function rankVendors(req: RankVendorsRequest) {
   return rankVendorsForRequest(req);

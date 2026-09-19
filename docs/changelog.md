@@ -12,6 +12,53 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-19 -- A vendor stage needs a vendor, the review after resolving, the bishop is told, Elaya's vendor tools for the floor
+
+**1. Moving a ticket to Awaiting vendor requires a vendor (founder's rule).** Nobody can wait on
+a vendor that was never named.
+
+- `TICKET_VENDOR_REQUIRED_STATUSES` in `constants/tickets.ts`, enforced in `moveTicketStatusCore`,
+  so the ticket page, the board, Elaya and an approved sentinel suggestion all obey it.
+- The ticket page does not refuse, it asks: choosing Awaiting vendor with no vendor opens
+  "Who is doing this job?" with the ranked suggestions and the name search. Picking one sets the
+  vendor and makes the move in one step (`MoveTicketStatusSchema.vendor_id`). The board shows the
+  refusal and sends the person to the ticket.
+- `components/tickets/VendorFinder.tsx` is THE picker; the Vendor card and the dialog compose it.
+
+**2. After resolving, Serene asks how it went.** Resolving a ticket that had a vendor opens
+"How did <vendor> do?": Speed, Quality, Pricing, Reliability (1 to 5, any subset) and a few words
+on how the ticket went. "Later" is allowed; the Vendor card keeps asking until it is done.
+
+- `reviewTicketVendorCore` files the review against THIS ticket's job on the vendor's ledger
+  (`addReviewCore`), which is what moves the vendor's score, and writes a `learning_written`
+  event on the ticket. One review per ticket; only once the ticket is resolved or closed.
+- `components/tickets/VendorReviewForm.tsx`; a failed save keeps everything typed.
+
+**3. The bishop is told when Serene suggests a ticket.** A new intake card sends the bell and the
+phone push (`ticket_proposed`, preference key `ticket_proposed_for_approval`), and the link opens
+the ticket form already filled. It goes to the queendom's bishop; with no bishop seated, the
+queen; with neither, the queendom's genies, so a partly seated floor still hears it.
+
+**A bug of mine, found here.** The roster work (0201) dropped `queen_id` / `bishop_id` from
+`sia.queendoms`, but the ticket sentinel still read them to find who to alert. The read failed
+quietly, so its bishop and queen alerts went nowhere. `src/lib/services/queendom-seats.ts`
+(`getQueendomSeats`) is now the one sessionless read of who holds which seat, from profiles; the
+sentinel and intake both use it.
+
+**4. Elaya's vendor tools for the concierge floor.** `find_vendors` and `get_vendor_details` were
+admin and founder. Role cannot express the new audience (a genie and a sales agent are both role
+`agent`), so every staff role now carries the two tools and the PERSON is checked inside the tool:
+`elayaData.canAskAboutVendors` = `hasVendorActionAccess` (admin, founder, the concierge domain).
+Same pattern as the Freshdesk tools. The Python brain's role map is widened to match and the brain
+redeployed.
+
+**Not click-tested.** There is still no real ticket, and no test member or test vendor, and a fake
+ticket on a real member or a fake review on a real vendor's score is not acceptable. The vendor
+rule, the dialog and the review are checked by typecheck, lint and reading; the first test ticket
+is their first real run.
+
+---
+
 ## 2026-09-19 — Elaya reads Freshdesk as a whole, the books, and any Sia group
 
 Why: Elaya could tell one member's story but could not answer "what is happening in Freshdesk",

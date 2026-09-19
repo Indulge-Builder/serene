@@ -1086,7 +1086,7 @@ def write_tools_for_role(role: str) -> frozenset[str]:
 # model call reading the request and its score math lives in one TS file. A
 # Python twin would be a second ranker that drifts within a week. Node keeps
 # the schema (op=definitions) and the PII seam; this brain only decides WHEN
-# to call. Gated admin/founder to mirror the vendor tables' SELECT policies.
+# to call. Carried by every staff role; Node gates the person (concierge, admin, founder).
 
 BRIDGED_READ_TOOL_NAMES: frozenset[str] = frozenset({
     "find_vendors", "get_vendor_details", "list_tickets", "get_ticket",
@@ -1104,10 +1104,12 @@ BRIDGED_READ_TOOL_NAMES: frozenset[str] = frozenset({
 
 # The ticket pair (2026-09-15) is bridged for the same reason: the sentinel's ledger and the
 # ticket cores live in Node; every staff role may read tickets (the DATABASE scopes rows to
-# the reader's queendom), the vendor pair stays admin/founder.
+# the reader's queendom); the vendor pair is carried by all and gated per person in Node.
 _BRIDGED_READ_ROLES: dict[str, frozenset[str]] = {
-    "find_vendors": _FOUNDER_UP,
-    "get_vendor_details": _FOUNDER_UP,
+    # Every staff role may CARRY the vendor pair (2026-09-19); Node decides who may USE it
+    # (the vendor module's audience: admin, founder, the whole concierge domain).
+    "find_vendors": frozenset({"agent", "manager", "admin", "founder"}),
+    "get_vendor_details": frozenset({"agent", "manager", "admin", "founder"}),
     "list_tickets": frozenset({"agent", "manager", "admin", "founder"}),
     "get_ticket": frozenset({"agent", "manager", "admin", "founder"}),
     # Every staff role may carry the member tools; Node scopes rows to the reader's queendom.

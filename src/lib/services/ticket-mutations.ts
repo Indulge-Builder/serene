@@ -11,7 +11,7 @@ import { memberDb } from "@/lib/supabase/schemas";
 import { ticketsAdminDb, resolveSlaPolicy } from "@/lib/services/tickets-service";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { closeTicketEngagement, outcomeForResolution } from "@/lib/services/ticket-vendor";
-import {
+import { TICKET_VENDOR_REQUIRED_STATUSES, TICKET_VENDOR_REQUIRED_MESSAGE,
   canTransition, checklistForCategory, TICKET_SLA_STOPPED_STATUSES, TICKETS_PATH, type TicketPriority, type TicketStatus, TICKET_SETTING_KEYS, TICKET_STATUSES,
 } from "@/lib/constants/tickets";
 import type { MutationActor } from "@/lib/services/lead-mutations";
@@ -98,6 +98,7 @@ export async function moveTicketStatusCore(ticketId: string, to: TicketStatus, a
   if (!cur) return fail("Ticket not found.");
   const t = cur as TicketRow;
   if (!canTransition(t.status, to)) return fail(`A ticket cannot go from ${t.status} to ${to}.`);
+  if (TICKET_VENDOR_REQUIRED_STATUSES.includes(to) && !t.vendor_id) return fail(TICKET_VENDOR_REQUIRED_MESSAGE);
   const policy = await resolveSlaPolicy(t);
   const now = new Date();
   const patch: Record<string, unknown> = { status: to, next_wake_at: now.toISOString(), wake_reason: `status:${to}` };

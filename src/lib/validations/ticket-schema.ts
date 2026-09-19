@@ -85,6 +85,8 @@ export const MoveTicketStatusSchema = z.object({
   status: z.enum(TICKET_STATUSES.zodEnum),
   resolution: z.enum(TICKET_RESOLUTIONS.zodEnum).nullish().transform((v) => v ?? null),
   note: optionalText(2000),
+  /** Moving into a vendor stage without one on the ticket: the vendor chosen in the same breath. */
+  vendor_id: uuidField(formErrors.generic).nullish().transform((v) => v ?? null),
 });
 
 export const AssignTicketSchema = z.object({
@@ -205,3 +207,11 @@ export type UpdateTicketSettingsInput = z.infer<typeof UpdateTicketSettingsSchem
 /** The vendor on a ticket (ticket-vendor.ts). null takes the vendor off. */
 export const SetTicketVendorSchema = z.object({ ticket_id: uuidField(formErrors.generic), vendor_id: uuidField(formErrors.generic).nullable() });
 export const SearchTicketVendorsSchema = z.object({ ticket_id: uuidField(formErrors.generic), q: z.string().trim().min(2).max(80) });
+
+/** After a ticket is resolved: how it went and how the vendor did (1 to 5 each, any subset, or just words). */
+const rating = z.coerce.number().int().min(1).max(5).nullish().transform((v) => v ?? null);
+export const ReviewTicketVendorSchema = z.object({
+  ticket_id: uuidField(formErrors.generic),
+  speed: rating, quality: rating, pricing: rating, reliability: rating,
+  comment: optionalText(2000),
+}).refine((v) => v.speed != null || v.quality != null || v.pricing != null || v.reliability != null || v.comment != null, { message: "Give at least one rating or a few words." });

@@ -25,7 +25,9 @@ import { mapRows } from "@/lib/utils/rows";
 import { mapWithConcurrency } from "@/lib/utils/concurrency";
 import { getBroadSenders, isProviderSide, openVault, type Vault } from "@/lib/services/member-profiler";
 import { draftTicketCore } from "@/lib/services/ticket-draft-core";
-import { TICKET_TERMINAL_STATUSES } from "@/lib/constants/tickets";
+import { TICKET_TERMINAL_STATUSES, TICKETS_PATH } from "@/lib/constants/tickets";
+import { getQueendomSeats } from "@/lib/services/queendom-seats";
+import { createNotification } from "@/lib/services/notifications-service";
 import {
   INTAKE_ACK_WORDS, INTAKE_BURSTS_PER_RUN, INTAKE_BURST_GAP_MINUTES, INTAKE_CONTEXT_MESSAGES, INTAKE_FETCH_LIMIT,
   INTAKE_GROUPS_PER_RUN, INTAKE_KINDS, INTAKE_LOOKBACK_HOURS, INTAKE_MAX_ATTEMPTS, INTAKE_MEMBER_STATUSES,
@@ -202,6 +204,9 @@ export async function readBurst(groupJid: string, memberId: string, context: Msg
       }, { onConflict: "group_jid,first_message_at", ignoreDuplicates: true }).select("id").maybeSingle();
       if (error) { await finish(false, { ...usage, error: `proposal insert: ${error.message}`.slice(0, 300) }); return { ...base, verdict: shown, error: error.message }; }
       proposalId = (row as { id: string } | null)?.id ?? null;
+      // A NEW card (a duplicate burst returns no row): the queendom's bishop hears about it now,
+      // on the bell and the phone, and the link opens the ticket form already filled.
+      if (proposalId) await notifyProposal(proposalId, deps.queendomId, vault.ctx.full_name, verdict.kind === "update" ? shown.summary : (draft?.title ?? shown.summary), verdict.kind === "update" ? ticket?.ticket_no ?? null : null);
     }
     await finish(true, { ...usage, output: { verdict, proposal_id: proposalId, more_requests: verdict.more_requests } as unknown as Json });
     return { ...base, status: "proposed", verdict: shown, proposal_id: proposalId };
@@ -211,6 +216,22 @@ export async function readBurst(groupJid: string, memberId: string, context: Msg
     console.warn(`${LOG} burst failed`, groupJid, msg);
     return { ...base, error: msg, provider_side: isProviderSide(e, msg) };
   }
+}
+
+/** Best effort, never throws: a card that nobody was told about is still on the Tickets page. */
+async function notifyProposal(proposalId: string, queendomId: string | null, memberName: string, what: string, ticketNo: string | null): Promise<void> {
+  try {
+    const seats = await getQueendomSeats(queendomId);
+    // The bishop decides. No bishop seated: the queen. Neither: the queendom's genies, so a floor
+    // that is only partly seated (the test phase) still hears about it. Nobody seated: nobody.
+    const recipients = seats.bishop ? [seats.bishop] : seats.queen ? [seats.queen] : seats.genies.slice(0, 12);
+    for (const to of recipients) await createNotification({
+      recipient_id: to, type: "ticket_proposed", notificationKey: "ticket_proposed_for_approval",
+      title: ticketNo ? `${memberName}: an update to ${ticketNo}` : `${memberName} is asking for something`,
+      body: what.slice(0, 180),
+      action_url: ticketNo ? TICKETS_PATH : `${TICKETS_PATH}/new?proposal=${proposalId}`,
+    });
+  } catch (e) { console.warn(`${LOG} notify failed (non-fatal)`, e instanceof Error ? e.message : e); }
 }
 
 // ─── The sweep ───────────────────────────────────────────────────────────────

@@ -12,7 +12,7 @@ import { TicketTimeline } from '@/components/tickets/TicketTimeline';
 import { TicketMoneyCard } from '@/components/tickets/TicketMoneyCard';
 import { TicketLinkedMessagesCard, TicketHelpPanel, TicketSentinelCard } from '@/components/tickets/TicketSideCards';
 import { TicketVendorCard } from '@/components/tickets/TicketVendorCard';
-import { getTicketVendor } from '@/lib/services/ticket-vendor';
+import { getTicketVendor, getTicketVendorReview } from '@/lib/services/ticket-vendor';
 import { TicketTasksCard } from '@/components/tickets/TicketTasksCard';
 import { TicketTagsCard } from '@/components/tickets/TicketTagsCard';
 import { TICKETS_PATH } from '@/lib/constants/tickets';
@@ -35,6 +35,7 @@ export default async function TicketPage({ params, searchParams }: Props) {
     getTicketHelp(detail.member.id, detail.ticket.category, detail.ticket.id), getTicketSettings(),
     detail.ticket.vendor_id ? getTicketVendor(detail.ticket.vendor_id) : Promise.resolve(null),
   ]);
+  const review = await getTicketVendorReview(detail.ticket);
   await logMemberAccess(detail.member.id, profile.id, 'ticket_help');
   const canApprove = profile.role !== 'agent';
   const t = detail.ticket;
@@ -58,13 +59,13 @@ export default async function TicketPage({ params, searchParams }: Props) {
       </div>
 
       <div style={{ marginBottom: 'var(--space-6)', padding: 'var(--space-4) var(--space-5)', background: 'var(--theme-paper)', border: '1px solid var(--theme-paper-border)', borderRadius: 'var(--neu-radius-card)', boxShadow: 'var(--shadow-1)' }}>
-        <TicketHeaderControls ticket={t} staff={detail.staff} canApprove={canApprove} labels={settings.statusLabels} />
+        <TicketHeaderControls ticket={t} staff={detail.staff} canApprove={canApprove} labels={settings.statusLabels} vendorName={vendor?.name ?? null} />
       </div>
 
       <div className="serene-dossier-grid serene-dossier-grid--340 serene-dossier-grid--aside-left" style={{ alignItems: 'start' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', minWidth: 0 }}>
           <TicketSentinelCard ticket={t} />
-          <TicketVendorCard ticketId={t.id} vendor={vendor} live={!['resolved', 'closed', 'dropped'].includes(t.status)} />
+          <TicketVendorCard ticketId={t.id} vendor={vendor} live={!['resolved', 'closed', 'dropped'].includes(t.status)} status={t.status} review={review} />
           <TicketTagsCard ticketId={t.id} tags={t.tags ?? []} vocabulary={settings.tags} />
           <TicketHelpPanel help={help} clientId={detail.member.id} memberName={detail.member.full_name} />
         </div>

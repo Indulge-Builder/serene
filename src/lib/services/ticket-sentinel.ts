@@ -27,6 +27,7 @@ import { createNotification } from "@/lib/services/notifications-service";
 import { ticketsAdminDb, resolveSlaPolicy } from "@/lib/services/tickets-service";
 import { moveTicketStatusCore, SENTINEL_ACTOR, ticketDeadline } from "@/lib/services/ticket-mutations";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getQueendomSeats } from "@/lib/services/queendom-seats";
 import { mapRows } from "@/lib/utils/rows";
 import { businessMinutesBetween } from "@/lib/utils/sla";
 import {
@@ -375,15 +376,16 @@ type Recipients = { assignee: string | null; bishop: string | null; queen: strin
 
 async function resolveRecipients(t: TicketRow): Promise<Recipients> {
   const admin = createAdminClient();
-  const [q, f] = await Promise.all([
-    t.queendom_id ? admin.schema("sia").from("queendoms").select("queen_id, bishop_id").eq("id", t.queendom_id).maybeSingle() : Promise.resolve({ data: null }),
+  // Seats come from profiles (0201), through the one shared read. The old read of
+  // sia.queendoms.queen_id / bishop_id failed quietly after those columns were dropped.
+  const [seats, f] = await Promise.all([
+    getQueendomSeats(t.queendom_id),
     admin.from("profiles").select("id").eq("role", "founder").eq("is_active", true).limit(3),
   ]);
-  const qd = (q.data ?? null) as { queen_id: string | null; bishop_id: string | null } | null;
   return {
     assignee: t.assignee_id,
-    bishop: t.bishop_id ?? qd?.bishop_id ?? null,
-    queen: qd?.queen_id ?? null,
+    bishop: t.bishop_id ?? seats.bishop,
+    queen: seats.queen,
     founders: mapRows<{ id: string }, string>(f.data, (r) => r.id),
   };
 }

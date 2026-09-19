@@ -18,7 +18,7 @@ import { TICKETS_PATH } from "@/lib/constants/tickets";
 import { CLIENTS_PATH } from "@/lib/constants/sia-roles";
 import { draftTicketFromMessages } from "@/lib/services/ticket-creator";
 import { getIntakeProposal, resolveIntakeProposal } from "@/lib/services/intake-service";
-import { searchVendorsForTicket, setTicketVendorCore, suggestVendorsForTicket, type TicketVendorOption } from "@/lib/services/ticket-vendor";
+import { reviewTicketVendorCore, searchVendorsForTicket, setTicketVendorCore, suggestVendorsForTicket, type TicketVendorOption } from "@/lib/services/ticket-vendor";
 import { getTicketHelp, listQueendomStaff, listBoardTickets } from "@/lib/services/tickets-service";
 import {
   addTicketNoteCore, assignTicketCore, createTicketCore, linkTicketMessagesCore, moveTicketStatusCore,
@@ -28,7 +28,7 @@ import {
 import {
   AddTicketNoteSchema, AssignTicketSchema, CreateTicketSchema, DraftTicketSchema, LinkTicketMessagesSchema,
   MoveTicketStatusSchema, SetTicketPrioritySchema, TickChecklistSchema, UpdateTicketBriefSchema, UpdateTicketMoneySchema,
-  UpdateTicketTagsSchema, CreateTicketTaskSchema, DismissIntakeProposalSchema, AcceptIntakeUpdateSchema, ResolveSentinelProposalSchema, SetTicketVendorSchema, SearchTicketVendorsSchema, TicketIdSchema,
+  UpdateTicketTagsSchema, CreateTicketTaskSchema, DismissIntakeProposalSchema, AcceptIntakeUpdateSchema, ResolveSentinelProposalSchema, SetTicketVendorSchema, SearchTicketVendorsSchema, TicketIdSchema, ReviewTicketVendorSchema,
 } from "@/lib/validations/ticket-schema";
 import type { ActionResult } from "@/lib/types";
 import { wakeTicketNow } from "@/lib/services/ticket-sentinel";
@@ -144,6 +144,11 @@ export async function moveTicketStatusAction(input: unknown): Promise<ActionResu
   if (!parsed.ok) return { data: null, error: parsed.error };
   const g = await gateTicket(parsed.data.ticket_id);
   if (!g.ok) return g.result;
+  // The vendor chosen in the same breath as a move into a vendor stage (the ticket page's dialog).
+  if (parsed.data.vendor_id) {
+    const v = await setTicketVendorCore(parsed.data.ticket_id, parsed.data.vendor_id, actorFromProfile(g.profile));
+    if (v.error !== null) return { data: null, error: v.error };
+  }
   const res = await moveTicketStatusCore(parsed.data.ticket_id, parsed.data.status, actorFromProfile(g.profile), { resolution: parsed.data.resolution, note: parsed.data.note });
   if (res.error) return { data: null, error: res.error };
   revalidateTicket(parsed.data.ticket_id, g.member_id);
@@ -333,5 +338,18 @@ export async function setTicketVendorAction(input: unknown): Promise<ActionResul
   const res = await setTicketVendorCore(parsed.data.ticket_id, parsed.data.vendor_id, actorFromProfile(g.profile));
   if (res.error !== null) return { data: null, error: res.error };
   revalidateTicket(parsed.data.ticket_id, g.member_id);
+  return { data: res.data, error: null };
+}
+
+/** How the ticket went and how the vendor did, asked once the ticket is resolved. */
+export async function reviewTicketVendorAction(input: unknown): Promise<ActionResult<{ reviewed: true }>> {
+  const parsed = parseActionInput(ReviewTicketVendorSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
+  const g = await gateTicket(parsed.data.ticket_id);
+  if (!g.ok) return g.result;
+  const { ticket_id, ...review } = parsed.data;
+  const res = await reviewTicketVendorCore(ticket_id, review, actorFromProfile(g.profile));
+  if (res.error !== null) return { data: null, error: res.error };
+  revalidateTicket(ticket_id, g.member_id);
   return { data: res.data, error: null };
 }

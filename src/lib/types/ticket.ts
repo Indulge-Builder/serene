@@ -167,7 +167,7 @@ export type TicketingDatabase = {
       ticket_sla_policies: Table<TicketSlaPolicyRow, Omit<TicketSlaPolicyRow, "id" | "created_at" | "updated_at"> & { id?: string }>;
       ticket_settings: Table<TicketSettingsRow, Omit<TicketSettingsRow, "updated_at"> & { updated_at?: string }>;
       genie_roster: Table<GenieRosterRow>;
-      queendoms: Table<{ id: string; name: string; slug: string; freshdesk_group_id: number | null; queen_id: string | null; bishop_id: string | null; joker_id: string | null; is_active: boolean; created_at: string; updated_at: string }>;
+      queendoms: Table<{ id: string; name: string; slug: string; freshdesk_group_id: number | null; is_active: boolean; created_at: string; updated_at: string }>;
     };
     Views: Record<string, never>;
     Functions: {

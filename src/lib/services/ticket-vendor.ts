@@ -19,7 +19,7 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { rankVendorsForRequest, searchVendors, getVendorById } from "@/lib/services/vendors-service";
-import { logEngagementCore, closeEngagementCore } from "@/lib/services/vendor-mutations";
+import { logEngagementCore, closeEngagementCore, addReviewCore } from "@/lib/services/vendor-mutations";
 import { TICKET_CATEGORIES } from "@/lib/constants/tickets";
 import type { MutationActor } from "@/lib/services/lead-mutations";
 import type { TicketRow } from "@/lib/types/ticket";
@@ -115,4 +115,45 @@ export function outcomeForResolution(status: string, resolution: string | null):
   if (status === "dropped" || resolution === "cancelled_by_member" || resolution === "duplicate" || resolution === "not_a_request") return "cancelled";
   if (resolution === "could_not_source") return "failed";
   return "completed";
+}
+
+// ─── The review, once the ticket is resolved ─────────────────────────────────
+
+export type TicketVendorReview = { engagement_id: string | null; reviewed: boolean; average: number | null; by: string | null };
+
+/** Has this ticket's vendor job been reviewed yet? One review per ticket is the ask; more are allowed on the vendor page. */
+export async function getTicketVendorReview(t: Pick<TicketRow, "ticket_no" | "vendor_id">): Promise<TicketVendorReview> {
+  const none: TicketVendorReview = { engagement_id: null, reviewed: false, average: null, by: null };
+  if (!t.vendor_id) return none;
+  const admin = createAdminClient();
+  const { data: e } = await admin.from("vendor_engagements").select("id").eq("vendor_id", t.vendor_id).eq("source", "ticket").eq("source_ref", t.ticket_no).maybeSingle();
+  const engagementId = (e as { id: string } | null)?.id ?? null;
+  if (!engagementId) return none;
+  const { data: r } = await admin.from("vendor_reviews").select("speed, quality, pricing, reliability, reviewer_id").eq("engagement_id", engagementId).order("created_at", { ascending: true }).limit(1).maybeSingle();
+  if (!r) return { ...none, engagement_id: engagementId };
+  const row = r as { speed: number | null; quality: number | null; pricing: number | null; reliability: number | null; reviewer_id: string | null };
+  const given = [row.speed, row.quality, row.pricing, row.reliability].filter((x): x is number => typeof x === "number");
+  return { engagement_id: engagementId, reviewed: true, average: given.length ? given.reduce((a, b) => a + b, 0) / given.length : null, by: row.reviewer_id };
+}
+
+/** File the review against the ticket's job, and say so on the ticket's timeline. */
+export async function reviewTicketVendorCore(ticketId: string, input: { speed: number | null; quality: number | null; pricing: number | null; reliability: number | null; comment: string | null }, actor: MutationActor): Promise<Result<{ reviewed: true }>> {
+  const db = tickets();
+  const { data: cur } = await db.from("tickets").select("*").eq("id", ticketId).maybeSingle();
+  if (!cur) return { data: null, error: "Ticket not found." };
+  const t = cur as unknown as TicketRow;
+  if (!t.vendor_id) return { data: null, error: "This ticket has no vendor to review." };
+  if (!["resolved", "closed"].includes(t.status)) return { data: null, error: "Review the vendor once the ticket is resolved." };
+  const state = await getTicketVendorReview(t);
+  if (!state.engagement_id) return { data: null, error: "This vendor's job is not on record for the ticket." };
+  if (state.reviewed) return { data: null, error: "This ticket's vendor has already been reviewed." };
+  const res = await addReviewCore(actor, { vendor_id: t.vendor_id, engagement_id: state.engagement_id, ...input });
+  if (!res.ok) { console.error(`${LOG} review failed for ${t.ticket_no}:`, res.error); return { data: null, error: "Could not save the review." }; }
+  const given = [input.speed, input.quality, input.pricing, input.reliability].filter((x): x is number => typeof x === "number");
+  const { error } = await db.rpc("apply_ticket_change", {
+    p_ticket_id: ticketId, p_patch: {},
+    p_event: { actor_kind: "human", actor_id: actor.userId, event_type: "learning_written", body: `Reviewed the vendor${given.length ? `: ${(given.reduce((a, b) => a + b, 0) / given.length).toFixed(1)} of 5` : ""}${input.comment ? `. ${input.comment.slice(0, 240)}` : ""}`, meta: { vendor_id: t.vendor_id, engagement_id: state.engagement_id, ...input } },
+  });
+  if (error) console.error(`${LOG} review event failed for ${t.ticket_no}:`, error.message); // the review itself is saved
+  return { data: { reviewed: true }, error: null };
 }

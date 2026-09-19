@@ -9,26 +9,36 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { toast } from '@/lib/toast';
 import { assignTicketAction, moveTicketStatusAction, setTicketPriorityAction } from '@/lib/actions/tickets';
-import { TICKET_PRIORITIES, TICKET_REASSIGN_REASONS, TICKET_RESOLUTIONS, TICKET_STATUSES, TICKET_TRANSITIONS, type TicketPriority, type TicketStatus } from '@/lib/constants/tickets';
+import { Modal } from '@/components/ui/modal';
+import { VendorFinder } from '@/components/tickets/VendorFinder';
+import { VendorReviewForm } from '@/components/tickets/VendorReviewForm';
+import { TICKET_PRIORITIES, TICKET_REASSIGN_REASONS, TICKET_RESOLUTIONS, TICKET_STATUSES, TICKET_TRANSITIONS, TICKET_VENDOR_REQUIRED_STATUSES, type TicketPriority, type TicketStatus } from '@/lib/constants/tickets';
 import { TicketStatusPill, PriorityDot } from './TicketStatusPill';
 import type { StaffOption, TicketRow } from '@/lib/types/ticket';
 
 const SELECT: React.CSSProperties = { padding: '6px var(--space-3)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--theme-paper-border)', background: 'var(--theme-paper)', color: 'var(--theme-text-primary)', fontSize: 'var(--text-sm)', fontFamily: 'inherit' };
 
-export function TicketHeaderControls({ ticket, staff, canApprove, labels }: { ticket: TicketRow; staff: StaffOption[]; canApprove: boolean; labels?: Record<string, string> }) {
+export function TicketHeaderControls({ ticket, staff, canApprove, labels, vendorName = null }: { ticket: TicketRow; staff: StaffOption[]; canApprove: boolean; labels?: Record<string, string>; /** The vendor on the ticket, for the review asked right after resolving. */ vendorName?: string | null }) {
   const lab = (s: TicketStatus) => labels?.[s] ?? TICKET_STATUSES.labels[s];
   const router = useRouter();
   const [pending, start] = useTransition();
   const [closing, setClosing] = useState<TicketStatus | null>(null);
   const [resolution, setResolution] = useState<string>('delivered');
   const [reassign, setReassign] = useState<{ to: string; reason: string } | null>(null);
+  // A vendor stage needs a vendor: the move waits in this dialog until one is chosen (2026-09-19).
+  const [needsVendor, setNeedsVendor] = useState<TicketStatus | null>(null);
+  // Right after resolving a ticket that had a vendor: how did it go, how did they do.
+  const [askReview, setAskReview] = useState(false);
   const moves = TICKET_TRANSITIONS[ticket.status];
 
-  function move(to: TicketStatus, res?: string) {
+  function move(to: TicketStatus, res?: string, vendorId?: string) {
+    if (TICKET_VENDOR_REQUIRED_STATUSES.includes(to) && !ticket.vendor_id && !vendorId) { setNeedsVendor(to); return; }
     start(async () => {
-      const r = await moveTicketStatusAction({ ticket_id: ticket.id, status: to, resolution: res ?? null });
+      const r = await moveTicketStatusAction({ ticket_id: ticket.id, status: to, resolution: res ?? null, vendor_id: vendorId ?? null });
       if (r.error) { toast.danger(r.error); return; }
-      setClosing(null); router.refresh();
+      setClosing(null); setNeedsVendor(null);
+      if (to === 'resolved' && ticket.vendor_id && (res ?? 'delivered') === 'delivered') setAskReview(true);
+      router.refresh();
     });
   }
   function assign(to: string, reason?: string) {
@@ -94,6 +104,12 @@ export function TicketHeaderControls({ ticket, staff, canApprove, labels }: { ti
           {ticket.assignee_id ? `Genie: ${staff.find((s) => s.id === ticket.assignee_id)?.full_name ?? '…'} · change` : 'Assign a genie'}
         </Button>
       )}
+      <Modal open={needsVendor !== null} onClose={() => setNeedsVendor(null)} title="Who is doing this job?" description={`A ticket cannot move to ${needsVendor ? lab(needsVendor) : 'this stage'} until the vendor is chosen.`} size="md">
+        {needsVendor && <VendorFinder ticketId={ticket.id} disabled={pending} action="Choose" onPick={(v) => move(needsVendor, undefined, v.id)} />}
+      </Modal>
+      <Modal open={askReview} onClose={() => setAskReview(false)} title={`How did ${vendorName ?? 'the vendor'} do?`} description="The ticket is resolved. A minute now is what makes the next suggestion better." size="md">
+        {askReview && <VendorReviewForm ticketId={ticket.id} vendorName={vendorName ?? 'The vendor'} onDone={() => { setAskReview(false); router.refresh(); }} />}
+      </Modal>
     </div>
   );
 }

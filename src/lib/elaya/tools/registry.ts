@@ -753,18 +753,20 @@ const getBudget: ElayaTool = {
 // ─────────────────────────────────────────────
 // Vendors
 //
-// FOUNDER_UP, not the spec's "concierge + shop staff": the 0183/0185 tables are
-// admin/founder SELECT only, so a manager holding the tool would call it and be
-// refused by the database. The toolset widens the day the RLS does, in one line.
+// Every staff role CARRIES these (2026-09-19); who may USE them is decided per person inside
+// run(): elayaData.canAskAboutVendors = the vendor module's audience (admin, founder, the whole
+// concierge domain; SQL mirror can_access_vendors(), 0221). Role alone cannot say it: a genie and
+// a sales agent are both role `agent`. Same pattern as the Freshdesk tools.
 //
 // Both wrap the SAME functions /vendors calls (elayaData.rankVendors /
 // .getVendor). The spec is explicit that Elaya's tool, the Sia ticket screen and
 // the Chrome extension all call one ranking and none of them re-rank.
 // ─────────────────────────────────────────────
 
+const VENDOR_REFUSAL = { error: 'This user cannot see vendors (the vendor module is for the concierge team, admin and founder). Say so plainly.' } as const;
+
 const findVendors: ElayaTool = {
   name: 'find_vendors',
-  roles: FOUNDER_UP,
   description:
     'Find the best suppliers for a request, ranked. Call this whenever the user asks who to use ' +
     'for something — "who do we use for cakes", "need a florist in Goa", "someone to arrange an ' +
@@ -789,6 +791,7 @@ const findVendors: ElayaTool = {
     additionalProperties: false,
   },
   run: async (principal, input) => {
+    if (!elayaData.canAskAboutVendors(principal)) return VENDOR_REFUSAL;
     const { request, city, limit } = input as { request: string; city?: string; limit?: number };
     const ranked = await elayaData.rankVendors({
       phrase: request,
@@ -826,7 +829,6 @@ const findVendors: ElayaTool = {
 
 const getVendorDetails: ElayaTool = {
   name: 'get_vendor_details',
-  roles: FOUNDER_UP,
   description:
     'Everything known about one vendor: how to reach them, what they have been used for, their ' +
     'recent jobs, and their score with the reasons behind it. Call after find_vendors when the ' +
@@ -838,7 +840,8 @@ const getVendorDetails: ElayaTool = {
     required: ['vendor_id'],
     additionalProperties: false,
   },
-  run: async (_principal, input) => {
+  run: async (principal, input) => {
+    if (!elayaData.canAskAboutVendors(principal)) return VENDOR_REFUSAL;
     const { vendor_id } = input as { vendor_id: string };
     const d = await elayaData.getVendor(vendor_id);
     if (!d) return { error: 'No vendor with that id.' };
