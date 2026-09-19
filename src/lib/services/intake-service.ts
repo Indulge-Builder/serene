@@ -69,10 +69,13 @@ export async function resolveIntakeProposal(id: string, by: string, patch: { sta
 export async function getIntakeStats(days = 7): Promise<IntakeStats> {
   const admin = createAdminClient();
   const since = new Date(Date.now() - days * 86_400_000).toISOString();
-  const [{ data: runs }, { data: props }] = await Promise.all([
+  const [{ data: runs }, { data: props }, { data: health }] = await Promise.all([
     admin.schema("sia").from("extraction_runs").select("ok, cost_usd, tokens_in, tokens_out, output, input_ref").eq("kind", INTAKE_RUN_KIND).gte("started_at", since).limit(5000),
     admin.schema("sia").from("intake_proposals").select("member_id, kind, status, dismiss_reason, fields_changed, first_message_at").gte("created_at", since).limit(5000),
+    memberDb(admin).from("member_health_events").select("signal").eq("evidence->>source", "intake").gte("created_at", since).limit(5000),
   ]);
+  const health_by_signal: Record<string, number> = {};
+  for (const h of mapRows<{ signal: string }, { signal: string }>(health, (r) => r)) health_by_signal[h.signal] = (health_by_signal[h.signal] ?? 0) + 1;
   const live = mapRows<{ ok: boolean | null; tokens_in: number | null; tokens_out: number | null; output: { verdict?: { kind?: string } } | null; input_ref: { dry_run?: boolean } | null }, { kind: string | null; tin: number; tout: number }>(
     (runs ?? []).filter((r) => !(r as { input_ref?: { dry_run?: boolean } }).input_ref?.dry_run),
     (r) => ({ kind: r.ok ? r.output?.verdict?.kind ?? null : null, tin: Number(r.tokens_in ?? 0), tout: Number(r.tokens_out ?? 0) }),
@@ -101,6 +104,7 @@ export async function getIntakeStats(days = 7): Promise<IntakeStats> {
     dismissed: ps.filter((p) => p.status === "dismissed").length, dismissed_by_reason: reasons,
     expired: ps.filter((p) => p.status === "expired").length,
     freshdesk_agreed: agreed, freshdesk_checked: requests.length,
+    health_by_signal,
     // Routing tier (Haiku 4.5: $1 in, $5 out per million). The drafts are counted under ticket_creator.
     cost_usd: live.reduce((n, r) => n + (r.tin * 1 + r.tout * 5) / 1_000_000, 0),
   };

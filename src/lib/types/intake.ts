@@ -38,5 +38,7 @@ export type IntakeStats = {
   /** Of the request cards, how many had a Freshdesk ticket for the same member within two hours: the free exam. */
   freshdesk_agreed: number;
   freshdesk_checked: number;
+  /** Health signals written from the chat (complaint / praise / frustrated tone), by signal. */
+  health_by_signal: Record<string, number>;
   cost_usd: number;
 };

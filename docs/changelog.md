@@ -12,6 +12,41 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-19 -- Complaints and praise from the chat move the member's health score
+
+**Why.** The ticket intake already reads each burst of member messages and labels it: a request,
+an update, a question, feedback, or chatter, with the member's tone. Until now the tone was only
+recorded. The founder asked for it to reach the health score.
+
+**What it does.** When the reader is at least 75% sure:
+
+- feedback with a frustrated or angry tone is a **Complaint** (the policy's -12, fading over 60 days),
+- feedback with a happy tone is **Praise** (+5 over 90 days),
+- a frustrated or angry tone on any other kind of message is **Frustrated tone** (-4 over 30 days),
+- thanks, greetings and a neutral tone move nothing.
+
+The same signal is written at most once per member per day: an upset member sends five messages,
+not five complaints. The Health card shows the member's own words as the reason ("Complaint on
+WhatsApp: …"), and the event points at the exact messages. The deltas come from the health policy
+rows at write time, so a policy change never rewrites history.
+
+**What changed.**
+
+- `src/lib/services/member-health.ts` (new): `addHealthSignalCore`, THE way a reader moves a
+  member's health. Free of `server-only` on purpose: it runs from Trigger.dev. The by-hand
+  adjustment stays in `member-mutations.ts`, which reaches server-only code.
+- `src/lib/services/ticket-intake.ts`: `healthSignalFor(verdict)`, the pure kind-and-tone
+  mapping (tested on nine cases), and the write right after the verdict, whatever the burst
+  turns out to be. `INTAKE_HEALTH_MIN_CONFIDENCE` and `INTAKE_HEALTH_SAME_SIGNAL_HOURS` in
+  `constants/ticket-intake.ts`.
+- The training numbers on the Tickets page now count the health signals written, by signal.
+
+**Held back on purpose.** The profiler also reads a tone per conversation, over the whole
+history. It does not write health: a complaint from March would be near zero today anyway, and
+the score should move on what happens now, which intake sees within a minute.
+
+---
+
 ## 2026-09-19 -- Fix: nobody could change a task's status or delete a task
 
 **Why.** An agent reported that a task could not be marked complete. Every status change and
