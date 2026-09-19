@@ -12,6 +12,32 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-19 -- Fix: nobody could change a task's status or delete a task
+
+**Why.** An agent reported that a task could not be marked complete. Every status change and
+every task delete was failing with "Task not found", for every role, since the schema move on
+2026-09-17. Elaya's `update_task_status` tool failed the same way, and her delete said the task
+was "already removed" without deleting it.
+
+**The cause.** Four reads fetched the task with a `task_gia_meta(task_id)` embed on a
+`public.tasks` query. That table moved to the `gia` schema (0210), and PostgREST cannot embed
+across schemas (PGRST200), so the whole read errored and the task came back empty. The database
+itself was checked and is fine: the task triggers, RPCs, constraints, RLS policies and the
+`app_domain` enum all match the code.
+
+**What changed.**
+
+- `services/gia-task-links.ts`: new `isLeadTask(client, taskId)`, the one-task "is this a lead
+  task" read on the gia schema. A query error answers true, because the flag only adds a Redis
+  del and a spare del is harmless.
+- `actions/tasks.ts`: `updateTaskStatusAction` and `deleteTaskAction` drop the embed and read
+  the link with `isLeadTask`, in parallel with the task fetch (no extra round trip).
+- `elaya/tools/write-registry.ts`: `update_task_status` and the `delete_task` resolver do the same.
+- A sweep of every Supabase select in `src/` and `scripts/` found no other embed that crosses a
+  schema boundary.
+
+---
+
 ## 2026-09-19 -- A vendor stage needs a vendor, the review after resolving, the bishop is told, Elaya's vendor tools for the floor
 
 **1. Moving a ticket to Awaiting vendor requires a vendor (founder's rule).** Nobody can wait on

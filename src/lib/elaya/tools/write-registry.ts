@@ -57,6 +57,8 @@ import {
   type CallerProfile,
   type TaskMutationTarget,
 } from "@/lib/services/task-mutations";
+// The task → lead link lives in the gia schema: its own read, never an embed (PGRST200).
+import { isLeadTask } from "@/lib/services/gia-task-links";
 // The group access gate for create_subtask — admin-twin read (channel-safe), reusing
 // the principal's visible-group set (the access check IS membership in that set).
 import { getVisibleGroupById, getTicketFor } from "@/lib/elaya/elaya-data";
@@ -979,7 +981,7 @@ const updateTaskStatus: ElayaWriteTool = {
     const admin = createAdminClient();
     const { data: task } = await admin
       .from("tasks")
-      .select("id, assigned_to, created_by, group_id, status, task_category, task_gia_meta(task_id)")
+      .select("id, assigned_to, created_by, group_id, status, task_category")
       .eq("id", taskId)
       .single();
     if (!task) return { error: REFUSE_TASK };
@@ -995,9 +997,7 @@ const updateTaskStatus: ElayaWriteTool = {
       { taskId, status },
       {
         taskCategory: task.task_category as string | null,
-        hasGiaMeta: Array.isArray(task.task_gia_meta)
-          ? task.task_gia_meta.length > 0
-          : !!task.task_gia_meta,
+        hasGiaMeta: await isLeadTask(admin, taskId),
       },
     );
     if (!core.ok) return { error: "I couldn't change that task's status just now." };
@@ -1636,7 +1636,7 @@ async function executeProposedTaskDelete(
     const admin = createAdminClient();
     const { data: task } = await admin
       .from("tasks")
-      .select("id, assigned_to, created_by, group_id, task_category, task_gia_meta(task_id)")
+      .select("id, assigned_to, created_by, group_id, task_category")
       .eq("id", taskId)
       .single();
 
@@ -1660,12 +1660,10 @@ async function executeProposedTaskDelete(
       actorFromPrincipal(principal),
       { taskId },
       // Prefer the live row's category over the propose-time snapshot. hasGiaMeta
-      // comes from the live row's task_gia_meta embed (meta-presence = lead task).
+      // is the live link read (meta-presence = lead task).
       {
         taskCategory: (task.task_category as string | null) ?? payload.args?.taskCategory ?? null,
-        hasGiaMeta: Array.isArray(task.task_gia_meta)
-          ? task.task_gia_meta.length > 0
-          : !!task.task_gia_meta,
+        hasGiaMeta: await isLeadTask(admin, taskId),
       },
     );
     if (!core.ok) {

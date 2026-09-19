@@ -61,6 +61,26 @@ export async function getTaskIdsForLead(
 }
 
 /**
+ * Whether ONE task is a lead task (a task_gia_meta row exists). The status and delete
+ * callers pass it to the task cores as `hasGiaMeta`. A query error answers true: the
+ * flag only adds a Redis del, and a spare del is harmless where a missed one leaves
+ * the Gia task list stale.
+ */
+export async function isLeadTask(client: Client, taskId: string): Promise<boolean> {
+  const { data, error } = await giaDb(client)
+    .from("task_gia_meta")
+    .select("task_id")
+    .eq("task_id", taskId)
+    .limit(1);
+
+  if (error) {
+    console.error("[gia-task-links] isLeadTask failed:", error.message);
+    return true;
+  }
+  return (data ?? []).length > 0;
+}
+
+/**
  * task_id → its lead link (and the lead row) for a set of tasks. A task with no link
  * is simply absent from the map — that absence IS the "not a lead task" signal (the
  * single-writer invariant: a task_gia_meta row exists iff the task is a lead task).

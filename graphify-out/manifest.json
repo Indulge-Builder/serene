@@ -1660,8 +1660,8 @@
     "semantic_hash": ""
   },
   "src/lib/actions/tasks.ts": {
-    "mtime": 1789179225.7908494,
-    "ast_hash": "a3d19cacbb0a6f9f682ec573cc25ba13",
+    "mtime": 1789813871.8467908,
+    "ast_hash": "fc72704266df11cdb842e660b6bab49d",
     "semantic_hash": ""
   },
   "src/lib/actions/transcription.ts": {
@@ -1890,13 +1890,13 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/tools/registry.ts": {
-    "mtime": 1789810157.5080235,
-    "ast_hash": "006c15625af7ed3ddd3889ab4b1f5797",
+    "mtime": 1789812254.4756088,
+    "ast_hash": "6de2d0a891623c554dd2c31cae4aa924",
     "semantic_hash": ""
   },
   "src/lib/elaya/tools/write-registry.ts": {
-    "mtime": 1789626186.1093721,
-    "ast_hash": "f07b5d51f1e936674088d8f380dd22c2",
+    "mtime": 1789813888.167519,
+    "ast_hash": "90c74696e20659e1b744c6b317d12042",
     "semantic_hash": ""
   },
   "src/lib/leads/adapters.ts": {
@@ -3085,8 +3085,8 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1789742983.1818814,
-    "ast_hash": "8d846870937d9dbe6f99b463939872fe",
+    "mtime": 1789813995.0372255,
+    "ast_hash": "25a32827c20182b2b656d25a5a6651ac",
     "semantic_hash": ""
   },
   "README.md": {
@@ -3170,8 +3170,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1789810318.8305807,
-    "ast_hash": "94111ed5e78ffc7f6fec8f5463912461",
+    "mtime": 1789813978.9578488,
+    "ast_hash": "87bb73619058e8a7003d661bc9c7d0cb",
     "semantic_hash": ""
   },
   "docs/claude-project/1-product-and-status.md": {
@@ -3990,8 +3990,8 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/elaya-data.ts": {
-    "mtime": 1789810052.3060515,
-    "ast_hash": "a84f923bbc464411d27a60deec8a803d",
+    "mtime": 1789812254.4748747,
+    "ast_hash": "0a3d1fcf011aa0c644bba2347955df6e",
     "semantic_hash": ""
   },
   "src/lib/elaya/memory.ts": {
@@ -6495,8 +6495,8 @@
     "semantic_hash": ""
   },
   "backend/app/brain/specialists.py": {
-    "mtime": 1789810184.363493,
-    "ast_hash": "8ed0988d64100b2607bb80ff8539d4e0",
+    "mtime": 1789810466.0903382,
+    "ast_hash": "ee94435e30cccb5c30196aa80f9057e2",
     "semantic_hash": ""
   },
   "backend/app/core/__init__.py": {
@@ -6535,8 +6535,8 @@
     "semantic_hash": ""
   },
   "backend/app/tools/registry.py": {
-    "mtime": 1789810184.362785,
-    "ast_hash": "e348d294e65bf26159ad01024536966a",
+    "mtime": 1789812254.4763033,
+    "ast_hash": "458efc9f75e4b9b2857c51b7637c52a7",
     "semantic_hash": ""
   },
   "supabase/migrations/20260828000176_llm_heavy_tier.sql": {
@@ -6605,8 +6605,8 @@
     "semantic_hash": ""
   },
   "backend/app/brain/persona.py": {
-    "mtime": 1789626186.0523555,
-    "ast_hash": "5a936730022a3cf1337db2ba9463fa49",
+    "mtime": 1789810466.0898688,
+    "ast_hash": "76957ce39b916a0c6b6827cf2ccecf7d",
     "semantic_hash": ""
   },
   "backend/app/core/periods.py": {
@@ -7260,8 +7260,8 @@
     "semantic_hash": ""
   },
   "src/app/(dashboard)/tickets/[id]/page.tsx": {
-    "mtime": 1789740920.2342017,
-    "ast_hash": "fdc1a8fc8d0513b7d2563b7e2d1ecf91",
+    "mtime": 1789812011.8195527,
+    "ast_hash": "01d614ea8da48d42d836f5c6cbc31ebe",
     "semantic_hash": ""
   },
   "src/app/(dashboard)/tickets/loading.tsx": {
@@ -7295,8 +7295,8 @@
     "semantic_hash": ""
   },
   "src/components/tickets/TicketHeaderControls.tsx": {
-    "mtime": 1789474885.2318015,
-    "ast_hash": "a2297b02948a539c14bf3d550af3a1e8",
+    "mtime": 1789812019.9044814,
+    "ast_hash": "ed6adc0992b55d70dbb7215b9dd1ec33",
     "semantic_hash": ""
   },
   "src/components/tickets/TicketMoneyCard.tsx": {
@@ -7335,13 +7335,13 @@
     "semantic_hash": ""
   },
   "src/lib/actions/tickets.ts": {
-    "mtime": 1789740847.7381804,
-    "ast_hash": "24c16c0dd653539aff2dc88ab5e6b613",
+    "mtime": 1789811904.3543842,
+    "ast_hash": "bd3157a79c3503491b961cb64ffc3fea",
     "semantic_hash": ""
   },
   "src/lib/constants/tickets.ts": {
-    "mtime": 1789740502.4576972,
-    "ast_hash": "f61eac184c45367e42dcb36af4707c77",
+    "mtime": 1789811904.3513868,
+    "ast_hash": "8130cc03ce72686db82e1ae858d56de6",
     "semantic_hash": ""
   },
   "src/lib/services/ticket-creator.ts": {
@@ -7350,8 +7350,8 @@
     "semantic_hash": ""
   },
   "src/lib/services/ticket-mutations.ts": {
-    "mtime": 1789740847.7368002,
-    "ast_hash": "63783197c89b4d8f8129d08f0a6c49db",
+    "mtime": 1789811904.352317,
+    "ast_hash": "eb509941fadba8afe6b7a782154a4a2b",
     "semantic_hash": ""
   },
   "src/lib/services/tickets-service.ts": {
@@ -7360,13 +7360,13 @@
     "semantic_hash": ""
   },
   "src/lib/types/ticket.ts": {
-    "mtime": 1789740502.457124,
-    "ast_hash": "4133e7d053c38010994b3e219e80c6d4",
+    "mtime": 1789812136.8500328,
+    "ast_hash": "e017575608ce5254c28231547846877d",
     "semantic_hash": ""
   },
   "src/lib/validations/ticket-schema.ts": {
-    "mtime": 1789740847.737437,
-    "ast_hash": "792f745c5bfa0b743e5d0d4199ab9785",
+    "mtime": 1789811904.3531628,
+    "ast_hash": "a29b48a96dcdb5a883dcf9f8a869f823",
     "semantic_hash": ""
   },
   "supabase/migrations/20260915000195_sia_tickets.sql": {
@@ -7685,8 +7685,8 @@
     "semantic_hash": ""
   },
   "src/lib/services/ticket-sentinel.ts": {
-    "mtime": 1789740635.8694324,
-    "ast_hash": "3be7ee5dbfa3ddeb4d063494472e5664",
+    "mtime": 1789812136.8495622,
+    "ast_hash": "db9d9053cb906a9a8cd35e098b520693",
     "semantic_hash": ""
   },
   "src/trigger/ticket-sentinel.ts": {
@@ -8035,8 +8035,8 @@
     "semantic_hash": ""
   },
   "member-ticket-plan.md": {
-    "mtime": 1789741419.7732038,
-    "ast_hash": "9c16eccdac4a39e6b559a09f3cde01bc",
+    "mtime": 1789812322.1697118,
+    "ast_hash": "bd1c223e45fca8f348285c6db54f3749",
     "semantic_hash": ""
   },
   "supabase/migrations/20260917000211_member_schema.sql": {
@@ -8070,13 +8070,13 @@
     "semantic_hash": ""
   },
   "src/lib/services/gia-task-links.ts": {
-    "mtime": 1789717889.8832524,
-    "ast_hash": "92fe91132b46a0f1879ee3d14f2afed2",
+    "mtime": 1789813854.948312,
+    "ast_hash": "c13092fc5cdd9c197d0fce4b9974abed",
     "semantic_hash": ""
   },
   "src/lib/services/member-profiler.ts": {
-    "mtime": 1789809339.3069134,
-    "ast_hash": "a5cdf7de3714bdba94622daba0a5e4fb",
+    "mtime": 1789810514.6585157,
+    "ast_hash": "ab277feae176d064dff161d8a24083d7",
     "semantic_hash": ""
   },
   "src/lib/services/member-relations.ts": {
@@ -8165,8 +8165,8 @@
     "semantic_hash": ""
   },
   "src/lib/services/ticket-intake.ts": {
-    "mtime": 1789741705.348627,
-    "ast_hash": "2e8c5639889a56837e154b5abdf0131c",
+    "mtime": 1789812195.935872,
+    "ast_hash": "4c24d662296a8c1b80c9e2438e381d18",
     "semantic_hash": ""
   },
   "src/lib/types/intake.ts": {
@@ -8190,13 +8190,13 @@
     "semantic_hash": ""
   },
   "src/components/tickets/TicketVendorCard.tsx": {
-    "mtime": 1789742795.589685,
-    "ast_hash": "1b8994f6f83847b9cd632e798026d63f",
+    "mtime": 1789812011.819163,
+    "ast_hash": "2ebee9131ac98a4957488cce73dfad43",
     "semantic_hash": ""
   },
   "src/lib/services/ticket-vendor.ts": {
-    "mtime": 1789740824.394431,
-    "ast_hash": "48315ced117cd1644ab5a3f813ad0f19",
+    "mtime": 1789811904.353961,
+    "ast_hash": "6d77c65d6672602c2b7e881251d7fd11",
     "semantic_hash": ""
   },
   "supabase/migrations/20260918000220_due_groups_fair_order.sql": {
@@ -8207,6 +8207,21 @@
   "supabase/migrations/20260918000221_vendors_for_concierge.sql": {
     "mtime": 1789742783.510824,
     "ast_hash": "39df407705c1ffd425df7432dccde6a4",
+    "semantic_hash": ""
+  },
+  "src/components/tickets/VendorFinder.tsx": {
+    "mtime": 1789812011.7815392,
+    "ast_hash": "1fcc6b1b53585bb77862e6e7d262de68",
+    "semantic_hash": ""
+  },
+  "src/components/tickets/VendorReviewForm.tsx": {
+    "mtime": 1789812011.7853048,
+    "ast_hash": "78bbb1ea0bc3f8b157c2f9b0dac79f90",
+    "semantic_hash": ""
+  },
+  "src/lib/services/queendom-seats.ts": {
+    "mtime": 1789812136.8148942,
+    "ast_hash": "2216c57c90b0379da39a6a021692b1c7",
     "semantic_hash": ""
   }
 }

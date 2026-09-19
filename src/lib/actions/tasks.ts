@@ -22,6 +22,7 @@ import { requireProfile, actorFromProfile } from "@/lib/actions/_auth";
 import { getTaskRemarks, getCompletedTasks } from "@/lib/services/tasks-service";
 import type { CompletedTasksResult } from "@/lib/services/tasks-service";
 import { emitTaskEvent, resolveTaskDomain } from "@/lib/services/task-events";
+import { isLeadTask } from "@/lib/services/gia-task-links";
 import {
   canMutateTask,
   isAssigneeActive,
@@ -225,18 +226,21 @@ export async function updateTaskStatusAction(
 
   const { taskId, status } = parsed.data;
 
-  // 2. Auth + task fetch — independent, run in parallel
+  // 2. Auth + task fetch + lead-link read — independent, run in parallel. The
+  //    link lives in the gia schema, so it is its own read (PostgREST cannot
+  //    embed across schemas, PGRST200).
   const supabase = await createClient();
 
-  const [caller, { data: task }] = await Promise.all([
+  const [caller, { data: task }, hasGiaMeta] = await Promise.all([
     getCurrentProfile(),
     supabase
       .from("tasks")
       .select(
-        "id, assigned_to, created_by, group_id, status, due_at, title, task_category, task_gia_meta(task_id)",
+        "id, assigned_to, created_by, group_id, status, due_at, title, task_category",
       )
       .eq("id", taskId)
       .single(),
+    isLeadTask(supabase, taskId),
   ]);
 
   if (!caller) return { data: null, error: formErrors.unauthorized };
@@ -261,12 +265,7 @@ export async function updateTaskStatusAction(
   const result = await updateTaskStatusCore(
     actorFromProfile(caller),
     { taskId, status: status as TaskStatus },
-    {
-      taskCategory: task.task_category,
-      hasGiaMeta: Array.isArray(task.task_gia_meta)
-        ? task.task_gia_meta.length > 0
-        : !!task.task_gia_meta,
-    },
+    { taskCategory: task.task_category, hasGiaMeta },
     {
       groupId: task.group_id,
       assignedTo: task.assigned_to,
@@ -367,14 +366,15 @@ export async function deleteTaskAction(
 
   const supabase = await createClient();
 
-  // 3. Fetch task to check authorization
-  const { data: task } = await supabase
-    .from("tasks")
-    .select(
-      "id, assigned_to, created_by, group_id, task_category, task_gia_meta(task_id)",
-    )
-    .eq("id", taskId)
-    .single();
+  // 3. Fetch task to check authorization (+ the lead link, its own read in gia)
+  const [{ data: task }, hasGiaMeta] = await Promise.all([
+    supabase
+      .from("tasks")
+      .select("id, assigned_to, created_by, group_id, task_category")
+      .eq("id", taskId)
+      .single(),
+    isLeadTask(supabase, taskId),
+  ]);
 
   if (!task) return { data: null, error: "Task not found." };
 
@@ -396,12 +396,7 @@ export async function deleteTaskAction(
   const result = await deleteTaskCore(
     actorFromProfile(caller),
     { taskId },
-    {
-      taskCategory: task.task_category,
-      hasGiaMeta: Array.isArray(task.task_gia_meta)
-        ? task.task_gia_meta.length > 0
-        : !!task.task_gia_meta,
-    },
+    { taskCategory: task.task_category, hasGiaMeta },
   );
 
   if (!result.ok) return { data: null, error: formErrors.generic };
