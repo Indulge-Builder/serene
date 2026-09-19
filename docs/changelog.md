@@ -61,6 +61,24 @@ the bookmark stays, three in a row stop the run. Both switches (`member_profiler
 Recovery (after the limit is raised and this build is on Trigger.dev): move each hit group's
 bookmark back to the start of its first skipped conversation, then switch both back on.
 
+**The lasting fix (same day, a second pass).** Naming one more wording is the same mistake again:
+error wording is not a contract, and the next refusal will be worded differently. So
+`isProviderSide()` no longer reads the error at all. Any model call that THROWS is treated as the
+provider's failure, and it counts toward stepping a conversation over ONLY when another reading
+succeeded in the same run, which is the one real proof the provider was up. During an outage
+nothing succeeds, so nothing is ever counted. The profiler already had that proof rule for its
+"provider side" branch; `ticket-intake.ts` did not, and now has it too. Failures that are not
+thrown (a torn answer, a cut-off answer, the name-safety check) still count as before, because
+those are about the conversation.
+
+**Recovery, done 2026-09-19.** Every skipped conversation is findable (`sia.extraction_runs`
+where the error names the usage limit), and no message was ever lost, only bookmarks moved. For
+each of the 186 profiler groups and 67 intake groups, the bookmark went back to one second before
+its first skipped conversation. Re-reading is safe: facts, people, timeline events and coming-up
+items all check for a duplicate before they write. Intake was switched back on. The profiler's
+history read was left OFF for the founder to restart: it is the one big spender, and running the
+account into its limit again would silence Elaya for everyone.
+
 ## 2026-09-18 — Fix: the member page's WhatsApp group link now opens that group in Sia
 
 Why: both links on the member page (the identity card row and the WhatsApp card) pointed at

@@ -234,6 +234,9 @@ export async function runIntakeSweep(opts: IntakeSweepOptions): Promise<{ groups
   const groups = (due ?? []) as DueGroup[];
   const outcomes: BurstOutcome[] = [];
   let sent = 0; let stop = false; let providerFails = 0;
+  // Bursts whose model call threw this run. They count as a failed attempt ONLY if something else
+  // was read in the same run (the proof the provider was up): the profiler's rule, 2026-09-19.
+  const threw: { group_jid: string; fail_count: number; from: string; end: string; error: string }[] = [];
   const state = (groupJid: string, patch: Record<string, unknown>) => sia().from("intake_group_state").upsert({ group_jid: groupJid, ...patch }, { onConflict: "group_jid" });
 
   const readGroup = async (g: DueGroup): Promise<void> => {
@@ -268,6 +271,7 @@ export async function runIntakeSweep(opts: IntakeSweepOptions): Promise<{ groups
       if (o.status === "failed") {
         if (!opts.apply) break;
         if (o.provider_side) {
+          threw.push({ group_jid: g.group_jid, fail_count: failCount, from: burst[0].wa_timestamp, end, error: o.error ?? "failed" });
           await state(g.group_jid, { last_error: o.error?.slice(0, 300) ?? "failed" });
           providerFails += 1;
           if (providerFails >= INTAKE_OUTAGE_STOP) { console.warn(`${LOG} the provider looks down; stopping this run`); stop = true; }
@@ -290,5 +294,14 @@ export async function runIntakeSweep(opts: IntakeSweepOptions): Promise<{ groups
   const seen = new Set<string>();
   const runnable = groups.filter((g) => (seen.has(g.member_id) ? false : (seen.add(g.member_id), true)));
   await mapWithConcurrency(runnable, opts.apply ? INTAKE_PARALLEL_GROUPS : 2, readGroup);
+
+  if (opts.apply && threw.length && outcomes.some((o) => o.status === "read" || o.status === "proposed")) {
+    for (const f of threw) {
+      const attempts = f.fail_count + 1;
+      if (attempts < INTAKE_MAX_ATTEMPTS) { await state(f.group_jid, { fail_count: attempts, last_error: f.error.slice(0, 300) }); continue; }
+      console.warn(`${LOG} stepping over a burst after ${attempts} failed readings`, f.group_jid, f.from, f.end);
+      await state(f.group_jid, { last_message_at: f.end, fail_count: 0, last_error: `stepped over ${f.from} to ${f.end}: ${f.error}`.slice(0, 300) });
+    }
+  }
   return { groups: groups.length, outcomes };
 }

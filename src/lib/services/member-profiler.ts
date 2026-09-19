@@ -421,18 +421,21 @@ export async function profileWindow(w: ProfilerWindow, deps: ProfilerDeps): Prom
 }
 
 /**
- * Was this failure the provider's (down, rate limited, out of credit, the network) and not
- * this conversation's? It decides whether the failure counts toward stepping over the
- * conversation. Only a request the provider REJECTS AS INVALID is the conversation's fault;
- * an empty credit balance and a reached monthly spend limit ("You have reached your specified
- * API usage limits") arrive as a 400 too, so both are named explicitly: on 2026-09-18 the limit
- * was read as the conversation's fault and 1,616 conversations were stepped over unread. The
- * error is read by shape, never by class: the SDK may only be imported inside the adapter.
+ * Was this failure the provider's and not this conversation's? ALWAYS yes for a call that threw.
+ *
+ * The first version tried to tell from the error: a 400 was "the conversation's fault" unless the
+ * message said "credit balance". On 2026-09-18 the account hit its SPENDING LIMIT, which arrives
+ * as a 400 worded "You have reached your specified API usage limits". The guess was wrong, every
+ * failure counted, and in sixteen hours 1,616 conversations and 178 intake bursts were stepped
+ * over. Error wording is not a contract; do not read it.
+ *
+ * What IS reliable: whether anything else was read in the same run. The sweeps count a thrown
+ * failure toward stepping over ONLY when another reading succeeded in that run, which is the proof
+ * the provider was up and the trouble is this one conversation. During an outage nothing succeeds,
+ * so nothing is ever counted.
  */
-export function isProviderSide(e: unknown, msg: string): boolean {
-  if (/credit balance|billing|usage limits?|spend(ing)? limit|regain access/i.test(msg)) return true;
-  const status = (e as { status?: unknown } | null)?.status;
-  return !(status === 400 || status === 413 || status === 422);
+export function isProviderSide(_e: unknown, _msg: string): boolean {
+  return true;
 }
 
 // ─── The writer (rule 1: append only; every row points at its run) ───────────
