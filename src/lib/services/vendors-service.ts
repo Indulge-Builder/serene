@@ -14,7 +14,7 @@
 // database.ts does not include these tables yet — rows are narrowed once per
 // query to the hand-declared types in types/vendor.ts (the subscription.ts posture).
 import { createAdminClient } from "@/lib/supabase/admin";
-import { callAdminRpc, callAdminRpcAll } from "@/lib/services/rpc-helpers";
+import { callAdminRpc, callAdminRpcAll, callAdminRpcChecked } from "@/lib/services/rpc-helpers";
 import { mapRows } from "@/lib/utils/rows";
 import { computeVendorScore, vendorFlags } from "@/lib/utils/vendor-score";
 import { readVendorRequest, type VendorSearchIntent } from "@/lib/services/vendor-search-intent";
@@ -576,8 +576,8 @@ export async function findVendorsByHistory(
     terms?: string[] | null;
     category?: string | null; service?: string | null; city?: string | null; limit?: number;
   } = {},
-): Promise<VendorHistoryMatch[]> {
-  return callAdminRpc<HistoryMatchRow, VendorHistoryMatch>(
+): Promise<{ matches: VendorHistoryMatch[]; ok: boolean }> {
+  const res = await callAdminRpcChecked<HistoryMatchRow, VendorHistoryMatch>(
     "find_vendors_by_history",
     {
       p_query: phrase,
@@ -594,6 +594,9 @@ export async function findVendorsByHistory(
     }),
     LOG,
   );
+  // `ok: false` is a search that died, not a search that found nothing. The
+  // caller has to be able to tell — see callAdminRpcChecked.
+  return { matches: res.rows, ok: res.ok };
 }
 
 export async function rankVendorsForRequest(req: RankVendorsRequest): Promise<RankedVendor[]> {
@@ -650,8 +653,14 @@ export async function rankVendorsForRequest(req: RankVendorsRequest): Promise<Ra
         terms: intent?.terms ?? null,
         category: useCategory, service: useService, city: useCity, limit: Math.max(limit * 3, 15),
       })
-    : [];
-  const historyById = new Map(history.map((h) => [h.vendorId, h]));
+    : { matches: [], ok: true };
+  const historyById = new Map(history.matches.map((h) => [h.vendorId, h]));
+  // The request was searched against past work and the search FAILED — not "found
+  // nothing". The fallback below still runs, because a list ranked by usage beats a
+  // blank page, but it is no longer presented as if it answered the question. 0224
+  // made the timeout that caused this rare; this is what keeps the next one honest.
+  const historyFailed = Boolean(phrase) && !history.ok;
+  if (historyFailed) console.error(`${LOG} history search failed for "${phrase}" — ranking by usage instead`);
 
   let vendors: VendorRow[];
   if (historyById.size > 0) {
@@ -739,6 +748,11 @@ export async function rankVendorsForRequest(req: RankVendorsRequest): Promise<Ra
     }
     const memberJobs = memberJobsByVendor.get(vendor.id) ?? 0;
     if (memberJobs > 0) reasons.push(`Used ${memberJobs} time${memberJobs === 1 ? "" : "s"} for this member before`);
+      // Said out loud, at the top, on every row. A list ranked by usage is a
+      // reasonable thing to show when the words could not be searched; passing it
+      // off as a match is not, and that is what answered a power bank request with
+      // airlines. The reader can now see which question was actually answered.
+      if (historyFailed) reasons.unshift("Could not search past jobs for these words — ranked by how often each is used");
 
     ranked.push({
       vendor,

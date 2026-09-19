@@ -7,11 +7,6 @@ export type Json =
   | Json[]
 
 export type Database = {
-  // Allows to automatically instantiate createClient with right options
-  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
-  __InternalSupabase: {
-    PostgrestVersion: "14.5"
-  }
   freshdesk: {
     Tables: {
       agents: {
@@ -5713,6 +5708,54 @@ export type Database = {
           },
         ]
       }
+      vendor_merges: {
+        Row: {
+          created_at: string
+          id: string
+          kept_vendor_id: string
+          merged_by: string | null
+          merged_name: string
+          merged_row: Json
+          merged_vendor_id: string
+          moved: Json
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          kept_vendor_id: string
+          merged_by?: string | null
+          merged_name: string
+          merged_row: Json
+          merged_vendor_id: string
+          moved?: Json
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          kept_vendor_id?: string
+          merged_by?: string | null
+          merged_name?: string
+          merged_row?: Json
+          merged_vendor_id?: string
+          moved?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendor_merges_kept_vendor_id_fkey"
+            columns: ["kept_vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_merges_merged_by_fkey"
+            columns: ["merged_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       vendor_notes: {
         Row: {
           author_id: string
@@ -5820,6 +5863,8 @@ export type Database = {
           category_source: string | null
           contacts: Json
           created_at: string
+          deleted_at: string | null
+          deleted_by: string | null
           freshdesk_ref: string | null
           home_city: string | null
           id: string
@@ -5842,6 +5887,8 @@ export type Database = {
           category_source?: string | null
           contacts?: Json
           created_at?: string
+          deleted_at?: string | null
+          deleted_by?: string | null
           freshdesk_ref?: string | null
           home_city?: string | null
           id?: string
@@ -5864,6 +5911,8 @@ export type Database = {
           category_source?: string | null
           contacts?: Json
           created_at?: string
+          deleted_at?: string | null
+          deleted_by?: string | null
           freshdesk_ref?: string | null
           home_city?: string | null
           id?: string
@@ -5880,7 +5929,15 @@ export type Database = {
           subcategory?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "vendors_deleted_by_fkey"
+            columns: ["deleted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
@@ -5943,6 +6000,7 @@ export type Database = {
         Args: { p_queendom: string }
         Returns: boolean
       }
+      can_access_vendors: { Args: never; Returns: boolean }
       can_access_wa_conversation: {
         Args: { p_lead_id: string }
         Returns: boolean
@@ -6494,6 +6552,8 @@ export type Database = {
           category_source: string | null
           contacts: Json
           created_at: string
+          deleted_at: string | null
+          deleted_by: string | null
           freshdesk_ref: string | null
           home_city: string | null
           id: string
@@ -6553,8 +6613,16 @@ export type Database = {
         }[]
       }
       get_wa_unread_count: { Args: never; Returns: number }
+      immutable_contact_search_text: {
+        Args: { p_contacts: Json }
+        Returns: string
+      }
       lead_phone_key: { Args: { p_phone: string }; Returns: string }
       member_visible: { Args: { p_member_id: string }; Returns: boolean }
+      merge_vendors: {
+        Args: { p_actor?: string; p_keep: string; p_merge: string }
+        Returns: Json
+      }
       search_vendors: {
         Args: {
           p_category?: string
@@ -6569,6 +6637,8 @@ export type Database = {
           category_source: string | null
           contacts: Json
           created_at: string
+          deleted_at: string | null
+          deleted_by: string | null
           freshdesk_ref: string | null
           home_city: string | null
           id: string
@@ -9360,12 +9430,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -9389,11 +9459,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -9414,11 +9484,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -9439,11 +9509,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never) = never,
+    : never = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -9456,11 +9526,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never) = never,
+    : never = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

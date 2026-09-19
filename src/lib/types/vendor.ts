@@ -40,6 +40,15 @@ export type VendorRow = {
   sources: VendorSource[];
   import_raw: Record<string, unknown>;
   notes: string | null;
+  /**
+   * 0223 — when a person removed this vendor from the product. NULL = live.
+   * The row, its jobs, its reviews and its notes are all still here; it is only
+   * hidden from search, the list and the ranker, and it can be restored.
+   * NOT a status: `paused` / `blacklisted` answer "how do we treat this supplier",
+   * this answers "is it a supplier at all".
+   */
+  deleted_at: string | null;
+  deleted_by: string | null;
   created_at: string;
   updated_at: string;
 };
