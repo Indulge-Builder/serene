@@ -36,6 +36,7 @@ export default async function ElayaPage() {
         initialMessages={seed.initialMessages}
         greeting={seed.greeting}
         remainingToday={seed.remainingToday}
+        viewer={seed.viewer}
       />
     </main>
   );

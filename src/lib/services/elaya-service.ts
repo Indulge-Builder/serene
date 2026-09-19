@@ -382,6 +382,8 @@ export type ElayaChatSeed = {
   initialMessages: ElayaSeedMessage[];
   greeting: string;
   remainingToday: number;
+  /** Who is looking: the identity card picks its starters and its "she can read" list from this. */
+  viewer: { role: Profile['role']; domain: Profile['domain'] };
 };
 
 /**
@@ -420,5 +422,6 @@ export async function resolveElayaChatSeed(profile: Profile): Promise<ElayaChatS
     initialMessages,
     greeting,
     remainingToday: Math.max(0, cap - sentToday),
+    viewer: { role: profile.role, domain: profile.domain },
   };
 }

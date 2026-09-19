@@ -120,6 +120,23 @@ is their first real run.
 
 ---
 
+## 2026-09-19 — The Elaya card knows who is looking: better questions, an honest reach list
+
+Why: the /elaya identity card showed the same four sales questions and "Your leads, Your tasks,
+Deals, Performance, Case library" to everyone, a founder and a genie alike, and none of it
+mentioned what she can now do (members, groups, Freshdesk, vendors, the books, working things out).
+
+What changed: the chat seed (`resolveElayaChatSeed`) now carries the viewer's role and domain;
+the card asks `getElayaStarters(viewer)` and `getElayaCapabilities(viewer)`
+(`src/lib/constants/elaya.ts`) for six questions and a reach list that fit the person. A founder
+sees "What's happening right now?", "Which members are waiting on a reply?", "Brief me on [member
+name] before I call them", the Freshdesk state, the books, and an analyst question; a concierge
+teammate sees member, Freshdesk and vendor questions for their queendom; a sales agent keeps the
+lead questions plus the lead's WhatsApp chat; finance and tech see the bills. A [bracket] is a
+blank the person fills in. Labels: "Ask her" and "She can read". The generic
+`ELAYA_STARTER_PROMPTS` list stays for the mobile screen, which does not know the viewer.
+Not browser-checked (the page needs a login); typecheck and lint clean.
+
 ## 2026-09-19 — Elaya says why she cannot answer; she reads lead chats, subscriptions and the activity feed
 
 Why: on 2026-09-18 the model account hit its spend limit and for twelve hours every reply was
