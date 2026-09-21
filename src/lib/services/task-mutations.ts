@@ -36,8 +36,7 @@ import { createNotification } from "@/lib/services/notifications-service";
 import { sendTaskAssignedNotification } from "@/lib/services/whatsapp-api";
 import {
   scheduleTaskReminder,
-  cancelTaskReminder,
-} from "@/trigger/task-reminders";
+  cancelTaskReminder, scheduleTaskNudge } from "@/trigger/task-reminders";
 import { emitTaskEvent, resolveTaskDomain } from "@/lib/services/task-events";
 import type { MutationActor } from "@/lib/services/lead-mutations";
 import type {
@@ -754,11 +753,12 @@ export async function setTaskNudgeCore(
     console.error("[task-mutations] setTaskNudgeCore update failed:", error.message);
     return { ok: false };
   }
+  // Static import like every other reminder in this file: the dynamic import() form armed fine
+  // from a laptop but failed inside the Vercel bundle (2026-09-21, "could not be set" twice).
   try {
-    const { scheduleTaskNudge } = await import("@/trigger/task-reminders");
     await scheduleTaskNudge(taskId, new Date(Date.now() + everyMinutes * 60_000), 1, until);
   } catch (e) {
-    console.error("[task-mutations] setTaskNudgeCore arm failed:", e);
+    console.error("[task-mutations] setTaskNudgeCore arm failed:", e instanceof Error ? e.message : e);
     return { ok: false };
   }
   return { ok: true, until, everyMinutes };
