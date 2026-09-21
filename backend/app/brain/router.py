@@ -35,43 +35,52 @@ def _system(role: str | None) -> str:
     return _PREAMBLE + "\n".join(f"- {s.id}: {s.description}" for s in SPECIALISTS.values() if s.id in offered)
 
 
+_FOLLOWUP_WORDS = ("try", "now", "again", "and", "what", "about", "anyone", "any", "more", "details",
+                   "verify", "check", "that", "this", "it", "them", "those", "these", "so", "ok", "okay",
+                   "yes", "no", "why", "how", "many", "who", "else", "also", "then", "same", "both",
+                   "please", "pls", "the", "a", "of", "for", "to", "on", "in", "with", "is", "are", "did",
+                   "does", "do", "one", "ones", "other", "others", "he", "she", "they", "his", "her", "their")
+
+
+def _is_followup(message: str) -> bool:
+    """A message that names no subject of its own: short, and made only of filler / pointer
+    words ("try now", "has anyone showed interest?", "and the other one?"). Deterministic on
+    purpose: a clear question is routed on its own words exactly as before 2026-09-21, and only
+    a follow-up borrows the subject of the earlier messages."""
+    words = [w for w in "".join(ch if ch.isalnum() or ch.isspace() else " " for ch in message.lower()).split() if w]
+    if not words:
+        return True
+    if len(words) > 8:
+        return False
+    return sum(1 for w in words if w in _FOLLOWUP_WORDS) >= max(1, len(words) - 2)
+
+
 def _context_block(history: list[dict] | None, current: str) -> str:
-    """What the router sees besides the message itself (2026-09-21). A short follow-up
-    ("has anyone shown interest?", "try now", "and the other one?") carries no subject words
-    of its own; judged alone it landed on a specialist without the tools the conversation
-    was using, and the model then disowned real numbers it could no longer see. So the
-    router gets the last few USER messages and the start of the previous answer, and is
-    told to classify the SUBJECT of the conversation. It is deliberately NOT told the
-    previous category: anchoring on it kept a wrong route wrong ("try now that the bug is
-    fixed" stayed on `leads` because the mistaken turn before it was `leads`)."""
-    if not history:
+    """For a FOLLOW-UP only: the last few user messages, so the router classifies the subject
+    they are about. Deliberately no previous category and no previous answer: anchoring on
+    the category kept a wrong route wrong ("try now that the bug is fixed" stayed on `leads`
+    because the mistaken turn before it was `leads`), and the previous answer biased a clear
+    question towards whatever it was about."""
+    if not history or not _is_followup(current):
         return current[:2000]
     users: list[str] = []
-    prev_answer = ""
     seen_current = False
     for row in reversed(history):
-        role = row.get("role")
+        if row.get("role") != "user":
+            continue
         content = (row.get("content") or "").strip()
-        if role == "user":
-            if not seen_current and content == current.strip():
-                seen_current = True
-                continue
-            if len(users) < 3:
-                users.append(content[:300])
-        elif role == "assistant" and not prev_answer:
-            prev_answer = content[:240]
+        if not seen_current and content == current.strip():
+            seen_current = True
+            continue
+        if len(users) < 3:
+            users.append(content[:300])
     if not users:
         return current[:2000]
     earlier = "\n".join(f"- {u}" for u in reversed(users))
     return (
-        f"Earlier messages from the user in this conversation (oldest first):\n{earlier}\n"
-        f"The previous answer began: {prev_answer}\n\n"
-        f"Current message: {current[:1500]}\n\n"
-        "Classify the SUBJECT of the conversation as a whole. If the current message is a "
-        "follow-up that names no new subject ('try now', 'and?', 'anyone?', 'verify that', "
-        "'more details', a pronoun), the subject is the one the earlier messages are about. "
-        "If the previous answer was a refusal or an apology, ignore it: judge by the user's "
-        "messages only."
+        f"The user's earlier messages in this conversation (oldest first):\n{earlier}\n\n"
+        f"Current message (a follow-up that names no subject of its own): {current[:500]}\n\n"
+        "Classify the subject the earlier messages are about; the current message continues it."
     )
 
 
