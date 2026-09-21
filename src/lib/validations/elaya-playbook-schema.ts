@@ -15,3 +15,8 @@ export const UpsertElayaPlaybookSchema = z.object({
 export type UpsertElayaPlaybookInput = z.infer<typeof UpsertElayaPlaybookSchema>;
 
 export const DeleteElayaPlaybookSchema = z.object({ id: uuidField('That playbook could not be found.') });
+
+/** Spoken or typed notes → a playbook draft (preview only; nothing is saved). */
+export const DraftElayaPlaybookSchema = z.object({
+  notes: z.string().trim().min(20, 'Say a little more: what the question is, and what the answer must cover.').max(6000, 'Keep the notes under 6,000 characters.'),
+});

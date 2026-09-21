@@ -370,8 +370,8 @@
     "semantic_hash": ""
   },
   "src/app/(dashboard)/settings/page.tsx": {
-    "mtime": 1789545629.304472,
-    "ast_hash": "ac395e2918f390e98731b1fe0441e600",
+    "mtime": 1789996649.0148103,
+    "ast_hash": "3f98b2fcd1bf6982650e1129e6bed7c1",
     "semantic_hash": ""
   },
   "src/app/(dashboard)/tasks/TasksAsync.tsx": {
@@ -1735,8 +1735,8 @@
     "semantic_hash": ""
   },
   "src/lib/constants/elaya.ts": {
-    "mtime": 1789822493.4662278,
-    "ast_hash": "9defefe08cde00b5fead56924c95fbc8",
+    "mtime": 1789996619.4316344,
+    "ast_hash": "4b312a4f9e077fb8626660a0e25ee362",
     "semantic_hash": ""
   },
   "src/lib/constants/export-columns.ts": {
@@ -3085,8 +3085,8 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1789985027.9030418,
-    "ast_hash": "2c875404328f7bafab77504c5dce8ff4",
+    "mtime": 1789997027.6179185,
+    "ast_hash": "35accf3898e5f985b89859463c1e161c",
     "semantic_hash": ""
   },
   "README.md": {
@@ -3155,8 +3155,8 @@
     "semantic_hash": ""
   },
   "docs/architecture/migrations.md": {
-    "mtime": 1789985027.9060333,
-    "ast_hash": "edd7721204335f096acf90ae11a19517",
+    "mtime": 1789997027.6097255,
+    "ast_hash": "968b169b0b9e2dc00b9d37fca67fb10d",
     "semantic_hash": ""
   },
   "docs/architecture/overview.md": {
@@ -3170,8 +3170,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1789991149.845413,
-    "ast_hash": "c7fd864178481117490eb62f685e78ae",
+    "mtime": 1789997027.6052048,
+    "ast_hash": "39fae1e43b3864502c3acf2cfa395e6e",
     "semantic_hash": ""
   },
   "docs/claude-project/1-product-and-status.md": {
@@ -3495,8 +3495,8 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/CLAUDE.md": {
-    "mtime": 1789976560.7220817,
-    "ast_hash": "f0f615b1bd2bb0fb496c5e9c72fe623d",
+    "mtime": 1789997027.62117,
+    "ast_hash": "7163742bf6ebba66b9408c2c92706048",
     "semantic_hash": ""
   },
   "src/lib/services/CLAUDE.md": {
@@ -3505,8 +3505,8 @@
     "semantic_hash": ""
   },
   "supabase/migrations/CLAUDE.md": {
-    "mtime": 1789985027.9052007,
-    "ast_hash": "a6b59f1ef6e6a7213c986fa8e97b25b9",
+    "mtime": 1789997027.6144075,
+    "ast_hash": "f21a58d5cae0370800e1c66ce17edc47",
     "semantic_hash": ""
   },
   "imgs/DB-Schema-img-2.png": {
@@ -3930,8 +3930,8 @@
     "semantic_hash": ""
   },
   "src/components/settings/SettingsLinkCard.tsx": {
-    "mtime": 1789474955.107419,
-    "ast_hash": "71fa678d5ef449b5d77947a4567e0280",
+    "mtime": 1789996649.0141678,
+    "ast_hash": "279801268885d000b8f6becd4e8972f8",
     "semantic_hash": ""
   },
   "supabase/migrations/20260625000145_personal_tasks_lead_identity.sql": {
@@ -4515,8 +4515,8 @@
     "semantic_hash": ""
   },
   "src/components/elaya/elaya-stream.ts": {
-    "mtime": 1788177103.874207,
-    "ast_hash": "af958bc0d8b18d52ffff9fba46f13044",
+    "mtime": 1789996649.0161362,
+    "ast_hash": "99b7790b72ba284816b609cbf8b95e6b",
     "semantic_hash": ""
   },
   "src/components/mobile/DomainSwiper.tsx": {
@@ -6460,8 +6460,8 @@
     "semantic_hash": ""
   },
   "backend/app/api/chat.py": {
-    "mtime": 1789981058.2087543,
-    "ast_hash": "ddde8e461633c27cf2f8111b7ab1bfae",
+    "mtime": 1789996683.383814,
+    "ast_hash": "0ef724407c7f33d2abb53eeeb2e6e800",
     "semantic_hash": ""
   },
   "backend/app/brain/__init__.py": {
@@ -6475,8 +6475,8 @@
     "semantic_hash": ""
   },
   "backend/app/brain/loop.py": {
-    "mtime": 1789818248.6252759,
-    "ast_hash": "9aab2fa5269d270330aac164a0a768e5",
+    "mtime": 1789996683.383255,
+    "ast_hash": "ea016452a4249807c9886a73e93ce038",
     "semantic_hash": ""
   },
   "backend/app/brain/pii.py": {
@@ -6490,8 +6490,8 @@
     "semantic_hash": ""
   },
   "backend/app/brain/router.py": {
-    "mtime": 1789990735.1644144,
-    "ast_hash": "50b9a3669efad690e720f57925ac5687",
+    "mtime": 1789996683.3820724,
+    "ast_hash": "6a87fe4a93941fb2e65929b3cdd8cc27",
     "semantic_hash": ""
   },
   "backend/app/brain/specialists.py": {
@@ -6505,8 +6505,8 @@
     "semantic_hash": ""
   },
   "backend/app/core/supa.py": {
-    "mtime": 1789717889.7523813,
-    "ast_hash": "d989104b0b0d5b3628b862824f8449b4",
+    "mtime": 1789996683.3816085,
+    "ast_hash": "d0cb61b0e688d16f905fe944f1616b0f",
     "semantic_hash": ""
   },
   "backend/app/llm/__init__.py": {
@@ -6605,8 +6605,8 @@
     "semantic_hash": ""
   },
   "backend/app/brain/persona.py": {
-    "mtime": 1789990203.9598646,
-    "ast_hash": "3054ff900f0e4e6c10a5ca0d4f6c4068",
+    "mtime": 1789996683.3827825,
+    "ast_hash": "a0295b44b5f0f61fafaafd3f99c79c81",
     "semantic_hash": ""
   },
   "backend/app/core/periods.py": {
@@ -6785,8 +6785,8 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/sse.ts": {
-    "mtime": 1788177095.168462,
-    "ast_hash": "652959b60a366fb6f3cca95682ca7d67",
+    "mtime": 1789996649.0154655,
+    "ast_hash": "13cc2acf044e3415c353af2a4e7c89f1",
     "semantic_hash": ""
   },
   "src/lib/services/lead-enquiries-service.ts": {
@@ -8422,6 +8422,36 @@
   "docs/integrations/mcp-team-guide.md": {
     "mtime": 1789984969.0572782,
     "ast_hash": "4d9dce0ae363cb1dac93b780253c26c8",
+    "semantic_hash": ""
+  },
+  "src/app/(dashboard)/settings/elaya-playbooks/page.tsx": {
+    "mtime": 1789996649.0244718,
+    "ast_hash": "40d8e9ac962b6dbcc97f2bde250293fd",
+    "semantic_hash": ""
+  },
+  "src/components/settings/ElayaPlaybooksPanel.tsx": {
+    "mtime": 1789996832.0854318,
+    "ast_hash": "8d44abc2c341c31be251a6d38807cf15",
+    "semantic_hash": ""
+  },
+  "src/lib/actions/elaya-playbooks.ts": {
+    "mtime": 1789996751.939869,
+    "ast_hash": "a04ab5953b7118dd05da1caf76667aad",
+    "semantic_hash": ""
+  },
+  "src/lib/services/elaya-playbooks-service.ts": {
+    "mtime": 1789996619.390503,
+    "ast_hash": "dc4e7780a4dab330f0d02ae60b1df495",
+    "semantic_hash": ""
+  },
+  "src/lib/validations/elaya-playbook-schema.ts": {
+    "mtime": 1789996619.386689,
+    "ast_hash": "36c1979053a0d79dec86ee1302677303",
+    "semantic_hash": ""
+  },
+  "supabase/migrations/20260921000233_elaya_playbooks.sql": {
+    "mtime": 1789996560.737263,
+    "ast_hash": "ddd5140ba139170e79634d797d8db308",
     "semantic_hash": ""
   }
 }

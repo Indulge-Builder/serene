@@ -262,6 +262,21 @@ Fix (operator): paste the production secret key from cloud.trigger.dev (Project 
 `tr_prod_…`) into the Vercel environment variable `TRIGGER_SECRET_KEY` for Production, then
 redeploy. Code change: `setTaskNudgeCore` uses the static Trigger import like the other reminders.
 
+## 2026-09-21 — Speak a playbook: record it, Elaya drafts it, you approve it
+
+Why: the founder wants to say a playbook out loud ("when I ask this, I need all these details…")
+rather than type steps.
+
+What changed: a "Speak a playbook" card at the top of /settings/elaya-playbooks. The shared
+`DictationButton` (the same mic cluster the composers use, Deepgram, never auto-sends) appends
+the transcript to an editable notes box; "Draft with Elaya" sends the notes to
+`draftPlaybookFromNotes` (`src/lib/services/elaya-playbook-drafter.ts`: one reasoning-tier call
+through the Elaya provider, no tools, given the founder's real tool names) which returns a title,
+example questions the way people really ask, and numbered steps with a time-frame rule, a scope
+rule, a call budget and the presentation rules. The draft lands in the editor as a PREVIEW with a
+banner; nothing is saved until the founder presses Add playbook (the ordinary action). Fails
+closed to an error message. Action: `draftElayaPlaybookAction` (admin/founder).
+
 ## 2026-09-21 — Elaya playbooks: the founder writes how a kind of question is answered (0234)
 
 Why: "what is happening in Ananyshree's queendom" came back as "271 open out of 15,084 tickets

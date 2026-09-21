@@ -7,7 +7,9 @@ import { revalidatePath } from "next/cache";
 import { requireProfile } from "./_auth";
 import { parseActionInput } from "./_validation";
 import { sanitizeText } from "@/lib/utils/sanitize";
-import { DeleteElayaPlaybookSchema, UpsertElayaPlaybookSchema } from "@/lib/validations/elaya-playbook-schema";
+import { DeleteElayaPlaybookSchema, DraftElayaPlaybookSchema, UpsertElayaPlaybookSchema } from "@/lib/validations/elaya-playbook-schema";
+import { draftPlaybookFromNotes, type PlaybookDraft } from "@/lib/services/elaya-playbook-drafter";
+import { resolveStaffPrincipal } from "@/lib/elaya/principal";
 import { deleteElayaPlaybookCore, upsertElayaPlaybookCore, type ElayaPlaybookRow } from "@/lib/services/elaya-playbooks-service";
 import { ELAYA_PLAYBOOKS_PATH } from "@/lib/constants/elaya";
 import type { ActionResult } from "@/lib/types";
@@ -43,4 +45,15 @@ export async function deleteElayaPlaybookAction(input: unknown): Promise<ActionR
   if (res.error) return { data: null, error: res.error };
   revalidatePath(ELAYA_PLAYBOOKS_PATH);
   return { data: { id: parsed.data.id }, error: null };
+}
+
+/** The founder's spoken notes → a playbook DRAFT for the preview. Saves nothing; the ordinary upsert does. */
+export async function draftElayaPlaybookAction(input: unknown): Promise<ActionResult<PlaybookDraft>> {
+  const parsed = parseActionInput(DraftElayaPlaybookSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
+  const auth = await requireProfile([...ROLES]);
+  if (!auth.ok) return auth.result;
+  const draft = await draftPlaybookFromNotes(resolveStaffPrincipal(auth.profile), sanitizeText(parsed.data.notes));
+  if (!draft) return { data: null, error: "Elaya could not shape that into a playbook. Try saying it again with the question and what the answer must cover." };
+  return { data: draft, error: null };
 }
