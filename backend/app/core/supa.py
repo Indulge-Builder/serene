@@ -276,7 +276,7 @@ async def get_session_expiry_hours() -> int:
     return value if isinstance(value, int) and value > 0 else 24
 
 
-# ── Elaya playbooks (0233): how a KIND of question is answered, written by the founder ──────
+# ── Elaya playbooks (0234): how a KIND of question is answered, written by the founder ──────
 _PLAYBOOKS_TTL_S = 60.0
 _playbooks_cache: tuple[float, list[dict[str, Any]]] | None = None
 

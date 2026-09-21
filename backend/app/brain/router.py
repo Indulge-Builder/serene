@@ -94,7 +94,7 @@ def _context_block(history: list[dict] | None, current: str) -> str:
 
 
 def _playbook_menu(playbooks: list[dict]) -> str:
-    """The founder's playbooks (0233) as a second menu: id → the questions it covers. The router
+    """The founder's playbooks (0234) as a second menu: id → the questions it covers. The router
     returns the matching id after the category, or `none`. Ids are short so the tiny reply stays tiny."""
     if not playbooks:
         return ""

@@ -1,5 +1,5 @@
 // elaya-playbook-schema.ts — the /settings/elaya-playbooks write inputs (Rule 02: first line of
-// every action). Human messages only; the SQL CHECKs in 0233 mirror the bounds.
+// every action). Human messages only; the SQL CHECKs in 0234 mirror the bounds.
 import { z } from 'zod';
 import { uuidField } from '@/lib/validations/fields';
 

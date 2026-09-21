@@ -184,7 +184,7 @@ Channel:
 
 
 def build_playbook_block(playbook: dict | None) -> str:
-    """The founder's playbook for this KIND of question (0233), folded right under the focus. It is
+    """The founder's playbook for this KIND of question (0234), folded right under the focus. It is
     a method (what to look at, what window, what to lead with), never a source of facts: every
     number still comes from a tool."""
     if not playbook:

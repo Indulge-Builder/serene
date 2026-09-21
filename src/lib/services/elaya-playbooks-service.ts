@@ -1,4 +1,4 @@
-// elaya-playbooks-service.ts — THE elaya_playbooks access (migration 0233).
+// elaya-playbooks-service.ts — THE elaya_playbooks access (migration 0234).
 //
 // A playbook is the founder's plain-words answer to "how should Elaya handle THIS kind of
 // question": example questions people really ask + the instructions for that kind of ask. The
@@ -23,7 +23,7 @@ export type ElayaPlaybookRow = {
   updated_at: string;
 };
 
-// 0233 is not in the generated types until the next regen; one loose handle per file (the convention).
+// 0234 is not in the generated types until the next regen; one loose handle per file (the convention).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Loose = { from: (t: string) => any };
 

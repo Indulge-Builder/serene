@@ -209,7 +209,7 @@ Never remove the UUID guard without moving id surfacing off the string-mask path
    `ElayaActionPayload.target`.
 7. Log it in `docs/changelog.md` + update `docs/modules/elaya.md`.
 
-## Playbooks (2026-09-21, migration 0233)
+## Playbooks (2026-09-21, migration 0234)
 
 The founder's answer to "how should THIS kind of question be handled": `/settings/elaya-playbooks`
 holds example questions + plain instructions per kind. The Python router reads the active rows

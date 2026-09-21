@@ -262,7 +262,7 @@ Fix (operator): paste the production secret key from cloud.trigger.dev (Project 
 `tr_prod_…`) into the Vercel environment variable `TRIGGER_SECRET_KEY` for Production, then
 redeploy. Code change: `setTaskNudgeCore` uses the static Trigger import like the other reminders.
 
-## 2026-09-21 — Elaya playbooks: the founder writes how a kind of question is answered (0233)
+## 2026-09-21 — Elaya playbooks: the founder writes how a kind of question is answered (0234)
 
 Why: "what is happening in Ananyshree's queendom" came back as "271 open out of 15,084 tickets
 all-time". Every number was true; nobody had told Elaya which ones matter, what time window to
@@ -272,7 +272,7 @@ method, so that a simple question with a complex backend is answered his way fro
 
 What changed:
 
-- **`public.elaya_playbooks`** (migration 0233): title, example questions (how people really
+- **`public.elaya_playbooks`** (migration 0234): title, example questions (how people really
   ask), the instructions in plain words, on/off. RLS: admin/founder read; writes through the
   gated action on the service role; the brain reads with the service role.
 - **/settings/elaya-playbooks** (admin/founder): the list, one editor, and a **Try it** box that

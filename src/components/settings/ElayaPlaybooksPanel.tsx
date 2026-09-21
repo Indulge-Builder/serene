@@ -1,5 +1,5 @@
 'use client';
-// ElayaPlaybooksPanel — the founder's playbooks (migration 0233): a list on the left, one editor
+// ElayaPlaybooksPanel — the founder's playbooks (migration 0234): a list on the left, one editor
 // on the right, and a Try-it box that runs a question through the real brain and shows what
 // fired (specialist, playbook, tools). Display + form state only (A-06); every write goes through
 // actions/elaya-playbooks.ts; the try-it rides the SAME transport the /elaya page uses

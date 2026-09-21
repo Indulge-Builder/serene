@@ -150,5 +150,5 @@ export function pickElayaDailyLine(userId: string, now: Date): string {
   return ELAYA_DAILY_LINES[hashString(key) % ELAYA_DAILY_LINES.length];
 }
 
-/** The founder's playbooks page (migration 0233): how a KIND of question is answered, editable without a deploy. */
+/** The founder's playbooks page (migration 0234): how a KIND of question is answered, editable without a deploy. */
 export const ELAYA_PLAYBOOKS_PATH = '/settings/elaya-playbooks';
