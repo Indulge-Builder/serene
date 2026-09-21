@@ -196,7 +196,7 @@ because the concierge and shop teams are the ones picking vendors all day.
 Route: a `/vendors` page lands with the Sia UI, not in this tranche. Until then Elaya is the
 surface.
 
-## Keeping the table clean (0223)
+## Keeping the table clean (0227)
 
 The extractor writes vendors by itself now, so two kinds of wrong row turn up and both need a person
 to fix them. These are the only two writes in the module that are not additive, and both are

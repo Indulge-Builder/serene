@@ -271,7 +271,7 @@ export async function removeAgentPreferenceAction(
 // ── Reads ──────────────────────────────────────────────────────────────────────
 
 /**
- * Fold one vendor into another (0223). ADMIN/FOUNDER ONLY, unlike the rest of the
+ * Fold one vendor into another (0227). ADMIN/FOUNDER ONLY, unlike the rest of the
  * module: 0221 opened vendors to the whole concierge floor, but a merge deletes a
  * spine row and cannot be undone from the UI. It is gated with the status change,
  * the other write here that is not additive.
@@ -296,14 +296,14 @@ export async function mergeVendorsAction(input: unknown): Promise<ActionResult<V
 }
 
 /**
- * Remove a vendor from the product, or put it back (0223). ADMIN/FOUNDER, with the
+ * Remove a vendor from the product, or put it back (0227). ADMIN/FOUNDER, with the
  * status change and the merge: the other two writes here that are not additive.
  *
  * Nothing is destroyed — see setVendorDeletedCore — but the row leaves every list
  * and the ranker, so it is a decision that belongs with the people who own the data.
  */
 /**
- * Remove a vendor (0226). ADMIN/FOUNDER, with the merge and the status change.
+ * Remove a vendor (0230). ADMIN/FOUNDER, with the merge and the status change.
  *
  * Returns which of the two happened, because the two deserve different words: a
  * vendor with nothing attached is deleted and cannot be restored, and one with jobs

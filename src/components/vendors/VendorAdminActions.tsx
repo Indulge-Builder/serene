@@ -18,7 +18,7 @@
 //   and keeps its name as an alias, so the extractor matches that spelling next time
 //   instead of recreating it. What it cannot keep — the other spine row — is written
 //   to vendor_merges in full.
-//   Remove does one of two things and says which BEFORE you press it (0226). A vendor
+//   Remove does one of two things and says which BEFORE you press it (0230). A vendor
 //   with nothing attached — the "Client name- AKSHAT SHAH" the extractor writes by
 //   mistake — is genuinely deleted, because deleting it costs nothing. A vendor with
 //   jobs on it is hidden instead and everything is kept, because those rows record
@@ -43,7 +43,7 @@ type Props = {
   vendor: Pick<VendorRow, 'id' | 'name' | 'deleted_at'>;
   /**
    * Jobs, ratings and notes on this vendor. Decides which warning is shown — never
-   * what happens: remove_vendor counts again inside its own transaction (0226).
+   * what happens: remove_vendor counts again inside its own transaction (0230).
    */
   history: { jobs: number; reviews: number; notes: number };
 };

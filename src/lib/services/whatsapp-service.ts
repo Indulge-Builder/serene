@@ -5,6 +5,7 @@
 // in the generated Database type — client calls here are fully typed.
 
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { giaDb } from '@/lib/supabase/schemas';
 import { sanitizeText } from '@/lib/utils/sanitize';
 import {
@@ -28,8 +29,11 @@ export type WhatsAppConversationListFilters = {
 type WaConversationRow = Omit<WhatsAppConversation, 'lead_name' | 'lead_phone' | 'unread_count'> & {
   leads: { first_name: string; last_name: string | null; phone: string };
 };
+// The sender embed goes through the gia `profiles` VIEW (0212/0213: id + full_name only — a
+// cross-schema embed cannot reach public.profiles). Asking it for avatar_url made PostgREST
+// refuse the whole read and the page showed no messages from 2026-09-17 to 2026-09-19.
 type WaMessageRow = Omit<WhatsAppMessage, 'sender_name' | 'sender_avatar_url'> & {
-  sender: { full_name: string; avatar_url: string | null } | null;
+  sender: { full_name: string } | null;
 };
 
 function mapConversationRow(row: WaConversationRow): WhatsAppConversation {
@@ -46,7 +50,7 @@ function mapMessageRow(row: WaMessageRow): WhatsAppMessage {
   return {
     ...message,
     sender_name:       sender?.full_name,
-    sender_avatar_url: sender?.avatar_url ?? undefined,
+    sender_avatar_url: undefined,
   };
 }
 
@@ -241,8 +245,7 @@ export async function getMessages(
     .select(`
       *,
       sender:profiles (
-        full_name,
-        avatar_url
+        full_name
       )
     `)
     .eq('conversation_id', conversationId)
@@ -353,4 +356,32 @@ export async function searchConversations(
     supabase,
     mapRows<WaConversationRow, WhatsAppConversation>(data, mapConversationRow),
   );
+}
+
+/**
+ * The lead's WhatsApp thread for Elaya: the conversation + its latest messages, on the ADMIN
+ * client (a WhatsApp turn has no session; the tool gates with canAccessLead first). The SAME
+ * mappers as the page reads, so the shapes never drift; no media signing (text is what the
+ * model reads). `limit` newest messages, returned oldest → newest.
+ */
+export async function getLeadWhatsAppThreadForElaya(
+  leadId: string,
+  limit = 40,
+): Promise<{ conversation: WhatsAppConversation; messages: WhatsAppMessage[]; total: number } | null> {
+  const admin = createAdminClient();
+  const { data: conv } = await giaDb(admin)
+    .from('whatsapp_conversations')
+    .select('*, leads!inner (first_name, last_name, phone)')
+    .eq('lead_id', leadId)
+    .maybeSingle();
+  if (!conv) return null;
+  const conversation = mapConversationRow(conv as WaConversationRow);
+  const { data, count } = await giaDb(admin)
+    .from('whatsapp_messages')
+    .select('*, sender:profiles (full_name)', { count: 'exact' })
+    .eq('conversation_id', conversation.id)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  const messages = mapRows<WaMessageRow, WhatsAppMessage>(data, mapMessageRow).reverse();
+  return { conversation, messages, total: Number(count ?? messages.length) };
 }

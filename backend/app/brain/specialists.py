@@ -32,13 +32,17 @@ class Specialist:
     focus: str  # the ONE line that varies per specialist inside the shared persona
     toolset: list[str] = field(default_factory=list)
     job: JobType = "reasoning"
+    # Roles the ROUTER may offer this specialist to (None = everyone). A menu entry, not a
+    # permission: the tool gate still decides what runs. It only stops the router from sending
+    # a manager to a specialist whose every tool the role gate would then cut.
+    roles: frozenset[str] | None = None
 
 
 SPECIALISTS: dict[str, Specialist] = {
     "leads": Specialist(
         id="leads",
         description=(
-            "lead lookups, HOW MANY leads / lead counts, lead status/details/notes, cold or "
+            "what a lead said or we said on the official WhatsApp line with the lead, the chat with a lead, lead lookups, HOW MANY leads / lead counts, lead status/details/notes, cold or "
             "stale leads, member/prospect questions, talking points or case studies for pitching, "
             "logging a call on a lead, adding a note to a lead, changing a lead's status, "
             "reassigning a lead, recording/closing a deal, creating a follow-up or reminder for a "
@@ -50,6 +54,7 @@ SPECIALISTS: dict[str, Specialist] = {
         toolset=[
             "search_leads",
             "get_lead_details",
+            "get_lead_whatsapp_chat",
             "get_cold_leads",
             "get_helpdesk_content",
             "find_teammate",
@@ -91,7 +96,9 @@ SPECIALISTS: dict[str, Specialist] = {
             "ad spend and budget, revenue and deals, escalations / SLA breaches / overdue follow-ups "
             "/ what needs attention or is slipping, trends, comparisons, reports, and the "
             "organisation's books from Zoho (how much we are owed, overdue invoices, payables, cash, "
-            "what was invoiced or received this month, profit this year) (NOT simple "
+            "what was invoiced or received this month, profit this year), what the team did lately (the "
+            "activity feed: what happened in the last hour, today's movement in a domain), and the software "
+            "subscriptions and bills the company pays for (what renews, what is overdue) (NOT simple "
             "lead lookups or lead counts — those are the leads category; NOT one member's dues — "
             "that is the members category)"
         ),
@@ -106,6 +113,8 @@ SPECIALISTS: dict[str, Specialist] = {
             "get_budget",
             "search_deals",
             "get_books_overview",
+            "get_activity_feed",
+            "get_subscriptions",
         ],
         job="heavy",  # the Opus tier — deep reasoning turns (DB-switchable)
     ),
@@ -136,6 +145,31 @@ SPECIALISTS: dict[str, Specialist] = {
                "Read with list_tickets / get_ticket before answering; a status move is a proposal "
                "the user confirms with a yes, never a done deed until the system says so."),
         toolset=["list_tickets", "get_ticket", "add_ticket_note", "move_ticket_status", "find_teammate"],
+    ),
+    "analyst": Specialist(
+        id="analyst",
+        description=(
+            "the founder's analyst: what is happening right now across the company (the pulse, how is "
+            "today going, anything I should know, recent activity with nobody named), and any complex, "
+            "unusual or cross-cutting question that has to be WORKED OUT from the data: rankings and top "
+            "lists, trends over weeks or months, averages and how long things take, comparisons between "
+            "people, queendoms, domains or months, which genie or agent did the most of something, "
+            "questions that mix members, tickets, chats, vendors, tasks and sales together"
+        ),
+        focus=("Focus for this conversation: THE FOUNDER'S ANALYST. You are not limited to ready-made "
+               "answers: you can work things out. For 'what is happening' use get_live_pulse. For anything "
+               "that needs working out, read the catalog once with describe_database, then write your own "
+               "read-only SQL with query_database. Think like a careful analyst: restate the question as "
+               "what must be counted, over which dates and which filter; break a hard question into two "
+               "or three small queries; look at each result before the next; when a query errors, read the "
+               "error, fix it and retry. Check that a filter value exists before trusting a zero (status "
+               "names, capitalisation). Give the answer first, then ONE line on how you worked it out "
+               "(what was counted, the dates, the filter) so it can be sanity-checked, and say when a list "
+               "was cut at the row cap. A number you did not get from a tool is never stated."),
+        toolset=["get_live_pulse", "describe_database", "query_database", "get_books_overview",
+                 "get_freshdesk_overview", "get_member_360", "get_member_overview", "get_activity_feed", "find_teammate"],
+        job="heavy",  # the deepest tier: planning and writing queries is the hardest work she does
+        roles=frozenset({"admin", "founder"}),
     ),
     "freshdesk": Specialist(
         id="freshdesk",
@@ -186,18 +220,24 @@ SPECIALISTS: dict[str, Specialist] = {
             "renewal), what they said in their WhatsApp group (asked for lately, ever mentioned a topic, "
             "summarise the chat), and their money (owes anything, paid, invoice due)"
         ),
-        focus=("Focus for this conversation: MEMBERS — one member's story from Serene's own records. "
-               "Always call get_member_overview first to find the member and their member_id. Then pick by "
-               "the question: get_member_profile for what we KNOW (saved facts, people, team, health, "
-               "requests, what is coming up); get_member_recent_messages or search_member_history for what "
-               "was SAID in their WhatsApp group; get_member_finance for money. A briefing uses the profile "
-               "first and the recent messages second. Every statement must come from a returned field or "
-               "message, with its date or source; if a tool returns nothing, say nothing is on record — never "
-               "fill the gap from memory, and never describe a member the tool did not return. Several "
-               "matching members means ask which one."),
-        # All five run in Node through the bridge; Node scopes rows to the reader's queendom.
-        toolset=["get_member_overview", "get_member_profile", "get_member_recent_messages",
-                 "search_member_history", "get_member_finance", "find_teammate"],
+        focus=("Focus for this conversation: MEMBERS — one member's story from Serene's own records, LIVE. "
+               "For ANY question about a member, call get_member_360 FIRST with the name the user said: it "
+               "loads everything at once (who they are, health, the state of their WhatsApp chat right now, "
+               "the latest messages, open Freshdesk requests, what is coming up, facts, people, timeline, "
+               "vendor jobs, money). Answer from ALL of it: lead with what is live and actionable (waiting on "
+               "us, open requests, what is coming up), then what matters for the question. Never ask which "
+               "aspect they want; ask only when several members match, naming them. Go deeper only when the "
+               "answer needs it: older chat with get_member_recent_messages and `before`, a topic across the "
+               "whole history with search_member_history, every saved fact with get_member_profile. For a "
+               "twisted or analytical question about the member (how often, how fast we reply, trends over "
+               "months, compared with others) and you hold query_database: work it out with your own SQL, "
+               "filtering by the member_id you were given, and say in one line how. Every statement must come "
+               "from a returned field or message, with its date or source; if a tool returns nothing, say "
+               "nothing is on record — never fill the gap from memory, and never describe a member the tool "
+               "did not return."),
+        # Founders and admins also carry the analyst's SQL here (the role gate cuts it for everyone else).
+        toolset=["get_member_360", "get_member_overview", "get_member_profile", "get_member_recent_messages",
+                 "search_member_history", "get_member_finance", "find_teammate", "describe_database", "query_database"],
     ),
     "general": Specialist(
         id="general",
@@ -211,6 +251,7 @@ SPECIALISTS: dict[str, Specialist] = {
             "find_teammate",
             "get_helpdesk_content",
             "search_leads",
+            "get_member_360",
             "get_member_overview",
             "get_member_profile",
             "get_member_finance",
@@ -240,6 +281,14 @@ SPECIALISTS: dict[str, Specialist] = {
             "list_sia_groups",
             "get_sia_group_messages",
             "search_sia_messages",
+            # A follow-up ("break that down by queendom") is routed on its own words and can land
+            # here: the analyst's tools come along (the role gate cuts them for everyone else).
+            "get_live_pulse",
+            "describe_database",
+            "query_database",
+            "get_lead_whatsapp_chat",
+            "get_subscriptions",
+            "get_activity_feed",
         ],
     ),
 }

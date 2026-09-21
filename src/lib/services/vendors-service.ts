@@ -657,7 +657,7 @@ export async function rankVendorsForRequest(req: RankVendorsRequest): Promise<Ra
   const historyById = new Map(history.matches.map((h) => [h.vendorId, h]));
   // The request was searched against past work and the search FAILED — not "found
   // nothing". The fallback below still runs, because a list ranked by usage beats a
-  // blank page, but it is no longer presented as if it answered the question. 0224
+  // blank page, but it is no longer presented as if it answered the question. 0228
   // made the timeout that caused this rare; this is what keeps the next one honest.
   const historyFailed = Boolean(phrase) && !history.ok;
   if (historyFailed) console.error(`${LOG} history search failed for "${phrase}" — ranking by usage instead`);

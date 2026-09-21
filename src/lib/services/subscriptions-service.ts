@@ -7,6 +7,7 @@
 // No Redis — internal-scale data (dozens of subscriptions); freshness via
 // revalidatePath('/subscriptions') on write.
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { AppDomain } from "@/lib/types/database";
 import type {
   SubscriptionType,
@@ -40,7 +41,24 @@ export type SubscriptionFilters = {
 export async function getSubscriptions(
   filters: SubscriptionFilters = {},
 ): Promise<SubscriptionListItem[]> {
-  const supabase = await createClient();
+  return getSubscriptionsWith(await createClient(), filters);
+}
+
+/**
+ * The same list on the ADMIN client, for Elaya (a WhatsApp turn has no session, so RLS cannot
+ * scope it). The caller gates exactly as the RLS policy does: admin/founder, or domain
+ * finance/tech (elaya-data.ts). Never returns logins or passwords to a model: the tool strips them.
+ */
+export async function getSubscriptionsForElaya(filters: SubscriptionFilters = {}): Promise<SubscriptionListItem[]> {
+  return getSubscriptionsWith(createAdminClient(), filters);
+}
+
+type SubscriptionsClient = Awaited<ReturnType<typeof createClient>> | ReturnType<typeof createAdminClient>;
+
+async function getSubscriptionsWith(
+  supabase: SubscriptionsClient,
+  filters: SubscriptionFilters,
+): Promise<SubscriptionListItem[]> {
   const archived = filters.archived ?? false;
 
   let query = supabase

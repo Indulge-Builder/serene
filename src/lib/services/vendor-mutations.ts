@@ -177,9 +177,9 @@ export async function setVendorStatusCore(
 }
 
 /**
- * Restore a removed vendor, or hide one outright (0223).
+ * Restore a removed vendor, or hide one outright (0227).
  *
- * Since 0226 the Remove BUTTON goes through removeVendorCore, which decides between
+ * Since 0230 the Remove BUTTON goes through removeVendorCore, which decides between
  * deleting and hiding. This stays the plain setter: it is what Restore calls, and it
  * is the way to hide a vendor deliberately without asking for that decision.
  *
@@ -190,7 +190,7 @@ export async function setVendorStatusCore(
  * search_vendors, count_vendors and get_vendor_candidates and leaves every fact
  * where it is, which is what makes the button safe to put in front of people.
  */
-/** What Remove actually did. `deleted` means the spine row is gone (0226). */
+/** What Remove actually did. `deleted` means the spine row is gone (0230). */
 export type VendorRemoveResult = {
   mode: "deleted" | "hidden";
   vendor_id: string;
@@ -200,7 +200,7 @@ export type VendorRemoveResult = {
 
 /**
  * Remove a vendor: genuinely delete it when nothing is attached, hide it when
- * something is (0226).
+ * something is (0230).
  *
  * The decision is NOT taken here and never in the browser. `remove_vendor` counts
  * the engagements, reviews and notes inside its own transaction under a row lock,
@@ -265,7 +265,7 @@ export type VendorMergeResult = {
 };
 
 /**
- * Two rows, one supplier: fold `merge_id` into `keep_id` (0223).
+ * Two rows, one supplier: fold `merge_id` into `keep_id` (0227).
  *
  * The whole thing is one SQL function on purpose. Seven tables point at a vendor
  * id and three of them carry a UNIQUE the move can collide with, so a merge run
@@ -293,7 +293,7 @@ export async function mergeVendorsCore(
   });
   if (error || !data) {
     console.error(`${LOG} mergeVendorsCore failed:`, error);
-    // P0002 is the function's own "one of these vendors is gone" (see 0223).
+    // P0002 is the function's own "one of these vendors is gone" (see 0227).
     return { ok: false, error: error?.code === "P0002" ? "not_found" : classify(error ?? null) };
   }
   return { ok: true, row: data as VendorMergeResult };

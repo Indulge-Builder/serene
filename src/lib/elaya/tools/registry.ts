@@ -84,7 +84,17 @@ export type ElayaReadToolName =
   | 'get_books_overview'
   | 'list_sia_groups'
   | 'get_sia_group_messages'
-  | 'search_sia_messages';
+  | 'search_sia_messages'
+  // Ask the database (0223) — founder and admin only
+  | 'describe_database'
+  | 'query_database'
+  | 'get_live_pulse'
+  // Everything on one member, live, in one call (2026-09-19)
+  | 'get_member_360'
+  // The lead WhatsApp line, subscriptions, the live activity feed (2026-09-19)
+  | 'get_lead_whatsapp_chat'
+  | 'get_subscriptions'
+  | 'get_activity_feed';
 
 /** Every tool name the principal may carry — read tools (this file) + write tools. */
 export type ElayaToolName = ElayaReadToolName | ElayaWriteToolName;
@@ -98,6 +108,9 @@ type ElayaTool = {
   schema: z.ZodTypeAny;
   /** JSON Schema mirror of `schema` — handed to the provider adapter. */
   jsonSchema: Record<string, unknown>;
+  /** A larger result allowance for a tool that is a whole picture by design (get_member_360).
+   *  Default TOOL_RESULT_MAX_CHARS. Keep it rare: every char is paid for on every later turn. */
+  maxResultChars?: number;
   // `channel` is threaded so a tool can react to the sessionless WhatsApp context
   // (e.g. tools whose backing query needs auth.uid() must use a principal-scoped
   // admin path or refer the user to the app — H1). Defaults to in_app at the seam.
@@ -1115,6 +1128,14 @@ export const BRIDGED_READ_TOOL_NAMES: ReadonlySet<string> = new Set([
   'list_sia_groups',
   'get_sia_group_messages',
   'search_sia_messages',
+  // Ask the database: the runner, the role and the log live behind Node's admin client.
+  'describe_database',
+  'query_database',
+  'get_live_pulse',
+  'get_member_360',
+  'get_lead_whatsapp_chat',
+  'get_subscriptions',
+  'get_activity_feed',
 ]);
 
 // ── Tickets (Sia, 0195/0199/0200) — the genie's queue and one ticket's whole story ──
@@ -1442,6 +1463,236 @@ const searchSiaMessagesTool: ElayaTool = {
   },
 };
 
+// ── Ask the database (0223) — founder and admin ONLY ──
+// For the question no tool was built for. The model writes ONE read-only SELECT over the cleaned
+// `elaya_read` views; the database (not this file) guarantees it can read nothing else and change
+// nothing. Every query is logged. Exact tools stay the first choice: they carry the page's own
+// numbers and need no SQL.
+
+const describeDatabase: ElayaTool = {
+  name: 'describe_database',
+  roles: FOUNDER_UP,
+  description:
+    'The catalog of everything query_database can read: each view, what it holds, and its columns. Call ' +
+    'this ONCE before your first query_database in a conversation (again only if a query fails on an ' +
+    'unknown view or column; pass `views` to re-read just those). Never guess a view or a column name. ' +
+    'Column format: `name` is text, `name:type` otherwise; `ts` is a UTC timestamp; every `*_id` is a uuid ' +
+    'unless a type says otherwise.',
+  schema: z.object({ views: z.array(z.string().trim().min(2).max(60)).max(12).optional() }),
+  jsonSchema: {
+    type: 'object',
+    properties: { views: { type: 'array', items: { type: 'string' }, description: 'Optional: only these views' } },
+    additionalProperties: false,
+  },
+  run: async (principal, input) => {
+    const { views } = input as { views?: string[] };
+    const r = await elayaData.describeDatabaseFor(principal);
+    if ('denied' in r) return { error: 'Only founders and admins can query the database.' };
+    if ('unavailable' in r) return { error: 'The catalog could not be read just now. Say so; do not guess names.' };
+    const want = views?.length ? new Set(views.map((v) => v.toLowerCase())) : null;
+    const picked = want ? r.views.filter((v) => want.has(v.view)) : r.views;
+    // One text block, not JSON rows: the whole catalog has to fit under the tool result cap.
+    const catalog = picked.map((v) => `${v.view}${v.about ? ' — ' + v.about : ''}\n  ${v.columns.replace(/:uuid/g, '')}`).join('\n');
+    return { view_count: picked.length, catalog };
+  },
+};
+
+const queryDatabase: ElayaTool = {
+  name: 'query_database',
+  roles: FOUNDER_UP,
+  description:
+    "Run ONE read-only SQL SELECT over Serene's data to answer a question NO other tool answers: a " +
+    'cross-cutting or unusual question, a ranking, a trend, a comparison across people, teams or months, ' +
+    '"which genie closed the most Premium tickets in August and how long did each take". Prefer an exact ' +
+    'tool when one fits (its numbers match the pages). Call describe_database first. Work like an analyst: ' +
+    'break a hard question into two or three small queries, look at the result, then refine; if a query ' +
+    'errors, read the error, fix the SQL and try again (up to three times) before giving up. `purpose` is ' +
+    'one plain sentence saying what this query finds; it is logged. In your answer say in one line HOW ' +
+    'you worked it out (what you counted, over which dates, any filter) so the founder can sanity-check ' +
+    'it, and say so when the result was cut at the row cap. Never present a guess as a number. ' +
+    'SQL RULES: PostgreSQL; ONE SELECT (or WITH ... SELECT); no semicolon, no comments, no schema names ' +
+    '(write `from leads`, never `from gia.leads`); never alias a table as public / auth / gia / sia / ' +
+    'member / freshdesk. Joins: owner_id / assignee_id / actor_id / author_id / *_staff_id -> staff.staff_id; ' +
+    'member_id -> members; lead_id -> leads; group_id -> whatsapp_groups. Timestamps are UTC and India is ' +
+    "UTC+5:30: a day is `(col at time zone 'Asia/Kolkata')::date`. Money is INR. Aggregate in SQL (count / " +
+    'sum / avg / percentile_cont), never add rows up yourself. Big views (whatsapp_messages, freshdesk_notes, ' +
+    'freshdesk_tickets, vendor_jobs, vendors) must be filtered or aggregated: the runner stops at 8 seconds ' +
+    'and returns at most 300 rows. There are no phone numbers, emails or passwords here by design.',
+  schema: z.object({
+    sql: z.string().trim().min(10).max(8000),
+    purpose: z.string().trim().min(5).max(300),
+    max_rows: z.number().int().min(1).max(300).optional(),
+  }),
+  jsonSchema: {
+    type: 'object',
+    properties: {
+      sql: { type: 'string', description: 'One PostgreSQL SELECT over the catalog views. No semicolon, no comments, no schema names.' },
+      purpose: { type: 'string', description: 'One plain sentence: what this query finds.' },
+      max_rows: { type: 'integer', description: 'Optional row cap, 1 to 300 (default 100). Aggregate instead of raising it.' },
+    },
+    required: ['sql', 'purpose'],
+    additionalProperties: false,
+  },
+  run: async (principal, input, channel) => {
+    const { sql, purpose, max_rows } = input as { sql: string; purpose: string; max_rows?: number };
+    const r = await elayaData.queryDatabaseFor(principal, sql, purpose, channel, max_rows);
+    if ('denied' in r) return { error: 'Only founders and admins can query the database.' };
+    if (!r.ok) return { error: r.error, note: 'The query was refused or failed. Read the error, fix the SQL and try again; check names with describe_database.' };
+    return {
+      rows: r.rows,
+      row_count: r.row_count,
+      truncated: r.truncated,
+      note: r.truncated ? `Cut at ${r.row_cap} rows: aggregate or filter, and tell the user the list is partial.` : r.row_count === 0 ? 'No rows. Check the filter values (status names, capitalisation, dates) before saying there is nothing.' : undefined,
+    };
+  },
+};
+
+// ── The live pulse — one picture of the whole company right now (founder and admin) ──
+
+const getLivePulseTool: ElayaTool = {
+  name: 'get_live_pulse',
+  roles: FOUNDER_UP,
+  description:
+    'What is happening across the whole company RIGHT NOW, in one call: sales today (new leads, how many ' +
+    'are still untouched, by domain, calls, deals, revenue), work (overdue tasks, open Sia tickets, ticket ' +
+    'suggestions waiting), members (who is WAITING for a reply in their WhatsApp group and for how long, ' +
+    'group activity today, occasions in the next 7 days, renewals in the next 14) and Freshdesk (open, ' +
+    'created and resolved today, escalated). Use for "what is happening", "give me the pulse", "how is ' +
+    'today going", "anything I should know", "recent activity" when no member, lead or group is named. ' +
+    'Lead with what needs attention (members waiting longest, untouched leads, escalations), then the ' +
+    'rest in a few short lines; do not read out every number. "Today" is the India day. A section that ' +
+    'is null could not be read just now: say so, never fill it in.',
+  schema: z.object({}),
+  jsonSchema: { type: 'object', properties: {}, additionalProperties: false },
+  run: async (principal) => {
+    const r = await elayaData.getLivePulseFor(principal);
+    if ('denied' in r) return { error: 'Only founders and admins can see the company pulse.' };
+    return { ...r.pulse, note: 'Waiting = a linked member group whose last real message is from the member side, 30 minutes to 24 hours old.' };
+  },
+};
+
+// ── Member 360 — everything on one member, live, in ONE call ──
+
+const getMember360: ElayaTool = {
+  name: 'get_member_360',
+  description:
+    'EVERYTHING Serene holds on one member, live, in one call: who they are (tier, membership, queendom, ' +
+    'team), health score with reasons, the state of their WhatsApp conversation RIGHT NOW (who spoke last, ' +
+    'whether they are waiting on us) with the latest messages, their open and recent Freshdesk requests, ' +
+    'open Sia tickets and ticket suggestions, what is coming up (birthdays, trips, renewal), what we know ' +
+    '(facts by facet with source and confidence), the people around them, places and brands tied to them, ' +
+    'the timeline of past conversations, team observations, vendor jobs done for them, deals, and their ' +
+    'money (when your role may see it). `member` is the NAME as the user said it, or a member_id: call ' +
+    'this FIRST and straight away for ANY question about a member ("tell me about X", "brief me on X", ' +
+    '"what is going on with X", "is X happy", "what should I know before I call X"), then answer from ALL ' +
+    'of it, leading with what is live (waiting on us, open requests, what is coming up). Do not ask which ' +
+    'aspect they want. Several matches come back as `candidates`: ask which one, never pick. Go to the ' +
+    'other member tools only for DEPTH: older chat (get_member_recent_messages with `before`), a topic ' +
+    'across the whole history (search_member_history), every saved fact (get_member_profile). `trimmed` ' +
+    'names the lists that were shortened to fit. State only what is here; an empty list means nothing on ' +
+    'record, never a guess.',
+  schema: z.object({ member: z.string().trim().min(2).max(120) }),
+  jsonSchema: {
+    type: 'object',
+    properties: { member: { type: 'string', description: "The member's name as the user said it, or a member_id" } },
+    required: ['member'],
+    additionalProperties: false,
+  },
+  maxResultChars: 24_000, // a whole client picture; elaya-data fits it to 22,000 by trimming lists
+  run: async (principal, input) => {
+    const { member } = input as { member: string };
+    const r = await elayaData.getMember360For(principal, member);
+    if (!r.found) {
+      if (r.reason === 'several') return { found: false, candidates: r.candidates, note: 'Several members match. Ask the user which one they mean, naming them.' };
+      return { found: false, note: `No member matching "${member}" that you can see. Say so; never describe anyone.` };
+    }
+    return {
+      found: true,
+      ...r.data,
+      trimmed: r.trimmed.length ? r.trimmed : undefined,
+      note: 'Live as of `as_of`. Cite dates. Anything not here is not on record.' + (r.trimmed.length ? ' Shortened lists: use the detailed member tools if the user wants more of them.' : ''),
+    };
+  },
+};
+
+// ── The lead WhatsApp line, subscriptions, the live activity feed ──
+
+const getLeadWhatsAppChat: ElayaTool = {
+  name: 'get_lead_whatsapp_chat',
+  description:
+    "The official WhatsApp conversation with a LEAD (the /whatsapp page: our business number talking to a " +
+    'prospect), oldest to newest: who wrote (lead / staff / elaya), when, the text, delivery status, whether ' +
+    "Elaya's auto-replies are on. Use for \"what did that lead say on WhatsApp\", \"did we reply to X\", " +
+    '"show me the chat with X". Pass the lead id or slug from search_leads (search first when you only have ' +
+    'a name). Refuses leads this user may not see. A member\'s concierge GROUP is a different thing: use ' +
+    'get_member_360 / get_member_recent_messages for members.',
+  schema: z.object({ lead: z.string().trim().min(1).max(160), limit: z.number().int().min(5).max(80).optional() }),
+  jsonSchema: {
+    type: 'object',
+    properties: {
+      lead: { type: 'string', description: 'The lead id or slug (from search_leads)' },
+      limit: { type: 'integer', description: 'How many of the latest messages (default 40, max 80)' },
+    },
+    required: ['lead'],
+    additionalProperties: false,
+  },
+  run: async (principal, input) => {
+    const { lead, limit } = input as { lead: string; limit?: number };
+    const r = await elayaData.getLeadWhatsAppChatFor(principal, lead, limit);
+    if (!r.ok) return { error: 'Lead not found or you are not permitted to view it.' };
+    return { ...r, note: !r.conversation ? 'No WhatsApp conversation exists with this lead. Say exactly that.' : r.messages.length === 0 ? 'The conversation exists but holds no messages.' : 'Answer only from these messages and cite the times.' };
+  },
+};
+
+const getSubscriptionsTool: ElayaTool = {
+  name: 'get_subscriptions',
+  description:
+    'The software and services the company pays for (the Subscriptions & Bills tracker): name, tool, type ' +
+    '(monthly / yearly / top-up), departments, amount and currency, status (paid / due / overdue), the current ' +
+    'due date, the latest payment. Use for "what are we paying for", "what renews this month", "which bills ' +
+    'are overdue", "how much do we spend on Claude". Visible to admin, founder and the finance and tech ' +
+    'domains, as on the page. Logins and passwords are never available here; say so if asked.',
+  schema: z.object({ search: z.string().trim().min(2).max(80).optional(), include_archived: z.boolean().optional() }),
+  jsonSchema: {
+    type: 'object',
+    properties: {
+      search: { type: 'string', description: 'Words from the subscription or tool name' },
+      include_archived: { type: 'boolean', description: 'true = archived (cancelled) subscriptions instead of the live ones' },
+    },
+    additionalProperties: false,
+  },
+  run: async (principal, input) => {
+    const r = await elayaData.getSubscriptionsFor(principal, input as { search?: string; include_archived?: boolean });
+    if ('denied' in r) return { error: 'Subscriptions are visible to admin, founder and the finance and tech teams only.' };
+    return { ...r, note: r.count === 0 ? 'No subscription matches. Say exactly that.' : 'Amounts are in each row\'s currency; latest_paid_inr is always INR.' };
+  },
+};
+
+const getActivityFeedTool: ElayaTool = {
+  name: 'get_activity_feed',
+  roles: MANAGER_UP,
+  description:
+    'The live activity feed: what the team did, newest first (lead created / assigned / won, deal recorded, ' +
+    'task created / completed), each with who, when and the domain. Use for "what happened in the last ' +
+    'hour", "what did the team do today", "any movement on Onboarding this morning". `hours` limits how far ' +
+    'back; `domain` picks one Gia domain (a manager is always pinned to their own). Summarise by person or ' +
+    'by kind; do not read out every line.',
+  schema: z.object({ domain: z.string().trim().min(2).max(40).optional(), hours: z.number().int().min(1).max(168).optional() }),
+  jsonSchema: {
+    type: 'object',
+    properties: {
+      domain: { type: 'string', description: 'onboarding / house / shop / legacy (admin and founder only; managers are pinned)' },
+      hours: { type: 'integer', description: 'Only events in the last N hours (max 168)' },
+    },
+    additionalProperties: false,
+  },
+  run: async (principal, input) => {
+    const r = await elayaData.getActivityFeedFor(principal, input as { domain?: string; hours?: number });
+    if ('denied' in r) return { error: 'The activity feed is for managers and above.' };
+    return { ...r, shown: r.events.length, note: r.events.length === 0 ? 'Nothing in that window. Say exactly that.' : `Newest first, at most ${r.events.length} shown.` };
+  },
+};
+
 const ALL_TOOLS = [
   searchLeads,
   getColdLeads,
@@ -1471,9 +1722,23 @@ const ALL_TOOLS = [
   listSiaGroups,
   getSiaGroupMessages,
   searchSiaMessagesTool,
+  describeDatabase,
+  queryDatabase,
+  getLivePulseTool,
+  getMember360,
+  getLeadWhatsAppChat,
+  getSubscriptionsTool,
+  getActivityFeedTool,
 ] as const;
 
 const TOOL_REGISTRY = new Map<string, ElayaTool>(ALL_TOOLS.map((t) => [t.name, t]));
+
+/** A READ tool's definition (description + Zod schema) by name, or undefined for a write tool or an
+ *  unknown name. The MCP connector (lib/mcp/server.ts) publishes the principal's toolset through
+ *  this so it never keeps a list of its own; it still CALLS every tool through executeTool. */
+export function getReadTool(name: string): Pick<ElayaTool, 'name' | 'description' | 'schema'> | undefined {
+  return TOOL_REGISTRY.get(name);
+}
 
 // READ tools permitted for a role. Most are all-staff (no `roles` field); the Phase-4
 // oversight/business tools carry a `roles` set, so a manager never sees get_budget and
@@ -1555,8 +1820,9 @@ export async function executeTool(
       : await writeTool!.run(principal, parsed.data as Record<string, unknown>, ctx);
     const masked = maskPii(result, maskingDepth);
     let serialized = JSON.stringify(masked);
-    if (serialized.length > TOOL_RESULT_MAX_CHARS) {
-      serialized = `${serialized.slice(0, TOOL_RESULT_MAX_CHARS)}…(truncated)`;
+    const cap = readTool?.maxResultChars ?? TOOL_RESULT_MAX_CHARS;
+    if (serialized.length > cap) {
+      serialized = `${serialized.slice(0, cap)}…(truncated)`;
     }
     return { content: serialized, isError: false };
   } catch (e) {

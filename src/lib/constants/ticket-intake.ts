@@ -55,3 +55,11 @@ export const INTAKE_ACK_WORDS: ReadonlySet<string> = new Set([
   "cool", "nice", "super", "awesome", "lovely", "received", "got", "it", "done", "good", "morning", "evening", "night",
   "hi", "hello", "hey", "hii", "sure", "fine", "alright", "welcome", "much", "so", "very", "a", "lot", "ji", "sir", "maam", "mam",
 ]);
+
+/**
+ * Health from the chat (2026-09-19): the reader's kind + tone become a health signal only when it
+ * is at least this sure, and the same signal is written at most once per member per day (an upset
+ * member sends five messages, not five complaints). The delta comes from the health policy rows.
+ */
+export const INTAKE_HEALTH_MIN_CONFIDENCE = 0.75;
+export const INTAKE_HEALTH_SAME_SIGNAL_HOURS = 24;

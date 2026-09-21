@@ -1,4 +1,4 @@
--- 0223 — Three things a person needs now that the extractor writes vendors by itself:
+-- 0227 — Three things a person needs now that the extractor writes vendors by itself:
 -- find one by the person you dealt with, put two rows back together when they are one
 -- supplier, and take a row out of circulation without destroying what it knows.
 --
@@ -91,7 +91,7 @@ ALTER TABLE public.vendors
 
 COMMENT ON COLUMN public.vendors.search_text IS
   'Generated search surface: name + aliases + subcategory + home_city + primary_phone + contact names '
-  'and phones (0223), lower-cased. Trigram-indexed. Never written directly.';
+  'and phones (0227), lower-cased. Trigram-indexed. Never written directly.';
 COMMENT ON COLUMN public.vendors.search_key IS
   'search_text with every non-alphanumeric removed, so "Lux Drovia" and "LuxDrovia" are one key. '
   'Trigram-indexed. Never written directly.';
@@ -123,7 +123,7 @@ CREATE INDEX IF NOT EXISTS idx_vendor_merges_kept ON public.vendor_merges (kept_
 CREATE INDEX IF NOT EXISTS idx_vendor_merges_merged ON public.vendor_merges (merged_vendor_id);
 
 COMMENT ON TABLE public.vendor_merges IS
-  'One row per manual vendor merge (0223). Append-only: no UPDATE or DELETE, no user write policy. '
+  'One row per manual vendor merge (0227). Append-only: no UPDATE or DELETE, no user write policy. '
   'merged_row holds the deleted spine row in full, which is what makes a merge answerable after the fact.';
 
 ALTER TABLE public.vendor_merges ENABLE ROW LEVEL SECURITY;
@@ -399,7 +399,7 @@ ALTER TABLE public.vendors
 CREATE INDEX IF NOT EXISTS idx_vendors_deleted ON public.vendors (deleted_at DESC) WHERE deleted_at IS NOT NULL;
 
 COMMENT ON COLUMN public.vendors.deleted_at IS
-  'When a person removed this vendor from the product (0223). NULL = live. A removed vendor is '
+  'When a person removed this vendor from the product (0227). NULL = live. A removed vendor is '
   'excluded from search_vendors, count_vendors and get_vendor_candidates, but its row, its jobs, its '
   'reviews and its notes are untouched and it can be restored. Never use this for "stop suggesting '
   'them" -- that is status = paused / blacklisted.';
@@ -434,7 +434,7 @@ BEGIN
   RETURN QUERY
   SELECT v.*
   FROM public.vendors v
-  WHERE v.deleted_at IS NULL                    -- 0223: removed vendors are not findable
+  WHERE v.deleted_at IS NULL                    -- 0227: removed vendors are not findable
     AND (p_category IS NULL OR v.category = p_category)
     AND (p_status   IS NULL OR v.status   = p_status)
     AND (
@@ -467,7 +467,7 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.search_vendors(text, text, text, integer, integer) IS
-  'THE vendor search — one ranked page (exact > own phone > prefix > contains > closest). Matches on all-words-any-order, space-insensitive substring, or trigram typo distance, across name, aliases, subcategory, city, phone and CONTACT names and phones (0223). Removed vendors (deleted_at) never appear. plpgsql so the query parts become plan parameters and the GIN trigram indexes are used. Q-13 revoked tier: service_role only, via callAdminRpc.';
+  'THE vendor search — one ranked page (exact > own phone > prefix > contains > closest). Matches on all-words-any-order, space-insensitive substring, or trigram typo distance, across name, aliases, subcategory, city, phone and CONTACT names and phones (0227). Removed vendors (deleted_at) never appear. plpgsql so the query parts become plan parameters and the GIN trigram indexes are used. Q-13 revoked tier: service_role only, via callAdminRpc.';
 
 CREATE OR REPLACE FUNCTION public.count_vendors(
   p_query    text DEFAULT NULL,
@@ -483,7 +483,7 @@ AS $$
   SELECT CASE
     WHEN btrim(coalesce(p_query, '')) = '' THEN (
       SELECT count(*) FROM public.vendors v
-      WHERE v.deleted_at IS NULL                -- 0223; the other branch inherits it
+      WHERE v.deleted_at IS NULL                -- 0227; the other branch inherits it
         AND (p_category IS NULL OR v.category = p_category)
         AND (p_status   IS NULL OR v.status   = p_status)
     )
@@ -506,7 +506,7 @@ SET search_path = public
 AS $$
   SELECT v.*
   FROM public.vendors v
-  WHERE v.deleted_at IS NULL          -- 0223: a removed vendor is never suggested
+  WHERE v.deleted_at IS NULL          -- 0227: a removed vendor is never suggested
     AND v.status = 'active'           -- paused / blacklisted never rank
     AND EXISTS (
       SELECT 1 FROM public.vendor_capabilities c
@@ -532,4 +532,4 @@ AS $$
 $$;
 
 COMMENT ON FUNCTION public.get_vendor_candidates(text, text, text) IS
-  'THE ranker candidate set: LIVE (deleted_at IS NULL, 0223), active vendors with an applying `offers` capability and no applying `declines`, ORDER BY id so the service can page it past PostgREST''s 1,000-row response cap (0192 — dining alone is 5,957). Q-13 revoked tier: service_role only.';
+  'THE ranker candidate set: LIVE (deleted_at IS NULL, 0227), active vendors with an applying `offers` capability and no applying `declines`, ORDER BY id so the service can page it past PostgREST''s 1,000-row response cap (0192 — dining alone is 5,957). Q-13 revoked tier: service_role only.';

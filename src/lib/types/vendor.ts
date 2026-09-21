@@ -41,7 +41,7 @@ export type VendorRow = {
   import_raw: Record<string, unknown>;
   notes: string | null;
   /**
-   * 0223 — when a person removed this vendor from the product. NULL = live.
+   * 0227 — when a person removed this vendor from the product. NULL = live.
    * The row, its jobs, its reviews and its notes are all still here; it is only
    * hidden from search, the list and the ranker, and it can be restored.
    * NOT a status: `paused` / `blacklisted` answer "how do we treat this supplier",

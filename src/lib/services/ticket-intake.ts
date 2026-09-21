@@ -25,6 +25,7 @@ import { mapRows } from "@/lib/utils/rows";
 import { mapWithConcurrency } from "@/lib/utils/concurrency";
 import { getBroadSenders, isProviderSide, openVault, type Vault } from "@/lib/services/member-profiler";
 import { draftTicketCore } from "@/lib/services/ticket-draft-core";
+import { addHealthSignalCore } from "@/lib/services/member-health";
 import { TICKET_TERMINAL_STATUSES, TICKETS_PATH } from "@/lib/constants/tickets";
 import { getQueendomSeats } from "@/lib/services/queendom-seats";
 import { createNotification } from "@/lib/services/notifications-service";
@@ -32,7 +33,7 @@ import {
   INTAKE_ACK_WORDS, INTAKE_BURSTS_PER_RUN, INTAKE_BURST_GAP_MINUTES, INTAKE_CONTEXT_MESSAGES, INTAKE_FETCH_LIMIT,
   INTAKE_GROUPS_PER_RUN, INTAKE_KINDS, INTAKE_LOOKBACK_HOURS, INTAKE_MAX_ATTEMPTS, INTAKE_MEMBER_STATUSES,
   INTAKE_MESSAGE_CHAR_CAP, INTAKE_MIN_CONFIDENCE, INTAKE_OUTAGE_STOP, INTAKE_PARALLEL_GROUPS, INTAKE_PROMPT_VERSION,
-  INTAKE_PROPOSAL_TTL_HOURS, INTAKE_RUN_KIND, INTAKE_SETTLE_SECONDS, INTAKE_TONES, type IntakeKind,
+  INTAKE_PROPOSAL_TTL_HOURS, INTAKE_RUN_KIND, INTAKE_SETTLE_SECONDS, INTAKE_TONES, INTAKE_HEALTH_MIN_CONFIDENCE, INTAKE_HEALTH_SAME_SIGNAL_HOURS, type IntakeKind,
 } from "@/lib/constants/ticket-intake";
 import type { Json } from "@/lib/types/database";
 
@@ -51,6 +52,8 @@ export type BurstOutcome = {
   why: string | null;
   verdict: IntakeVerdict | null;
   proposal_id: string | null;
+  /** The health signal written from this burst, if any (null in a dry run too). */
+  health_signal: string | null;
   error: string | null;
   provider_side?: boolean;
 };
@@ -77,6 +80,22 @@ export function isOnlyAcknowledgement(memberTexts: string[]): boolean {
   if (all.length > 60 || /\d/.test(all) || /\?/.test(all)) return false;
   const words = all.toLowerCase().split(/[^\p{L}]+/u).filter(Boolean);
   return words.every((w) => INTAKE_ACK_WORDS.has(w));
+}
+
+// ─── Health from the chat ────────────────────────────────────────────────────
+
+/**
+ * What a burst says about the member's health, if anything. Pure, so it can be tested:
+ * praise or a complaint (kind feedback) moves the score; a frustrated or angry tone on any other
+ * kind of message is the softer "frustrated tone" signal; thanks and greetings are not praise.
+ */
+export function healthSignalFor(v: Pick<IntakeVerdict, "kind" | "tone" | "confidence">): { signal: "complaint" | "praise" | "frustration_tone"; label: string } | null {
+  if (v.confidence < INTAKE_HEALTH_MIN_CONFIDENCE) return null;
+  const upset = v.tone === "frustrated" || v.tone === "angry";
+  if (v.kind === "feedback" && upset) return { signal: "complaint", label: "Complaint" };
+  if (v.kind === "feedback" && v.tone === "happy") return { signal: "praise", label: "Praise" };
+  if (v.kind !== "chatter" && upset) return { signal: "frustration_tone", label: "Frustrated tone" };
+  return null;
 }
 
 // ─── The reader (one cheap call) ─────────────────────────────────────────────
@@ -140,7 +159,7 @@ type ReadDeps = { vault: Vault; broad: Set<string>; apply: boolean; queendomId: 
 /** One settled burst: decide what it is and, for a request, file the card. */
 export async function readBurst(groupJid: string, memberId: string, context: Msg[], burst: Msg[], deps: ReadDeps): Promise<BurstOutcome> {
   const { vault } = deps;
-  const base: BurstOutcome = { group_jid: groupJid, member_id: memberId, member_name: vault.ctx.full_name, from_at: burst[0].wa_timestamp, to_at: burst[burst.length - 1].wa_timestamp, messages: burst.length, status: "failed", why: null, verdict: null, proposal_id: null, error: null };
+  const base: BurstOutcome = { group_jid: groupJid, member_id: memberId, member_name: vault.ctx.full_name, from_at: burst[0].wa_timestamp, to_at: burst[burst.length - 1].wa_timestamp, messages: burst.length, status: "failed", why: null, verdict: null, proposal_id: null, health_signal: null, error: null };
   const admin = createAdminClient();
 
   const memberMsgs = burst.filter((m) => vault.sideOf(m.sender_jid) === "member");
@@ -178,8 +197,22 @@ export async function readBurst(groupJid: string, memberId: string, context: Msg
     const verdict = validateVerdict(raw, burst.length, tickets);
     const shown = vault.unmask(verdict);
 
+    // Health from the chat: written whatever the burst turns out to be (a complaint is rarely a
+    // request). The note is the reason the Health card shows; the evidence points at the messages.
+    let healthSignal: string | null = null;
+    const hs = healthSignalFor(verdict);
+    if (hs && deps.apply) {
+      const quote = (memberMsgs[0]?.text ?? "").slice(0, 240);
+      const h = await addHealthSignalCore(memberId, {
+        signal: hs.signal, note: `${hs.label} on WhatsApp: ${shown.summary || quote}`.slice(0, 300),
+        evidence: { source: "intake", group_jid: groupJid, first_message_id: burst[0].id, message_ids: memberMsgs.map((m) => m.id), quote, kind: verdict.kind, tone: verdict.tone, confidence: verdict.confidence },
+        run_id: runId, observed_at: base.from_at, dedupe_hours: INTAKE_HEALTH_SAME_SIGNAL_HOURS,
+      });
+      if (h.error) console.warn(`${LOG} health signal not written`, h.error); else if (h.data?.id) healthSignal = hs.signal;
+    }
+
     const worthACard = (verdict.kind === "request" || (verdict.kind === "update" && verdict.ticket_no)) && verdict.confidence >= INTAKE_MIN_CONFIDENCE;
-    if (!worthACard) { await finish(true, { ...usage, output: { verdict } as unknown as Json }); return { ...base, status: "read", verdict: shown }; }
+    if (!worthACard) { await finish(true, { ...usage, output: { verdict, health_signal: healthSignal } as unknown as Json }); return { ...base, status: "read", verdict: shown, health_signal: healthSignal }; }
 
     // The messages the card rests on: the ones the reader named, else every member message.
     const picked = (verdict.request_messages.length ? verdict.request_messages.map((n) => burst[n - 1]) : memberMsgs).filter(Boolean);
@@ -190,7 +223,7 @@ export async function readBurst(groupJid: string, memberId: string, context: Msg
     const pickedIds = new Set(picked.map((m) => m.id));
     const around = [...context, ...burst.filter((m) => !pickedIds.has(m.id))].sort((x, y) => x.wa_timestamp.localeCompare(y.wa_timestamp));
     const draft = verdict.kind === "request" ? await draftTicketCore({ member_id: memberId, group_jid: groupJid, via: "intake", messages: picked.map(asDraft), context: around.map(asDraft), hint: verdict.summary }, deps.broad) : null;
-    if (verdict.kind === "request" && !draft) { await finish(false, { ...usage, error: "draft failed", output: { verdict } as unknown as Json }); return { ...base, verdict: shown, error: "draft failed" }; }
+    if (verdict.kind === "request" && !draft) { await finish(false, { ...usage, error: "draft failed", output: { verdict } as unknown as Json }); return { ...base, verdict: shown, health_signal: healthSignal, error: "draft failed" }; }
 
     let proposalId: string | null = null;
     if (deps.apply) {
@@ -202,14 +235,14 @@ export async function readBurst(groupJid: string, memberId: string, context: Msg
         first_message_at: base.from_at, last_message_at: base.to_at, ticket_id: ticket?.id ?? null,
         classify_run_id: runId, draft_run_id: draft?.run_id ?? null,
       }, { onConflict: "group_jid,first_message_at", ignoreDuplicates: true }).select("id").maybeSingle();
-      if (error) { await finish(false, { ...usage, error: `proposal insert: ${error.message}`.slice(0, 300) }); return { ...base, verdict: shown, error: error.message }; }
+      if (error) { await finish(false, { ...usage, error: `proposal insert: ${error.message}`.slice(0, 300) }); return { ...base, verdict: shown, health_signal: healthSignal, error: error.message }; }
       proposalId = (row as { id: string } | null)?.id ?? null;
       // A NEW card (a duplicate burst returns no row): the queendom's bishop hears about it now,
       // on the bell and the phone, and the link opens the ticket form already filled.
       if (proposalId) await notifyProposal(proposalId, deps.queendomId, vault.ctx.full_name, verdict.kind === "update" ? shown.summary : (draft?.title ?? shown.summary), verdict.kind === "update" ? ticket?.ticket_no ?? null : null);
     }
-    await finish(true, { ...usage, output: { verdict, proposal_id: proposalId, more_requests: verdict.more_requests } as unknown as Json });
-    return { ...base, status: "proposed", verdict: shown, proposal_id: proposalId };
+    await finish(true, { ...usage, output: { verdict, proposal_id: proposalId, more_requests: verdict.more_requests, health_signal: healthSignal } as unknown as Json });
+    return { ...base, status: "proposed", verdict: shown, proposal_id: proposalId, health_signal: healthSignal };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     await finish(false, { error: msg.slice(0, 500) });

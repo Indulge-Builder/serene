@@ -1,7 +1,7 @@
--- 0226 — Remove deletes a junk row for real, and only hides one that carries history.
+-- 0230 — Remove deletes a junk row for real, and only hides one that carries history.
 --
 -- WHY
--- 0223 gave Remove one behaviour: set deleted_at, always. That is right for a vendor
+-- 0227 gave Remove one behaviour: set deleted_at, always. That is right for a vendor
 -- with jobs on it -- those rows record money that actually moved, and someone having
 -- filed them under the wrong name does not make them untrue -- but it is heavy-handed
 -- for what the extractor mostly produces by mistake: a row called
@@ -44,7 +44,7 @@ CREATE INDEX IF NOT EXISTS idx_vendor_removals_vendor ON public.vendor_removals 
 CREATE INDEX IF NOT EXISTS idx_vendor_removals_at ON public.vendor_removals (created_at DESC);
 
 COMMENT ON TABLE public.vendor_removals IS
-  'One row per vendor removal (0226). Append-only: no UPDATE or DELETE, no user write policy. '
+  'One row per vendor removal (0230). Append-only: no UPDATE or DELETE, no user write policy. '
   'mode `deleted` means the spine row was genuinely removed because nothing was attached to it, and '
   'vendor_row is then the only surviving copy; `hidden` means deleted_at was set and everything was kept.';
 
@@ -120,7 +120,7 @@ $$;
 
 COMMENT ON FUNCTION public.remove_vendor(uuid, uuid) IS
   'Remove a vendor: genuinely DELETE it when nothing is attached (no engagements, no reviews, no notes), '
-  'otherwise set deleted_at and keep every fact (0226). Capabilities and preferences are config, not history, '
+  'otherwise set deleted_at and keep every fact (0230). Capabilities and preferences are config, not history, '
   'and do not stop a delete. The count is taken inside the transaction under a row lock, so the page''s view '
   'cannot cause one. Records public.vendor_removals either way — for a deleted vendor that row is the only '
   'surviving copy. Q-13 revoked tier: service_role only.';

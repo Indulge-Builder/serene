@@ -16,6 +16,7 @@ import { useToast } from '@/hooks/useToast';
 import { scrollToBottom } from '@/lib/utils/scroll';
 import { formErrors } from '@/lib/validations/form-errors';
 import { ElayaIdentityCard } from '@/components/elaya/ElayaIdentityCard';
+import type { ElayaViewer } from '@/lib/constants/elaya';
 import { ElayaFeedbackCard } from '@/components/elaya/ElayaFeedbackCard';
 import { ElayaMessageBubble, type ElayaUiMessage } from '@/components/elaya/ElayaMessageBubble';
 import { streamElayaChat, toolStatusLabel } from '@/components/elaya/elaya-stream';
@@ -27,6 +28,8 @@ type Props = {
   /** Server-computed deterministic greeting shown when the transcript is empty. */
   greeting: string;
   remainingToday: number;
+  /** Who is looking (role + domain): the identity card's starters and reach follow it. Optional for embedded surfaces. */
+  viewer?: ElayaViewer | null;
   /**
    * Chat-only mode — omits the ElayaIdentityCard sidebar and the dossier grid,
    * so the chat card fills its container. Used by the floating Elaya widget
@@ -58,6 +61,7 @@ export function ElayaChatShell({
   hideIdentity = false,
   embedded = false,
   onClose,
+  viewer,
 }: Props) {
   const toast = useToast;
   const [messages, setMessages] = useState<ElayaUiMessage[]>(initialMessages);
@@ -370,7 +374,7 @@ export function ElayaChatShell({
       {!chatOnly && (
         <div className="flex flex-col" style={{ gap: 'var(--space-6)', minHeight: 0 }}>
           <ElayaFeedbackCard />
-          <ElayaIdentityCard busy={isStreaming || capReached} onPromptSelect={handlePromptSelect} />
+          <ElayaIdentityCard busy={isStreaming || capReached} onPromptSelect={handlePromptSelect} viewer={viewer ?? null} />
         </div>
       )}
     </div>

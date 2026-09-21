@@ -143,7 +143,7 @@ export const VendorIdSchema = z.object({ id: uuidField(formErrors.vendorNotFound
 
 /**
  * Merge one vendor into another. `keep_id` survives and absorbs; `merge_id` is
- * folded into it and its spine row is removed (0223). The refine guards the one
+ * folded into it and its spine row is removed (0227). The refine guards the one
  * mistake that is easy to make in a picker and impossible to undo: choosing the
  * same row on both sides.
  */
@@ -159,7 +159,7 @@ export const MergeVendorsSchema = z
 export type MergeVendorsInput = z.infer<typeof MergeVendorsSchema>;
 
 /**
- * Remove a vendor from the product, or put it back (0223). One schema for both
+ * Remove a vendor from the product, or put it back (0227). One schema for both
  * directions so the restore path can never drift from the remove path.
  */
 export const SetVendorDeletedSchema = z.object({

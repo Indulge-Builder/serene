@@ -34,6 +34,7 @@ function StatsLine({ stats }: { stats: IntakeStats }) {
     `${stats.dismissed} dismissed`,
     `right ${pct(stats.accepted, decided)} of the time`,
     `Freshdesk agreed on ${stats.freshdesk_agreed} of ${stats.freshdesk_checked}`,
+    `health: ${Object.entries(stats.health_by_signal).map(([k, n]) => `${n} ${k.replace(/_/g, ' ')}`).join(', ') || 'no signals yet'}`,
     `about $${stats.cost_usd.toFixed(2)}`,
   ];
   return <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>{parts.join(' · ')}</p>;

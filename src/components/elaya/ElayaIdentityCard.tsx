@@ -3,32 +3,40 @@
 // Elaya identity card — the identity sidebar on /elaya. Lives in the right
 // 340px column of the canonical .serene-dossier-grid--340 (the /profile sidebar
 // pattern; stacks below the main column under lg). Display-only (A-06):
-// presence, curated starter prompts (prefill the composer only — never
-// auto-send), and what she can see.
+// presence, starter prompts picked for the viewer's role (prefill the composer only — never
+// auto-send), and what she can read for them (lib/constants/elaya.ts).
 
 import { m as motion } from 'framer-motion';
-import { Users, ListChecks, Handshake, TrendingUp, BookOpen } from 'lucide-react';
+import {
+  Users, ListChecks, Handshake, TrendingUp, BookOpen, MessageSquare, LifeBuoy, Ticket, Store,
+  MessagesSquare, Megaphone, Activity, Landmark, CreditCard, Sparkles, type LucideIcon,
+} from 'lucide-react';
 import { ElayaGlyphDisc } from '@/components/ui/elaya-glyph';
-import { ELAYA_STARTER_PROMPTS } from '@/lib/constants/elaya';
+import {
+  getElayaStarters, getElayaCapabilities, ELAYA_CAPABILITY_LABELS, type ElayaViewer, type ElayaCapabilityKey,
+} from '@/lib/constants/elaya';
 import { ENTER_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
 
-// One row per read-only tool family in src/lib/elaya/tools/registry.ts —
-// keep in step when a tool ships or retires.
-const CAPABILITIES = [
-  { icon: Users, label: 'Your leads' },
-  { icon: ListChecks, label: 'Your tasks' },
-  { icon: Handshake, label: 'Deals' },
-  { icon: TrendingUp, label: 'Performance' },
-  { icon: BookOpen, label: 'Case library' },
-] as const;
+// One icon per capability key; the keys, labels and who-sees-what live in lib/constants/elaya.ts,
+// in step with the tools in lib/elaya/tools/registry.ts.
+const CAPABILITY_ICONS: Record<ElayaCapabilityKey, LucideIcon> = {
+  members: Users, groups: MessagesSquare, freshdesk: LifeBuoy, tickets: Ticket, vendors: Store,
+  leads: Users, lead_chats: MessageSquare, tasks: ListChecks, deals: Handshake, performance: TrendingUp,
+  campaigns: Megaphone, activity: Activity, books: Landmark, subscriptions: CreditCard, cases: BookOpen,
+  analyst: Sparkles,
+};
 
 type Props = {
   /** Streaming or cap reached — starter prompts disabled, never mid-flight. */
   busy: boolean;
   onPromptSelect: (prompt: string) => void;
+  /** Who is looking; null = the generic lists. */
+  viewer?: ElayaViewer | null;
 };
 
-export function ElayaIdentityCard({ busy, onPromptSelect }: Props) {
+export function ElayaIdentityCard({ busy, onPromptSelect, viewer = null }: Props) {
+  const starters = getElayaStarters(viewer);
+  const capabilities = getElayaCapabilities(viewer);
   return (
     <motion.aside
       initial={{ opacity: 0, y: 4 }}
@@ -63,9 +71,9 @@ export function ElayaIdentityCard({ busy, onPromptSelect }: Props) {
       {/* Starter prompts — prefill only, the send stays with the user */}
       <div className="flex flex-col" style={{ gap: 'var(--space-2)' }}>
         <span className="label-micro" style={{ color: 'var(--theme-text-tertiary)' }}>
-          Start somewhere
+          Ask her
         </span>
-        {ELAYA_STARTER_PROMPTS.map((prompt) => (
+        {starters.map((prompt) => (
           <button
             key={prompt}
             type="button"
@@ -90,10 +98,10 @@ export function ElayaIdentityCard({ busy, onPromptSelect }: Props) {
       {/* What she can see — pinned to the foot of the card */}
       <div className="flex flex-col" style={{ gap: 'var(--space-3)', marginTop: 'auto' }}>
         <span className="label-micro" style={{ color: 'var(--theme-text-tertiary)' }}>
-          She can see
+          She can read
         </span>
-        {CAPABILITIES.map(({ icon: Icon, label }) => (
-          <div key={label} className="flex items-center" style={{ gap: 'var(--space-3)' }}>
+        {capabilities.map((key) => { const Icon = CAPABILITY_ICONS[key]; const label = ELAYA_CAPABILITY_LABELS[key]; return (
+          <div key={key} className="flex items-center" style={{ gap: 'var(--space-3)' }}>
             <Icon
               className="w-4 h-4"
               strokeWidth={1.5}
@@ -103,7 +111,7 @@ export function ElayaIdentityCard({ busy, onPromptSelect }: Props) {
               {label}
             </span>
           </div>
-        ))}
+        ); })}
       </div>
     </motion.aside>
   );

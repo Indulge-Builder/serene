@@ -49,6 +49,13 @@ MAX_ITERATIONS = 10
 # The Node brain's TOOL_RESULT_MAX_CHARS — an oversized result is truncated the
 # same way on both brains so the model reads the same world from either.
 TOOL_RESULT_MAX_CHARS = 12_000
+# Tools that are a whole picture by design carry a larger allowance (mirrors
+# `maxResultChars` on the Node tool; Node has already fitted the result under it).
+TOOL_RESULT_MAX_CHARS_BY_TOOL: dict[str, int] = {"get_member_360": 24_000}
+
+
+def _cap(name: str) -> int:
+    return TOOL_RESULT_MAX_CHARS_BY_TOOL.get(name, TOOL_RESULT_MAX_CHARS)
 
 
 @dataclass
@@ -199,8 +206,8 @@ async def run_turn(
                     )
                 else:
                     serialized = await run_read(call)
-                if len(serialized) > TOOL_RESULT_MAX_CHARS:
-                    serialized = serialized[:TOOL_RESULT_MAX_CHARS] + "…(truncated)"
+                if len(serialized) > _cap(call.name):
+                    serialized = serialized[: _cap(call.name)] + "…(truncated)"
                 messages.append(
                     ChatMessage(role="tool", content=serialized, tool_call_id=call.id)
                 )
@@ -211,8 +218,8 @@ async def run_turn(
                 *(run_read(c) for c in result.tool_calls)
             )
             for call, serialized in zip(result.tool_calls, serialized_results):
-                if len(serialized) > TOOL_RESULT_MAX_CHARS:
-                    serialized = serialized[:TOOL_RESULT_MAX_CHARS] + "…(truncated)"
+                if len(serialized) > _cap(call.name):
+                    serialized = serialized[: _cap(call.name)] + "…(truncated)"
                 messages.append(
                     ChatMessage(role="tool", content=serialized, tool_call_id=call.id)
                 )

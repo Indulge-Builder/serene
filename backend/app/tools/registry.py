@@ -1100,6 +1100,13 @@ BRIDGED_READ_TOOL_NAMES: frozenset[str] = frozenset({
     "get_freshdesk_overview", "search_freshdesk_tickets", "get_freshdesk_ticket",
     "get_books_overview",
     "list_sia_groups", "get_sia_group_messages", "search_sia_messages",
+    # Ask the database + the live pulse (2026-09-19): the locked runner (0223), its log and the
+    # pulse reads live in Node. Founder and admin only, on both sides.
+    "describe_database", "query_database", "get_live_pulse",
+    # Everything on one member in one call (2026-09-19); the queendom gate lives in Node.
+    "get_member_360",
+    # The lead WhatsApp line, subscriptions, the live activity feed (2026-09-19): page rules in Node.
+    "get_lead_whatsapp_chat", "get_subscriptions", "get_activity_feed",
 })
 
 # The ticket pair (2026-09-15) is bridged for the same reason: the sentinel's ledger and the
@@ -1127,6 +1134,13 @@ _BRIDGED_READ_ROLES: dict[str, frozenset[str]] = {
     "list_sia_groups": frozenset({"agent", "manager", "admin", "founder"}),
     "get_sia_group_messages": frozenset({"agent", "manager", "admin", "founder"}),
     "search_sia_messages": frozenset({"agent", "manager", "admin", "founder"}),
+    "describe_database": _FOUNDER_UP,
+    "query_database": _FOUNDER_UP,
+    "get_live_pulse": _FOUNDER_UP,
+    "get_member_360": frozenset({"agent", "manager", "admin", "founder"}),
+    "get_lead_whatsapp_chat": frozenset({"agent", "manager", "admin", "founder"}),
+    "get_subscriptions": frozenset({"agent", "manager", "admin", "founder"}),  # Node narrows to finance/tech + admin/founder
+    "get_activity_feed": frozenset({"manager", "admin", "founder"}),
 }
 
 

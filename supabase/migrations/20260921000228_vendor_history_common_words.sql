@@ -1,40 +1,41 @@
--- 0225 — the category guess ranks the vendor history search; it no longer filters it.
+-- 0228 — the vendor history search stops timing out, and stops answering a power
+-- bank request with airlines.
 --
--- WHY
--- 0224 stopped the search timing out. This is the second half of the same incident,
--- and the one that was actually visible on screen.
+-- WHAT WAS HAPPENING
+-- "Find a vendor" on ticket 55146 ("Power bank sourcing request NB 10000") returned
+-- Air India, BigTree, IndiGo and Roldrive. Nitecore, which is in the table and did
+-- that exact job, was nowhere.
 --
--- "Power bank sourcing request NB 10000" reached the ranker with the chip
--- `special-request`, guessed from the words by the page. Nitecore's job for that very
--- ticket is filed under `retail` — not a mistake, it is what the Freshdesk ticket's own
--- category field says. `find_vendors_by_history` filtered on the chip, so the one
--- vendor who had done the job was excluded before scoring, and the page fell through to
--- offering the most-used vendors in Special Request: airlines.
+-- It was not a ranking preference. `find_vendors_by_history` searches past ticket
+-- titles, and on that phrase it took over 8 seconds and was killed by the statement
+-- timeout. `callAdminRpc` returns an empty array on error, so the ranker could not
+-- tell "nobody has done this before" from "the search died", and took its documented
+-- fallback: everyone with a special-request capability, ranked by how often they have
+-- been used. On this account that is airlines and ticketing.
 --
--- Measured on production with the AI's own terms (power, bank, portable, charger,
--- battery, pack, mobile, charging):
---     no category filter            Shubham, Ankit, Stuffcool, DailyObjects, NITECORE UAE
---     category = special-request    Ankit, Nanaware, FIRKI, DailyObjects, Samsung BKC
---     category = retail             Shubham, Stuffcool, Fortune Park, NITECORE UAE, nitecore
+-- Measured on production, 2026-09-19:
+--     "power bank"                              457ms   5 hits
+--     "power bank sourcing"                     721ms   5 hits, Nitecore among them
+--     "power bank sourcing request"            8094ms   TIMEOUT
+--     "Power bank sourcing request NB 10000"   8218ms   TIMEOUT
 --
--- The AI had read it correctly, incidentally: it returned category `retail` and eight
--- rare, well-chosen terms. The page's own keyword chip overrode it.
+-- WHY ONE WORD DID IT
+-- `power` is in 26 titles, `bank` 47, `sourcing` 944 — about a thousand rows between
+-- them. `request` is in 10,870 of 46,693 (23%), and every matched row then pays for a
+-- `declines` capability lookup. The function already knew the word was worthless: its
+-- rarity weight, ln(46693/10870), is a fifth of `power`'s. It priced the word without
+-- ever deciding not to join it.
 --
--- THE INCONSISTENCY THIS REMOVES
--- vendor-search-intent.ts already states the rule: the model's category is DISPLAY
--- ONLY, never a filter, because "a wrong guess is a hard filter that empties the
--- search". That guard was placed on the model's guess and not on the page's keyword
--- guess, which is the same guess arriving by another route. Now neither filters here.
+-- THE FIX
+-- Drop a word from the JOIN when more than 5% of titles carry it, and join at most
+-- five words. The rarest word is always kept, whatever the cap, so a request written
+-- entirely in common words still answers. Nothing else changes: the same weights, the
+-- same declines rule, the same ordering.
 --
--- WHAT REPLACES IT
--- Agreement is a boost, not a gate: +40% on a job under the guessed category, +20% on
--- the guessed service. The chip still shapes the answer and can no longer empty it.
--- The city is untouched — a place name is a fact in the sentence, not an
--- interpretation, and it narrows on the vendor's service area rather than the job.
--- The category filter also stays in get_vendor_candidates, the fallback used when no
--- title matched at all, where it is the only thing there is to go on.
+-- Reproduced locally on 46,000 jobs carrying production's word distribution: 14.4s
+-- before, and the same five vendors in a fraction of a second after.
 --
--- Signature unchanged: CREATE OR REPLACE, and the 0190 grants stand.
+-- The signature is unchanged, so this is CREATE OR REPLACE and the 0190 grants stand.
 
 CREATE OR REPLACE FUNCTION public.find_vendors_by_history(
   p_query    text    DEFAULT NULL,
@@ -124,7 +125,7 @@ BEGIN
     -- position alone would ignore that a term nobody ever wrote is worthless.
     --
     -- AND a word too common to discriminate is DROPPED before the join, not merely
-    -- given a low weight. That distinction is the whole of 0224. "Power bank sourcing
+    -- given a low weight. That distinction is the whole of 0228. "Power bank sourcing
     -- request NB 10000" took over fourteen seconds and died on the statement timeout,
     -- so the search silently returned nothing and the ranker fell back to ranking the
     -- category by usage -- which answered a power bank request with airlines. Three of
@@ -150,29 +151,15 @@ BEGIN
     LIMIT v_max_words
   ),
   hit AS (
-    SELECT e.id, e.vendor_id, e.title, e.started_at, e.category, e.service, w.weight
+    SELECT e.id, e.vendor_id, e.title, e.started_at, w.weight
     FROM w
     JOIN public.vendor_engagements e
       ON e.title IS NOT NULL
      AND to_tsvector('english', e.title) @@ plainto_tsquery('english', w.word)
     JOIN public.vendors v ON v.id = e.vendor_id
     WHERE v.status = 'active'
-      -- The category and service are NOT filtered here any more (0225). They are a
-      -- GUESS about the request, and this file already carries the lesson in its own
-      -- words for the model's version of that guess: "a wrong guess is a hard filter
-      -- that empties the search". The guard was on the model and not on the keyword
-      -- chip the page sends, which is the same guess by another route.
-      --
-      -- It cost a real answer. "Power bank sourcing request NB 10000" arrived with the
-      -- chip Special Request; the job is filed under Retail, because that is what the
-      -- Freshdesk ticket itself said. Filtering on the chip removed the one vendor who
-      -- had done the job, and the page offered airlines. Without the filter Nitecore is
-      -- in the top five; with it, it is nowhere.
-      --
-      -- A title that matches the words IS the evidence. Agreement on category still
-      -- counts, as a boost in `scored` below, so the chip continues to shape the answer
-      -- without being able to empty it. The filter remains where it is the only thing
-      -- there is: get_vendor_candidates, the fallback used when no title matched.
+      AND (p_category IS NULL OR e.category = p_category)
+      AND (p_service  IS NULL OR e.service  = p_service)
       -- A `declines` capability excludes the vendor here exactly as it does in
       -- get_vendor_candidates (0188). This path used to check status alone, so a
       -- vendor who had told us they no longer take a kind of work was still
@@ -203,16 +190,9 @@ BEGIN
   scored AS (
     -- Every column qualified: `vendor_id` is also an OUT parameter of this
     -- function, and an unqualified reference is rejected as ambiguous.
-    -- The guess now RANKS instead of excluding (0225): a job under the category the
-    -- page guessed is worth more than one under another, but one under another is
-    -- still worth showing when its title matched the words.
     SELECT hit.id, hit.vendor_id AS vid, hit.title, hit.started_at,
-           (sum(hit.weight)
-            * (1.0
-               + CASE WHEN p_category IS NOT NULL AND hit.category = p_category THEN 0.40 ELSE 0 END
-               + CASE WHEN p_service  IS NOT NULL AND hit.service  = p_service  THEN 0.20 ELSE 0 END)
-           )::real AS title_score
-    FROM hit GROUP BY hit.id, hit.vendor_id, hit.title, hit.started_at, hit.category, hit.service
+           sum(hit.weight)::real AS title_score
+    FROM hit GROUP BY hit.id, hit.vendor_id, hit.title, hit.started_at
   )
   SELECT
     sc.vid,
@@ -230,9 +210,9 @@ END;
 $$;
 
 COMMENT ON FUNCTION public.find_vendors_by_history(text, text[], text, text, text, integer) IS
-  'Find vendors by searching past TICKET TITLES. Terms are weighted by rarity x position, and a word carried by more '
-  'than 5% of titles is dropped before the join (0224). The category and service are a GUESS and RANK the result '
-  '(+40% / +20% on agreement) rather than filtering it (0225): filtering on a chip that read "Special Request" hid the '
-  'vendor whose job was filed under Retail, and the page answered a power bank request with airlines. The city still '
-  'filters, on the vendor''s service area. A `declines` capability excludes a vendor here as in get_vendor_candidates. '
-  'Q-13 revoked tier: service_role only.';
+  'Find vendors by searching past TICKET TITLES. `p_terms` arrives ordered by importance from the model that read '
+  'the request, weighted by rarity x position. A word carried by more than 5% of titles is DROPPED before the join '
+  '(0228): it cannot discriminate, and joining one such word (`request`, 23% of titles) took the function past the '
+  'statement timeout — which the ranker could not tell from "no history", so it answered a power bank request with '
+  'airlines. The rarest word is always kept; at most five words join. A `declines` capability excludes a vendor here '
+  'as in get_vendor_candidates. Q-13 revoked tier: service_role only.';

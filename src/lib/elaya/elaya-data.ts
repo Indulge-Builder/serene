@@ -67,6 +67,14 @@ import type { FdTicketListFilters } from '@/lib/types/freshdesk';
 import { canAccessMember, canSeeMemberFinance } from '@/lib/elaya/access';
 import { getMemberDetailAsAdmin } from '@/lib/services/members-service';
 import { getMemberFinance, getBooksOverview } from '@/lib/services/zoho-service';
+import { runElayaQuery, logElayaQuery, getElayaCatalog } from '@/lib/services/elaya-query-service';
+import { getLivePulse } from '@/lib/services/pulse-service';
+import { isOnlyAcknowledgement } from '@/lib/services/ticket-intake';
+import { getLeadWhatsAppThreadForElaya } from '@/lib/services/whatsapp-service';
+import { getSubscriptionsForElaya } from '@/lib/services/subscriptions-service';
+import { getActivityFeed, type ActivityFeedResult } from '@/lib/services/activity-service';
+import { canAccessLead } from '@/lib/elaya/access';
+import type { GiaDomain } from '@/lib/constants/domains';
 import type { TicketStatus } from '@/lib/constants/tickets';
 import type { RankVendorsRequest } from '@/lib/services/vendors-service';
 import { GIA_DOMAINS } from '@/lib/constants/domains';
@@ -998,4 +1006,231 @@ export async function searchSiaMessagesFor(principal: StaffPrincipal, query: str
   hits = hits.slice(0, 30);
   const shaped = await shapeMessages(hits);
   return { ok: true as const, hits: hits.map((h, i) => ({ group: siaGroupHandle(h.group_jid), group_name: h.group_subject, ...shaped[i] })) };
+}
+
+// ─────────────────────────────────────────────
+// Ask the database (0223) — founder and admin ONLY
+//
+// The model writes a SELECT over the cleaned `elaya_read` views. The database enforces what can
+// be read (a role with no rights on any real table, a read-only transaction, a row cap); this
+// gate decides WHO may ask. Every query is logged with who ran it and why.
+// ─────────────────────────────────────────────
+
+const mayQueryDatabase = (principal: StaffPrincipal) => principal.role === 'founder' || principal.role === 'admin';
+
+export async function describeDatabaseFor(principal: StaffPrincipal) {
+  if (!mayQueryDatabase(principal)) return { denied: true as const };
+  const views = await getElayaCatalog();
+  return views ? { views } : { unavailable: true as const };
+}
+
+export async function queryDatabaseFor(principal: StaffPrincipal, sql: string, purpose: string | null, channel: ElayaChannel, maxRows?: number) {
+  if (!mayQueryDatabase(principal)) return { denied: true as const };
+  const result = await runElayaQuery(sql, maxRows);
+  await logElayaQuery({ userId: principal.userId, channel, purpose, sql, result });
+  return result;
+}
+
+// ─────────────────────────────────────────────
+// The live pulse — founder and admin only (it is company-wide: every domain, every queendom)
+// ─────────────────────────────────────────────
+
+export async function getLivePulseFor(principal: StaffPrincipal) {
+  if (!mayQueryDatabase(principal)) return { denied: true as const };
+  return { pulse: await getLivePulse() };
+}
+
+// ─────────────────────────────────────────────
+// Member 360 — EVERYTHING Serene holds on one member, live, in one call (2026-09-19)
+//
+// The founder's ask: "when I ask about a client she should load all the data around the client,
+// the latest, and then answer any twisted question from it". Before this the model picked one or
+// two of five member tools from the wording of the question and answered from part of the
+// picture. This composes the reads that already exist (no new business logic): the dossier, the
+// latest chat, the money, and a few live rows from the cleaned views. Same queendom gate as every
+// member read. The result is fitted under the tool result cap by trimming the long lists, never
+// by dropping a section; the detailed tools remain for depth (older chat, topic search, full facts).
+// ─────────────────────────────────────────────
+
+const M360_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const M360_BUDGET_CHARS = 22_000; // get_member_360 carries maxResultChars 24,000; leave room for the note
+
+export type Member360 =
+  | { found: false; reason: 'not_found' }
+  | { found: false; reason: 'several'; candidates: { member_id: string; name: string; tier: string | null; status: string | null }[] }
+  | { found: true; data: Record<string, unknown>; trimmed: string[] };
+
+export async function getMember360For(principal: StaffPrincipal, ref: string): Promise<Member360> {
+  let memberId: string | null = null;
+  if (M360_UUID_RE.test(ref.trim())) memberId = ref.trim();
+  else {
+    const hits = await findMembersFor(principal, ref);
+    if (hits.length === 0) return { found: false, reason: 'not_found' };
+    if (hits.length > 1) return { found: false, reason: 'several', candidates: hits.map((c) => ({ member_id: c.id, name: c.full_name, tier: c.tier, status: c.membership_status })) };
+    memberId = hits[0].id;
+  }
+
+  // The profile read carries the queendom gate: null = no such member, or not theirs to see.
+  const profile = await getMemberProfileFor(principal, memberId);
+  if (!profile) return { found: false, reason: 'not_found' };
+
+  const [chat, money, extras] = await Promise.all([
+    getMemberMessagesFor(principal, memberId),
+    getMemberFinanceFor(principal, memberId).catch(() => null),
+    // memberId is a validated uuid (or came from our own members table): never model text.
+    runElayaQuery(
+      `select
+         (select coalesce(jsonb_agg(j), '[]'::jsonb) from (select v.name as vendor, vj.title, vj.category, vj.city, vj.started_at, vj.outcome, vj.amount_inr
+            from vendor_jobs vj join vendors v using (vendor_id) where vj.member_id = '${memberId}' order by vj.started_at desc nulls last limit 6) j) as vendor_jobs,
+         (select count(*) from vendor_jobs where member_id = '${memberId}') as vendor_jobs_total,
+         (select coalesce(jsonb_agg(t), '[]'::jsonb) from (select ticket_no, title, status, priority, category, resolve_due_at, created_at
+            from sia_tickets where member_id = '${memberId}' and closed_at is null order by created_at desc limit 6) t) as sia_tickets_open,
+         (select coalesce(jsonb_agg(x), '[]'::jsonb) from (select kind, summary, tone, last_message_at from ticket_suggestions
+            where member_id = '${memberId}' and status = 'open' order by last_message_at desc limit 4) x) as ticket_suggestions_open,
+         (select coalesce(jsonb_agg(d), '[]'::jsonb) from (select deal_type, deal_category, deal_duration, deal_amount, won_at from deals
+            where member_id = '${memberId}' and not archived order by won_at desc limit 4) d) as deals`,
+      1,
+    ),
+  ]);
+
+  // The live state of the conversation, from the same messages the model is shown.
+  const msgs = chat?.messages ?? [];
+  const real = msgs.filter((x) => !x.deleted && x.type !== 'system' && x.type !== 'reaction');
+  const lastMember = [...real].reverse().find((x) => x.from === 'member' || x.from === 'other');
+  const lastStaff = [...real].reverse().find((x) => x.from === 'staff');
+  const last = real[real.length - 1];
+  // "Ok" / "Noted" / "Thanks" closes a chat, it does not wait on us (intake's own rule, R-01).
+  const lastIsAck = Boolean(last && isOnlyAcknowledgement([last.text ?? '']));
+  const waitingOnUs = Boolean(last && last.from !== 'staff' && !lastIsAck && lastMember && (!lastStaff || lastStaff.at < lastMember.at));
+  const x = extras.ok ? (extras.rows[0] ?? {}) : {};
+
+  const data: Record<string, unknown> = {
+    as_of: new Date().toISOString(),
+    member: profile.member,
+    team: profile.team,
+    health: profile.health,
+    conversation_now: {
+      group: chat?.group_subject ?? null,
+      last_member_message_at: lastMember?.at ?? null,
+      last_staff_message_at: lastStaff?.at ?? null,
+      last_word_is: last ? (last.from === 'staff' ? 'ours' : "the member's side") : null,
+      waiting_on_us: waitingOnUs,
+    },
+    recent_messages: msgs.slice(-25).map((m) => ({ at: m.at, from: m.from, name: m.name, text: clip(m.text, 220), type: m.type === 'text' ? undefined : m.type })),
+    older_messages_available: chat?.has_more ?? false,
+    freshdesk_requests: profile.requests,
+    sia_tickets_open: x.sia_tickets_open ?? [],
+    ticket_suggestions_open: x.ticket_suggestions_open ?? [],
+    coming_up: profile.coming_up,
+    facts: profile.facts,
+    facts_shown: profile.facts_shown,
+    facts_total: profile.facts_total,
+    people: profile.people,
+    relations: profile.relations,
+    timeline: profile.timeline,
+    observations: profile.observations,
+    vendor_jobs: { total: Number(x.vendor_jobs_total ?? 0), latest: x.vendor_jobs ?? [] },
+    deals: x.deals ?? [],
+    money: !money ? null : 'denied' in money ? 'not visible to your role'
+      : 'totals' in money ? { linked: true, currency: 'INR', totals: money.totals, unpaid_invoices: (money.unpaid_invoices ?? []).slice(0, 6), latest_payments: (money.latest_payments ?? []).slice(0, 4), fetched_at: money.fetched_at }
+      : money,
+  };
+
+  // Fit under the cap by shortening the long lists, newest and most confident kept. Never a section dropped.
+  const trimmed: string[] = [];
+  const size = () => JSON.stringify(data).length;
+  const cut = (key: string, to: number, fromEnd = false) => {
+    const v = data[key];
+    if (Array.isArray(v) && v.length > to) { data[key] = fromEnd ? v.slice(-to) : v.slice(0, to); if (!trimmed.includes(key)) trimmed.push(key); }
+  };
+  const cutFacts = (perFacet: number) => {
+    const f = data.facts as Record<string, unknown[]>;
+    for (const k of Object.keys(f)) if (f[k].length > perFacet) { f[k] = f[k].slice(0, perFacet); if (!trimmed.includes('facts')) trimmed.push('facts'); }
+  };
+  const steps: (() => void)[] = [
+    () => cutFacts(6), () => cut('timeline', 8), () => cut('relations', 8), () => cut('recent_messages', 18, true),
+    () => cutFacts(4), () => cut('observations', 4), () => cut('people', 10), () => cut('recent_messages', 12, true),
+    () => cut('timeline', 5), () => cutFacts(3), () => cut('relations', 4), () => cut('coming_up', 5), () => cut('recent_messages', 8, true),
+    () => { const r = data.freshdesk_requests as { open: unknown[]; recent: unknown[] }; r.open = r.open.slice(0, 5); r.recent = r.recent.slice(0, 3); trimmed.push('freshdesk_requests'); },
+    () => cutFacts(2),
+  ];
+  for (const step of steps) { if (size() <= M360_BUDGET_CHARS) break; step(); }
+  return { found: true, data, trimmed };
+}
+
+// ─────────────────────────────────────────────
+// Three areas Elaya could not read before 2026-09-19: the lead WhatsApp line, subscriptions,
+// the live activity feed. Each mirrors the page's own access rule, in code.
+// ─────────────────────────────────────────────
+
+const LEAD_CHAT_TEXT_CAP = 300;
+
+/** The official WhatsApp thread with a LEAD (not a member group). Gate = canAccessLead, the leads rule. */
+export async function getLeadWhatsAppChatFor(principal: StaffPrincipal, leadRef: string, limit = 40) {
+  const lead = await getLeadByRefForElaya(leadRef);
+  if (!lead || !canAccessLead(principal, lead)) return { ok: false as const, reason: 'not_found' as const };
+  const thread = await getLeadWhatsAppThreadForElaya(lead.id, limit);
+  const name = [lead.first_name, lead.last_name].filter(Boolean).join(' ') || 'this lead';
+  if (!thread) return { ok: true as const, lead: { id: lead.id, name, slug: lead.slug, status: lead.status, domain: lead.domain }, conversation: null, messages: [], total: 0 };
+  const c = thread.conversation;
+  return {
+    ok: true as const,
+    lead: { id: lead.id, name, slug: lead.slug, status: lead.status, domain: lead.domain },
+    conversation: { status: c.status, bot_active: c.bot_active, last_message_at: c.last_message_at },
+    total: thread.total,
+    messages: thread.messages.map((m) => ({
+      at: m.created_at,
+      from: m.direction === 'inbound' ? 'lead' : m.is_bot ? 'elaya' : 'staff',
+      name: m.direction === 'inbound' ? name : m.is_bot ? 'Elaya' : (m.sender_name ?? 'staff'),
+      type: m.message_type === 'text' ? undefined : m.message_type,
+      text: clip(m.content, LEAD_CHAT_TEXT_CAP),
+      status: m.status,
+    })),
+  };
+}
+
+const SUBSCRIPTION_DOMAINS: readonly AppDomain[] = ['finance', 'tech'];
+const maySeeSubscriptions = (p: StaffPrincipal) => p.role === 'admin' || p.role === 'founder' || SUBSCRIPTION_DOMAINS.includes(p.domain);
+
+/** The Subscriptions & Bills tracker, the RLS rule in code: admin/founder, or the finance/tech domains. Never a login or password. */
+export async function getSubscriptionsFor(principal: StaffPrincipal, opts: { search?: string | null; include_archived?: boolean }) {
+  if (!maySeeSubscriptions(principal)) return { denied: true as const };
+  const rows = await getSubscriptionsForElaya({ search: opts.search ?? undefined, archived: opts.include_archived ? true : false });
+  return {
+    count: rows.length,
+    subscriptions: rows.map((r) => ({
+      id: r.id, name: r.name, tool: r.toolName, type: r.type, departments: r.departments, currency: r.currency, amount: r.amount,
+      status: r.status, days_overdue: r.daysOverdue, current_due_date: r.currentDueDate, due_day: r.due_day,
+      latest_paid_inr: r.latestPaidInr, latest_paid_at: r.latestPaidAt, archived: r.is_archived, notes: clip(r.notes, 200),
+    })),
+  };
+}
+
+const FEED_SHOWN = 40;
+
+/** The live activity feed. admin/founder: any or every Gia domain; manager: pinned to their own; agents: nothing. */
+export async function getActivityFeedFor(principal: StaffPrincipal, opts: { domain?: string | null; hours?: number | null }) {
+  const privileged = principal.role === 'admin' || principal.role === 'founder';
+  if (!privileged && principal.role !== 'manager') return { denied: true as const };
+  const asked = (opts.domain ?? '').toLowerCase();
+  const domains: GiaDomain[] = privileged
+    ? (GIA_DOMAINS as readonly string[]).includes(asked) ? [asked as GiaDomain] : [...GIA_DOMAINS]
+    : (GIA_DOMAINS as readonly string[]).includes(principal.domain) ? [principal.domain as GiaDomain] : [];
+  if (domains.length === 0) return { domains: [], events: [] };
+  const pages: ActivityFeedResult[] = await Promise.all(domains.map((d) => getActivityFeed(d)));
+  const since = opts.hours ? Date.now() - opts.hours * 3_600_000 : null;
+  const events = pages.flatMap((p) => p.items)
+    .filter((e) => !since || new Date(e.created_at).getTime() >= since)
+    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+    .slice(0, FEED_SHOWN);
+  const actorIds = [...new Set(events.map((e) => e.actor_id).filter((x): x is string => Boolean(x)))];
+  const names = new Map<string, string>();
+  if (actorIds.length) {
+    const { data } = await createAdminClient().from('profiles').select('id, full_name').in('id', actorIds);
+    mapRows<{ id: string; full_name: string }, void>(data, (r) => { names.set(r.id, r.full_name); });
+  }
+  return {
+    domains,
+    events: events.map((e) => ({ at: e.created_at, domain: e.domain, who: e.actor_id ? (names.get(e.actor_id) ?? null) : null, event: e.event_type, about: e.subject_type, title: e.title })),
+  };
 }

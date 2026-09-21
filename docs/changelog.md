@@ -12,6 +12,41 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-19 -- Complaints and praise from the chat move the member's health score
+
+**Why.** The ticket intake already reads each burst of member messages and labels it: a request,
+an update, a question, feedback, or chatter, with the member's tone. Until now the tone was only
+recorded. The founder asked for it to reach the health score.
+
+**What it does.** When the reader is at least 75% sure:
+
+- feedback with a frustrated or angry tone is a **Complaint** (the policy's -12, fading over 60 days),
+- feedback with a happy tone is **Praise** (+5 over 90 days),
+- a frustrated or angry tone on any other kind of message is **Frustrated tone** (-4 over 30 days),
+- thanks, greetings and a neutral tone move nothing.
+
+The same signal is written at most once per member per day: an upset member sends five messages,
+not five complaints. The Health card shows the member's own words as the reason ("Complaint on
+WhatsApp: …"), and the event points at the exact messages. The deltas come from the health policy
+rows at write time, so a policy change never rewrites history.
+
+**What changed.**
+
+- `src/lib/services/member-health.ts` (new): `addHealthSignalCore`, THE way a reader moves a
+  member's health. Free of `server-only` on purpose: it runs from Trigger.dev. The by-hand
+  adjustment stays in `member-mutations.ts`, which reaches server-only code.
+- `src/lib/services/ticket-intake.ts`: `healthSignalFor(verdict)`, the pure kind-and-tone
+  mapping (tested on nine cases), and the write right after the verdict, whatever the burst
+  turns out to be. `INTAKE_HEALTH_MIN_CONFIDENCE` and `INTAKE_HEALTH_SAME_SIGNAL_HOURS` in
+  `constants/ticket-intake.ts`.
+- The training numbers on the Tickets page now count the health signals written, by signal.
+
+**Held back on purpose.** The profiler also reads a tone per conversation, over the whole
+history. It does not write health: a complaint from March would be near zero today anyway, and
+the score should move on what happens now, which intake sees within a minute.
+
+---
+
 ## 2026-09-19 -- Fix: nobody could change a task's status or delete a task
 
 **Why.** An agent reported that a task could not be marked complete. Every status change and
@@ -84,6 +119,117 @@ rule, the dialog and the review are checked by typecheck, lint and reading; the 
 is their first real run.
 
 ---
+
+## 2026-09-19 — The Elaya card knows who is looking: better questions, an honest reach list
+
+Why: the /elaya identity card showed the same four sales questions and "Your leads, Your tasks,
+Deals, Performance, Case library" to everyone, a founder and a genie alike, and none of it
+mentioned what she can now do (members, groups, Freshdesk, vendors, the books, working things out).
+
+What changed: the chat seed (`resolveElayaChatSeed`) now carries the viewer's role and domain;
+the card asks `getElayaStarters(viewer)` and `getElayaCapabilities(viewer)`
+(`src/lib/constants/elaya.ts`) for six questions and a reach list that fit the person. A founder
+sees "What's happening right now?", "Which members are waiting on a reply?", "Brief me on [member
+name] before I call them", the Freshdesk state, the books, and an analyst question; a concierge
+teammate sees member, Freshdesk and vendor questions for their queendom; a sales agent keeps the
+lead questions plus the lead's WhatsApp chat; finance and tech see the bills. A [bracket] is a
+blank the person fills in. Labels: "Ask her" and "She can read". The generic
+`ELAYA_STARTER_PROMPTS` list stays for the mobile screen, which does not know the viewer.
+Not browser-checked (the page needs a login); typecheck and lint clean.
+
+## 2026-09-19 — Elaya says why she cannot answer; she reads lead chats, subscriptions and the activity feed
+
+Why: on 2026-09-18 the model account hit its spend limit and for twelve hours every reply was
+"Something went wrong on my side", never saved, so the transcript looked like silence and nobody
+learned the cause. Separately, three areas had no tool at all: the WhatsApp line with leads (the
+/whatsapp page), the Subscriptions tracker, and the live activity feed.
+
+What changed:
+
+- **A failure inside the brain now answers with the reason** (`backend/app/api/chat.py`,
+  `classify_turn_failure`): the account's usage limit ("my AI account has reached its usage limit,
+  please tell the tech team"), an overloaded provider, a timeout, or a plain failure. The line is
+  saved as her reply and delivered like a normal one on both channels. Node's own line
+  (`REPLY_UNAVAILABLE` in `elaya-whatsapp.ts`) now says the brain could not be reached and that the
+  message is saved.
+- **`get_lead_whatsapp_chat`**: the official WhatsApp thread with a LEAD, gated by `canAccessLead`,
+  read on the admin client with the page's own mappers (`getLeadWhatsAppThreadForElaya`).
+- **`get_subscriptions`**: the tracker for admin, founder and the finance and tech domains (the
+  RLS rule in code). The list mapper now takes the client (`getSubscriptionsWith`), so the page and
+  Elaya share one mapper. Never a login or password.
+- **`get_activity_feed`**: what the team did, newest first, for managers and above; a manager is
+  pinned to their own domain, admin and founder may ask for one domain or all four merged.
+- **Fix found on the way:** the `/whatsapp` page's message read asked the gia `profiles` view for
+  `avatar_url`, a column the view does not carry since migration 0213, so PostgREST refused the
+  read and the page showed no messages since 2026-09-17. Both reads now ask for `full_name` only.
+
+Tested through the real tools with masking as founder, an onboarding agent (refused another
+agent's lead), a genie (refused subscriptions and the feed) and a manager (pinned to onboarding
+when asking for house).
+
+## 2026-09-19 — One call loads everything on a member: `get_member_360`
+
+Why: the founder's main concern. "When I ask Elaya about a client she should load all the data
+around the client, the latest, and then handle any twisted question or analysis from it." Before
+this she picked one or two of five member tools from the wording ("from his chats" gave chats
+only) and answered from part of the picture.
+
+What changed: `get_member_360` (`src/lib/elaya/elaya-data.ts` `getMember360For`) composes the
+member reads that already exist into ONE live picture: identity and team, health, the state of
+the WhatsApp conversation right now (who spoke last, waiting on us or not, "Ok" and "Noted" not
+counted as waiting), the latest 25 messages, open and recent Freshdesk requests, open Sia
+tickets and suggestions, what is coming up, every current fact by facet, people, relations,
+timeline, observations, vendor jobs, deals, money. It takes the member's name straight from the
+user, so nothing is asked back unless several members match. The result carries a larger
+allowance (24,000 chars, `maxResultChars` on the tool, mirrored in the Python loop) and fits
+itself by shortening lists, never dropping a section. The `members` specialist calls it first
+for any member question; founders and admins also carry `query_database` there for the analysis.
+
+Tested through the real brain locally: "tell me about Aakash Oza" gave one complete picture
+leading with the live thread (a DJ booking to close today); "how many requests did he raise
+each month since he joined, and how fast do we reply to him" made her write three queries
+(peak 70 in March, median reply 1.1 minutes) and flag that his requests fell to 17 and 8 in
+August and September. A genie asking about another queendom's member is refused.
+
+## 2026-09-19 — Elaya works answers out: ask the database, the live pulse, the daily briefing
+
+Why: the founder wants an Elaya that does not depend on a ready tool for every question, and
+that tells him what is happening without being asked. Founders only for now: an agent must
+never be able to pull every answer.
+
+**Ask the database (migration 0223).** Two tools, `describe_database` and `query_database`. The
+model reads a catalog, then writes its own read-only SQL, in several small steps when the
+question is hard, and says in one line how it worked the answer out. Safety does not depend on
+the prompt. The query runs as a separate database role, `elaya_reader`, that can see only the
+40 cleaned views of schema `elaya_read` (no phone, email, password, login, raw payload or
+WhatsApp id; long text cut short), in a read-only transaction, as one wrapped SELECT, with a row
+cap and the 8 second timeout. Every query is kept in `public.elaya_query_log`. Before applying
+it, the whole migration was rehearsed on production inside a transaction that rolls back: 6 real
+questions ran, 14 attacks were refused (raw tables, phones, passwords, delete, update, sleep, a
+second statement, escaping the role), and the role could not read a single real table.
+Code: `src/lib/services/elaya-query-service.ts`, the gate in `src/lib/elaya/elaya-data.ts`, the
+tools in `src/lib/elaya/tools/registry.ts`. Decision Log row 2026-09-19 in `docs/rules/The_Rules.md`.
+
+**The analyst (Python brain).** New `analyst` specialist on the deepest model tier, offered by
+the router to admin and founder only (`Specialist.roles`; the router now takes the user's role,
+`backend/app/brain/router.py`). Tested locally through the real brain: "which genie handled the
+most Freshdesk tickets in August and how long did they take" → she read the catalog, ran three
+queries, noticed only one Freshdesk agent is tagged as a genie, gave both readings and her
+working. A manager asking for the same got no such tool.
+
+**Live pulse (migration 0224).** `get_live_pulse` → `src/lib/services/pulse-service.ts`: sales
+today, work, members WAITING for a reply in their group (`sia.groups_waiting_for_reply()`, minus
+a last word that is only "ok" or "noted", intake's own rule), and Freshdesk with the page's own
+numbers. About 1.6 seconds. Founder and admin.
+
+**Daily briefing (migration 0225).** `src/lib/services/elaya-briefing.ts` +
+`src/trigger/elaya-briefing.ts`: 09:00 and 19:00 India time, the pulse in a few calm lines, to
+every active founder. The words come from the small model and fall back to a plain, numbers-only
+text if the model is down. WhatsApp only when the founder messaged Elaya in the last 24 hours
+(WhatsApp's own rule; a Meta template is needed outside that window and does not exist yet), and
+always an in-app notification. Ships OFF:
+`UPDATE elaya_settings SET value = 'true' WHERE key = 'daily_briefing_enabled';`
+Needs `pnpm trigger:deploy` for the schedule to exist.
 
 ## 2026-09-19 — Fix: Elaya could find a group but not read it, and asked too much
 
@@ -175,7 +321,7 @@ items all check for a duplicate before they write. Intake was switched back on. 
 history read was left OFF for the founder to restart: it is the one big spender, and running the
 account into its limit again would silence Elaya for everyone.
 
-## 2026-09-19 — A power bank request was answered with airlines (migration 0224)
+## 2026-09-19 — A power bank request was answered with airlines (migration 0228)
 
 Find a vendor, on ticket 55146, "Power bank sourcing request NB 10000": Air India, BigTree, IndiGo,
 Roldrive. Nitecore, which is in the table and did that exact job, was nowhere.
@@ -218,10 +364,10 @@ that finds nothing were the same thing to every caller of `callAdminRpc`. There 
 there is still one mechanism. `findVendorsByHistory` reports whether the search ran, and when it did
 not, the ranker still falls back — a list ranked by usage beats a blank page — but every row now
 carries the line "Could not search past jobs for these words — ranked by how often each is used". The
-reader can see which question was answered. 0224 makes that timeout rare; this is what keeps the next
+reader can see which question was answered. 0228 makes that timeout rare; this is what keeps the next
 one honest.
 
-**The half that was actually on screen (migration 0225).** The timeout explains how the page reached
+**The half that was actually on screen (migration 0229).** The timeout explains how the page reached
 the usage fallback, but not all of it. The request arrived with the chip `special-request`, guessed
 from the words by the page itself. Nitecore's job for that ticket is filed under `retail` — not a
 mistake, that is what the Freshdesk ticket's own category field says — and the history search
@@ -250,7 +396,27 @@ empty it. The city is untouched, because a place name is a fact in the sentence 
 interpretation. The category filter stays in `get_vendor_candidates`, the fallback used when no title
 matched at all, where it is the only thing there is to go on.
 
-## 2026-09-19 — Finding a vendor by the person, and putting two rows back together (migration 0223)
+**Review before merge (2026-09-21).** Two changes on top of the PR, both proven on a local database
+rebuilt from scratch.
+
+1. **The four migrations are 0227 to 0230, not 0223 to 0226.** Main had already used 0223, 0224 and
+   0225 (ask the database, the live pulse, the daily briefing) and applied them on 2026-09-19, and
+   0226 is the MCP call ledger. The Supabase CLI keys a migration on its version string, so with the
+   old numbers it would have read the vendor files as already applied and skipped them without a
+   word. Files renamed to `20260921000227` to `20260921000230`; the SQL is unchanged apart from item 2.
+2. **A hidden vendor could still be suggested by Find a vendor.** `search_vendors` and
+   `get_vendor_candidates` excluded a removed vendor, but `find_vendors_by_history` did not, and that
+   is the path Find a vendor, the ticket picker's suggestions and Elaya's `find_vendors` take
+   whenever an old ticket title matches the words. In the test, a hidden "Air India" still came back
+   for "flight request mumbai delhi". One line in 0229: `AND v.deleted_at IS NULL` on the vendor join.
+
+Checked locally: merge folds the shared job and keeps the 7,107.09 on it, the loser's name becomes an
+alias, the review follows the surviving job, a `declines` on either side wins; Remove deletes a
+zero-history row and hides one with a job, the money stays; the hidden row leaves search, the
+candidate set and (after item 2) the history search; a wrong category chip no longer empties the
+search and the right one scores exactly 40% higher; `authenticated` cannot execute either function.
+
+## 2026-09-19 — Finding a vendor by the person, and putting two rows back together (migration 0227)
 
 Three things the vendor module needed once the extractor started writing to it by itself.
 
@@ -298,7 +464,7 @@ search and the ranker, everything it knows stays exactly where it is, and Restor
 Deliberately not a status — `paused` and `blacklisted` answer "how do we treat this supplier",
 `deleted_at` answers "is it a supplier at all", and folding the two would lose one of the answers.
 
-**And Remove decides which of the two you get (migration 0226).** Hiding everything forever was heavy handed for what
+**And Remove decides which of the two you get (migration 0230).** Hiding everything forever was heavy handed for what
 the extractor mostly gets wrong: a row called "Client name- AKSHAT SHAH" with nothing attached at all,
 which leaves a permanent shadow of something that was never a supplier. So a vendor with no jobs, no
 ratings and no notes is genuinely deleted, because there is nothing to lose and `vendor_removals`
