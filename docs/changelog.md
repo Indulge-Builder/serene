@@ -79,8 +79,8 @@ sets that make the difference.
 
 **Verified.** A structural smoke run built the server for a fake founder without a database:
 38 tools (35 registry reads + the 3 new), 3 resources + 2 templates, 5 prompts, the vocabulary
-reads, a prompt renders, `fetch` refuses an unknown id. Typecheck and lint clean. **Migration
-0231 is written, not applied**: until it runs, `export_rows` silently tops out at 500 rows.
+reads, a prompt renders, `fetch` refuses an unknown id. Typecheck and lint clean. Migration 0231 applied to production later the same day; the push
+also carried the pending 0227–0230 (vendors) and 0232 (task nudges).
 
 ## 2026-09-19 -- MCP connector, Phase 1: Claude, ChatGPT and other AI apps can read Serene as you
 

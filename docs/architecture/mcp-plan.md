@@ -1,6 +1,6 @@
 # MCP plan: Serene as a connector for Claude, ChatGPT and every other AI tool
 
-Written 2026-09-19. Status: **Phase 1 LIVE 2026-09-21. Phase 2 BUILT 2026-09-21 (resources, prompts, export_rows, search/fetch, 60k result cap); migration 0231 pending on production. Next: use it, then Phase 3 (the team).** Decisions the founder must make are
+Written 2026-09-19. Status: **Phase 1 LIVE 2026-09-21. Phase 2 BUILT 2026-09-21 (resources, prompts, export_rows, search/fetch, 60k result cap); 0231 applied. Next: use it, then Phase 3 (the team).** Decisions the founder must make are
 marked **Decide**. The rest is my recommendation and I will build it exactly as written unless
 told otherwise.
 
