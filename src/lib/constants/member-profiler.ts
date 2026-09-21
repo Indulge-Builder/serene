@@ -63,6 +63,17 @@ export const PROFILER_MAX_ATTEMPTS = 3;
 /** Provider-side failures in a row, within one run, that mean "the provider is down": stop. */
 export const PROFILER_OUTAGE_STOP = 3;
 
+/**
+ * The flush on a ticket (2026-09-21): when intake files a card, that group's unread chat is
+ * read right away instead of waiting out the quiet gap, so the facts said an hour before the
+ * request are on file for the draft and the ticket's work. It only steps in when the group's
+ * bookmark is within this many hours of the request; a deeper backlog is the sweep's job, so
+ * a flush never pulls a whole history forward and never skips over it either.
+ */
+export const PROFILER_FLUSH_LOOKBACK_HOURS = 6;
+/** Conversations one flush may read; anything past that waits for the sweep. */
+export const PROFILER_FLUSH_MAX_WINDOWS = 3;
+
 export const PROFILER_SETTING_KEY = "member_profiler_enabled";
 export const PROFILER_RUN_KIND = "profiler";
 /** Rough cost per million tokens for the run ledger's estimate (the reasoning tier is Sonnet 5: $2 in, $10 out); not billing. */

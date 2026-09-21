@@ -45,6 +45,7 @@ import {
   PROFILER_BROAD_SENDER_MIN_GROUPS, PROFILER_GROUPS_PER_RUN, PROFILER_WINDOWS_PER_RUN, PROFILER_RUN_KIND,
   PROFILER_COST_PER_MTOK, PROFILER_MAX_OUTPUT_TOKENS, PROFILER_CALL_TIMEOUT_MS,
   PROFILER_MEMBER_STATUSES, PROFILER_MAX_ATTEMPTS, PROFILER_OUTAGE_STOP, PROFILER_PARALLEL_GROUPS,
+  PROFILER_FLUSH_LOOKBACK_HOURS, PROFILER_FLUSH_MAX_WINDOWS,
 } from "@/lib/constants/member-profiler";
 
 const LOG = "[member-profiler]";
@@ -510,6 +511,15 @@ export type SweepOptions = {
   onWindow?: (o: WindowOutcome) => void;
 };
 
+const state = (groupJid: string, patch: Record<string, unknown>) =>
+  sia().from("profiler_group_state").upsert({ group_jid: groupJid, ...patch }, { onConflict: "group_jid" });
+
+/** A conversation was read and written: the group's bookmark moves past it. The sweep and the flush share this. */
+async function advanceBookmark(groupJid: string, w: ProfilerWindow, o: WindowOutcome): Promise<void> {
+  const { data: st } = await sia().from("profiler_group_state").select("windows_done").eq("group_jid", groupJid).maybeSingle();
+  await state(groupJid, { last_message_at: w.to_at, windows_done: Number((st as { windows_done: number } | null)?.windows_done ?? 0) + 1, last_run_id: o.run_id, last_error: null, fail_count: 0 });
+}
+
 export async function getBroadSenders(): Promise<Set<string>> {
   const { data, error } = await sia().rpc("profiler_broad_senders", { p_min_groups: PROFILER_BROAD_SENDER_MIN_GROUPS });
   if (error) { console.warn(`${LOG} broad senders failed`, error.message); return new Set(); }
@@ -535,9 +545,6 @@ export async function runProfilerSweep(opts: SweepOptions): Promise<{ groups: nu
   // attempt ONLY if something else was read in the same run: that is the proof the provider
   // was up, so the trouble is this conversation (a timeout it always hits, say).
   const providerFailed: { group_jid: string; fail_count: number; w: ProfilerWindow; o: WindowOutcome }[] = [];
-  const state = (groupJid: string, patch: Record<string, unknown>) =>
-    sia().from("profiler_group_state").upsert({ group_jid: groupJid, ...patch }, { onConflict: "group_jid" });
-
   /** One more failed attempt at this conversation; at the limit, step over it. True = stepped over. */
   const countFailure = async (groupJid: string, failCount: number, w: ProfilerWindow, o: WindowOutcome): Promise<boolean> => {
     const attempts = failCount + 1;
@@ -596,8 +603,7 @@ export async function runProfilerSweep(opts: SweepOptions): Promise<{ groups: nu
         break;
       }
       failCount = 0;
-      const { data: st } = await sia().from("profiler_group_state").select("windows_done").eq("group_jid", g.group_jid).maybeSingle();
-      await state(g.group_jid, { last_message_at: w.to_at, windows_done: Number((st as { windows_done: number } | null)?.windows_done ?? 0) + 1, last_run_id: o.run_id, last_error: null, fail_count: 0 });
+      await advanceBookmark(g.group_jid, w, o);
     }
   };
   await mapWithConcurrency(runnable, opts.apply ? PROFILER_PARALLEL_GROUPS : 1, readGroup);
@@ -607,4 +613,62 @@ export async function runProfilerSweep(opts: SweepOptions): Promise<{ groups: nu
   }
 
   return { groups: groups.length, windows: sent, outcomes };
+}
+
+// ─── The flush on a ticket ───────────────────────────────────────────────────
+
+export type FlushOutcome = {
+  /** read = at least one conversation filed; skipped = nothing to do or not this job's turn; failed = the reading failed, the sweep retries. */
+  status: "read" | "skipped" | "failed";
+  why: string | null;
+  windows: number;
+  outcomes: WindowOutcome[];
+};
+
+/**
+ * Read ONE group's unread chat now, up to `untilAt` (the request's last message), without
+ * waiting for the quiet gap: intake calls this the moment a burst is worth a ticket card, so
+ * what the member said earlier that afternoon ("I like window seats") is on file before the
+ * draft is written and before a genie starts the work.
+ *
+ * It reads the same messages the sweep would have read later, moves the same bookmark, and
+ * writes nothing twice; the only extra cost is that a conversation still in progress is cut at
+ * the request. It steps aside when the backlog is deeper than PROFILER_FLUSH_LOOKBACK_HOURS or
+ * a page could not hold it (the catch-up phase): the sweep reads that in order. A failed
+ * reading is left for the sweep as well; it never counts here. Never throws.
+ */
+export async function profileGroupNow(groupJid: string, memberId: string, opts: { untilAt: string; apply: boolean; broad?: Set<string> }): Promise<FlushOutcome> {
+  const done = (status: FlushOutcome["status"], why: string | null, outcomes: WindowOutcome[] = []): FlushOutcome =>
+    ({ status, why, windows: outcomes.filter((o) => o.status === "read").length, outcomes });
+  if (!opts.apply) return done("skipped", "dry run");
+  try {
+    const { data: st } = await sia().from("profiler_group_state").select("last_message_at").eq("group_jid", groupJid).maybeSingle();
+    const cursor = (st as { last_message_at: string | null } | null)?.last_message_at ?? null;
+    const lookbackFloor = new Date(new Date(opts.untilAt).getTime() - PROFILER_FLUSH_LOOKBACK_HOURS * 3600_000).toISOString();
+    if (!cursor || cursor < lookbackFloor) return done("skipped", "backlog deeper than the flush window; the sweep reads it in order");
+    if (cursor >= opts.untilAt) return done("skipped", "already read");
+
+    const { data: rows, error } = await sia().from("wag_messages").select("id, sender_jid, text, type, wa_timestamp").eq("chat_jid", groupJid).eq("is_revoked", false).not("text", "is", null)
+      .gt("wa_timestamp", cursor).lte("wa_timestamp", opts.untilAt).order("wa_timestamp", { ascending: true }).limit(PROFILER_FETCH_LIMIT);
+    if (error) return done("failed", `messages read failed: ${error.message}`);
+    if ((rows ?? []).length >= PROFILER_FETCH_LIMIT) return done("skipped", "more than one page unread; the sweep reads it in order");
+    const msgs = ((rows ?? []) as Msg[]).filter((m) => m.text.trim().length > 0);
+    if (msgs.length === 0) return done("skipped", "nothing unread");
+
+    // `now` = forever ahead: the tail is the conversation the request ended, so it is finished.
+    const windows = buildWindows(groupJid, memberId, msgs, Number.POSITIVE_INFINITY).slice(0, PROFILER_FLUSH_MAX_WINDOWS);
+    const broad = opts.broad ?? (await getBroadSenders());
+    const outcomes: WindowOutcome[] = [];
+    for (const w of windows) {
+      const o = await profileWindow(w, { broad, apply: true });
+      outcomes.push(o);
+      if (o.status === "failed") { console.warn(`${LOG} flush reading failed; left for the sweep`, groupJid, o.error); return done("failed", o.error, outcomes); }
+      await advanceBookmark(groupJid, w, o);
+    }
+    return done("read", null, outcomes);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.warn(`${LOG} flush failed`, groupJid, msg);
+    return done("failed", msg);
+  }
 }

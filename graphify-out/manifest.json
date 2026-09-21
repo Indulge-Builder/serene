@@ -3085,8 +3085,8 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1789997406.0256028,
-    "ast_hash": "a6e3d9ab0ca7defcc9165f78c583fcc7",
+    "mtime": 1789999549.0951657,
+    "ast_hash": "8a750013e0b107684d1995dfe85410f6",
     "semantic_hash": ""
   },
   "README.md": {
@@ -3170,8 +3170,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1789999265.5669956,
-    "ast_hash": "e98eaadb3e2a4ebc0f96ea0009c7508b",
+    "mtime": 1789999571.114276,
+    "ast_hash": "be11d82758e96c05d52bd1cef4292c19",
     "semantic_hash": ""
   },
   "docs/claude-project/1-product-and-status.md": {
@@ -8065,8 +8065,8 @@
     "semantic_hash": ""
   },
   "src/lib/constants/member-profiler.ts": {
-    "mtime": 1789741705.3435454,
-    "ast_hash": "451f290748afbbf296cffab18fd4f924",
+    "mtime": 1789999383.4962144,
+    "ast_hash": "d63e5cdb70e0b3016c490f0793410fb7",
     "semantic_hash": ""
   },
   "src/lib/services/gia-task-links.ts": {
@@ -8075,8 +8075,8 @@
     "semantic_hash": ""
   },
   "src/lib/services/member-profiler.ts": {
-    "mtime": 1789810514.6585157,
-    "ast_hash": "ab277feae176d064dff161d8a24083d7",
+    "mtime": 1789999418.74098,
+    "ast_hash": "cc865fc5189ecdbe0247a8d7fa9be63b",
     "semantic_hash": ""
   },
   "src/lib/services/member-relations.ts": {
@@ -8165,8 +8165,8 @@
     "semantic_hash": ""
   },
   "src/lib/services/ticket-intake.ts": {
-    "mtime": 1789821118.0819862,
-    "ast_hash": "43261deea91f78171d8cc481b28f215e",
+    "mtime": 1789999437.132359,
+    "ast_hash": "de37d19effd1ceff6073c2a16e1ac649",
     "semantic_hash": ""
   },
   "src/lib/types/intake.ts": {

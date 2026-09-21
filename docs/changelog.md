@@ -12,6 +12,39 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-21 -- The profiler reads a group the moment intake files a ticket card
+
+**Why.** The profiler waits for six quiet hours before it reads a conversation, so a member
+who said "I like window seats" while planning, then raised the request two hours later, had
+that preference in the chat but not yet in the profile. The ticket draft and the genie working
+the ticket did not see it. The founder asked for this closed.
+
+**What changed.**
+
+- `services/member-profiler.ts`: `profileGroupNow(groupJid, memberId, { untilAt })` reads one
+  group's unread chat up to the request right away, treating the tail as finished. Same
+  messages, same bookmark, same writes as the sweep, so nothing is read twice; the only extra
+  cost is a conversation cut at the request. It steps aside when the bookmark is more than
+  `PROFILER_FLUSH_LOOKBACK_HOURS` (6) behind or more than one page is unread, which is the
+  catch-up phase; the sweep reads that in order. A failed reading is left for the sweep and
+  never counts as an attempt. Never throws. The bookmark move after a good reading is now one
+  helper (`advanceBookmark`) the sweep and the flush share.
+- `services/ticket-intake.ts`: once a burst is worth a card and before the draft is written,
+  `readBurst` calls the flush, so the draft's "Preferences" block already holds what was said
+  earlier that day. Best effort: the card is filed whatever the flush returns; the intake run's
+  `output.flush` records what happened.
+- `constants/member-profiler.ts`: `PROFILER_FLUSH_LOOKBACK_HOURS` (6) and
+  `PROFILER_FLUSH_MAX_WINDOWS` (3).
+
+**Cost.** About 0.4 cents extra per ticket card (one more fixed prompt when a conversation is
+split at the request); roughly a dime a day at today's volume.
+
+**Also today.** The member profiler was switched back on at 19:08 IST after the founder raised
+the Anthropic limit (off since the 19th). At restart: 67% of Active-member history read,
+34,538 text messages left, 35.68 dollars spent; the first sweep read 107 conversations cleanly.
+
+---
+
 ## 2026-09-21 -- Paused: the founder WhatsApp ping on every new lead
 
 **Why.** The founder asked for the "new lead" WhatsApp alert that reaches every founder on each

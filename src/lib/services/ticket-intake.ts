@@ -23,7 +23,7 @@ import { resolveLlmForJob } from "@/lib/elaya/registry";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { mapRows } from "@/lib/utils/rows";
 import { mapWithConcurrency } from "@/lib/utils/concurrency";
-import { getBroadSenders, isProviderSide, openVault, type Vault } from "@/lib/services/member-profiler";
+import { getBroadSenders, isProviderSide, openVault, profileGroupNow, type Vault } from "@/lib/services/member-profiler";
 import { draftTicketCore } from "@/lib/services/ticket-draft-core";
 import { addHealthSignalCore } from "@/lib/services/member-health";
 import { TICKET_TERMINAL_STATUSES, TICKETS_PATH } from "@/lib/constants/tickets";
@@ -214,6 +214,13 @@ export async function readBurst(groupJid: string, memberId: string, context: Msg
     const worthACard = (verdict.kind === "request" || (verdict.kind === "update" && verdict.ticket_no)) && verdict.confidence >= INTAKE_MIN_CONFIDENCE;
     if (!worthACard) { await finish(true, { ...usage, output: { verdict, health_signal: healthSignal } as unknown as Json }); return { ...base, status: "read", verdict: shown, health_signal: healthSignal }; }
 
+    // The flush on a ticket (2026-09-21): this group's unread chat is filed into the member's
+    // profile NOW, before the draft reads the profile's preferences, so what was said earlier
+    // today is there for the draft and for the genie's work. Best effort: the card is filed
+    // whatever happens here; a deep backlog or a failed reading is the sweep's to finish.
+    const flush = deps.apply ? await profileGroupNow(groupJid, memberId, { untilAt: base.to_at, apply: true, broad: deps.broad }) : null;
+    if (flush && flush.status !== "skipped") console.log(`${LOG} flush before the card`, groupJid, flush.status, flush.windows, flush.why ?? "");
+
     // The messages the card rests on: the ones the reader named, else every member message.
     const picked = (verdict.request_messages.length ? verdict.request_messages.map((n) => burst[n - 1]) : memberMsgs).filter(Boolean);
     const selection = picked.map((m) => ({ chat_jid: groupJid, wa_message_id: m.wa_message_id, sender_jid: m.sender_jid, sender_name: null, from_member: vault.sideOf(m.sender_jid) === "member", at: m.wa_timestamp, text: m.text.slice(0, 4000) }));
@@ -241,7 +248,7 @@ export async function readBurst(groupJid: string, memberId: string, context: Msg
       // on the bell and the phone, and the link opens the ticket form already filled.
       if (proposalId) await notifyProposal(proposalId, deps.queendomId, vault.ctx.full_name, verdict.kind === "update" ? shown.summary : (draft?.title ?? shown.summary), verdict.kind === "update" ? ticket?.ticket_no ?? null : null);
     }
-    await finish(true, { ...usage, output: { verdict, proposal_id: proposalId, more_requests: verdict.more_requests, health_signal: healthSignal } as unknown as Json });
+    await finish(true, { ...usage, output: { verdict, proposal_id: proposalId, more_requests: verdict.more_requests, health_signal: healthSignal, flush: flush ? { status: flush.status, windows: flush.windows, why: flush.why } : null } as unknown as Json });
     return { ...base, status: "proposed", verdict: shown, proposal_id: proposalId, health_signal: healthSignal };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
