@@ -112,6 +112,9 @@ WhatsApp ingestion path, which is already inside the whatsapp route's `after()` 
 - Always pass `leadId`. The 5th parameter is optional in the signature only as a safety net for
   unknown future call sites — every known call site has a `leadId` available and must pass it.
 - Never gate on `assigned_to`. The founder alert fires even when `assigned_to` is null.
+- The ONE sanctioned global pause is `FOUNDER_LEAD_ALERTS_PAUSED` in `lib/constants/whatsapp.ts`,
+  checked only inside `notifyLeadAssigned` (paused 2026-09-21 at the founder's request). Flip it,
+  never add a second switch or a per-call-site skip.
 - Never add a domain allow-list inside `sendFounderLeadNotification`. Founders receive alerts for
   all domains. The function queries `profiles WHERE role = 'founder'` — no filtering needed.
 - Never call `createAdminClient()` in the action layer for this notification. `whatsapp-api.ts`

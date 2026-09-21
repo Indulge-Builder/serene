@@ -12,6 +12,21 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-21 -- Paused: the founder WhatsApp ping on every new lead
+
+**Why.** The founder asked for the "new lead" WhatsApp alert that reaches every founder on each
+incoming lead to stop for now.
+
+**What changed.** One switch, `FOUNDER_LEAD_ALERTS_PAUSED` in `src/lib/constants/whatsapp.ts`,
+set to `true`. The shared lead-assignment seam (`notifyLeadAssigned`) skips the founder send
+while it is on. Nothing else moves: the agent's assignment WhatsApp, the in-app notification and
+the SLA timers still fire on every new lead exactly as before. The per-founder mute on /profile
+(`new_lead_founder_alert`) is untouched and still works once the switch is flipped back.
+
+**To resume.** Set the constant to `false` and deploy.
+
+---
+
 ## 2026-09-19 -- Complaints and praise from the chat move the member's health score
 
 **Why.** The ticket intake already reads each burst of member messages and labels it: a request,

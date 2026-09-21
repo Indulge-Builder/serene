@@ -12,6 +12,7 @@ import {
   sendFounderLeadNotification,
 } from '@/lib/services/whatsapp-api';
 import { createNotification } from '@/lib/services/notifications-service';
+import { FOUNDER_LEAD_ALERTS_PAUSED } from '@/lib/constants/whatsapp';
 
 export interface LeadAssignedNotifyInput {
   leadId: string;
@@ -101,8 +102,10 @@ export async function notifyLeadAssigned(input: LeadAssignedNotifyInput): Promis
     );
   }
 
-  // 2. Founder WhatsApp — always on new leads; suppressed for duplicates
-  if (!isDuplicate) {
+  // 2. Founder WhatsApp — always on new leads; suppressed for duplicates.
+  //    Paused as a whole while FOUNDER_LEAD_ALERTS_PAUSED is true (2026-09-21);
+  //    the agent alert, in-app notification and SLA timers below are untouched.
+  if (!isDuplicate && !FOUNDER_LEAD_ALERTS_PAUSED) {
     whatsappSends.push(
       sendFounderLeadNotification(
         domain,
