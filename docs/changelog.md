@@ -206,6 +206,25 @@ is their first real run.
 
 ---
 
+## 2026-09-21 — Fix: a follow-up no longer makes Elaya disown a true answer
+
+Why: the founder asked who was interested in the Nadal meet and greet. Elaya read the internal
+Queen's Council chat ("sent to 200, 20 responded"), then, asked to verify, ran three real queries
+over the member groups (410 groups pitched, 4 member replies). The next message, "has anyone
+showed interest in terms of want more details?", carried no subject words, so the router (which
+judged each message alone) sent it to the leads specialist, which has no chat tools. Seeing no
+tool, the model "confessed" that the earlier numbers were fabricated. They were not. The
+retraction was the fabrication.
+
+What changed:
+
+- **The router sees the conversation** (`backend/app/brain/router.py` `_context_block`): the
+  previous category, the previous user message and the start of the previous answer, with the
+  rule that a follow-up on the same subject stays in the previous category.
+- **A persona rule** (`backend/app/brain/persona.py`): earlier answers came from tools that ran
+  in those turns; never say an earlier number was made up; if this turn lacks the tool, say so
+  and ask for the question on its own, never retract.
+
 ## 2026-09-21 — "Remind Karan every 3 hours": repeat reminders, and Elaya says how a reminder reached someone
 
 Why: the founder asked Elaya to remind Karan about a meeting. She created the task, said "Done",
