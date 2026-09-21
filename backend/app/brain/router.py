@@ -37,16 +37,17 @@ def _system(role: str | None) -> str:
 
 def _context_block(history: list[dict] | None, current: str) -> str:
     """What the router sees besides the message itself (2026-09-21). A short follow-up
-    ("has anyone shown interest?", "verify that", "and the other one?") carries no subject
-    words of its own; judged alone it landed on a specialist without the tools the
-    conversation was using, and the model then disowned real numbers it could no longer
-    see. So the router gets the previous category, the previous user message and the start
-    of the previous answer, and is told to keep a follow-up where the conversation is."""
+    ("has anyone shown interest?", "try now", "and the other one?") carries no subject words
+    of its own; judged alone it landed on a specialist without the tools the conversation
+    was using, and the model then disowned real numbers it could no longer see. So the
+    router gets the last few USER messages and the start of the previous answer, and is
+    told to classify the SUBJECT of the conversation. It is deliberately NOT told the
+    previous category: anchoring on it kept a wrong route wrong ("try now that the bug is
+    fixed" stayed on `leads` because the mistaken turn before it was `leads`)."""
     if not history:
         return current[:2000]
-    prev_user = ""
+    users: list[str] = []
     prev_answer = ""
-    prev_specialist = ""
     seen_current = False
     for row in reversed(history):
         role = row.get("role")
@@ -55,25 +56,22 @@ def _context_block(history: list[dict] | None, current: str) -> str:
             if not seen_current and content == current.strip():
                 seen_current = True
                 continue
-            if not prev_user:
-                prev_user = content
+            if len(users) < 3:
+                users.append(content[:300])
         elif role == "assistant" and not prev_answer:
-            prev_answer = content
-            meta = row.get("meta") or {}
-            prev_specialist = str(meta.get("specialist") or "")
-        if prev_user and prev_answer:
-            break
-    if not prev_user and not prev_answer:
+            prev_answer = content[:240]
+    if not users:
         return current[:2000]
+    earlier = "\n".join(f"- {u}" for u in reversed(users))
     return (
-        f"Previous category: {prev_specialist or 'unknown'}\n"
-        f"Previous user message: {prev_user[:400]}\n"
-        f"Previous answer began: {prev_answer[:300]}\n\n"
+        f"Earlier messages from the user in this conversation (oldest first):\n{earlier}\n"
+        f"The previous answer began: {prev_answer}\n\n"
         f"Current message: {current[:1500]}\n\n"
-        "Rule: if the current message is a follow-up on the same subject (a pronoun, 'and', 'what "
-        "about', 'verify that', 'anyone', 'more details', no new subject named), answer with the "
-        "PREVIOUS category. Pick a different category only when the current message clearly names "
-        "a new subject."
+        "Classify the SUBJECT of the conversation as a whole. If the current message is a "
+        "follow-up that names no new subject ('try now', 'and?', 'anyone?', 'verify that', "
+        "'more details', a pronoun), the subject is the one the earlier messages are about. "
+        "If the previous answer was a refusal or an apology, ignore it: judge by the user's "
+        "messages only."
     )
 
 

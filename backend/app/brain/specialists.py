@@ -64,7 +64,7 @@ SPECIALISTS: dict[str, Specialist] = {
             "update_lead_status",
             "reassign_lead",
             "log_deal",
-        ],
+                 "get_member_360", "search_sia_messages", "get_sia_group_messages" ],
     ),
     "tasks": Specialist(
         id="tasks",
@@ -87,7 +87,7 @@ SPECIALISTS: dict[str, Specialist] = {
             "update_task_status",
             "update_task",
             "delete_task",
-        ],
+                 "get_member_360", "search_sia_messages", "get_sia_group_messages" ],
     ),
     "analytics": Specialist(
         id="analytics",
@@ -115,7 +115,7 @@ SPECIALISTS: dict[str, Specialist] = {
             "get_books_overview",
             "get_activity_feed",
             "get_subscriptions",
-        ],
+                 "get_member_360", "search_sia_messages", "get_sia_group_messages" ],
         job="heavy",  # the Opus tier — deep reasoning turns (DB-switchable)
     ),
     "vendors": Specialist(
@@ -131,7 +131,8 @@ SPECIALISTS: dict[str, Specialist] = {
                "invent a supplier. A null score means unrated, not bad."),
         # Both vendor tools run in Node through the bridge (the one ranker);
         # admin/founder only — the role gate cuts them for everyone else.
-        toolset=["find_vendors", "get_vendor_details", "find_teammate"],
+        toolset=["find_vendors", "get_vendor_details", "find_teammate",
+                 "get_member_360", "search_sia_messages", "get_sia_group_messages" ],
     ),
     "tickets": Specialist(
         id="tickets",
@@ -144,7 +145,8 @@ SPECIALISTS: dict[str, Specialist] = {
         focus=("Focus for this conversation: TICKETS — the genie's queue and one ticket's story. "
                "Read with list_tickets / get_ticket before answering; a status move is a proposal "
                "the user confirms with a yes, never a done deed until the system says so."),
-        toolset=["list_tickets", "get_ticket", "add_ticket_note", "move_ticket_status", "find_teammate"],
+        toolset=["list_tickets", "get_ticket", "add_ticket_note", "move_ticket_status", "find_teammate",
+                 "get_member_360", "search_sia_messages", "get_sia_group_messages" ],
     ),
     "analyst": Specialist(
         id="analyst",
@@ -186,7 +188,8 @@ SPECIALISTS: dict[str, Specialist] = {
                "and say 'showing N of M' when the list is longer than what you were given. Serene never "
                "writes to Freshdesk: you can read, never change."),
         toolset=["get_freshdesk_overview", "search_freshdesk_tickets", "get_freshdesk_ticket",
-                 "get_member_overview", "find_teammate"],
+                 "get_member_overview", "find_teammate",
+                 "get_member_360", "search_sia_messages", "get_sia_group_messages" ],
     ),
     "groups": Specialist(
         id="groups",
