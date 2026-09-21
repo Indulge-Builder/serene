@@ -171,7 +171,8 @@ SPECIALISTS: dict[str, Specialist] = {
                "(what was counted, the dates, the filter) so it can be sanity-checked, and say when a list "
                "was cut at the row cap. A number you did not get from a tool is never stated."),
         toolset=["get_live_pulse", "describe_database", "query_database", "get_books_overview",
-                 "get_freshdesk_overview", "get_member_360", "get_member_overview", "get_activity_feed", "find_teammate"],
+                 "get_freshdesk_overview", "search_freshdesk_tickets", "get_member_360", "get_member_overview",
+                 "search_sia_messages", "get_sia_group_messages", "list_sia_groups", "get_activity_feed", "find_teammate"],
         job="heavy",  # the deepest tier: planning and writing queries is the hardest work she does
         roles=frozenset({"admin", "founder"}),
     ),

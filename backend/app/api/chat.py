@@ -195,6 +195,11 @@ async def chat(body: ChatRequest, authorization: str = Header(default="")) -> St
                 content, getattr(principal, "role", None), history, playbooks
             )
             playbook_ref = {"id": playbook["id"], "title": playbook.get("title", "")} if playbook else None
+            # A playbook is a METHOD that may need any tool (Freshdesk + the member groups + SQL in
+            # one answer). A narrow specialist cannot run it; the analyst (founders) and general (the
+            # full toolset) can. Never let a playbook land on a specialist missing half its tools.
+            if playbook and specialist_id not in ("analyst", "general"):
+                specialist_id = "general"
             result = await run_turn(
                 principal,
                 SPECIALISTS[specialist_id],
