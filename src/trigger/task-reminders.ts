@@ -534,6 +534,71 @@ export async function scheduleTaskReminder(
 }
 
 // ─────────────────────────────────────────────
+// Repeat nudges (migration 0232): "remind him every 3 hours"
+//
+// One run per nudge. Each run re-reads the task, stops if it is done / cancelled / past
+// nudge_until, otherwise pings the assignee (in-app + the task_assigned WhatsApp template,
+// the same pair the first assignment sent) and arms the next run. Rides the task's own
+// `task-reminder-${taskId}` tag, so completing, deleting or re-dating the task sweeps the
+// repeats with cancelTaskReminder like every other reminder.
+// ─────────────────────────────────────────────
+
+const NUDGE_ACTIVE_STATUSES = new Set(["to_do", "in_progress"]);
+
+export const sendTaskNudgeTask = task({
+  id: "send-task-nudge",
+  retry: { maxAttempts: 3 },
+  run: async (payload: { taskId: string; seq: number; until: string }) => {
+    const { getTaskWithAssignee } = await import("@/lib/services/sla-service");
+    const ctx = await getTaskWithAssignee(payload.taskId);
+    if (!ctx?.assignee) return { stopped: "no assignee" };
+    const t = ctx.task;
+    if (!NUDGE_ACTIVE_STATUSES.has(t.status)) return { stopped: `status ${t.status}` };
+    if (!t.nudge_every_minutes || !t.nudge_until) return { stopped: "repeat cleared" };
+    if (t.nudge_until !== payload.until) return { stopped: "repeat was re-set; a newer chain owns it" };
+    if (new Date(t.nudge_until) <= new Date()) return { stopped: "window over" };
+
+    const { createAdminClient } = await import("@/lib/supabase/admin");
+    const { data: creator } = await createAdminClient().from("profiles").select("full_name").eq("id", t.created_by).maybeSingle();
+    const from = (creator as { full_name: string } | null)?.full_name ?? "your team";
+
+    const { createNotification } = await import("@/lib/services/notifications-service");
+    await createNotification({
+      recipient_id: ctx.assignee.id,
+      type: "task_assigned",
+      notificationKey: "task_assigned",
+      title: `Reminder: ${t.title}`,
+      body: `From ${from} (nudge ${payload.seq})`,
+      action_url: "/tasks",
+    }).catch((err: unknown) => console.error("[send-task-nudge] notification failed:", err));
+
+    const { sendTaskAssignedNotification } = await import("@/lib/services/whatsapp-api");
+    await sendTaskAssignedNotification(ctx.assignee.id, from, t.title, t.due_at).catch((err: unknown) =>
+      console.error("[send-task-nudge] whatsapp failed (non-fatal):", err),
+    );
+
+    await createAdminClient().from("tasks").update({ nudge_count: payload.seq }).eq("id", t.id);
+
+    const next = new Date(Date.now() + t.nudge_every_minutes * 60_000);
+    if (next < new Date(t.nudge_until)) await scheduleTaskNudge(t.id, next, payload.seq + 1, t.nudge_until);
+    return { sent: payload.seq, whatsapp: Boolean(ctx.assignee.phone), next: next < new Date(t.nudge_until) ? next.toISOString() : null };
+  },
+});
+
+/** Arm one nudge. `until` is part of the key so re-setting the repeat starts a fresh chain. */
+export async function scheduleTaskNudge(taskId: string, fireAt: Date, seq: number, until: string): Promise<void> {
+  await tasks.trigger(
+    "send-task-nudge",
+    { taskId, seq, until },
+    {
+      delay: fireAt,
+      idempotencyKey: `task-nudge-${taskId}-${until}-${seq}`,
+      tags: [`task-reminder-${taskId}`],
+    },
+  );
+}
+
+// ─────────────────────────────────────────────
 // Cancel any pending reminder for a task
 // Uses the tag index to locate runs without storing run IDs.
 // ─────────────────────────────────────────────

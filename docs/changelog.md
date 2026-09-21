@@ -206,6 +206,31 @@ is their first real run.
 
 ---
 
+## 2026-09-21 — "Remind Karan every 3 hours": repeat reminders, and Elaya says how a reminder reached someone
+
+Why: the founder asked Elaya to remind Karan about a meeting. She created the task, said "Done",
+and Karan never saw it: his profile has no phone number (so no WhatsApp) and he had not opened
+Serene (the in-app notification is still unread). Then "remind him every 3 hrs" could not be done
+at all: a task had one due moment and one reminder.
+
+What changed:
+
+- **Repeat nudges (migration 0232).** `tasks.nudge_every_minutes` / `nudge_until` / `nudge_count`.
+  `setTaskNudgeCore` (task-mutations.ts) stamps the repeat and arms the first nudge;
+  `sendTaskNudgeTask` (src/trigger/task-reminders.ts) pings the assignee (the in-app notification
+  plus the task_assigned WhatsApp template, the same pair the first assignment sends), counts it,
+  and arms the next one until the task is done, cancelled, or the window ends. It rides the task's
+  own reminder tag, so completing or deleting the task sweeps the repeats like every reminder.
+  Bounds: every 30 minutes to 24 hours, for at most 3 days.
+- **Elaya:** `create_personal_task` and `update_task` take `remindEveryHours` / `remindForHours`.
+  Both tools now return which channels reached the assignee (`assignee_notified_via`,
+  `assignee_has_phone`) and the description makes her SAY when a person has no phone, instead of
+  "done".
+- Two client components that build a task object by hand carry the three new columns.
+
+Needs `pnpm trigger:deploy` for the nudge task to exist. The Supabase CLI login had expired on
+this machine when the migration was written; it is applied once `supabase login` is renewed.
+
 ## 2026-09-19 — The Elaya card knows who is looking: better questions, an honest reach list
 
 Why: the /elaya identity card showed the same four sales questions and "Your leads, Your tasks,

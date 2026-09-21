@@ -287,7 +287,7 @@ export function MyTasksCalendarView({
         created_by:  result.data!.createdBy,
         group_id:    null,
         task_category: 'personal', task_type: 'other', module: 'core',
-        completed_at: null, overdue_at: null, attachments: [], tags: [], created_at: now, updated_at: now,
+        completed_at: null, overdue_at: null, nudge_count: 0, nudge_every_minutes: null, nudge_until: null, attachments: [], tags: [], created_at: now, updated_at: now,
         lead_id: null, lead_first_name: null, lead_last_name: null, lead_slug: null,
       };
       setActiveTasks((prev) => [syntheticTask, ...prev]);

@@ -1205,8 +1205,8 @@
     "semantic_hash": ""
   },
   "src/components/tasks/CreatePersonalTaskModal.tsx": {
-    "mtime": 1783292322.5570254,
-    "ast_hash": "c076f33d52675caebdce127290dc9ace",
+    "mtime": 1789976885.9843814,
+    "ast_hash": "4363c00b86a97d70ec3a2a7e75e1ace0",
     "semantic_hash": ""
   },
   "src/components/tasks/GroupTaskWorkspace.tsx": {
@@ -1220,8 +1220,8 @@
     "semantic_hash": ""
   },
   "src/components/tasks/MyTasksCalendarView.tsx": {
-    "mtime": 1783671674.0360477,
-    "ast_hash": "658fc8ccca92716ca5015db10c990e98",
+    "mtime": 1789976876.7566085,
+    "ast_hash": "6a9ee44f2dae34696481e60f0dc74467",
     "semantic_hash": ""
   },
   "src/components/tasks/SubTaskModal.tsx": {
@@ -1895,8 +1895,8 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/tools/write-registry.ts": {
-    "mtime": 1789976300.895359,
-    "ast_hash": "87a43ab50fefeb23b2c6ac893bbd4ccd",
+    "mtime": 1789977011.455267,
+    "ast_hash": "9c6694b1a67ad316b1e6bd135925044c",
     "semantic_hash": ""
   },
   "src/lib/leads/adapters.ts": {
@@ -2035,8 +2035,8 @@
     "semantic_hash": ""
   },
   "src/lib/services/task-mutations.ts": {
-    "mtime": 1782470277.1421642,
-    "ast_hash": "707ec3ab2104c8f11b508388b427417d",
+    "mtime": 1789976946.467575,
+    "ast_hash": "d1748d276f9288f645eb9c7973eec9b7",
     "semantic_hash": ""
   },
   "src/lib/services/tasks-service.ts": {
@@ -2095,8 +2095,8 @@
     "semantic_hash": ""
   },
   "src/lib/types/database.ts": {
-    "mtime": 1789975035.8910913,
-    "ast_hash": "0157acce75888197a2d105e23d2f0765",
+    "mtime": 1789976830.9821408,
+    "ast_hash": "e840990be154473f9e8efd5d72d284f0",
     "semantic_hash": ""
   },
   "src/lib/types/elaya.ts": {
@@ -2355,8 +2355,8 @@
     "semantic_hash": ""
   },
   "src/trigger/task-reminders.ts": {
-    "mtime": 1782989923.5596452,
-    "ast_hash": "3e913a2973c24b4c4c515895f33b6b78",
+    "mtime": 1789976830.9829087,
+    "ast_hash": "a81936df93a0d1a214e5b2f9ae33fd81",
     "semantic_hash": ""
   },
   "src/trigger/usage-rollup.ts": {
@@ -3155,8 +3155,8 @@
     "semantic_hash": ""
   },
   "docs/architecture/migrations.md": {
-    "mtime": 1789976560.72306,
-    "ast_hash": "1b383e059f4b0719835be7760e569b11",
+    "mtime": 1789977011.4638789,
+    "ast_hash": "5781cc7bd7f04632493f33026df7e5f3",
     "semantic_hash": ""
   },
   "docs/architecture/overview.md": {
@@ -3170,8 +3170,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1789976560.7189493,
-    "ast_hash": "6d7e764f752f8d6f55f8dddab6384498",
+    "mtime": 1789977011.4629507,
+    "ast_hash": "274dc5a40b249d127b5765e408cc6509",
     "semantic_hash": ""
   },
   "docs/claude-project/1-product-and-status.md": {
@@ -3505,8 +3505,8 @@
     "semantic_hash": ""
   },
   "supabase/migrations/CLAUDE.md": {
-    "mtime": 1789976560.722655,
-    "ast_hash": "5a00416204f5cf70a196f659b3d95bc0",
+    "mtime": 1789977011.4647346,
+    "ast_hash": "557474b095c09a1cc37a1047a4839719",
     "semantic_hash": ""
   },
   "imgs/DB-Schema-img-2.png": {
@@ -8407,6 +8407,11 @@
   "supabase/migrations/20260921000231_elaya_read_export_cap.sql": {
     "mtime": 1789976238.8736794,
     "ast_hash": "3c3e870386627843e5dc66def7f6a4b9",
+    "semantic_hash": ""
+  },
+  "supabase/migrations/20260921000232_task_nudges.sql": {
+    "mtime": 1789976830.9558623,
+    "ast_hash": "921f2296e55a4383b488f7f384fd9abd",
     "semantic_hash": ""
   }
 }

@@ -5358,6 +5358,9 @@ export type Database = {
           group_id: string | null
           id: string
           module: Database["public"]["Enums"]["task_module"]
+          nudge_count: number
+          nudge_every_minutes: number | null
+          nudge_until: string | null
           overdue_at: string | null
           priority: string
           status: string
@@ -5377,6 +5380,9 @@ export type Database = {
           due_at?: string | null
           group_id?: string | null
           id?: string
+          nudge_count?: number
+          nudge_every_minutes?: number | null
+          nudge_until?: string | null
           module?: Database["public"]["Enums"]["task_module"]
           overdue_at?: string | null
           priority?: string
@@ -5397,6 +5403,9 @@ export type Database = {
           due_at?: string | null
           group_id?: string | null
           id?: string
+          nudge_count?: number
+          nudge_every_minutes?: number | null
+          nudge_until?: string | null
           module?: Database["public"]["Enums"]["task_module"]
           overdue_at?: string | null
           priority?: string

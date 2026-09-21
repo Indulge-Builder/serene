@@ -55,8 +55,7 @@ import {
   updateTaskCore,
   deleteTaskCore,
   type CallerProfile,
-  type TaskMutationTarget,
-} from "@/lib/services/task-mutations";
+  type TaskMutationTarget, setTaskNudgeCore } from "@/lib/services/task-mutations";
 // The task → lead link lives in the gia schema: its own read, never an embed (PGRST200).
 import { isLeadTask } from "@/lib/services/gia-task-links";
 // The group access gate for create_subtask — admin-twin read (channel-safe), reusing
@@ -696,10 +695,15 @@ const createPersonalTask: ElayaWriteTool = {
   description:
     "Create a personal to-do for the user, OR assign a task to ONE teammate (managers and above). " +
     "Use this for a task with at most one assignee — 'remind me to file expenses tomorrow 3pm', or " +
-    "'tell Pawani to call the member'. For a task shared by TWO OR MORE people, use create_group_task " +
-    "+ create_subtask instead. Take the title straight from what the user said — never ask what to " +
-    "call it. If no due time is given, leave it open (don't ask for one). For another person, pass " +
-    "their userId from find_teammate. Happens immediately — no confirmation step.",
+    "'tell Pawani to call the member', 'remind Karan that we meet the cops'. For a task shared by TWO " +
+    "OR MORE people, use create_group_task + create_subtask instead. Take the title straight from what " +
+    "the user said — never ask what to call it. If no due time is given, leave it open (don't ask for " +
+    "one). For another person, pass their userId from find_teammate. A REPEAT ('remind him every 3 " +
+    "hours', 'keep nudging her till tonight'): pass remindEveryHours (0.5 to 24) and remindForHours " +
+    "(default 24, max 72); the assignee is pinged again at that interval until the task is done or the " +
+    "window ends. Happens immediately — no confirmation step. The result says which channels reached " +
+    "the assignee: ALWAYS tell the user when the person has no phone on their profile (then it is " +
+    "in-app only, they will see it when they open Serene) — never say 'done' as if a message landed.",
   schema: z.object({
     title: z.string().trim().min(1).max(255),
     description: z.string().trim().max(1000).optional(),
@@ -707,6 +711,8 @@ const createPersonalTask: ElayaWriteTool = {
     dueAt: z.string().trim().max(40).optional(),
     assigneeId: z.string().uuid().optional(),
     tags: z.array(z.string().trim().min(1).max(50)).max(10).optional(),
+    remindEveryHours: z.number().min(0.5).max(24).optional(),
+    remindForHours: z.number().min(0.5).max(72).optional(),
   }),
   jsonSchema: {
     type: "object",
@@ -717,18 +723,22 @@ const createPersonalTask: ElayaWriteTool = {
       dueAt: { type: "string", description: "Optional due date-time, e.g. '2026-06-16T15:00' (interpreted as IST)" },
       assigneeId: { type: "string", description: "Optional teammate user id (UUID) — managers+ only; omit to assign to the user" },
       tags: { type: "array", items: { type: "string" }, description: "Optional tags" },
+      remindEveryHours: { type: "number", description: "Repeat the reminder to the assignee every N hours (0.5 to 24). Only when the user asks for a repeat." },
+      remindForHours: { type: "number", description: "How long the repeat runs, in hours from now (default 24, max 72)" },
     },
     required: ["title"],
     additionalProperties: false,
   },
   run: async (principal, input, ctx) => {
-    const { title, description, priority, dueAt, assigneeId, tags } = input as {
+    const { title, description, priority, dueAt, assigneeId, tags, remindEveryHours, remindForHours } = input as {
       title: string;
       description?: string;
       priority: (typeof TASK_PRIORITIES)[number];
       dueAt?: string;
       assigneeId?: string;
       tags?: string[];
+      remindEveryHours?: number;
+      remindForHours?: number;
     };
 
     // Assigning to ANOTHER user is manager+ only (mirrors createPersonalTaskAction).
@@ -749,6 +759,7 @@ const createPersonalTask: ElayaWriteTool = {
     const cleanTags = (tags ?? []).map((t) => sanitizeText(t)).filter((t) => t.length > 0);
     const dueAtInstant = normalizeDueAtToIstInstant(dueAt);
 
+    const nudge = remindEveryHours ? { everyMinutes: remindEveryHours * 60, forMinutes: (remindForHours ?? 24) * 60 } : null;
     const core = await createPersonalTaskCore(actorFromPrincipal(principal), {
       title: cleanTitle,
       description: cleanDescription,
@@ -756,6 +767,7 @@ const createPersonalTask: ElayaWriteTool = {
       dueAt: dueAtInstant,
       assignedTo: assigneeId ?? null,
       tags: cleanTags,
+      nudge,
     });
     if (!core.ok) return { error: "I couldn't create that task just now." };
 
@@ -773,15 +785,28 @@ const createPersonalTask: ElayaWriteTool = {
     });
 
     const forOther = core.assignedTo !== principal.userId;
+    const reach = forOther ? await assigneeReach(core.assignedTo) : null;
     return {
       done: true,
       summary: forOther
         ? `Created "${cleanTitle}" and assigned it.`
         : `Created your task "${cleanTitle}".`,
       taskId: core.taskId,
+      ...(reach ? { assignee_notified_via: reach.channels, assignee_has_phone: reach.hasPhone } : {}),
+      ...(nudge ? { repeat: core.nudgeUntil ? { every_hours: remindEveryHours, until: core.nudgeUntil } : "could not be set" } : {}),
+      note: forOther && reach && !reach.hasPhone
+        ? "The assignee has NO phone number on their profile: nothing went to WhatsApp, only the in-app notification. Say this to the user plainly."
+        : undefined,
     };
   },
 };
+
+/** How a task ping could reach a teammate right now: in-app always; WhatsApp only with a phone on the profile. */
+async function assigneeReach(userId: string): Promise<{ hasPhone: boolean; channels: string[] }> {
+  const { data } = await createAdminClient().from("profiles").select("phone").eq("id", userId).maybeSingle();
+  const hasPhone = Boolean((data as { phone: string | null } | null)?.phone);
+  return { hasPhone, channels: hasPhone ? ["in_app", "whatsapp"] : ["in_app"] };
+}
 
 // ── create_group_task — INLINE. All-staff; NO assignee (a group is a container; its
 // subtasks carry assignees). Domain is locked to the actor's by the core for non-
@@ -1030,9 +1055,10 @@ const updateTask: ElayaWriteTool = {
   name: "update_task",
   roles: STAFF_ALL,
   description:
-    "Edit a task's details — title, description, priority, status, due date, or assignee. Takes the " +
-    "task's id (from get_my_tasks) plus only the fields to change. Happens immediately. " +
-    "To change ONLY the status, prefer update_task_status.",
+    "Edit a task's details — title, description, priority, status, due date, assignee, or a REPEAT " +
+    "reminder (remindEveryHours: 'remind him every 3 hours' on a task that already exists). Takes the " +
+    "task's id (from get_my_tasks, or the taskId a create returned earlier in this conversation) plus " +
+    "only the fields to change. Happens immediately. To change ONLY the status, prefer update_task_status.",
   schema: z
     .object({
       taskId: z.string().uuid(),
@@ -1043,6 +1069,8 @@ const updateTask: ElayaWriteTool = {
       assigneeId: z.string().uuid().optional(),
       // dueAt present (even null) means "change the due date"; omitted means "leave it".
       dueAt: z.string().trim().max(40).nullable().optional(),
+      remindEveryHours: z.number().min(0.5).max(24).optional(),
+      remindForHours: z.number().min(0.5).max(72).optional(),
     })
     .refine(
       (v) =>
@@ -1051,7 +1079,8 @@ const updateTask: ElayaWriteTool = {
         v.priority !== undefined ||
         v.status !== undefined ||
         v.assigneeId !== undefined ||
-        v.dueAt !== undefined,
+        v.dueAt !== undefined ||
+        v.remindEveryHours !== undefined,
       { message: "give at least one field to change" },
     ),
   jsonSchema: {
@@ -1064,6 +1093,8 @@ const updateTask: ElayaWriteTool = {
       status: { type: "string", enum: [...TASK_STATUSES], description: "New status" },
       assigneeId: { type: "string", description: "New assignee user id (UUID)" },
       dueAt: { type: ["string", "null"], description: "New due date-time (IST); null clears it; omit to leave unchanged" },
+      remindEveryHours: { type: "number", description: "Set a REPEAT: ping the assignee every N hours (0.5 to 24) until done or the window ends ('remind him every 3 hours')" },
+      remindForHours: { type: "number", description: "How long the repeat runs from now, in hours (default 24, max 72)" },
     },
     required: ["taskId"],
     additionalProperties: false,
@@ -1077,6 +1108,8 @@ const updateTask: ElayaWriteTool = {
       status?: TaskStatus;
       assigneeId?: string;
       dueAt?: string | null;
+      remindEveryHours?: number;
+      remindForHours?: number;
     };
     const admin = createAdminClient();
     const { data: existing } = await admin
@@ -1108,6 +1141,27 @@ const updateTask: ElayaWriteTool = {
 
     const dueAtChanged = "dueAt" in raw && raw.dueAt !== undefined;
     const dueAtInstant = dueAtChanged ? normalizeDueAtToIstInstant(raw.dueAt) : null;
+
+    // The repeat alone ("remind him every 3 hours") is a change of its own; the field edit below
+    // runs only when a field was actually given.
+    let repeat: { every_hours: number; until: string } | "could not be set" | undefined;
+    if (raw.remindEveryHours) {
+      const set = await setTaskNudgeCore(raw.taskId, { everyMinutes: raw.remindEveryHours * 60, forMinutes: (raw.remindForHours ?? 24) * 60 });
+      repeat = set.ok ? { every_hours: raw.remindEveryHours, until: set.until } : "could not be set";
+    }
+    const fieldEdit =
+      raw.title !== undefined || raw.description !== undefined || raw.priority !== undefined ||
+      raw.status !== undefined || raw.assigneeId !== undefined || dueAtChanged;
+    if (!fieldEdit) {
+      if (!repeat) return { error: "Nothing to change." };
+      await insertExecutedAction({
+        conversationId: ctx.conversationId, userId: principal.userId, actionType: "update_task",
+        payload: { target: { taskId: raw.taskId, groupId: (existing.group_id as string | null) ?? null }, args: { remindEveryHours: raw.remindEveryHours, remindForHours: raw.remindForHours }, channel: ctx.channel, before: null, after: { repeat } },
+      });
+      const reach = await assigneeReach((existing.assigned_to as string) ?? principal.userId);
+      return { done: true, summary: "Set the repeat on that task.", taskId: raw.taskId, repeat, assignee_notified_via: reach.channels, assignee_has_phone: reach.hasPhone,
+        note: reach.hasPhone ? undefined : "The assignee has NO phone number on their profile: the repeats reach them in-app only. Say this plainly." };
+    }
 
     const core = await updateTaskCore(
       actorFromPrincipal(principal),
@@ -1145,7 +1199,7 @@ const updateTask: ElayaWriteTool = {
       },
     });
 
-    return { done: true, summary: "Updated that task.", taskId: raw.taskId };
+    return { done: true, summary: "Updated that task.", taskId: raw.taskId, ...(repeat ? { repeat } : {}) };
   },
 };
 

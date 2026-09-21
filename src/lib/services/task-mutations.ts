@@ -141,9 +141,11 @@ export async function createPersonalTaskCore(
     dueAt: string | null;
     assignedTo: string | null;
     tags: string[];
+    /** Repeat the reminder to the assignee (0232): how often, and for how long from now. */
+    nudge?: { everyMinutes: number; forMinutes: number } | null;
   },
 ): Promise<
-  | { ok: true; taskId: string; assignedTo: string; createdBy: string }
+  | { ok: true; taskId: string; assignedTo: string; createdBy: string; nudgeUntil: string | null }
   | { ok: false }
 > {
   const resolvedAssignedTo = input.assignedTo ?? actor.userId;
@@ -212,6 +214,13 @@ export async function createPersonalTaskCore(
     ).catch(() => {});
   }
 
+  // The repeat ("every 3 hours"): stamped on the row and armed here, awaited so a failure is visible.
+  let nudgeUntil: string | null = null;
+  if (input.nudge) {
+    const set = await setTaskNudgeCore(taskId, input.nudge);
+    nudgeUntil = set.ok ? set.until : null;
+  }
+
   // Awaited Redis dels (P-08). Two branches, both kept:
   //   • assignee's page-1 personal list — the person who now owns the task.
   //   • actor's dashboard agent-tasks widget (30s TTL) — actor.userId is the
@@ -247,6 +256,7 @@ export async function createPersonalTaskCore(
     taskId,
     assignedTo: resolvedAssignedTo,
     createdBy: actor.userId,
+    nudgeUntil,
   };
 }
 
@@ -716,4 +726,40 @@ export async function deleteTaskCore(
   }
 
   return { ok: true };
+}
+
+// ── Repeat nudges (0232): "remind him every 3 hours" ──────────────────────────
+export const TASK_NUDGE_MIN_MINUTES = 30;
+export const TASK_NUDGE_MAX_MINUTES = 24 * 60;
+export const TASK_NUDGE_MAX_WINDOW_MINUTES = 3 * 24 * 60;
+
+/**
+ * Stamp a repeat on a task and arm its first nudge. Bounds are clamped here (the CHECK in 0232 is
+ * the last line). `until` goes into the run key, so setting a repeat again starts a fresh chain
+ * and the old runs stop themselves at their next wake. The caller gates (canMutateTask / the
+ * create path); this core trusts it.
+ */
+export async function setTaskNudgeCore(
+  taskId: string,
+  nudge: { everyMinutes: number; forMinutes: number },
+): Promise<{ ok: true; until: string; everyMinutes: number } | { ok: false }> {
+  const everyMinutes = Math.min(Math.max(Math.round(nudge.everyMinutes), TASK_NUDGE_MIN_MINUTES), TASK_NUDGE_MAX_MINUTES);
+  const forMinutes = Math.min(Math.max(Math.round(nudge.forMinutes), everyMinutes), TASK_NUDGE_MAX_WINDOW_MINUTES);
+  const until = new Date(Date.now() + forMinutes * 60_000).toISOString();
+  const { error } = await createAdminClient()
+    .from("tasks")
+    .update({ nudge_every_minutes: everyMinutes, nudge_until: until, nudge_count: 0 })
+    .eq("id", taskId);
+  if (error) {
+    console.error("[task-mutations] setTaskNudgeCore update failed:", error.message);
+    return { ok: false };
+  }
+  try {
+    const { scheduleTaskNudge } = await import("@/trigger/task-reminders");
+    await scheduleTaskNudge(taskId, new Date(Date.now() + everyMinutes * 60_000), 1, until);
+  } catch (e) {
+    console.error("[task-mutations] setTaskNudgeCore arm failed:", e);
+    return { ok: false };
+  }
+  return { ok: true, until, everyMinutes };
 }
