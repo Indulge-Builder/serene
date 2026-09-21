@@ -277,6 +277,20 @@ What changed:
 - **The router sees the conversation** (`backend/app/brain/router.py` `_context_block`): the
   previous category, the previous user message and the start of the previous answer, with the
   rule that a follow-up on the same subject stays in the previous category.
+- **The real routing cause** was the `leads` description saying "member/prospect questions": any
+  question with "member" in it pulled to leads even with no history. Leads now says a member is a
+  paying client that belongs elsewhere, and `groups` names "which members responded to an event,
+  pitch or offer" explicitly. The router judges a clear question on its own words; only a
+  subject-less follow-up ("try now", "anyone?") borrows the earlier messages' subject; it is never
+  told the previous category (that kept a wrong route wrong). Verified with the real router on the
+  Nadal sequence. Every specialist now carries the three chat tools, so a wrong route can still
+  answer a chat question, and the persona forbids "ask as a fresh message" / "nothing has changed".
+- **The group search was polluted** (`sia-service.ts` `searchSiaMessages`): the raw query was split
+  into single words for an OR search with no stop-words, so "Nadal meet and greet" matched every
+  message holding "and", 30 hits of chatter overflowed the tool cap, and the model read "nothing
+  Nadal-related". The vocabulary builder and the whole-word ranker the member search already had
+  (`buildSearchWords`, `rankByWords` in `elaya-data.ts`) now serve both searches; the group search
+  returns the 20 best hits with the words it searched for.
 - **A persona rule** (`backend/app/brain/persona.py`): earlier answers came from tools that ran
   in those turns; never say an earlier number was made up; if this turn lacks the tool, say so
   and ask for the question on its own, never retract.

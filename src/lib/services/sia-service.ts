@@ -250,7 +250,10 @@ export function anyOfQuery(terms: string[]): string {
 }
 
 export async function searchSiaMessages(query: string, groupJid?: string, anyOf?: string[]): Promise<SiaSearchHit[]> {
-  const wide = anyOf && anyOf.length ? anyOfQuery([query, ...query.split(/\s+/), ...anyOf]) : "";
+  // With `anyOf` the caller has already chosen the words (elaya-data buildSearchWords); splitting
+  // the raw query here again put "and" / "meet" into an OR search with no stop-words, which
+  // matched nearly every message (2026-09-21, the Nadal search returned unrelated chatter).
+  const wide = anyOf && anyOf.length ? anyOfQuery([query, ...anyOf]) : "";
   const term = wide || query.trim();
   if (term.length < 2) return [];
   const db = siaDb();

@@ -1482,7 +1482,7 @@ const searchSiaMessagesTool: ElayaTool = {
     const { query, related, group } = input as { query: string; related: string[]; group?: string };
     const r = await elayaData.searchSiaMessagesFor(principal, query, related ?? [], group);
     if (!r.ok) return siaGroupRefusal(r);
-    return { hits: r.hits, note: r.hits.length === 0 ? 'Nothing found. Try once with different related words, then say nothing was found.' : 'Quote the words and the date; name the group each hit came from.' };
+    return { searched_for: r.searched_for, hits: r.hits, note: r.hits.length === 0 ? 'Nothing found. Try once with different related words, then say nothing was found.' : 'Best matches first. Quote the words and the date; name the group each hit came from.' };
   },
 };
 

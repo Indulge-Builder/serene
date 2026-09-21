@@ -522,6 +522,33 @@ export async function getMemberMessagesFor(
 /** Words that carry no topic. Kept tiny: it only guards the words split out of the caller's query. */
 const SEARCH_FILLER: ReadonlySet<string> = new Set(['with', 'from', 'that', 'this', 'have', 'about', 'plans', 'plan', 'want', 'wants', 'does', 'what', 'when', 'ever', 'their', 'them', 'they', 'some', 'like', 'likes', 'into', 'over', 'were', 'been', 'will', 'would', 'should', 'could', 'there', 'here', 'your', 'ours', 'mine', 'also', 'just', 'very', 'much', 'more', 'most', 'many', 'than', 'then', 'time', 'times', 'thing', 'things', 'stuff', 'eating', 'going', 'doing', 'getting', 'family', 'member', 'something', 'anything', 'everything', 'nothing', 'never', 'happened', 'happen', 'mention', 'mentioned', 'asked', 'said', 'talked', 'told']);
 
+/** Letters, digits and spaces only: these words go into a PostgREST `or=` filter and a tsquery. */
+const tidySearchText = (t: string) => t.replace(/[^\p{L}\p{N} ]+/gu, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+
+/**
+ * THE search vocabulary for a topic (member history AND the group search, R-01): the whole query
+ * as a phrase, its own words at 4+ letters and not filler (or "eating out" matches every "about"
+ * and "checkout", and "Nadal meet and greet" matches every "and"), and the caller's `related`
+ * words trusted at 3 letters ("goa", "spa"). At most 14.
+ */
+function buildSearchWords(query: string, related: string[]): string[] {
+  return [...new Set([
+    tidySearchText(query),
+    ...tidySearchText(query).split(' ').filter((w) => w.length >= 4 && !SEARCH_FILLER.has(w)),
+    ...related.map(tidySearchText).filter((w) => w.length >= 3 && !SEARCH_FILLER.has(w)),
+  ].filter((w) => w.length >= 3))].slice(0, 14);
+}
+
+/**
+ * Best match first: how many of the words a row really holds, as WHOLE words (the database's
+ * ILIKE / OR-tsquery is a wide net; this is the sieve). A row holding none as a whole word is dropped.
+ */
+function rankByWords<T>(list: T[], text: (r: T) => string, words: string[], keep: number): T[] {
+  const res = words.map((w) => new RegExp(`(?<![\\p{L}\\p{N}])${w.replace(/ /g, '\\s+')}(?![\\p{L}\\p{N}])`, 'iu'));
+  const score = (t: string) => res.reduce((n, re) => n + (re.test(t) ? 1 : 0), 0);
+  return list.map((r, i) => ({ r, i, n: score(text(r)) })).filter((x) => x.n > 0).sort((x, y) => y.n - x.n || x.i - y.i).slice(0, keep).map((x) => x.r);
+}
+
 export type MemberHistorySearch = {
   member: MemberBrief;
   group_subject: string | null;
@@ -550,15 +577,7 @@ export async function searchMemberHistoryFor(
 ): Promise<MemberHistorySearch | null> {
   const brief = await getMemberBriefFor(principal, clientId);
   if (!brief) return null;
-  // Letters, digits and spaces only: these words go into a PostgREST `or=` filter and a tsquery.
-  const tidy = (t: string) => t.replace(/[^\p{L}\p{N} ]+/gu, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
-  // The caller's own `related` words are trusted at 3 letters ("goa", "spa"); words split out of the
-  // query must be 4+ and not filler, or "eating out" would match every "about" and "checkout".
-  const words = [...new Set([
-    tidy(query),
-    ...tidy(query).split(' ').filter((w) => w.length >= 4 && !SEARCH_FILLER.has(w)),
-    ...related.map(tidy).filter((w) => w.length >= 3 && !SEARCH_FILLER.has(w)),
-  ].filter((w) => w.length >= 3))].slice(0, 14);
+  const words = buildSearchWords(query, related);
   if (words.length === 0) return { member: brief.member, group_subject: brief.group?.subject ?? null, conversations: [], facts: [], hits: [], searched_for: [] };
   const admin = createAdminClient();
   const like = (col: string) => words.map((w) => `${col}.ilike.*${w}*`).join(',');
@@ -567,12 +586,7 @@ export async function searchMemberHistoryFor(
     memberDb(admin).from('member_facts').select('facet, key, value, polarity, created_at').eq('member_id', clientId).is('superseded_by', null).or(`${like('value')},${like('key')}`).order('confidence', { ascending: false }).limit(60),
     brief.group ? searchSiaMessages(query, brief.group.group_jid, words) : Promise.resolve([]),
   ]);
-  // Best match first: how many of the words a row really holds, as WHOLE words (the database's
-  // ILIKE is a substring net; this is the sieve). A row holding none as a whole word is dropped.
-  const res = words.map((w) => new RegExp(`(?<![\\p{L}\\p{N}])${w.replace(/ /g, '\\s+')}(?![\\p{L}\\p{N}])`, 'iu'));
-  const score = (text: string) => res.reduce((n, re) => n + (re.test(text) ? 1 : 0), 0);
-  const ranked = <T,>(list: T[], text: (r: T) => string, keep: number): T[] =>
-    list.map((r, i) => ({ r, i, n: score(text(r)) })).filter((x) => x.n > 0).sort((x, y) => y.n - x.n || x.i - y.i).slice(0, keep).map((x) => x.r);
+  const ranked = <T,>(list: T[], text: (r: T) => string, keep: number): T[] => rankByWords(list, text, words, keep);
   type Ev = { occurred_at: string; summary: string | null; tone: string | null };
   type Fa = { facet: string; key: string; value: string; polarity: string | null; created_at: string };
   const topEvents = ranked(mapRows<Ev, Ev>(events.data, (e) => e), (e) => e.summary ?? '', 12);
@@ -1003,14 +1017,19 @@ export async function searchSiaMessagesFor(principal: StaffPrincipal, query: str
     if (!r.ok) return r;
     groupJid = r.group.group_jid;
   }
-  let hits = await searchSiaMessages(query, groupJid, related);
+  const words = buildSearchWords(query, related);
+  if (words.length === 0) return { ok: true as const, hits: [], searched_for: [] };
+  let hits = await searchSiaMessages(query, groupJid, words);
   if (scope.kind === 'queendom' && !groupJid) {
     const mine = await getQueendomGroupJids(scope.queendomId);
     hits = hits.filter((h) => mine.has(h.group_jid));
   }
-  hits = hits.slice(0, 30);
+  // The same sieve as the member search: a hit must hold at least one of the words as a whole word,
+  // best matches first, capped so the result stays well under the tool cap (2026-09-21: 30 raw
+  // hits of unrelated chatter overflowed it and the model read "nothing Nadal-related").
+  hits = rankByWords(hits, (h) => h.text ?? '', words, 20);
   const shaped = await shapeMessages(hits);
-  return { ok: true as const, hits: hits.map((h, i) => ({ group: siaGroupHandle(h.group_jid), group_name: h.group_subject, ...shaped[i] })) };
+  return { ok: true as const, searched_for: words, hits: hits.map((h, i) => ({ group: siaGroupHandle(h.group_jid), group_name: h.group_subject, ...shaped[i], text: clip(shaped[i].text, 220) })) };
 }
 
 // ─────────────────────────────────────────────
