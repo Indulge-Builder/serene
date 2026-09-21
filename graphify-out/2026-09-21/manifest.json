@@ -1890,8 +1890,8 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/tools/registry.ts": {
-    "mtime": 1789976300.8959608,
-    "ast_hash": "78837b92a2916c38967b1cbeefb656dd",
+    "mtime": 1789991098.3716295,
+    "ast_hash": "3e7fdf5796b241442b36b7bb16bcf41b",
     "semantic_hash": ""
   },
   "src/lib/elaya/tools/write-registry.ts": {
@@ -3170,8 +3170,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1789985027.8978646,
-    "ast_hash": "2c732eb3366627c33d07870c2cdd790c",
+    "mtime": 1789991149.845413,
+    "ast_hash": "c7fd864178481117490eb62f685e78ae",
     "semantic_hash": ""
   },
   "docs/claude-project/1-product-and-status.md": {
@@ -3990,8 +3990,8 @@
     "semantic_hash": ""
   },
   "src/lib/elaya/elaya-data.ts": {
-    "mtime": 1789976300.894659,
-    "ast_hash": "869b70cdc11e9dd09e01a66e2f9aeb2d",
+    "mtime": 1789991098.3698523,
+    "ast_hash": "559896b1d515c75d05c6464ba38af688",
     "semantic_hash": ""
   },
   "src/lib/elaya/memory.ts": {
@@ -5140,8 +5140,8 @@
     "semantic_hash": ""
   },
   "src/lib/services/sia-service.ts": {
-    "mtime": 1789741227.4895127,
-    "ast_hash": "a09a13a7cccafabe990fc37edf6e0d82",
+    "mtime": 1789991098.3708713,
+    "ast_hash": "1dd03e622491edd677aea2f4ec131acc",
     "semantic_hash": ""
   },
   "supabase/migrations/20260827000169_sia_wag_foundation.sql": {
@@ -6490,13 +6490,13 @@
     "semantic_hash": ""
   },
   "backend/app/brain/router.py": {
-    "mtime": 1789981058.2077694,
-    "ast_hash": "c627b6044254c7120fdafd43a6f97f2c",
+    "mtime": 1789990735.1644144,
+    "ast_hash": "50b9a3669efad690e720f57925ac5687",
     "semantic_hash": ""
   },
   "backend/app/brain/specialists.py": {
-    "mtime": 1789820900.9199634,
-    "ast_hash": "3cd44ec49006149ce02a2c411da8ec40",
+    "mtime": 1789990872.9474266,
+    "ast_hash": "f40e16251894fdb117cfe3ed03e26d7d",
     "semantic_hash": ""
   },
   "backend/app/core/__init__.py": {
@@ -6605,8 +6605,8 @@
     "semantic_hash": ""
   },
   "backend/app/brain/persona.py": {
-    "mtime": 1789981058.2094076,
-    "ast_hash": "420163e02dbfcd178b3eae317253144c",
+    "mtime": 1789990203.9598646,
+    "ast_hash": "3054ff900f0e4e6c10a5ca0d4f6c4068",
     "semantic_hash": ""
   },
   "backend/app/core/periods.py": {

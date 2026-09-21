@@ -65,6 +65,12 @@ export default async function SettingsPage() {
                 index={2}
               />
               <SettingsLinkCard
+                href="/settings/elaya-playbooks"
+                icon="book"
+                title="Elaya Playbooks"
+                description="Teach Elaya how a kind of question is answered: example questions and plain instructions, live on the next message."
+              />
+              <SettingsLinkCard
                 href="/settings/lead-revival"
                 icon="sparkles"
                 title="Lead Revival"

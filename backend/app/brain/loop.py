@@ -80,6 +80,7 @@ async def run_turn(
     *,
     conversation_id: str,
     channel: str = "in_app",
+    playbook: dict | None = None,
 ) -> TurnResult:
     # One round of concurrent reads, the brain.ts shape: model config, PII depth,
     # the per-user persona (style prefs + learned blurb) and the user's notes —
@@ -146,7 +147,7 @@ async def run_turn(
     # the volatile time anchor rides as the uncached system tail — the Node
     # brain's exact cache shape, and the year-bug protection.
     system = build_system_prompt(
-        principal, specialist.focus, channel, persona=persona, learned=learned, notes=notes
+        principal, specialist.focus, channel, persona=persona, learned=learned, notes=notes, playbook=playbook
     )
     time_tail = build_time_context()
 

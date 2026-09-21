@@ -51,7 +51,8 @@ export type ElayaStreamHandlers = {
   onMeta: (event: { conversationId: string; remainingToday: number }) => void;
   onDelta: (text: string) => void;
   onTool: (name: string) => void;
-  onDone: () => void;
+  /** The done frame's trace (which specialist, which tools, which playbook) — the playbooks page's Try-it box shows it. */
+  onDone: (trace?: { specialist: string | null; toolsUsed: string[]; playbook: { id: string; title: string } | null }) => void;
   /** A mid-stream `error` frame (model failure) — the stream may continue/close. */
   onStreamError: (message: string) => void;
   /** Non-200 pre-stream rejection: burst limit, daily cap, auth, Zod. */
@@ -96,7 +97,7 @@ export async function streamElayaChat(
     } else if (event.type === 'tool') {
       handlers.onTool(event.name);
     } else if (event.type === 'done') {
-      handlers.onDone();
+      handlers.onDone({ specialist: event.specialist ?? null, toolsUsed: event.toolsUsed ?? [], playbook: event.playbook ?? null });
     } else if (event.type === 'error') {
       handlers.onStreamError(event.message);
     }

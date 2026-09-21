@@ -20,7 +20,7 @@ export type ElayaSseEvent =
     }
   | { type: 'delta'; text: string }
   | { type: 'tool'; name: string }
-  | { type: 'done'; messageId: string | null }
+  | { type: 'done'; messageId: string | null; specialist?: string | null; toolsUsed?: string[]; playbook?: { id: string; title: string } | null }
   | { type: 'error'; message: string };
 
 /**

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { m as motion } from "framer-motion";
-import { ChevronRight, Timer, Sparkles, Ticket } from "lucide-react";
+import { ChevronRight, Timer, Sparkles, Ticket, BookOpen } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { EASE_OUT_EXPO, EXIT_DURATION } from "@/lib/constants/motion";
 
@@ -11,7 +11,7 @@ import { EASE_OUT_EXPO, EXIT_DURATION } from "@/lib/constants/motion";
  * not a component reference (Next 16 forbids passing functions/classes from a
  * Server Component to a Client Component).
  */
-const ICONS = { timer: Timer, sparkles: Sparkles, ticket: Ticket } satisfies Record<string, LucideIcon>;
+const ICONS = { timer: Timer, sparkles: Sparkles, ticket: Ticket, book: BookOpen } satisfies Record<string, LucideIcon>;
 
 export type SettingsLinkIcon = keyof typeof ICONS;
 

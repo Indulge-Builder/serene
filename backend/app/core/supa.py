@@ -274,3 +274,25 @@ async def get_session_expiry_hours() -> int:
     )
     value = (row or {}).get("value")
     return value if isinstance(value, int) and value > 0 else 24
+
+
+# ── Elaya playbooks (0233): how a KIND of question is answered, written by the founder ──────
+_PLAYBOOKS_TTL_S = 60.0
+_playbooks_cache: tuple[float, list[dict[str, Any]]] | None = None
+
+
+async def get_active_playbooks() -> list[dict[str, Any]]:
+    """The active playbooks, cached one minute per process (a dozen rows, read every turn).
+    Fails soft to [] so a table hiccup never costs a turn."""
+    global _playbooks_cache
+    import time as _t
+    now = _t.monotonic()
+    if _playbooks_cache and now - _playbooks_cache[0] < _PLAYBOOKS_TTL_S:
+        return _playbooks_cache[1]
+    try:
+        rows = await select("elaya_playbooks", {"select": "id,title,example_questions,instructions", "active": "eq.true", "order": "updated_at.desc", "limit": "60"})
+    except Exception as exc:  # noqa: BLE001
+        print(f"[supa] playbooks read failed: {exc}")
+        rows = _playbooks_cache[1] if _playbooks_cache else []
+    _playbooks_cache = (now, rows)
+    return rows

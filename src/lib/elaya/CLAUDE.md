@@ -209,6 +209,17 @@ Never remove the UUID guard without moving id surfacing off the string-mask path
    `ElayaActionPayload.target`.
 7. Log it in `docs/changelog.md` + update `docs/modules/elaya.md`.
 
+## Playbooks (2026-09-21, migration 0233)
+
+The founder's answer to "how should THIS kind of question be handled": `/settings/elaya-playbooks`
+holds example questions + plain instructions per kind. The Python router reads the active rows
+(`supa.get_active_playbooks`, 60 s cache), returns the matching one with the category, and
+`persona.build_playbook_block` folds the text under the specialist focus as a METHOD (what to
+look at, which window, what to lead with); every number still comes from a tool. `meta.playbook`
+on the turn's row and `playbook` on the done frame say what fired. When an answer is wrong in
+SHAPE (wrong window, wrong emphasis, wrong scope), write or edit a playbook; when it is wrong in
+DATA, fix the tool.
+
 ## When a turn fails (2026-09-19)
 
 The brain never answers with silence or a generic line. `backend/app/api/chat.py`

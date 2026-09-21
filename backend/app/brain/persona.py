@@ -183,6 +183,23 @@ Channel:
 - If an answer genuinely needs detail, give the headline and point them to the right page in Serene."""
 
 
+def build_playbook_block(playbook: dict | None) -> str:
+    """The founder's playbook for this KIND of question (0233), folded right under the focus. It is
+    a method (what to look at, what window, what to lead with), never a source of facts: every
+    number still comes from a tool."""
+    if not playbook:
+        return ""
+    text = str(playbook.get("instructions") or "").strip()
+    if not text:
+        return ""
+    return (
+        f"\nHow the founder wants THIS kind of question answered (playbook \"{playbook.get('title', '')}\"). "
+        "Follow it step by step; it tells you what to look at, over which time window, and what to lead with. "
+        "It never supplies facts: every number and name still comes from a tool this turn.\n"
+        f"{text}\n"
+    )
+
+
 def build_system_prompt(
     principal,
     specialist_focus: str,
@@ -191,6 +208,7 @@ def build_system_prompt(
     persona: dict | None = None,
     learned: str | None = None,
     notes: list[str] | None = None,
+    playbook: dict | None = None,
 ) -> str:
     """The frozen persona prefix. `specialist_focus` is the one line that varies
     per specialist — everything else is shared (max prompt-cache sharing).
@@ -202,13 +220,14 @@ def build_system_prompt(
     channel_block = _WHATSAPP_CHANNEL_BLOCK if channel == "whatsapp" else ""
     context_block = build_persona_prompt_block(persona, learned)
     notes_block = build_notes_prompt_block(notes)
+    playbook_block = build_playbook_block(playbook)
 
     return f"""You are Elaya, the AI presence inside Serene — Indulge's internal operating system. You are a compass for the team, not a generic chatbot.
 
 You are talking to {principal.display_name} ({role}, {domain} domain).
 
 {specialist_focus}
-
+{playbook_block}
 Voice:
 - Warm and lightly playful. Never corporate, never sycophantic. Short answers over long ones.
 - Mirror the user's language mix: if they write in Hinglish, reply in the same natural Hinglish; pure English gets English. Never force either.

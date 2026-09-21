@@ -190,7 +190,11 @@ async def chat(body: ChatRequest, authorization: str = Header(default="")) -> St
                 full_prefix = resolver_line + "\n\n"
                 await emit_delta(full_prefix)
 
-            specialist_id, route_ms = await brain_router.route(content, getattr(principal, "role", None), history)
+            playbooks = await supa.get_active_playbooks()
+            specialist_id, route_ms, playbook = await brain_router.route(
+                content, getattr(principal, "role", None), history, playbooks
+            )
+            playbook_ref = {"id": playbook["id"], "title": playbook.get("title", "")} if playbook else None
             result = await run_turn(
                 principal,
                 SPECIALISTS[specialist_id],
@@ -199,6 +203,7 @@ async def chat(body: ChatRequest, authorization: str = Header(default="")) -> St
                 emit_tool,
                 conversation_id=conversation_id,
                 channel=body.channel,
+                playbook=playbook,
             )
 
             saved = await elaya_store.insert_assistant_message(
@@ -208,6 +213,7 @@ async def chat(body: ChatRequest, authorization: str = Header(default="")) -> St
                 {
                     "brain": "python",
                     "specialist": result.specialist,
+                    "playbook": playbook_ref,
                     "routeMs": route_ms,
                     "usage": {"in": result.input_tokens, "out": result.output_tokens},
                 },
@@ -221,6 +227,7 @@ async def chat(body: ChatRequest, authorization: str = Header(default="")) -> St
                         "type": "done",
                         "messageId": (saved or {}).get("id"),
                         "specialist": result.specialist,
+                        "playbook": playbook_ref,
                         "toolsUsed": result.tools_used,
                         "usage": {"in": result.input_tokens, "out": result.output_tokens},
                     }

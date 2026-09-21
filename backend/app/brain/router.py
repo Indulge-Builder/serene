@@ -93,23 +93,53 @@ def _context_block(history: list[dict] | None, current: str) -> str:
     )
 
 
-async def route(message: str, role: str | None = None, history: list[dict] | None = None) -> tuple[str, int]:
-    """→ (specialist_id, latency_ms). Fail-open to 'general' on any error —
-    a routing hiccup must degrade to a broader brain, never to a dead turn."""
+def _playbook_menu(playbooks: list[dict]) -> str:
+    """The founder's playbooks (0233) as a second menu: id → the questions it covers. The router
+    returns the matching id after the category, or `none`. Ids are short so the tiny reply stays tiny."""
+    if not playbooks:
+        return ""
+    lines = []
+    for i, pb in enumerate(playbooks):
+        qs = " / ".join(str(q)[:90] for q in (pb.get("example_questions") or [])[:6])
+        lines.append(f"- P{i + 1}: {pb.get('title', '')} — e.g. {qs}")
+    return (
+        "\n\nPlaybooks (how a KIND of question is answered). If the message is that kind of question, "
+        "add the playbook id after the category, separated by a space; otherwise add `none`:\n" + "\n".join(lines)
+    )
+
+
+async def route(
+    message: str,
+    role: str | None = None,
+    history: list[dict] | None = None,
+    playbooks: list[dict] | None = None,
+) -> tuple[str, int, dict | None]:
+    """→ (specialist_id, latency_ms, playbook_row | None). Fail-open to 'general' and no playbook on
+    any error — a routing hiccup must degrade to a broader brain, never to a dead turn."""
     started = time.monotonic()
     offered = set(_offered(role))
+    pbs = playbooks or []
+    picked = DEFAULT_SPECIALIST
+    playbook: dict | None = None
     try:
         llm = await registry.resolve("routing")
         result = await llm.complete(
             CompleteRequest(
                 model=llm.model,
-                max_tokens=8,
-                system=_system(role),
+                max_tokens=16,
+                system=_system(role) + _playbook_menu(pbs),
                 messages=[ChatMessage(role="user", content=_context_block(history, message))],
             )
         )
-        picked = result.text.strip().lower()
+        parts = result.text.strip().lower().replace(",", " ").split()
+        picked = parts[0] if parts else DEFAULT_SPECIALIST
+        for tok in parts[1:]:
+            if tok.startswith("p") and tok[1:].isdigit():
+                idx = int(tok[1:]) - 1
+                if 0 <= idx < len(pbs):
+                    playbook = pbs[idx]
+                break
     except Exception:
         picked = DEFAULT_SPECIALIST
     latency_ms = int((time.monotonic() - started) * 1000)
-    return (picked if picked in offered else DEFAULT_SPECIALIST, latency_ms)
+    return (picked if picked in offered else DEFAULT_SPECIALIST, latency_ms, playbook)

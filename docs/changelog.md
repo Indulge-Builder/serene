@@ -262,6 +262,32 @@ Fix (operator): paste the production secret key from cloud.trigger.dev (Project 
 `tr_prod_…`) into the Vercel environment variable `TRIGGER_SECRET_KEY` for Production, then
 redeploy. Code change: `setTaskNudgeCore` uses the static Trigger import like the other reminders.
 
+## 2026-09-21 — Elaya playbooks: the founder writes how a kind of question is answered (0233)
+
+Why: "what is happening in Ananyshree's queendom" came back as "271 open out of 15,084 tickets
+all-time". Every number was true; nobody had told Elaya which ones matter, what time window to
+assume, or what to lead with. Writing that into code for each kind of question means a deploy
+per lesson. The founder asked for a page where he types a real question and, under it, the full
+method, so that a simple question with a complex backend is answered his way from then on.
+
+What changed:
+
+- **`public.elaya_playbooks`** (migration 0233): title, example questions (how people really
+  ask), the instructions in plain words, on/off. RLS: admin/founder read; writes through the
+  gated action on the service role; the brain reads with the service role.
+- **/settings/elaya-playbooks** (admin/founder): the list, one editor, and a **Try it** box that
+  asks the real Elaya and shows what fired (playbook, specialist, tools). `ElayaPlaybooksPanel`,
+  `actions/elaya-playbooks.ts`, `services/elaya-playbooks-service.ts`,
+  `validations/elaya-playbook-schema.ts`. Instructions are sanitised per line so the founder's
+  steps keep their line breaks. A card on the Settings hub.
+- **The brain:** the router (`backend/app/brain/router.py`) reads the active playbooks (cached a
+  minute, `supa.get_active_playbooks`) and returns the matching one with the category, in the
+  same fast call. `build_playbook_block` folds the text under the specialist focus, marked as a
+  METHOD (what to look at, which window, what to lead with), never a source of facts. The turn's
+  row records it (`meta.playbook`) and the `done` frame carries `playbook`, `specialist` and
+  `toolsUsed`, which the browser transport now hands to `onDone` (the Try-it trace).
+- Each playbook's example questions are exam cases in waiting: the next exam build reads them.
+
 ## 2026-09-21 — Fix: a follow-up no longer makes Elaya disown a true answer
 
 Why: the founder asked who was interested in the Nadal meet and greet. Elaya read the internal
