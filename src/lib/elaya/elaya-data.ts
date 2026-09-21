@@ -67,7 +67,7 @@ import type { FdTicketListFilters } from '@/lib/types/freshdesk';
 import { canAccessMember, canSeeMemberFinance } from '@/lib/elaya/access';
 import { getMemberDetailAsAdmin } from '@/lib/services/members-service';
 import { getMemberFinance, getBooksOverview } from '@/lib/services/zoho-service';
-import { runElayaQuery, logElayaQuery, getElayaCatalog } from '@/lib/services/elaya-query-service';
+import { runElayaQuery, logElayaQuery, getElayaCatalog, ELAYA_EXPORT_MAX_ROWS } from '@/lib/services/elaya-query-service';
 import { getLivePulse } from '@/lib/services/pulse-service';
 import { isOnlyAcknowledgement } from '@/lib/services/ticket-intake';
 import { getLeadWhatsAppThreadForElaya } from '@/lib/services/whatsapp-service';
@@ -1033,6 +1033,14 @@ export async function queryDatabaseFor(principal: StaffPrincipal, sql: string, p
   if (!mayQueryDatabase(principal)) return { denied: true as const };
   const result = await runElayaQuery(sql, maxRows);
   await logElayaQuery({ userId: principal.userId, channel, purpose, sql, result });
+  return result;
+}
+
+/** The MCP connector's export: the same gate and log, up to ELAYA_EXPORT_MAX_ROWS rows (0231). */
+export async function exportRowsFor(principal: StaffPrincipal, sql: string, purpose: string | null, channel: ElayaChannel, maxRows?: number) {
+  if (!mayQueryDatabase(principal)) return { denied: true as const };
+  const result = await runElayaQuery(sql, maxRows ?? ELAYA_EXPORT_MAX_ROWS, ELAYA_EXPORT_MAX_ROWS);
+  await logElayaQuery({ userId: principal.userId, channel, purpose: `export: ${purpose ?? ''}`.trim(), sql, result });
   return result;
 }
 

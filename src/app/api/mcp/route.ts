@@ -37,7 +37,7 @@ const serve = async (request: Request): Promise<Response> => {
   }
 
   const maskingDepth = await getPiiMaskingDepth();
-  return buildMcpHandler(identity, maskingDepth)(request);
+  return buildMcpHandler(identity, maskingDepth, siteOrigin(request))(request);
 };
 
 const handler = (request: Request) =>

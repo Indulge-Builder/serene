@@ -47,6 +47,41 @@ the score should move on what happens now, which intake sees within a minute.
 
 ---
 
+## 2026-09-21 -- MCP connector, Phase 2: resources, prompts, an export, and the search pair (0231)
+
+**Why.** Phase 1 went live this morning (the founder connected Claude and ran tools). A tool box
+answers questions; a colleague already knows the company. Phase 2 of
+`docs/architecture/mcp-plan.md` gives the AI app the documents, the weekly analyses and the data
+sets that make the difference.
+
+**What.**
+
+- **Resources** (documents the model attaches without asking): `serene://vocab` (the exact
+  status, category, role and domain words, built from the constants in `lib/mcp/vocab.ts`),
+  `serene://catalog` (the analyst's data dictionary), `serene://pulse` (the live pulse),
+  `serene://member/{member}` (the 360 dossier) and `serene://ticket/{ticket}`. Every one but
+  vocab is a tool's own answer under a different door (`describe_database`, `get_live_pulse`,
+  `get_member_360`, `get_ticket`), so the gates and the PII mask are the tools'.
+- **Prompts**: `weekly_review`, `campaign_audit`, `sql_help`, `member_brief`, `vendor_shortlist`.
+  Text plus the tool calls to make; each shows only when its tool is in the person's toolset.
+- **`export_rows`**: one read-only SELECT over the catalog views, up to 5,000 rows as CSV for the
+  AI app's own sandbox. Founder and admin, logged in `elaya_query_log` as `export: <purpose>`.
+  Migration 0231 raises the SQL runner's clamp from 500 to 5,000; the chat tool keeps its 300 in
+  code. `exportRowsFor` in `elaya-data.ts`, `rowsToCsv` in `utils/csv.ts` (server-safe; the
+  browser export in `utils/export.ts` is untouched).
+- **`search` / `fetch`**: the pair ChatGPT deep research requires. `search` fans out to
+  `search_leads`, `get_member_overview` and `search_freshdesk_tickets` and returns id, title and a
+  Serene link per hit; `fetch` turns `lead:` / `member:` / `freshdesk:` / `ticket:` ids into the
+  matching detail tool.
+- **A larger result allowance**: `WriteToolContext.maxResultChars` (never lowers a tool's own
+  cap); the connector passes 60,000 (`MCP_RESULT_MAX_CHARS`), so a member 360 or a query is no
+  longer cut at the WhatsApp brain's 12,000.
+
+**Verified.** A structural smoke run built the server for a fake founder without a database:
+38 tools (35 registry reads + the 3 new), 3 resources + 2 templates, 5 prompts, the vocabulary
+reads, a prompt renders, `fetch` refuses an unknown id. Typecheck and lint clean. **Migration
+0231 is written, not applied**: until it runs, `export_rows` silently tops out at 500 rows.
+
 ## 2026-09-19 -- MCP connector, Phase 1: Claude, ChatGPT and other AI apps can read Serene as you
 
 **Why.** The founder lives in Claude Desktop and ChatGPT as much as in Serene, and wanted every

@@ -1843,7 +1843,7 @@ export async function executeTool(
       : await writeTool!.run(principal, parsed.data as Record<string, unknown>, ctx);
     const masked = maskPii(result, maskingDepth);
     let serialized = JSON.stringify(masked);
-    const cap = readTool?.maxResultChars ?? TOOL_RESULT_MAX_CHARS;
+    const cap = Math.max(readTool?.maxResultChars ?? TOOL_RESULT_MAX_CHARS, ctx.maxResultChars ?? 0);
     if (serialized.length > cap) {
       serialized = `${serialized.slice(0, cap)}…(truncated)`;
     }

@@ -26,3 +26,16 @@ export const MCP_ROLES: readonly UserRole[] = ['founder', 'admin'];
 
 /** Per-user burst limit on tool calls (plan §7). */
 export const MCP_RATE_LIMIT = { windowMs: 60_000, max: 60 } as const;
+
+/** Result allowance per tool call for connector clients (Phase 2). Elaya's own cap is 12,000 for the
+ *  WhatsApp brain; Claude and ChatGPT hold far more, so a member 360 or a query no longer gets cut. */
+export const MCP_RESULT_MAX_CHARS = 60_000;
+
+/** The resources the connector publishes (Phase 2 §6.2). */
+export const MCP_RESOURCE_URIS = {
+  catalog: 'serene://catalog',
+  pulse: 'serene://pulse',
+  vocab: 'serene://vocab',
+  member: 'serene://member/{member}',
+  ticket: 'serene://ticket/{ticket}',
+} as const;

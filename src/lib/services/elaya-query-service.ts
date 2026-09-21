@@ -28,11 +28,14 @@ const admin = (): Loose => createAdminClient() as unknown as Loose;
 
 export const ELAYA_QUERY_DEFAULT_ROWS = 100;
 export const ELAYA_QUERY_MAX_ROWS = 300;
+/** The MCP connector's export_rows cap (0231 raised the SQL clamp to match). Founder/admin, logged. */
+export const ELAYA_EXPORT_MAX_ROWS = 5000;
 
-/** Run ONE read-only SELECT over the elaya_read views. Never throws: a refused or broken query is a result. */
-export async function runElayaQuery(sql: string, maxRows = ELAYA_QUERY_DEFAULT_ROWS): Promise<ElayaQueryResult> {
+/** Run ONE read-only SELECT over the elaya_read views. Never throws: a refused or broken query is a result.
+ *  `hardCap` is the chat tool's 300 unless the export path passes ELAYA_EXPORT_MAX_ROWS. */
+export async function runElayaQuery(sql: string, maxRows = ELAYA_QUERY_DEFAULT_ROWS, hardCap = ELAYA_QUERY_MAX_ROWS): Promise<ElayaQueryResult> {
   const started = Date.now();
-  const cap = Math.min(Math.max(Math.trunc(maxRows) || ELAYA_QUERY_DEFAULT_ROWS, 1), ELAYA_QUERY_MAX_ROWS);
+  const cap = Math.min(Math.max(Math.trunc(maxRows) || ELAYA_QUERY_DEFAULT_ROWS, 1), hardCap);
   try {
     const { data, error } = await admin().rpc('elaya_run_query', { p_sql: sql, p_max_rows: cap });
     const duration_ms = Date.now() - started;

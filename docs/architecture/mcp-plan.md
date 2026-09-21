@@ -1,6 +1,6 @@
 # MCP plan: Serene as a connector for Claude, ChatGPT and every other AI tool
 
-Written 2026-09-19. Status: **Phase 1 BUILT 2026-09-19 (see the status log at the end); migration 0226 applied 2026-09-21; awaiting the Supabase OAuth switch.** Decisions the founder must make are
+Written 2026-09-19. Status: **Phase 1 LIVE 2026-09-21. Phase 2 BUILT 2026-09-21 (resources, prompts, export_rows, search/fetch, 60k result cap); migration 0231 pending on production. Next: use it, then Phase 3 (the team).** Decisions the founder must make are
 marked **Decide**. The rest is my recommendation and I will build it exactly as written unless
 told otherwise.
 
@@ -290,3 +290,9 @@ Status log:
   enable the OAuth server in the Supabase dashboard (Authorization path `/oauth/consent`, dynamic
   client registration on) and apply 0226 to production; then the first real login from Claude
   Desktop. `search` / `fetch` (ChatGPT deep research) moved to Phase 2.
+- 2026-09-21: 0226 applied, code on main, the Supabase OAuth server switched on, and the
+  founder connected Claude and ran tools through it. Phase 1 is live. Phase 2 next.
+- 2026-09-21 (later): Phase 2 built. Resources (vocab, catalog, pulse, member, ticket), the five
+  prompts, export_rows (5,000 rows CSV, migration 0231 raises the SQL clamp), the search/fetch
+  pair, and a 60,000-char result allowance for connector clients. Structural smoke test passed
+  without a database. 0231 still to apply.

@@ -72,6 +72,28 @@ Environment: `NEXT_PUBLIC_SITE_URL` (the public origin the metadata names) and
 | Call log | `public.mcp_tool_calls` (migration 0226), written by `src/lib/services/mcp-log-service.ts` |
 | Proxy bypass | `/api/mcp` and `/.well-known` in `src/proxy.ts` (bearer, never a cookie) |
 
+## What the AI app gets beyond the tools (Phase 2, 2026-09-21)
+
+| Kind | Name | What it is |
+| --- | --- | --- |
+| Resource | `serene://vocab` | The exact status, category, role and domain words. Built from the constants; read once before filtering. |
+| Resource | `serene://catalog` | The analyst's data dictionary (the views query_database and export_rows read). |
+| Resource | `serene://pulse` | The live pulse. |
+| Resource | `serene://member/{member}` | One member's 360 dossier, by name or id. |
+| Resource | `serene://ticket/{ticket}` | One Sia ticket, by number (T-000042) or id. |
+| Prompt | `weekly_review` (domain?) | Last 7 days against the 7 before, per domain, three things to fix. |
+| Prompt | `campaign_audit` (days?) | Spend, leads, deals, return per campaign; flags the money burners. |
+| Prompt | `sql_help` (question) | A plain question becomes the SQL, the run and the explanation. |
+| Prompt | `member_brief` (member) | The one-screen brief before a call. |
+| Prompt | `vendor_shortlist` (request, city?) | The ranked vendors with evidence. |
+| Tool | `export_rows` | One SELECT, up to 5,000 rows as CSV for the app's sandbox. Founder and admin. Needs migration 0231, else 500. |
+| Tool | `search` / `fetch` | The pair ChatGPT deep research requires: leads, members and Freshdesk tickets by words, then the record behind an id. |
+
+Every resource except vocab is a tool's own answer under a different door, so the gates and the
+PII mask are the tools'. A prompt only appears when its tool is in the person's toolset. Tool
+results for connector clients may be up to 60,000 characters (Elaya's WhatsApp brain keeps
+12,000).
+
 ## Logs
 
 - `public.mcp_tool_calls`: one row per tool call, with the user, the app's client id, the tool,

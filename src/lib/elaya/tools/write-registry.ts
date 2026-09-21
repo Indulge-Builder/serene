@@ -129,7 +129,13 @@ export type ElayaWriteToolName =
 // When adding a state-changing tool, follow the run()-shape contract above.)
 
 /** Context the brain threads in (which conversation/channel this turn belongs to). */
-export type WriteToolContext = { conversationId: string; channel: ElayaChannel };
+export type WriteToolContext = {
+  conversationId: string;
+  channel: ElayaChannel;
+  /** A larger result allowance than the tool's own (the MCP connector's clients have far more room
+   *  than the WhatsApp brain). Never lowers a tool's cap. */
+  maxResultChars?: number;
+};
 
 export type ElayaWriteTool = {
   name: ElayaWriteToolName;

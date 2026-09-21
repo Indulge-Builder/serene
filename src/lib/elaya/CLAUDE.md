@@ -79,6 +79,8 @@ python-brain.ts        ← (Step 3, channel tranche 2026-08-31; in-app proxy 202
                           when `brain_in_app` says python). Never a second brain client.
 ```
 
+**The MCP connector (2026-09-19/21) is the third channel** (`channel: 'mcp'`): `lib/mcp/server.ts` publishes the principal's read toolset and calls `executeTool`; `elaya-data.exportRowsFor` is the export twin of `queryDatabaseFor` (same gate, `ELAYA_EXPORT_MAX_ROWS` = 5,000, purpose logged as `export: …`); `WriteToolContext.maxResultChars` lets a roomier client raise (never lower) a tool's result cap.
+
 ## The channel-parity rule (Phase 1 — structural, non-negotiable)
 
 > Anything Elaya can do in-app she can do on WhatsApp, by construction. Full as-built record:
