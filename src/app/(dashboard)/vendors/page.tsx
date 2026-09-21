@@ -5,10 +5,11 @@ import type { SearchParams } from 'next/dist/server/request/search-params';
 import { Search } from 'lucide-react';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
 import { hasVendorAccess } from '@/lib/utils/route-access';
-import { listVendors, getVendorCategories } from '@/lib/services/vendors-service';
+import { listVendors, getVendorCategories, listVendorsNeedingReview } from '@/lib/services/vendors-service';
 import { VendorsFilters } from '@/components/vendors/VendorsFilters';
 import { AddVendorButton } from '@/components/vendors/AddVendorButton';
 import { VendorsTable } from '@/components/vendors/VendorsTable';
+import { VendorReviewQueue } from '@/components/vendors/VendorReviewQueue';
 import { VendorsTableSkeleton } from '@/components/vendors/VendorsTableSkeleton';
 import { Pagination } from '@/components/ui/Pagination';
 import { VENDOR_LIST_PAGE_SIZE, VENDORS_PATH } from '@/lib/constants/vendors';
@@ -62,7 +63,7 @@ export default async function VendorsPage({
 
   const resolved = await searchParams;
   const filters = parseFilters(resolved);
-  const categories = await getVendorCategories();
+  const [categories, review] = await Promise.all([getVendorCategories(), listVendorsNeedingReview()]);
 
   return (
     <main className="flex-1 p-4 sm:p-6 lg:p-8">
@@ -91,6 +92,11 @@ export default async function VendorsPage({
           <AddVendorButton categoriesInUse={categories} />
         </div>
       </div>
+
+      {/* The extractor's unconfirmed rows, newest first (2026-09-21). Renders nothing
+          when there are none, so the page is unchanged on a quiet day. Sits above the
+          filter bar because it is a to-do, not a view of the table. */}
+      <VendorReviewQueue items={review.items} totalCount={review.totalCount} />
 
       <div className="mb-4">
         <VendorsFilters categories={categories} />

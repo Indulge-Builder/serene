@@ -408,3 +408,34 @@ and the loader all landed in PR #3. The migrations ledger rows are marked applie
 The per-category ranking idea (now a query over engagements), the trigram name search, the
 aliases, the null-name general contact lines, the private bucket in a migration, the
 `jsonb_typeof` checks, the container verification habit, and the changelog discipline.
+
+## The review workflow (2026-09-21)
+
+The live extractor writes vendors on its own and marks every one `unverified`. A person
+finishes the job, from the product, with three possible answers:
+
+| Answer | Where | Who | What happens |
+| --- | --- | --- | --- |
+| It is real | "Looks right" on the vendor page | anyone with vendor access | `identity_status` becomes `verified`; the row leaves the queue |
+| It is another row under a different spelling | Merge in, on the row you are keeping | admin, founder | `merge_vendors`: jobs, ratings, notes and preferences fold into the keeper, the name becomes an alias |
+| It was never a supplier | Remove, on its page | admin, founder | deleted when nothing is attached, hidden when something is |
+
+**Where the queue is.** The "Needs a look" strip at the top of /vendors: the newest
+extractor rows nobody has confirmed, each with the ticket it came from, the words the
+model read, and the rows the extractor itself thought looked similar. It renders nothing
+when the queue is empty.
+
+**How the shortlist is built.** `getLikelyDuplicates` offers only facts: the near-miss
+names the extractor recorded when it created the row, any live vendor with the same
+primary phone, and a vendor whose name is one of this vendor's aliases (or the reverse).
+It is never fuzzy, because the button next to it is Merge.
+
+**Old ids keep working.** A merge deletes the losing row, but `vendor_merges` keeps the
+trail. A bookmark or an Elaya chat that names the old id lands on the keeper: the page
+redirects, and `get_vendor_details` answers with the keeper and says so.
+
+**What Elaya says.** `find_vendors` marks an extractor row nobody has confirmed as
+`unverified`, and `get_vendor_details` spells out what that means, so a recommendation
+made from a machine-written row is never presented with the confidence of a checked one.
+A removed vendor is named as removed.
+

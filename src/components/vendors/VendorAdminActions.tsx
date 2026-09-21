@@ -46,6 +46,12 @@ type Props = {
    * what happens: remove_vendor counts again inside its own transaction (0230).
    */
   history: { jobs: number; reviews: number; notes: number };
+  /**
+   * Rows that are probably this same supplier (getLikelyDuplicates: the extractor's
+   * own near-miss flags, a shared phone, a name that is one of our aliases). Shown
+   * in the Merge dialog before anyone types, so the common case is one click.
+   */
+  suggested?: VendorRow[];
 };
 
 const ROW: React.CSSProperties = {
@@ -62,7 +68,7 @@ const ROW: React.CSSProperties = {
   transition: 'var(--transition-hover)',
 };
 
-export function VendorAdminActions({ vendor, history }: Props) {
+export function VendorAdminActions({ vendor, history, suggested = [] }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 
@@ -234,6 +240,52 @@ export function VendorAdminActions({ vendor, history }: Props) {
               />
             </span>
           </label>
+
+          {/* The shortlist: shown while the box is empty, gone the moment a search
+              takes over. Same row chrome as the results so picking feels the same. */}
+          {results === null && !searching && suggested.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>
+                Probably the same supplier
+              </span>
+              <ul style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', margin: 0, padding: 0 }}>
+                {suggested.map((v) => {
+                  const isPicked = picked?.id === v.id;
+                  return (
+                    <li key={v.id} style={{ listStyle: 'none' }}>
+                      <button
+                        type="button"
+                        onClick={() => setPicked(isPicked ? null : v)}
+                        disabled={pending}
+                        style={{
+                          ...ROW,
+                          borderColor: isPicked ? 'var(--theme-accent)' : 'var(--theme-paper-border)',
+                          background: isPicked
+                            ? 'color-mix(in srgb, var(--theme-accent) 8%, transparent)'
+                            : 'transparent',
+                        }}
+                      >
+                        <span style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          <span
+                            style={{
+                              fontSize: 'var(--text-sm)',
+                              fontWeight: 'var(--weight-medium)',
+                              color: 'var(--theme-text-primary)',
+                            }}
+                          >
+                            {v.name}
+                          </span>
+                          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>
+                            {[v.category, v.home_city, v.primary_phone].filter(Boolean).join(' · ') || 'No details'}
+                          </span>
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
 
           {searching && (
             <p style={{ fontSize: 'var(--text-sm)', color: 'var(--theme-text-tertiary)', margin: 0 }}>Searching…</p>

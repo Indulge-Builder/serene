@@ -1,13 +1,21 @@
 import { redirect, notFound } from 'next/navigation';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
 import { hasVendorAccess, hasElevatedPageAccess } from '@/lib/utils/route-access';
-import { getVendorDetail, getVendorInvoices, getVendorCategories } from '@/lib/services/vendors-service';
+import {
+  getVendorDetail,
+  getVendorInvoices,
+  getVendorCategories,
+  resolveMergedVendorId,
+  getLikelyDuplicates,
+  readExtractionEvidence,
+} from '@/lib/services/vendors-service';
 import { BackButton } from '@/components/ui/BackButton';
 import { VendorIdentityCard } from '@/components/vendors/VendorIdentityCard';
 import { VendorScoreCard } from '@/components/vendors/VendorScoreCard';
 import { VendorInvoicesCard } from '@/components/vendors/VendorInvoicesCard';
 import { VendorNotesCard } from '@/components/vendors/VendorNotesCard';
 import { VendorAdminActions } from '@/components/vendors/VendorAdminActions';
+import { VendorVerifyBanner } from '@/components/vendors/VendorVerifyBanner';
 import { VENDORS_PATH } from '@/lib/constants/vendors';
 import { formatDate } from '@/lib/utils/dates';
 
@@ -36,7 +44,21 @@ export default async function VendorPage({ params, searchParams }: Props) {
     getVendorInvoices(id),
     getVendorCategories(),
   ]);
-  if (!detail) notFound();
+  if (!detail) {
+    // A merged-away id (0227): the row is gone, but vendor_merges says where it
+    // went. A bookmark, a ticket note or a chat from last week still lands on the
+    // supplier instead of a 404.
+    const trail = await resolveMergedVendorId(id);
+    if (trail) redirect(`${VENDORS_PATH}/${trail.keptVendorId}${sp.from ? `?from=${encodeURIComponent(rawFrom ?? '')}` : ''}`);
+    notFound();
+  }
+
+  // The review step (2026-09-21): an extractor-written row nobody has confirmed
+  // gets its evidence and its likely duplicates on the page. Nothing for a
+  // hand-entered or archive vendor.
+  const extracted = detail.vendor.sources.includes('freshdesk_live');
+  const needsReview = extracted && detail.vendor.identity_status === 'unverified' && !detail.vendor.deleted_at;
+  const likelyDuplicates = needsReview || hasElevatedPageAccess(profile) ? await getLikelyDuplicates(detail.vendor) : [];
 
   return (
     <main className="flex-1 p-4 sm:p-6 lg:p-8">
@@ -64,9 +86,20 @@ export default async function VendorPage({ params, searchParams }: Props) {
               reviews: detail.reviews.length,
               notes: detail.notes.length,
             }}
+            suggested={likelyDuplicates}
           />
         )}
       </div>
+
+      {needsReview && (
+        <VendorVerifyBanner
+          vendorId={detail.vendor.id}
+          vendorName={detail.vendor.name}
+          evidence={readExtractionEvidence(detail.vendor)}
+          likelyDuplicates={likelyDuplicates.map((d) => ({ id: d.id, name: d.name, category: d.category, home_city: d.home_city }))}
+          canMergeOrRemove={hasElevatedPageAccess(profile)}
+        />
+      )}
 
       {/* A removed vendor still opens by direct link, on purpose: that is how someone
           restores it. It must never be mistaken for a live one. */}

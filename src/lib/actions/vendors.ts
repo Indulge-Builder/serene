@@ -35,6 +35,7 @@ import {
   setAgentPreferenceCore,
   removeAgentPreferenceCore,
   mergeVendorsCore,
+  verifyVendorCore,
   setVendorDeletedCore,
   removeVendorCore,
   type VendorMergeResult,
@@ -317,6 +318,26 @@ export async function removeVendorAction(input: unknown): Promise<ActionResult<V
   if (!auth.ok) return auth.result;
 
   const result = await removeVendorCore(actorFromProfile(auth.profile), parsed.data);
+  if (!result.ok) return { data: null, error: mutationError(result.error) };
+
+  revalidatePath(VENDORS_PATH);
+  revalidatePath(`${VENDORS_PATH}/${parsed.data.id}`);
+  return { data: result.row, error: null };
+}
+
+/**
+ * A person confirms an extractor-written vendor (2026-09-21). Any teammate with
+ * vendor access — the concierge floor knows its suppliers, and confirming is the
+ * additive answer. Merge and Remove, the destructive ones, stay admin/founder.
+ */
+export async function verifyVendorAction(input: unknown): Promise<ActionResult<VendorRow>> {
+  const parsed = parseActionInput(VendorIdSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
+
+  const auth = await requireVendorAccess();
+  if (!auth.ok) return auth.result;
+
+  const result = await verifyVendorCore(actorFromProfile(auth.profile), parsed.data);
   if (!result.ok) return { data: null, error: mutationError(result.error) };
 
   revalidatePath(VENDORS_PATH);

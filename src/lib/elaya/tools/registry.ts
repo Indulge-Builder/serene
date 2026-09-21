@@ -835,6 +835,10 @@ const findVendors: ElayaTool = {
         score: r.score,
         why: r.reasons,
         cautions: r.flags,
+        // Written by the extractor from a Freshdesk note and not yet confirmed by a
+        // person. Say so when recommending one: the name may be a client, a product
+        // or a misread bill (the failures the review queue exists to catch).
+        unverified: r.vendor.identity_status === 'unverified' && r.vendor.sources.includes('freshdesk_live'),
       })),
     };
   },
@@ -856,10 +860,29 @@ const getVendorDetails: ElayaTool = {
   run: async (principal, input) => {
     if (!elayaData.canAskAboutVendors(principal)) return VENDOR_REFUSAL;
     const { vendor_id } = input as { vendor_id: string };
-    const d = await elayaData.getVendor(vendor_id);
+    let d = await elayaData.getVendor(vendor_id);
+    // A merged-away id (0227): the row is gone but vendor_merges says where it went.
+    // Answer with the vendor it now lives under and say so, rather than "no vendor" for
+    // a supplier the user was told about last week.
+    let mergedNote: string | null = null;
+    if (!d) {
+      const trail = await elayaData.resolveMergedVendor(vendor_id);
+      if (trail) {
+        d = await elayaData.getVendor(trail.keptVendorId);
+        if (d) mergedNote = `"${trail.mergedName}" was merged into ${d.vendor.name}; this is that vendor.`;
+      }
+    }
     if (!d) return { error: 'No vendor with that id.' };
     const RECENT = 10;
+    const extracted = d.vendor.sources.includes('freshdesk_live');
     return {
+      ...(mergedNote ? { note: mergedNote } : {}),
+      // 'unverified' = written by the extractor from a Freshdesk note and not yet
+      // confirmed by a person; say so before recommending them.
+      identity: d.vendor.identity_status === 'unverified' && extracted
+        ? 'unverified: written by the extractor from a Freshdesk note, not yet checked by a person'
+        : d.vendor.identity_status,
+      ...(d.vendor.deleted_at ? { removed: 'This vendor was removed from the product; do not recommend it.' } : {}),
       vendor: {
         id: d.vendor.id,
         name: d.vendor.name,

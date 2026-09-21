@@ -177,6 +177,36 @@ export async function setVendorStatusCore(
 }
 
 /**
+ * A person confirms an extractor-written vendor is real (2026-09-21).
+ *
+ * `identity_status` was only ever set by machines: `verified` for a hand-entered
+ * row, `unverified` for an import or an extraction. Nothing let a person flip it,
+ * so the review queue could never empty. This is the one write that does — and it
+ * only goes one way. Doubt is expressed by Remove or Merge, never by un-verifying.
+ * Any teammate with vendor access may confirm (the floor knows its suppliers);
+ * the destructive answers stay admin/founder.
+ */
+export async function verifyVendorCore(
+  actor: MutationActor,
+  input: { id: string },
+): Promise<VendorMutationResult<VendorRow>> {
+  void actor; // identity is not stamped on the spine (no updated_by column, per 0181)
+  const admin = createAdminClient();
+  const { data, error } = await from(admin, "vendors")
+    .update({ identity_status: "verified" })
+    .eq("id", input.id)
+    .is("deleted_at", null)
+    .select("*")
+    .maybeSingle();
+  if (error) {
+    console.error(`${LOG} verifyVendorCore failed:`, error);
+    return { ok: false, error: classify(error) };
+  }
+  if (!data) return { ok: false, error: "not_found" };
+  return { ok: true, row: data as VendorRow };
+}
+
+/**
  * Restore a removed vendor, or hide one outright (0227).
  *
  * Since 0230 the Remove BUTTON goes through removeVendorCore, which decides between

@@ -321,6 +321,49 @@ items all check for a duplicate before they write. Intake was switched back on. 
 history read was left OFF for the founder to restart: it is the one big spender, and running the
 account into its limit again would silence Elaya for everyone.
 
+## 2026-09-21 — The vendor review workflow: the extractor writes, a person finishes
+
+**Why.** PR #5 gave the team the tools to fix what the live extractor gets wrong: merge two
+rows that are one supplier, remove a row that was never one. What it did not give them was
+a way to FIND that work. Every extractor row is born `unverified`, nothing let a person flip
+it, the extractor's own "this looks like an existing row" flags were written to `import_raw`
+and never read, and a merged-away vendor id turned into a 404 on the page and "no vendor" in
+Elaya. The floor could only work the queue from SQL.
+
+**What changed.**
+
+- **A "Needs a look" queue on /vendors** (`VendorReviewQueue`, `listVendorsNeedingReview`):
+  the newest extractor rows nobody has confirmed, with the ticket, the words the model
+  read, and the rows it flagged as similar. Only `freshdesk_live` rows, so the 21,000
+  archive imports (also `unverified`) never drown it. Renders nothing when empty.
+- **"Looks right" on the vendor page** (`VendorVerifyBanner`, `verifyVendorAction`,
+  `verifyVendorCore`): the first write on `identity_status`, one way only. Open to anyone
+  with vendor access: confirming is the additive answer and the floor knows its suppliers.
+  Merge and Remove stay admin/founder.
+- **A merge shortlist** (`getLikelyDuplicates`): the Merge dialog opens on the rows that are
+  probably the same supplier, from facts only: the extractor's near-miss flags, a shared
+  phone, an alias/name match. Never fuzzy, because the button beside it is Merge.
+- **Merged ids keep working** (`resolveMergedVendorId`): the page redirects to the keeper and
+  Elaya's `get_vendor_details` answers with the keeper and says so, following the
+  `vendor_merges` trail (chain-safe, bounded).
+- **Elaya is honest about machine rows**: `find_vendors` marks an unconfirmed extractor row
+  `unverified`; `get_vendor_details` spells out what that means and names a removed vendor
+  as removed.
+
+One parser for the extractor's evidence (`readExtractionEvidence`), so the queue, the banner
+and Elaya can never read `import_raw.freshdesk_live` three different ways.
+
+**Verified on a local database rebuilt from scratch:** the queue lists only extractor rows;
+the shortlist finds "nitecore" from the extractor's own flag on "Nitecore UAE"; after a merge
+the old id resolves to the keeper and a live id resolves to nothing; "Looks right" clears a
+row from the queue; verifying a merged-away id is refused. tsc, lint and build clean.
+
+Noticed, not changed: three existing vendor components colour with `var(--theme-accent-deep)`,
+which is not a defined token (the defined one is `--neu-accent-deep`); the new components use
+the defined one.
+
+---
+
 ## 2026-09-19 — A power bank request was answered with airlines (migration 0228)
 
 Find a vendor, on ticket 55146, "Power bank sourcing request NB 10000": Air India, BigTree, IndiGo,

@@ -29,6 +29,8 @@ import {
   VENDOR_DETAIL_RECENT_ROWS,
   VENDOR_SEARCH_DEFAULT_LIMIT,
   VENDOR_SEARCH_MAX_LIMIT,
+  VENDOR_REVIEW_QUEUE_SIZE,
+  VENDOR_DUPLICATE_SUGGESTIONS,
   type VendorStatus,
   type ReviewDimension,
   PREFERRED_BOOST,
@@ -42,6 +44,9 @@ import type {
   VendorReviewRow,
   VendorScoreInputs,
   VendorDetail,
+  VendorExtractionEvidence,
+  VendorReviewItem,
+  VendorMergeTrail,
   VendorListItem,
   VendorNoteWithAuthor,
   VendorAgentUsage,
@@ -207,6 +212,131 @@ export async function getVendorsByIds(ids: string[]): Promise<VendorRow[]> {
     return [];
   }
   return mapRows<VendorRow, VendorRow>(data, (r) => r);
+}
+
+// ─── The review workflow (2026-09-21) ────────────────────────────────────────
+// The live extractor (0214) writes vendors on its own and marks them `unverified`.
+// A person finishes the job: looks at the row, and either confirms it, merges it
+// into the row it duplicates, or removes it. These reads exist so that can happen
+// from the product instead of from SQL. All three are cheap direct reads on the
+// admin client (the caller gates: the /vendors pages sit behind hasVendorAccess).
+
+/**
+ * What the extractor recorded when it wrote this vendor, if it did. The shape
+ * is the `evidence` object createVendorCore files under import_raw.freshdesk_live
+ * (vendor-extract-sync.ts writeFinding) — read here in ONE place so the queue,
+ * the page banner and Elaya cannot each parse it differently.
+ */
+export function readExtractionEvidence(vendor: Pick<VendorRow, "import_raw">): VendorExtractionEvidence {
+  const raw = (vendor.import_raw as Record<string, unknown> | null)?.freshdesk_live;
+  const ev = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  const dupes = Array.isArray(ev.possible_duplicate_of)
+    ? (ev.possible_duplicate_of as unknown[]).filter((x): x is string => typeof x === "string" && x.trim().length > 0)
+    : [];
+  return {
+    ticketId: typeof ev.ticket_id === "number" && Number.isFinite(ev.ticket_id) ? ev.ticket_id : null,
+    readAt: typeof ev.read_at === "string" ? ev.read_at : null,
+    quote: typeof ev.quote === "string" && ev.quote.trim() ? ev.quote : null,
+    possibleDuplicateOf: dupes,
+  };
+}
+
+/**
+ * The "Needs a look" queue: live vendors the extractor wrote that nobody has
+ * confirmed, newest first. Only extractor rows (`sources` carries freshdesk_live);
+ * the 21,000 archive imports are also `unverified` and would drown it.
+ */
+export async function listVendorsNeedingReview(
+  limit = VENDOR_REVIEW_QUEUE_SIZE,
+): Promise<{ items: VendorReviewItem[]; totalCount: number }> {
+  const admin = createAdminClient();
+  const base = () =>
+    from(admin, "vendors")
+      .select("*", { count: "exact" })
+      .eq("identity_status", "unverified")
+      .is("deleted_at", null)
+      .contains("sources", ["freshdesk_live"]);
+  const { data, error, count } = await base()
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) {
+    console.error(`${LOG} listVendorsNeedingReview failed:`, error);
+    return { items: [], totalCount: 0 };
+  }
+  const rows = mapRows<VendorRow, VendorRow>(data, (r) => r);
+  return {
+    items: rows.map((vendor) => ({ vendor, evidence: readExtractionEvidence(vendor) })),
+    totalCount: Number(count ?? rows.length),
+  };
+}
+
+/**
+ * Rows that are probably the same supplier as this one — the merge shortlist a
+ * person sees before they search. Three facts, no guessing:
+ *   1. the names the extractor itself flagged as near misses when it created the row
+ *      (import_raw.freshdesk_live.possible_duplicate_of — written since 0214, never read until now);
+ *   2. any live vendor with the same primary phone;
+ *   3. a vendor whose NAME is one of this vendor's aliases, or whose aliases hold this vendor's name.
+ * Never fuzzy: a fuzzy shortlist on a picker whose button is "Merge" is how two
+ * suppliers get fused. Removed rows and the vendor itself are excluded.
+ */
+export async function getLikelyDuplicates(vendor: VendorRow, limit = VENDOR_DUPLICATE_SUGGESTIONS): Promise<VendorRow[]> {
+  const admin = createAdminClient();
+  const evidence = readExtractionEvidence(vendor);
+  const aliasKeys = vendor.aliases.map((a) => a.trim().toLowerCase()).filter(Boolean);
+  const queries = [
+    evidence.possibleDuplicateOf.length
+      ? from(admin, "vendors").select("*").in("name", evidence.possibleDuplicateOf).is("deleted_at", null).limit(limit)
+      : null,
+    vendor.primary_phone
+      ? from(admin, "vendors").select("*").eq("primary_phone", vendor.primary_phone).is("deleted_at", null).limit(limit)
+      : null,
+    aliasKeys.length
+      ? from(admin, "vendors").select("*").in("name_key", aliasKeys).is("deleted_at", null).limit(limit)
+      : null,
+    from(admin, "vendors").select("*").contains("aliases", [vendor.name]).is("deleted_at", null).limit(limit),
+  ].filter((q): q is NonNullable<typeof q> => q !== null);
+
+  const results = await Promise.all(queries);
+  const seen = new Set<string>([vendor.id]);
+  const out: VendorRow[] = [];
+  for (const res of results) {
+    if (res.error) { console.error(`${LOG} getLikelyDuplicates read failed:`, res.error); continue; }
+    for (const row of mapRows<VendorRow, VendorRow>(res.data, (r) => r)) {
+      if (seen.has(row.id)) continue;
+      seen.add(row.id);
+      out.push(row);
+      if (out.length >= limit) return out;
+    }
+  }
+  return out;
+}
+
+/**
+ * Where a merged-away id went. A merge deletes the losing spine row (0227), but a
+ * link to it can outlive it: a bookmarked page, a ticket note, a chat with Elaya
+ * from last week. `vendor_merges` keeps the trail; this follows it — a keeper may
+ * itself have been merged later — bounded so a bad row can never loop.
+ */
+export async function resolveMergedVendorId(id: string): Promise<VendorMergeTrail | null> {
+  const admin = createAdminClient();
+  let current = id;
+  let first: VendorMergeTrail | null = null;
+  for (let hop = 0; hop < 5; hop++) {
+    const { data, error } = await from(admin, "vendor_merges")
+      .select("kept_vendor_id, merged_name, created_at")
+      .eq("merged_vendor_id", current)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) { console.error(`${LOG} resolveMergedVendorId failed:`, error); return first; }
+    if (!data) return first;
+    const row = data as { kept_vendor_id: string; merged_name: string; created_at: string };
+    first = first ?? { keptVendorId: row.kept_vendor_id, mergedName: row.merged_name, mergedAt: row.created_at };
+    first = { ...first, keptVendorId: row.kept_vendor_id };
+    current = row.kept_vendor_id;
+  }
+  return first;
 }
 
 /** One ledger row — the close / review cores read this before writing. */
