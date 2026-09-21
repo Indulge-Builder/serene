@@ -103,8 +103,10 @@ def _playbook_menu(playbooks: list[dict]) -> str:
         qs = " / ".join(str(q)[:90] for q in (pb.get("example_questions") or [])[:6])
         lines.append(f"- P{i + 1}: {pb.get('title', '')} — e.g. {qs}")
     return (
-        "\n\nPlaybooks (how a KIND of question is answered). If the message is that kind of question, "
-        "add the playbook id after the category, separated by a space; otherwise add `none`:\n" + "\n".join(lines)
+        "\n\nPlaybooks (how a KIND of question is answered). After the category, add a space and the "
+        "playbook id ONLY when the message asks the SAME KIND of thing as one of that playbook's example "
+        "questions (a shared topic or name is not enough; the question itself must match). When unsure, "
+        "add `none`. Reply format: `<category> <playbook id or none>`.\n" + "\n".join(lines)
     )
 
 

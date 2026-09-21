@@ -45,7 +45,7 @@ SPECIALISTS: dict[str, Specialist] = {
             "what a lead said or we said on the official WhatsApp line with the lead, the chat with a lead, lead lookups, HOW MANY leads / lead counts, lead status/details/notes, cold or "
             "stale leads, prospect questions (a lead is a sales prospect; an Indulge MEMBER is a paying client: anything about members, "
             "their concierge groups, or which members responded to an event, pitch or recommendation is the members / groups / analyst "
-            "category, never this one), talking points or case studies for pitching, "
+            "category, never this one; 'brief me on <a person>' is a member question unless that person is a sales lead), talking points or case studies for pitching, "
             "logging a call on a lead, adding a note to a lead, changing a lead's status, "
             "reassigning a lead, recording/closing a deal, creating a follow-up or reminder for a "
             "lead — including mixed asks like 'note this on the lead and remind me tomorrow'"
@@ -224,7 +224,8 @@ SPECIALISTS: dict[str, Specialist] = {
     "members": Specialist(
         id="members",
         description=(
-            "a member of Indulge: what we know about them (preferences, dislikes, dietary, family, the "
+            "a member of Indulge, named: 'tell me about X', 'brief me on X before I call', 'is X happy', "
+            "'what should I know about X'; what we know about them (preferences, dislikes, dietary, family, the "
             "people around them, their genie and queendom, their health score, their open requests, their "
             "renewal), what they said in their WhatsApp group (asked for lately, ever mentioned a topic, "
             "summarise the chat), and their money (owes anything, paid, invoice due)"
