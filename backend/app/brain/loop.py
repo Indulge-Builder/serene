@@ -230,6 +230,37 @@ async def run_turn(
         await on_delta(closing)
         result_text += closing
 
+    # An EMPTY final reply is never an answer (2026-09-21: a 16-call playbook turn ended with
+    # stop_reason max_tokens and "" — the Claude 5 models think inside the output allowance, and a
+    # long turn can spend all of it thinking). One closing call, tools withheld, asks for the answer
+    # from what was gathered; if even that is empty, say so rather than send a blank bubble.
+    if not result_text.strip():
+        try:
+            messages.append(ChatMessage(
+                role="user",
+                content="You have finished gathering. Answer now, in short lines, from what the tool results above hold. Do not call any more tools.",
+            ))
+            closing_result = await llm.complete(
+                CompleteRequest(
+                    model=llm.model,
+                    max_tokens=llm.max_tokens,
+                    system=system,
+                    system_tail=time_tail,
+                    messages=messages,
+                    tools=[],
+                    cache_prefix=True,
+                    on_text_delta=on_delta,
+                )
+            )
+            in_tokens += closing_result.input_tokens
+            out_tokens += closing_result.output_tokens
+            result_text = closing_result.text
+        except Exception as exc:  # noqa: BLE001
+            print(f"[loop] closing call failed: {exc}")
+        if not result_text.strip():
+            result_text = "I gathered the data but could not put the answer together this time. Ask me again, or ask for one part of it."
+            await on_delta(result_text)
+
     return TurnResult(
         text=result_text,
         tools_used=tools_used,
