@@ -13,6 +13,8 @@ import { PasswordChangeForm }    from "@/components/profile/PasswordChangeForm";
 import { PushNotificationSettings } from "@/components/profile/PushNotificationSettings";
 import { NotificationPreferences } from "@/components/profile/NotificationPreferences";
 import { ElayaPersonaSettings } from "@/components/profile/ElayaPersonaSettings";
+import { ConnectedApps } from "@/components/profile/ConnectedApps";
+import { listConnectedApps } from "@/lib/services/oauth-server-service";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { Button } from "@/components/ui/Button";
 import { ROLE_LABELS } from "@/lib/constants/roles";
@@ -28,9 +30,11 @@ export default async function ProfilePage() {
 
   // Seed the per-user notification matrix (migration 0133) — owner-scoped read.
   // + the per-user Elaya persona prefs (Jarvis Phase 2) — owner-scoped read.
-  const [notificationPrefs, elayaPersona] = await Promise.all([
+  // + the AI apps connected through the MCP connector (owner-scoped, the OAuth server's own list).
+  const [notificationPrefs, elayaPersona, connectedApps] = await Promise.all([
     getMyNotificationPrefs(),
     getMyElayaPersona(profile.id),
+    listConnectedApps(),
   ]);
 
   const memberSince = formatDate(profile.created_at, "MMM yyyy");
@@ -132,6 +136,13 @@ export default async function ProfilePage() {
             description="Personalise how Elaya talks to you."
           >
             <ElayaPersonaSettings initialPersona={elayaPersona} />
+          </SectionCard>
+
+          <SectionCard
+            title="Connected AI apps"
+            description="Apps like Claude or ChatGPT that you let read Serene as you."
+          >
+            <ConnectedApps initialApps={connectedApps} />
           </SectionCard>
 
           <PasswordChangeForm />

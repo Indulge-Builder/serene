@@ -7,7 +7,7 @@ import Image from "next/image";
 import { loginAction } from "@/lib/actions/auth";
 import { Button } from "@/components/ui/Button";
 
-export function LoginForm() {
+export function LoginForm({ next }: { next?: string | null }) {
   const [state, action, isPending] = useActionState(loginAction, null);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -50,6 +50,7 @@ export function LoginForm() {
 
         {/* Form */}
         <form action={action} noValidate>
+          {next && <input type="hidden" name="next" value={next} />}
           <div className="flex flex-col gap-4">
             {/* Email */}
             <div className="flex flex-col gap-1.5">

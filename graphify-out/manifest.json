@@ -3085,8 +3085,8 @@
     "semantic_hash": ""
   },
   "CLAUDE.md": {
-    "mtime": 1789818450.7202895,
-    "ast_hash": "aa607e2578b7a594a9330c546d41f072",
+    "mtime": 1789821366.3473377,
+    "ast_hash": "dca1c56d275cbe385639399ce8d39f61",
     "semantic_hash": ""
   },
   "README.md": {
@@ -3130,8 +3130,8 @@
     "semantic_hash": ""
   },
   "docs/README.md": {
-    "mtime": 1789626186.0564551,
-    "ast_hash": "1a20a3541ad8c47e64d7080f7c18add2",
+    "mtime": 1789821366.354677,
+    "ast_hash": "2b1aa1b4b42710c0051f114f886c77a9",
     "semantic_hash": ""
   },
   "docs/TODO.md": {
@@ -3155,8 +3155,8 @@
     "semantic_hash": ""
   },
   "docs/architecture/migrations.md": {
-    "mtime": 1789816805.2205455,
-    "ast_hash": "a391417c07753fb5b66dd5eb31d5f46d",
+    "mtime": 1789821422.3762307,
+    "ast_hash": "664e0392450642fdb70b2c6ff05eefc7",
     "semantic_hash": ""
   },
   "docs/architecture/overview.md": {
@@ -3170,8 +3170,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1789821283.7969763,
-    "ast_hash": "35224988b521015cdae630bc89d191fc",
+    "mtime": 1789821366.3320465,
+    "ast_hash": "bae080ecbaa96c1189bfa1ab67151f31",
     "semantic_hash": ""
   },
   "docs/claude-project/1-product-and-status.md": {
@@ -3370,8 +3370,8 @@
     "semantic_hash": ""
   },
   "docs/rules/The_Rules.md": {
-    "mtime": 1789816837.167278,
-    "ast_hash": "ec485a450464f20e9775c4956512eeb7",
+    "mtime": 1789821366.3416386,
+    "ast_hash": "c8dd5821fcf741068bdb00ac0e52b96d",
     "semantic_hash": ""
   },
   "feature.md": {
@@ -3440,8 +3440,8 @@
     "semantic_hash": ""
   },
   "src/app/CLAUDE.md": {
-    "mtime": 1789626493.4161854,
-    "ast_hash": "5926e24c4824a22c0f115bf076c2ec47",
+    "mtime": 1789821366.348637,
+    "ast_hash": "64fa42dff158430c47e96446d8b9219e",
     "semantic_hash": ""
   },
   "src/app/api/webhooks/CLAUDE.md": {
@@ -3485,8 +3485,8 @@
     "semantic_hash": ""
   },
   "src/lib/CLAUDE.md": {
-    "mtime": 1789626493.4149604,
-    "ast_hash": "f22e348281b340db3ce0f767762c09fa",
+    "mtime": 1789821366.351104,
+    "ast_hash": "2d57d22996006feecec4b3b6f4577e15",
     "semantic_hash": ""
   },
   "src/lib/actions/CLAUDE.md": {
@@ -3505,8 +3505,8 @@
     "semantic_hash": ""
   },
   "supabase/migrations/CLAUDE.md": {
-    "mtime": 1789816805.221644,
-    "ast_hash": "b76d96bc73e2d1fec22698d37a02fde2",
+    "mtime": 1789821366.3520975,
+    "ast_hash": "3bccd76c3767297bd274aab6bf40ef57",
     "semantic_hash": ""
   },
   "imgs/DB-Schema-img-2.png": {
@@ -8350,8 +8350,13 @@
     "semantic_hash": ""
   },
   "docs/architecture/mcp-plan.md": {
-    "mtime": 1789819085.9550407,
-    "ast_hash": "c9c6ea3e5ff9f29d8401fb30c8ed1bad",
+    "mtime": 1789821386.0217803,
+    "ast_hash": "0627fbcd12ed37dc9474e1ff467db90b",
+    "semantic_hash": ""
+  },
+  "docs/integrations/mcp.md": {
+    "mtime": 1789821287.3803186,
+    "ast_hash": "288588fb508d9ce8e79ea4cca6e380c3",
     "semantic_hash": ""
   }
 }

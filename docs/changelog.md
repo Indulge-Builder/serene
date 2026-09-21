@@ -47,6 +47,57 @@ the score should move on what happens now, which intake sees within a minute.
 
 ---
 
+## 2026-09-19 -- MCP connector, Phase 1: Claude, ChatGPT and other AI apps can read Serene as you
+
+**Why.** The founder lives in Claude Desktop and ChatGPT as much as in Serene, and wanted every
+question Elaya can answer available there, with all the data, and safely. Phase 1 of
+`docs/architecture/mcp-plan.md`.
+
+**What.** Serene is a remote MCP server at `/api/mcp`. An AI app adds that URL, sends the person
+to Serene to sign in (the Supabase OAuth server, with Serene's own consent page), and from then on
+calls Elaya's read tools as that person. The connector keeps no tool list: it publishes the
+principal's role-gated toolset from Elaya's registry and routes every call through `executeTool`
+(toolset re-check, Zod, per-record gates, `maskPii`). Founder and admin only for now; anyone else
+gets zero tools and a sentence. Write tools are not published (Phase 4).
+
+- `src/lib/constants/mcp.ts` (vocabulary), `src/lib/mcp/auth.ts` (bearer → `auth.getUser` →
+  `profiles` → `resolveStaffPrincipal`), `src/lib/mcp/server.ts` (the server, built per request
+  from the principal; `getReadTool` added to the registry so it can read a tool's description and
+  schema), `src/lib/mcp/metadata.ts` (RFC 9728 document, served at
+  `/.well-known/oauth-protected-resource` and its `/api/mcp` suffix form), `src/app/api/mcp/route.ts`
+  (P-02 carve-out, Decision Log today; per-user burst limit 60 a minute).
+- The consent screen: `src/app/(auth)/oauth/consent/` + `actions/oauth-consent.ts` +
+  `services/oauth-server-service.ts` (session client; approve, deny, list and revoke grants).
+  The login page now honours a same-site `next` path (`utils/return-path.ts`) so the consent
+  page survives a sign-in.
+- /profile: a "Connected AI apps" card (`components/profile/ConnectedApps.tsx`,
+  `actions/oauth-grants.ts`) listing the apps the person let in, with Disconnect.
+- Migration 0226: `public.mcp_tool_calls`, the append-only call ledger (owner reads own, admin
+  and founder read all). `ElayaChannel` gains `'mcp'`, stamped on `elaya_query_log` for SQL that
+  came through the connector.
+- `src/proxy.ts` bypasses `/api/mcp` and `/.well-known` (bearer, never a cookie).
+- Packages: `mcp-handler` 2.x + `@modelcontextprotocol/server` 2.x.
+- `docs/integrations/mcp.md`: the contract and the dashboard setup.
+
+**Not done here, on purpose.** Migration 0226 was applied to production by hand on 2026-09-21
+(the CLI's stored token had expired; the push went through with the database password). The
+Supabase OAuth server is still OFF on the project (the
+discovery URL answers `feature_disabled`): enable it in the dashboard with Authorization path
+`/oauth/consent` and dynamic client registration on. Until both are done nothing can connect.
+Verified locally: the discovery document, the 401 challenge with the right metadata URL, the
+consent page's error card and login redirect, the login return path (an off-site value is
+dropped). An end-to-end login and tool call waits on the dashboard switch. The ChatGPT deep
+research aliases `search` / `fetch` moved to Phase 2 with the other analysis extras.
+
+## 2026-09-19 -- Plan: an MCP connector so Claude, ChatGPT and other AI tools can read Serene
+
+**What.** `docs/architecture/mcp-plan.md`. One remote MCP server inside Serene (`/api/mcp`)
+that publishes Elaya's own tool registry to any AI app the person logs into with their Serene
+account. Same principal, same gates, same PII mask, same logs; a new Elaya tool reaches the
+connector with no second list. Phases: OAuth spike, the door (founder and admin), resources +
+prompts + bulk export, the team, writes with confirm. Five decisions listed for the founder.
+Nothing built yet.
+
 ## 2026-09-19 -- Fix: nobody could change a task's status or delete a task
 
 **Why.** An agent reported that a task could not be marked complete. Every status change and

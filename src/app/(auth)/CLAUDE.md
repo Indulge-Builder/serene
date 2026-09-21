@@ -7,6 +7,7 @@
 | `/login`           | `login-form.tsx`                        | `useActionState` + `loginAction`                                                   |
 | `/forgot-password` | `forgot-password-form.tsx`              | `useActionState` + `requestPasswordResetAction`                                    |
 | `/update-password` | `update-password-form.tsx` + `page.tsx` | Server component checks session; renders `InvalidLinkCard` on missing/expired link |
+| `/oauth/consent`   | `consent-form.tsx` + `page.tsx`         | The consent screen of Serene's OAuth server (MCP connector, 2026-09-19): `?authorization_id=` from Supabase; no session → `/login?next=<this url>`; `useActionState` + `answerOAuthConsentAction` (Allow / Deny). Same auth-card chrome. |
 
 All three share `(auth)/layout.tsx` as their shell.
 

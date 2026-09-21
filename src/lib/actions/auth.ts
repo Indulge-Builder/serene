@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { safeReturnPath } from "@/lib/utils/return-path";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
@@ -46,7 +47,9 @@ export async function loginAction(
     return { error: formErrors.accountDeactivated };
   }
 
-  redirect("/dashboard");
+  // A safe same-site return path (the OAuth consent page) or the dashboard. Validated again
+  // here: the hidden field is as untrusted as the query string it came from.
+  redirect(safeReturnPath(formData.get("next")) ?? "/dashboard");
 }
 
 export async function requestPasswordResetAction(

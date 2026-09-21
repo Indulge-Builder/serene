@@ -112,6 +112,7 @@ for product context
 | How leads enter the system | `integrations/lead-ingestion.md` |
 | Anything WhatsApp/Gupshup | `integrations/whatsapp-gupshup.md` |
 | Delayed jobs / reminders / SLA mechanics | `integrations/trigger-dev.md` |
+| Claude / ChatGPT / other AI apps reading Serene (the MCP connector) | `integrations/mcp.md` |
 | An env var | `operations/environments.md` |
 | How to deploy / build commands | `operations/deployment.md` |
 | Is the SLA/revival engine healthy today | `operations/engine-health-check.md` |
