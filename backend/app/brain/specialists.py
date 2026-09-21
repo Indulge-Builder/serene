@@ -43,7 +43,9 @@ SPECIALISTS: dict[str, Specialist] = {
         id="leads",
         description=(
             "what a lead said or we said on the official WhatsApp line with the lead, the chat with a lead, lead lookups, HOW MANY leads / lead counts, lead status/details/notes, cold or "
-            "stale leads, member/prospect questions, talking points or case studies for pitching, "
+            "stale leads, prospect questions (a lead is a sales prospect; an Indulge MEMBER is a paying client: anything about members, "
+            "their concierge groups, or which members responded to an event, pitch or recommendation is the members / groups / analyst "
+            "category, never this one), talking points or case studies for pitching, "
             "logging a call on a lead, adding a note to a lead, changing a lead's status, "
             "reassigning a lead, recording/closing a deal, creating a follow-up or reminder for a "
             "lead — including mixed asks like 'note this on the lead and remind me tomorrow'"
@@ -196,7 +198,10 @@ SPECIALISTS: dict[str, Specialist] = {
         description=(
             "a WhatsApp group by ITS NAME or kind rather than by a member: the internal team groups, "
             "vendor groups, groups not linked to any member, listing the groups Sia records, what was "
-            "said in a named group, what is happening lately across the groups or the recent group "
+            "said in a named group, WHICH MEMBERS responded to or showed interest in something we sent "
+            "them across the groups (an event, a pitch, a recommendation, an offer: 'who is interested in "
+            "the Nadal meet and greet', 'who replied to the Diwali offer', 'has anyone asked for more "
+            "details', 'who confirmed'), what is happening lately across the groups or the recent group "
             "activity when no member is named, a recent team discussion or talk about a topic (the "
             "talk we had about the app, what did the tech team discuss), and searching ALL groups at "
             "once for a topic (which members asked about something) (NOT one named member's chat — "

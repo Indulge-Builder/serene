@@ -61,8 +61,9 @@ def _context_block(history: list[dict] | None, current: str) -> str:
     the category kept a wrong route wrong ("try now that the bug is fixed" stayed on `leads`
     because the mistaken turn before it was `leads`), and the previous answer biased a clear
     question towards whatever it was about."""
-    if not history or not _is_followup(current):
+    if not history:
         return current[:2000]
+    followup = _is_followup(current)
     users: list[str] = []
     seen_current = False
     for row in reversed(history):
@@ -77,10 +78,18 @@ def _context_block(history: list[dict] | None, current: str) -> str:
     if not users:
         return current[:2000]
     earlier = "\n".join(f"- {u}" for u in reversed(users))
+    if followup:
+        return (
+            f"The user's earlier messages in this conversation (oldest first):\n{earlier}\n\n"
+            f"Current message (a follow-up that names no subject of its own): {current[:500]}\n\n"
+            "Classify the subject the earlier messages are about; the current message continues it."
+        )
     return (
-        f"The user's earlier messages in this conversation (oldest first):\n{earlier}\n\n"
-        f"Current message (a follow-up that names no subject of its own): {current[:500]}\n\n"
-        "Classify the subject the earlier messages are about; the current message continues it."
+        f"Current message: {current[:1500]}\n\n"
+        f"For context only, the user's earlier messages (oldest first):\n{earlier}\n\n"
+        "Classify the CURRENT message by its own words. Use the earlier messages only when the "
+        "current one is vague about WHAT it refers to (a pronoun, 'anyone', 'more details'); "
+        "then take the subject from them. A clear new subject in the current message wins."
     )
 
 
