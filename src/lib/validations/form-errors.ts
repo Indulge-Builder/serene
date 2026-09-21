@@ -103,6 +103,8 @@ export const formErrors = {
   vendorReviewEmpty:          "Add at least one rating or a comment.",
   vendorNotFound:             "Vendor not found.",
   vendorEngagementNotFound:   "Job not found.",
+  vendorMergeSameRow:         "Pick a different vendor to merge in.",
+  vendorMergeFailed:          "The vendors could not be merged. Nothing was changed.",
   vendorEngagementClosed:     "This job is already closed.",
   vendorEngagementMismatch:   "That job belongs to a different vendor.",
   vendorCapabilityNotFound:   "Capability not found.",

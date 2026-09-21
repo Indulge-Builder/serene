@@ -40,6 +40,15 @@ export type VendorRow = {
   sources: VendorSource[];
   import_raw: Record<string, unknown>;
   notes: string | null;
+  /**
+   * 0227 — when a person removed this vendor from the product. NULL = live.
+   * The row, its jobs, its reviews and its notes are all still here; it is only
+   * hidden from search, the list and the ranker, and it can be restored.
+   * NOT a status: `paused` / `blacklisted` answer "how do we treat this supplier",
+   * this answers "is it a supplier at all".
+   */
+  deleted_at: string | null;
+  deleted_by: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -219,6 +228,32 @@ export type VendorListItem = {
 };
 
 /** The vendor page read — everything the three cards need, in one shape. */
+/**
+ * What the live extractor recorded when it wrote a vendor (import_raw.freshdesk_live,
+ * 0214), read back for the review queue and the vendor page banner. Every field is
+ * optional because a hand-entered or archive-imported vendor has none of it.
+ */
+export type VendorExtractionEvidence = {
+  ticketId: number | null;
+  readAt: string | null;
+  quote: string | null;
+  /** Names of existing rows that looked close but did not meet the merge bar. */
+  possibleDuplicateOf: string[];
+};
+
+/** One row of the "Needs a look" queue: an unverified extractor vendor + its evidence. */
+export type VendorReviewItem = {
+  vendor: VendorRow;
+  evidence: VendorExtractionEvidence;
+};
+
+/** Where a merged-away vendor id went (0227 `vendor_merges`). */
+export type VendorMergeTrail = {
+  keptVendorId: string;
+  mergedName: string;
+  mergedAt: string;
+};
+
 export type VendorDetail = {
   vendor: VendorRow;
   capabilities: VendorCapabilityRow[];

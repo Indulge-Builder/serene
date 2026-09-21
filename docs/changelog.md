@@ -243,7 +243,7 @@ messages, then "336 messages, but pulling the content returns none". Two bugs, b
   written in letters only (`siaGroupHandle()` in `src/lib/elaya/elaya-data.ts`), which no masker
   touches. The test now runs through `executeTool` with strict masking.
 - The "0 messages" came from `sia.wag_group_activity()` running past the 8 second timeout, after
-  which `getSiaGroups()` reports 0 for every group. Migration 0222 rewrites the function (one
+  which `getSiaGroups()` reports 0 for every group. Migration 0223 rewrites the function (one
   index-only count, one index probe per group; same rows, 516 of 516 identical). When the numbers
   are still unavailable the tool now says so (`activity_known: false`, counts `null`) and never
   reports a false 0. The /sia rail gets its previews back too.
@@ -320,6 +320,213 @@ its first skipped conversation. Re-reading is safe: facts, people, timeline even
 items all check for a duplicate before they write. Intake was switched back on. The profiler's
 history read was left OFF for the founder to restart: it is the one big spender, and running the
 account into its limit again would silence Elaya for everyone.
+
+## 2026-09-21 — The vendor review workflow: the extractor writes, a person finishes
+
+**Why.** PR #5 gave the team the tools to fix what the live extractor gets wrong: merge two
+rows that are one supplier, remove a row that was never one. What it did not give them was
+a way to FIND that work. Every extractor row is born `unverified`, nothing let a person flip
+it, the extractor's own "this looks like an existing row" flags were written to `import_raw`
+and never read, and a merged-away vendor id turned into a 404 on the page and "no vendor" in
+Elaya. The floor could only work the queue from SQL.
+
+**What changed.**
+
+- **A "Needs a look" queue on /vendors** (`VendorReviewQueue`, `listVendorsNeedingReview`):
+  the newest extractor rows nobody has confirmed, with the ticket, the words the model
+  read, and the rows it flagged as similar. Only `freshdesk_live` rows, so the 21,000
+  archive imports (also `unverified`) never drown it. Renders nothing when empty.
+- **"Looks right" on the vendor page** (`VendorVerifyBanner`, `verifyVendorAction`,
+  `verifyVendorCore`): the first write on `identity_status`, one way only. Open to anyone
+  with vendor access: confirming is the additive answer and the floor knows its suppliers.
+  Merge and Remove stay admin/founder.
+- **A merge shortlist** (`getLikelyDuplicates`): the Merge dialog opens on the rows that are
+  probably the same supplier, from facts only: the extractor's near-miss flags, a shared
+  phone, an alias/name match. Never fuzzy, because the button beside it is Merge.
+- **Merged ids keep working** (`resolveMergedVendorId`): the page redirects to the keeper and
+  Elaya's `get_vendor_details` answers with the keeper and says so, following the
+  `vendor_merges` trail (chain-safe, bounded).
+- **Elaya is honest about machine rows**: `find_vendors` marks an unconfirmed extractor row
+  `unverified`; `get_vendor_details` spells out what that means and names a removed vendor
+  as removed.
+
+One parser for the extractor's evidence (`readExtractionEvidence`), so the queue, the banner
+and Elaya can never read `import_raw.freshdesk_live` three different ways.
+
+**Verified on a local database rebuilt from scratch:** the queue lists only extractor rows;
+the shortlist finds "nitecore" from the extractor's own flag on "Nitecore UAE"; after a merge
+the old id resolves to the keeper and a live id resolves to nothing; "Looks right" clears a
+row from the queue; verifying a merged-away id is refused. tsc, lint and build clean.
+
+Noticed, not changed: three existing vendor components colour with `var(--theme-accent-deep)`,
+which is not a defined token (the defined one is `--neu-accent-deep`); the new components use
+the defined one.
+
+---
+
+## 2026-09-19 — A power bank request was answered with airlines (migration 0228)
+
+Find a vendor, on ticket 55146, "Power bank sourcing request NB 10000": Air India, BigTree, IndiGo,
+Roldrive. Nitecore, which is in the table and did that exact job, was nowhere.
+
+It was not a ranking preference. `find_vendors_by_history` searches past ticket titles, and on that
+phrase it ran for over eight seconds and was killed by the statement timeout. `callAdminRpc` returns
+an empty array on error, so the ranker could not tell "nobody has done this before" from "the search
+died", and took its documented fallback: everyone with a special-request capability, ranked by how
+often they had been used. On this account, that is airlines and ticketing. The answer looked
+considered and was wrong.
+
+Measured on production:
+
+| query | time | result |
+| --- | --- | --- |
+| "power bank" | 457ms | 5 hits |
+| "power bank sourcing" | 721ms | 5 hits, Nitecore among them |
+| "power bank sourcing request" | 8094ms | timeout |
+| the full ticket title | 8218ms | timeout |
+
+**One word did it.** `power` is in 26 titles, `bank` 47, `sourcing` 944 — about a thousand rows
+between them. `request` is in 10,870 of 46,693, twenty-three per cent, and every matched row then
+pays for a `declines` capability lookup. The function already knew the word was worthless: it prices
+rarity, and `request` scores a fifth of `power`. It priced the word without ever deciding not to join
+it.
+
+So: a word carried by more than five per cent of titles is dropped before the join, and at most five
+words join. The rarest word is always kept whatever the cap, so a request written entirely in common
+words still gives its best guess instead of nothing. Nothing else changes — same weights, same
+declines rule, same ordering.
+
+Reproduced on 46,000 local jobs carrying production's word distribution: **14.4 seconds before, 12
+milliseconds after**, returning the same five vendors the short query returned. End to end through
+`rankVendorsForRequest`, the full ticket title now answers "Nitecore, 3 matching jobs" instead of the
+usage list.
+
+**And the silent half, which is the part that will matter again.** A search that dies and a search
+that finds nothing were the same thing to every caller of `callAdminRpc`. There is now
+`callAdminRpcChecked`, which returns `{ rows, ok }`; `callAdminRpc` is a one-line wrapper over it, so
+there is still one mechanism. `findVendorsByHistory` reports whether the search ran, and when it did
+not, the ranker still falls back — a list ranked by usage beats a blank page — but every row now
+carries the line "Could not search past jobs for these words — ranked by how often each is used". The
+reader can see which question was answered. 0228 makes that timeout rare; this is what keeps the next
+one honest.
+
+**The half that was actually on screen (migration 0229).** The timeout explains how the page reached
+the usage fallback, but not all of it. The request arrived with the chip `special-request`, guessed
+from the words by the page itself. Nitecore's job for that ticket is filed under `retail` — not a
+mistake, that is what the Freshdesk ticket's own category field says — and the history search
+FILTERED on the chip, so the one vendor who had done the job was excluded before anything was scored.
+
+Measured on production with the AI's own terms:
+
+| filter | top five |
+| --- | --- |
+| none | Shubham, Ankit, Stuffcool, DailyObjects, **Nitecore UAE** |
+| `special-request` (the chip) | Ankit, Nanaware, FIRKI, DailyObjects, Samsung BKC |
+| `retail` (where the job is) | Shubham, Stuffcool, Fortune Park, **Nitecore UAE**, **nitecore** |
+
+The AI, incidentally, had read it correctly: it returned category `retail` and eight rare, well chosen
+terms — power, bank, portable, charger, battery, pack, mobile, charging. The page's own keyword chip
+overrode it.
+
+And the codebase already held the lesson, in its own words. `vendor-search-intent.ts` says the model's
+category is display only, never a filter, because "a wrong guess is a hard filter that empties the
+search". That guard was on the model's guess and not on the page's keyword guess, which is the same
+guess arriving by another route.
+
+So the category and service now RANK the history search instead of filtering it: +40% on a job under
+the guessed category, +20% on the guessed service. The chip still shapes the answer and can no longer
+empty it. The city is untouched, because a place name is a fact in the sentence rather than an
+interpretation. The category filter stays in `get_vendor_candidates`, the fallback used when no title
+matched at all, where it is the only thing there is to go on.
+
+**Review before merge (2026-09-21).** Two changes on top of the PR, both proven on a local database
+rebuilt from scratch.
+
+1. **The four migrations are 0227 to 0230, not 0223 to 0226.** Main had already used 0223, 0224 and
+   0225 (ask the database, the live pulse, the daily briefing) and applied them on 2026-09-19, and
+   0226 is the MCP call ledger. The Supabase CLI keys a migration on its version string, so with the
+   old numbers it would have read the vendor files as already applied and skipped them without a
+   word. Files renamed to `20260921000227` to `20260921000230`; the SQL is unchanged apart from item 2.
+2. **A hidden vendor could still be suggested by Find a vendor.** `search_vendors` and
+   `get_vendor_candidates` excluded a removed vendor, but `find_vendors_by_history` did not, and that
+   is the path Find a vendor, the ticket picker's suggestions and Elaya's `find_vendors` take
+   whenever an old ticket title matches the words. In the test, a hidden "Air India" still came back
+   for "flight request mumbai delhi". One line in 0229: `AND v.deleted_at IS NULL` on the vendor join.
+
+Checked locally: merge folds the shared job and keeps the 7,107.09 on it, the loser's name becomes an
+alias, the review follows the surviving job, a `declines` on either side wins; Remove deletes a
+zero-history row and hides one with a job, the money stays; the hidden row leaves search, the
+candidate set and (after item 2) the history search; a wrong category chip no longer empties the
+search and the right one scores exactly 40% higher; `authenticated` cannot execute either function.
+
+## 2026-09-19 — Finding a vendor by the person, and putting two rows back together (migration 0227)
+
+Three things the vendor module needed once the extractor started writing to it by itself.
+
+**Searching a contact's name found nothing.** The extractor writes the business as the vendor and
+the person as a contact, which is right: a ticket titled "Booking at Josue Avenue Restaurant" with a
+note reading "booked through vendor Roman Jackson" is one restaurant, not a supplier called Roman
+Jackson. But staff remember the person, not the restaurant. The search surface is a generated column
+(0187) built from name, aliases, subcategory, city and phone, and contacts were never in it.
+
+They are now. A generated column can only use IMMUTABLE functions, which is why
+`immutable_array_to_string` exists for aliases; contacts are jsonb and needed their own,
+`immutable_contact_search_text`. Its ordering is fixed on purpose: a stored generated value that can
+come out differently after a table rewrite is a value nobody can reason about. Contact **phones** go
+in with the names, because a contact with no name is how this table already stores the vendor's own
+general lines, and `primary_phone` was in the surface already. Emails stay out, because "gmail" and
+"com" are shared by thousands of rows and would make every such search useless.
+
+**There was no way to merge two rows that are one supplier.** On 18 September the extractor read one
+ticket twice, two hours apart, and produced "Nitecore UAE" from a photographed bill and "nitecore"
+from a typed note. It flags a near miss rather than merging, which is correct — a machine must never
+fuse two suppliers on a guess — but that leaves a person to finish the job, and until now finishing
+it meant someone writing SQL by hand.
+
+The merge is one SQL function because it has to be. A vendor id is referenced by seven tables, and
+three of them carry a UNIQUE the move can collide with. Run as a series of calls from the app, a
+merge could fail on the sixth table with five already moved, leaving jobs hanging off a vendor that
+no longer exists. `merge_vendors` does all of it in one transaction or none of it.
+
+The collisions are the whole problem, and the nitecore pair is exactly one: both rows hold a job for
+ticket 55146, and `vendor_engagements` is UNIQUE on (vendor_id, source, source_ref), so re-pointing
+the second raises a duplicate-key error. Where the keeper already has the same job, the duplicate is
+folded — every fact the keeper is missing is filled from it, its ratings follow to the surviving job,
+and the emptied row goes. Every fold is a COALESCE, so nothing the keeper already knew is replaced.
+The loser's name becomes an alias on the keeper, which is what stops the extractor recreating it on
+the next note. A `vendor_merges` row keeps the deleted spine row in full.
+
+That delete is a new A-11 exception and has a Decision Log entry. Two rows describing one real job
+are not history, they are a fault in it.
+
+**And a wrong row needed a way out.** Sometimes the extractor writes something that is not a supplier
+at all. A real DELETE is impossible and should be: the ledger is ON DELETE RESTRICT, so a vendor with
+any history cannot be deleted, and those rows record money that actually moved. Someone having filed
+them under the wrong name does not make them untrue. So `deleted_at`: the row leaves the list, the
+search and the ranker, everything it knows stays exactly where it is, and Restore puts it back.
+Deliberately not a status — `paused` and `blacklisted` answer "how do we treat this supplier",
+`deleted_at` answers "is it a supplier at all", and folding the two would lose one of the answers.
+
+**And Remove decides which of the two you get (migration 0230).** Hiding everything forever was heavy handed for what
+the extractor mostly gets wrong: a row called "Client name- AKSHAT SHAH" with nothing attached at all,
+which leaves a permanent shadow of something that was never a supplier. So a vendor with no jobs, no
+ratings and no notes is genuinely deleted, because there is nothing to lose and `vendor_removals`
+keeps the row as the only surviving copy. One with any history is hidden instead, because its jobs
+record money that actually moved. Capabilities and preferences do not count: a capability is config
+the extractor writes on sight, and a preference is one teammate's sticky note.
+
+The button says which is coming before you press it, and the dialog says why. The page does not get
+to decide, though. `remove_vendor` counts again inside its own transaction under a row lock, so a job
+written between the page rendering and the click still wins, and the message afterwards reports what
+happened rather than what was expected.
+
+Merge and Remove are admin/founder only, with the status change: the three writes in this module that
+are not additive. Everyone else on the concierge floor (0221) gets the page without them rather than a
+button that refuses.
+
+Verified on a database rebuilt from scratch: 26 assertions on search and merge (built on the real
+nitecore shapes, not convenient ones), 11 on remove and restore, and 16 more driving the cores through
+PostgREST, which is the only place a wrong RPC parameter name would show. Typecheck, lint and build clean.
 
 ## 2026-09-18 — Fix: the member page's WhatsApp group link now opens that group in Sia
 

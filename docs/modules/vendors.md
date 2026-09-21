@@ -196,6 +196,54 @@ because the concierge and shop teams are the ones picking vendors all day.
 Route: a `/vendors` page lands with the Sia UI, not in this tranche. Until then Elaya is the
 surface.
 
+## Keeping the table clean (0227)
+
+The extractor writes vendors by itself now, so two kinds of wrong row turn up and both need a person
+to fix them. These are the only two writes in the module that are not additive, and both are
+admin/founder, with the status change.
+
+### Finding a vendor by the person you dealt with
+
+The extractor files the business as the vendor and the person as a contact. That is right: a ticket
+titled "Booking at Josue Avenue Restaurant" whose note says "booked through vendor Roman Jackson" is
+one restaurant, not a supplier called Roman Jackson. But staff remember the person.
+
+Contact names and phones are part of the search surface, so searching the person finds the business.
+Emails are not, on purpose: "gmail" and "com" are shared by thousands of rows.
+
+### Merge, when two rows are one supplier
+
+The extractor never merges on its own. Where a new name looks close to an existing one it records
+`possible_duplicate_of` and creates the row anyway, because fusing two suppliers on a guess destroys
+history and nothing catches it. A person finishes the job, from the row they want to keep: **Merge
+in** on `/vendors/[id]`, search, pick, confirm.
+
+Everything moves onto the keeper: jobs, ratings, notes, preferences, the tickets that named it and
+the WhatsApp links. The keeper only ever absorbs, because every fold is a COALESCE — a fact it
+already had is never replaced by the duplicate's version. The duplicate's name becomes an **alias**,
+which is the part that matters going forward: the next time the extractor reads that spelling it
+matches exactly instead of creating the row again.
+
+One case has no clean answer and it is common: when both rows hold a job for the **same ticket**. The
+ledger allows one row per (vendor, source, source_ref), so they cannot both survive. The duplicate is
+folded — every fact the survivor is missing is taken from it, any rating on it follows to the
+surviving job — and the emptied row goes. That delete is the A-11 exception of 2026-09-19. What it
+destroys, the losing spine row, is written to `vendor_merges` in full.
+
+### Remove, when a row is not a supplier at all
+
+Sometimes the extractor writes a client, a product or a line of chatter. **Remove** sets
+`deleted_at`: the row leaves the list, the search and the ranker, and Restore puts it back.
+
+Nothing is deleted, and nothing can be. `vendor_engagements` and `vendor_reviews` are ON DELETE
+RESTRICT, so a vendor with any history cannot be hard-deleted — and that restraint is right. Those
+rows record money that moved and work that happened. Somebody having filed them under the wrong name
+does not make them untrue.
+
+Removing is deliberately not a status. `paused` and `blacklisted` answer "how should we treat this
+supplier" — a blacklisted vendor still appears, so nobody re-adds it by accident. `deleted_at`
+answers a different question: "is this a supplier at all". Folding the two would lose one answer.
+
 ## Scoring
 
 Scores are **computed, never stored on `vendors`** (the subscriptions status pattern). Phase 1
@@ -360,3 +408,34 @@ and the loader all landed in PR #3. The migrations ledger rows are marked applie
 The per-category ranking idea (now a query over engagements), the trigram name search, the
 aliases, the null-name general contact lines, the private bucket in a migration, the
 `jsonb_typeof` checks, the container verification habit, and the changelog discipline.
+
+## The review workflow (2026-09-21)
+
+The live extractor writes vendors on its own and marks every one `unverified`. A person
+finishes the job, from the product, with three possible answers:
+
+| Answer | Where | Who | What happens |
+| --- | --- | --- | --- |
+| It is real | "Looks right" on the vendor page | anyone with vendor access | `identity_status` becomes `verified`; the row leaves the queue |
+| It is another row under a different spelling | Merge in, on the row you are keeping | admin, founder | `merge_vendors`: jobs, ratings, notes and preferences fold into the keeper, the name becomes an alias |
+| It was never a supplier | Remove, on its page | admin, founder | deleted when nothing is attached, hidden when something is |
+
+**Where the queue is.** The "Needs a look" strip at the top of /vendors: the newest
+extractor rows nobody has confirmed, each with the ticket it came from, the words the
+model read, and the rows the extractor itself thought looked similar. It renders nothing
+when the queue is empty.
+
+**How the shortlist is built.** `getLikelyDuplicates` offers only facts: the near-miss
+names the extractor recorded when it created the row, any live vendor with the same
+primary phone, and a vendor whose name is one of this vendor's aliases (or the reverse).
+It is never fuzzy, because the button next to it is Merge.
+
+**Old ids keep working.** A merge deletes the losing row, but `vendor_merges` keeps the
+trail. A bookmark or an Elaya chat that names the old id lands on the keeper: the page
+redirects, and `get_vendor_details` answers with the keeper and says so.
+
+**What Elaya says.** `find_vendors` marks an extractor row nobody has confirmed as
+`unverified`, and `get_vendor_details` spells out what that means, so a recommendation
+made from a machine-written row is never presented with the confidence of a checked one.
+A removed vendor is named as removed.
+

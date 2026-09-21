@@ -460,6 +460,15 @@ export function isOwnEntity(name: string | null | undefined): boolean {
   });
 }
 
+/**
+ * Rows shown in the "Needs a look" queue on /vendors: extractor-written vendors
+ * nobody has checked yet, newest first. A queue, not a report -- the point is
+ * that the top of it is always the freshest thing the machine wrote.
+ */
+export const VENDOR_REVIEW_QUEUE_SIZE = 8;
+/** Likely-duplicate suggestions offered on a vendor page (the merge shortlist). */
+export const VENDOR_DUPLICATE_SUGGESTIONS = 5;
+
 /** The sync_state key holding the extractor's own run record. */
 export const EXTRACT_SYNC_KEY = "vendor_extract";
 /** The `source` the live extractor writes on every vendor and job it creates. */

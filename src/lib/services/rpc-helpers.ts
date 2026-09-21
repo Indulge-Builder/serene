@@ -11,14 +11,36 @@ export async function callAdminRpc<TRow, TOut>(
   mapRow: (row: TRow) => TOut,
   logCtx: string,
 ): Promise<TOut[]> {
+  return (await callAdminRpcChecked<TRow, TOut>(rpc, params, mapRow, logCtx)).rows;
+}
+
+/**
+ * The same call, for a caller that must tell a search which DIED from one that
+ * found nothing.
+ *
+ * callAdminRpc returns [] for both, which is right for most callers and was wrong
+ * for one that mattered: `find_vendors_by_history` hit the statement timeout on an
+ * ordinary request ("Power bank sourcing request NB 10000", 2026-09-19), the ranker
+ * read the empty array as "no vendor has done this before", and fell back to ranking
+ * the whole category by usage — so a power bank request was answered with airlines,
+ * confidently and with no sign anything had gone wrong.
+ *
+ * `ok: false` means the database refused or timed out. It does NOT mean empty.
+ */
+export async function callAdminRpcChecked<TRow, TOut>(
+  rpc: string,
+  params: Record<string, unknown>,
+  mapRow: (row: TRow) => TOut,
+  logCtx: string,
+): Promise<{ rows: TOut[]; ok: boolean }> {
   const admin = createAdminClient();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (admin as any).rpc(rpc, params);
   if (error || !data) {
     if (error) console.error(`${logCtx} ${rpc} failed:`, error);
-    return [];
+    return { rows: [], ok: !error };
   }
-  return mapRows<TRow, TOut>(data as TRow[], mapRow);
+  return { rows: mapRows<TRow, TOut>(data as TRow[], mapRow), ok: true };
 }
 
 /**

@@ -1,13 +1,23 @@
 import { redirect, notFound } from 'next/navigation';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
-import { hasVendorAccess } from '@/lib/utils/route-access';
-import { getVendorDetail, getVendorInvoices, getVendorCategories } from '@/lib/services/vendors-service';
+import { hasVendorAccess, hasElevatedPageAccess } from '@/lib/utils/route-access';
+import {
+  getVendorDetail,
+  getVendorInvoices,
+  getVendorCategories,
+  resolveMergedVendorId,
+  getLikelyDuplicates,
+  readExtractionEvidence,
+} from '@/lib/services/vendors-service';
 import { BackButton } from '@/components/ui/BackButton';
 import { VendorIdentityCard } from '@/components/vendors/VendorIdentityCard';
 import { VendorScoreCard } from '@/components/vendors/VendorScoreCard';
 import { VendorInvoicesCard } from '@/components/vendors/VendorInvoicesCard';
 import { VendorNotesCard } from '@/components/vendors/VendorNotesCard';
+import { VendorAdminActions } from '@/components/vendors/VendorAdminActions';
+import { VendorVerifyBanner } from '@/components/vendors/VendorVerifyBanner';
 import { VENDORS_PATH } from '@/lib/constants/vendors';
+import { formatDate } from '@/lib/utils/dates';
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -34,7 +44,21 @@ export default async function VendorPage({ params, searchParams }: Props) {
     getVendorInvoices(id),
     getVendorCategories(),
   ]);
-  if (!detail) notFound();
+  if (!detail) {
+    // A merged-away id (0227): the row is gone, but vendor_merges says where it
+    // went. A bookmark, a ticket note or a chat from last week still lands on the
+    // supplier instead of a 404.
+    const trail = await resolveMergedVendorId(id);
+    if (trail) redirect(`${VENDORS_PATH}/${trail.keptVendorId}${sp.from ? `?from=${encodeURIComponent(rawFrom ?? '')}` : ''}`);
+    notFound();
+  }
+
+  // The review step (2026-09-21): an extractor-written row nobody has confirmed
+  // gets its evidence and its likely duplicates on the page. Nothing for a
+  // hand-entered or archive vendor.
+  const extracted = detail.vendor.sources.includes('freshdesk_live');
+  const needsReview = extracted && detail.vendor.identity_status === 'unverified' && !detail.vendor.deleted_at;
+  const likelyDuplicates = needsReview || hasElevatedPageAccess(profile) ? await getLikelyDuplicates(detail.vendor) : [];
 
   return (
     <main className="flex-1 p-4 sm:p-6 lg:p-8">
@@ -51,7 +75,49 @@ export default async function VendorPage({ params, searchParams }: Props) {
           {detail.vendor.name}
           <span className="page-title-dot">.</span>
         </h1>
+        {/* Merge and Remove are admin/founder only — the two writes here that are not
+            additive. Everyone else on the concierge floor (0221) gets the page without
+            them, rather than a button that refuses. */}
+        {hasElevatedPageAccess(profile) && (
+          <VendorAdminActions
+            vendor={detail.vendor}
+            history={{
+              jobs: detail.engagements.length,
+              reviews: detail.reviews.length,
+              notes: detail.notes.length,
+            }}
+            suggested={likelyDuplicates}
+          />
+        )}
       </div>
+
+      {needsReview && (
+        <VendorVerifyBanner
+          vendorId={detail.vendor.id}
+          vendorName={detail.vendor.name}
+          evidence={readExtractionEvidence(detail.vendor)}
+          likelyDuplicates={likelyDuplicates.map((d) => ({ id: d.id, name: d.name, category: d.category, home_city: d.home_city }))}
+          canMergeOrRemove={hasElevatedPageAccess(profile)}
+        />
+      )}
+
+      {/* A removed vendor still opens by direct link, on purpose: that is how someone
+          restores it. It must never be mistaken for a live one. */}
+      {detail.vendor.deleted_at && (
+        <div
+          style={{
+            padding: 'var(--space-3) var(--space-4)',
+            marginBottom: 'var(--space-6)',
+            borderRadius: 'var(--radius-sm)',
+            background: 'var(--color-warning-light)',
+            color: 'var(--color-warning-text)',
+            fontSize: 'var(--text-sm)',
+          }}
+        >
+          This vendor was hidden on {formatDate(detail.vendor.deleted_at)}. It does not appear in the vendor list, in
+          search, or in Find a vendor. Everything it knows is still here, and Restore puts it back.
+        </div>
+      )}
 
       {/* Top row: identity and score side by side, level with each other — the
           shared dossier grid (1fr + 320px), the same one /leads/[id] uses. Its

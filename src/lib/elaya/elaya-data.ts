@@ -51,7 +51,7 @@ import {
 } from '@/lib/services/profiles-service';
 import { getCampaignMetrics } from '@/lib/services/leads-service';
 import { getBudgetSummary, type BudgetCampaignRow } from '@/lib/services/ad-spend-service';
-import { rankVendorsForRequest, getVendorDetail } from '@/lib/services/vendors-service';
+import { rankVendorsForRequest, getVendorDetail, resolveMergedVendorId } from '@/lib/services/vendors-service';
 import { hasVendorActionAccess } from '@/lib/utils/route-access';
 import { listTicketsForElaya, getTicketByRefForElaya } from '@/lib/services/tickets-service';
 import { getSiaGroupForMember, getSiaGroups, getSiaMessages, searchSiaMessages, getSiaSenderRoles, type SiaGroupKind } from '@/lib/services/sia-service';
@@ -372,6 +372,11 @@ export function rankVendors(req: RankVendorsRequest) {
 
 export function getVendor(id: string) {
   return getVendorDetail(id);
+}
+
+/** Where a merged-away vendor id went (0227) — so an old id in a chat still answers. */
+export function resolveMergedVendor(id: string) {
+  return resolveMergedVendorId(id);
 }
 
 // ─────────────────────────────────────────────
