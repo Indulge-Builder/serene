@@ -17,8 +17,10 @@ get, and every call runs through `executeTool`: toolset re-check, input validati
 own per-record gates, PII masking. A new Elaya read tool appears in the connector the day it is
 merged. Write tools are not published (Phase 4 of the plan).
 
-Audience today: founder and admin (`MCP_ROLES` in `src/lib/constants/mcp.ts`). Anyone else can
-sign in but gets a server with zero tools and a sentence saying so.
+Audience: the `mcp_audience` row in `elaya_settings` (migration 0233), a JSON list of roles read
+on every call. Since 2026-09-21 it is every role but guest. Close a role with one UPDATE; a
+missing or malformed row falls back to founder + admin. Anyone outside it can sign in but gets a
+server with zero tools and a sentence saying so. The team's own page: `mcp-team-guide.md`.
 
 ## How a person connects
 

@@ -6,6 +6,9 @@
 // (the chat route / page is the trust boundary, Q-13 convention).
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { MCP_ROLES } from '@/lib/constants/mcp';
+import { USER_ROLES } from '@/lib/constants/roles';
+import type { UserRole } from '@/lib/types';
 import type { LlmJobType, LlmProviderRow } from '@/lib/types/elaya';
 
 const DEFAULT_DAILY_MESSAGE_CAP = 200;
@@ -104,6 +107,23 @@ export async function getMemberProfilerEnabled(): Promise<boolean> {
 /** The ticket intake sweep's switch (0219). True only when the row is exactly `true`; anything else is off. */
 export async function getTicketIntakeEnabled(): Promise<boolean> {
   try { return (await getSettingValue('ticket_intake_enabled')) === true; } catch { return false; }
+}
+
+/**
+ * Who may use the MCP connector (row `mcp_audience`, migration 0233): a JSON list of roles.
+ * Unknown values are dropped; a missing, empty or malformed row falls back to MCP_ROLES
+ * (founder + admin), the smaller set. Read per request, never module-cached (the sla_policies
+ * pattern): an UPDATE on the row opens or closes a role within a minute, no deploy.
+ */
+export async function getMcpAudience(): Promise<readonly UserRole[]> {
+  try {
+    const value = await getSettingValue('mcp_audience');
+    if (!Array.isArray(value)) return MCP_ROLES;
+    const roles = value.filter((v): v is UserRole => typeof v === 'string' && (USER_ROLES as string[]).includes(v));
+    return roles.length > 0 ? roles : MCP_ROLES;
+  } catch {
+    return MCP_ROLES;
+  }
 }
 
 /**

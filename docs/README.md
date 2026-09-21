@@ -113,6 +113,7 @@ for product context
 | Anything WhatsApp/Gupshup | `integrations/whatsapp-gupshup.md` |
 | Delayed jobs / reminders / SLA mechanics | `integrations/trigger-dev.md` |
 | Claude / ChatGPT / other AI apps reading Serene (the MCP connector) | `integrations/mcp.md` |
+| The team's one-page "connect Serene to Claude or ChatGPT" | `integrations/mcp-team-guide.md` |
 | An env var | `operations/environments.md` |
 | How to deploy / build commands | `operations/deployment.md` |
 | Is the SLA/revival engine healthy today | `operations/engine-health-check.md` |

@@ -41,8 +41,8 @@ function instructionsFor(identity: McpIdentity): string {
   const { principal } = identity;
   if (!identity.allowed) {
     return (
-      `${principal.displayName} is signed in, but the Serene connector is open to founders and admins ` +
-      'for now. There are no tools to call. Say so plainly and do not guess at company data.'
+      `${principal.displayName} is signed in, but the Serene connector is not open to their role right ` +
+      'now. There are no tools to call. Say so plainly and do not guess at company data.'
     );
   }
   return [

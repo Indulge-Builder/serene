@@ -1,6 +1,6 @@
 # MCP plan: Serene as a connector for Claude, ChatGPT and every other AI tool
 
-Written 2026-09-19. Status: **Phase 1 LIVE 2026-09-21. Phase 2 BUILT 2026-09-21 (resources, prompts, export_rows, search/fetch, 60k result cap); 0231 applied. Next: use it, then Phase 3 (the team).** Decisions the founder must make are
+Written 2026-09-19. Status: **Phase 1 LIVE 2026-09-21. Phase 2 BUILT 2026-09-21 (resources, prompts, export_rows, search/fetch, 60k result cap); 0231 applied. Phase 3 BUILT 2026-09-21: audience = the `mcp_audience` settings row, seeded open to every role; team guide at docs/integrations/mcp-team-guide.md. Next: Phase 4 (writes) when asked.** Decisions the founder must make are
 marked **Decide**. The rest is my recommendation and I will build it exactly as written unless
 told otherwise.
 
@@ -296,3 +296,6 @@ Status log:
   prompts, export_rows (5,000 rows CSV, migration 0231 raises the SQL clamp), the search/fetch
   pair, and a 60,000-char result allowance for connector clients. Structural smoke test passed
   without a database. 0231 still to apply.
+- 2026-09-21 (later still): Phase 3 built. The founder chose everyone at once, not managers
+  first. Audience is the `mcp_audience` settings row (0233); `MCP_ROLES` is the fallback. The
+  team guide is docs/integrations/mcp-team-guide.md.

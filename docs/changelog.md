@@ -62,6 +62,31 @@ the score should move on what happens now, which intake sees within a minute.
 
 ---
 
+## 2026-09-21 -- MCP connector, Phase 3: open to the whole team, audience as a switch (0233)
+
+**Why.** Phase 1 hard-coded who may use the connector (founder, admin). The founder asked to open
+it to managers and agents now, and to be able to close a role again without a deploy.
+
+**What.**
+
+- Migration 0233: an `elaya_settings` row `mcp_audience`, a JSON list of roles, seeded
+  `["founder","admin","manager","agent"]`. `getMcpAudience()` in `llm-providers-service.ts` reads
+  it per request (never module-cached), drops unknown values, and falls back to `MCP_ROLES`
+  (founder + admin, the smaller set) when the row is missing or malformed. `verifyMcpBearer` uses
+  it; `MCP_ROLES` is now the fallback, not the audience. Close a role:
+  `UPDATE elaya_settings SET value = '["founder","admin","manager"]' WHERE key = 'mcp_audience'`.
+- Nothing changes in what a person sees: the connector publishes the role-gated toolset Elaya
+  already gives them (a manager their domain, an agent their own leads and tasks, a concierge
+  teammate their queendom), through the same dispatch, gates and PII mask, logged under their
+  name.
+- `docs/integrations/mcp-team-guide.md`: the one page for the floor (Claude Desktop, the phone,
+  ChatGPT, Claude Code; three questions to try; disconnect; what "not available" means).
+- The "not open" sentence the model sees no longer names roles.
+
+**Verified.** Typecheck and lint clean. The switch is read on every call, so the seeded row
+opens the connector to the team as soon as 0233 is applied; no redeploy was needed for the
+audience itself, only for the reader.
+
 ## 2026-09-21 -- MCP connector, Phase 2: resources, prompts, an export, and the search pair (0231)
 
 **Why.** Phase 1 went live this morning (the founder connected Claude and ran tools). A tool box

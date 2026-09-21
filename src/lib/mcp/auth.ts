@@ -9,15 +9,16 @@
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { resolveStaffPrincipal, type StaffPrincipal } from '@/lib/elaya/principal';
-import { MCP_ROLES } from '@/lib/constants/mcp';
+import { getMcpAudience } from '@/lib/services/llm-providers-service';
 import type { Profile } from '@/lib/types';
 
 export type McpIdentity = {
   principal: StaffPrincipal;
   /** The OAuth client (the AI app) the token was issued to, from the JWT's client_id claim. */
   clientId: string | null;
-  /** False when the person is real but outside the Phase 1 audience (MCP_ROLES): the server
-   *  then answers with zero tools and a sentence, instead of a 401 that would loop the login. */
+  /** False when the person is real but their role is outside the audience (the `mcp_audience`
+   *  settings row, 0233): the server then answers with zero tools and a sentence, instead of a 401
+   *  that would loop the login. */
   allowed: boolean;
 };
 
@@ -41,13 +42,16 @@ export async function verifyMcpBearer(token: string): Promise<McpIdentity | null
   const { data, error } = await admin.auth.getUser(token);
   if (error || !data.user) return null;
 
-  const { data: row } = await admin.from('profiles').select('*').eq('id', data.user.id).maybeSingle();
+  const [{ data: row }, audience] = await Promise.all([
+    admin.from('profiles').select('*').eq('id', data.user.id).maybeSingle(),
+    getMcpAudience(),
+  ]);
   const profile = row as Profile | null;
   if (!profile || !profile.is_active) return null;
 
   return {
     principal: resolveStaffPrincipal(profile),
     clientId: readClientId(token),
-    allowed: MCP_ROLES.includes(profile.role),
+    allowed: audience.includes(profile.role),
   };
 }

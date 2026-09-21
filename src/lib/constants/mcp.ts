@@ -21,7 +21,8 @@ export const MCP_SERVER_INFO = { name: 'serene', version: '1.0.0' } as const;
 /** The channel stamped on query and tool logs for calls that came through the connector. */
 export const MCP_CHANNEL = 'mcp' as const;
 
-/** Phase 1 audience (plan §8): founder and admin. Phase 3 opens it to the team. */
+/** The FALLBACK audience when the `mcp_audience` settings row (0233) is missing or malformed: the
+ *  smaller set. The live audience is the row, read per request by getMcpAudience(). */
 export const MCP_ROLES: readonly UserRole[] = ['founder', 'admin'];
 
 /** Per-user burst limit on tool calls (plan §7). */
