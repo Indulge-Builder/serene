@@ -206,6 +206,22 @@ is their first real run.
 
 ---
 
+## 2026-09-21 — Found: the website cannot arm Trigger.dev runs (invalid TRIGGER_SECRET_KEY on Vercel)
+
+Why it surfaced: the new repeat-reminder core logs its arming error instead of swallowing it, and
+the production log said `[task-mutations] setTaskNudgeCore arm failed: Invalid API key`. The
+`TRIGGER_SECRET_KEY` on Vercel does not match the Trigger.dev project. Every run armed from the
+website goes the same way and always did quietly: task due reminders, the due-soon pings, lead
+SLA timers, cancel-by-tag (`scheduleTaskReminder`, `scheduleLeadSlasTask`, `cancelTaskReminder`
+all end in `.catch(() => {})`). The scheduled tasks themselves (profiler, intake, sentinel, sync,
+briefing) are unaffected: they run on Trigger.dev's own clock. Runs armed from a laptop with the
+`tr_dev_` key in `.env.local` land in the DEV environment and never execute on the production
+workers, which is why a local test "worked".
+
+Fix (operator): paste the production secret key from cloud.trigger.dev (Project → API keys,
+`tr_prod_…`) into the Vercel environment variable `TRIGGER_SECRET_KEY` for Production, then
+redeploy. Code change: `setTaskNudgeCore` uses the static Trigger import like the other reminders.
+
 ## 2026-09-21 — Fix: a follow-up no longer makes Elaya disown a true answer
 
 Why: the founder asked who was interested in the Nadal meet and greet. Elaya read the internal
