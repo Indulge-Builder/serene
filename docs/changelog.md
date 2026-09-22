@@ -12,6 +12,16 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-22 — Matte clay surfaces and calmer controls
+
+- Separated the sidebar, workspace, and cards into dedicated material tones in
+  light and dark appearances, retaining all eight theme accents.
+- Replaced broad external white highlights with warm contact shadows and inner
+  highlights. Removed the sidebar logo glow; status badges no longer float.
+- Gave fields shallow inset shading and navigation a persistent selected row wash
+  with `aria-current`. Deepened muted light-mode text for readability.
+- Kept browser/PWA theme color in sync with the revised warm canvas.
+
 ## 2026-09-21 -- The profiler reads a group the moment intake files a ticket card
 
 **Why.** The profiler waits for six quiet hours before it reads a conversation, so a member
@@ -294,6 +304,21 @@ workers, which is why a local test "worked".
 Fix (operator): paste the production secret key from cloud.trigger.dev (Project → API keys,
 `tr_prod_…`) into the Vercel environment variable `TRIGGER_SECRET_KEY` for Production, then
 redeploy. Code change: `setTaskNudgeCore` uses the static Trigger import like the other reminders.
+
+## 2026-09-22 — Teach Elaya: one hub, three doors
+
+Why: Elaya Training (what she can show customers, June) and Elaya Playbooks (how she answers the
+team, yesterday) sat on two different menus, and a founder looking for "teach Elaya" would not
+know both exist. They teach two different sides of her and nothing overlaps; what was missing was
+the packaging.
+
+What changed: `/settings/teach-elaya` (`components/settings/TeachElayaHub.tsx`, manager and
+above) with three doors, each saying plainly what it does and who edits it: **Training** (the
+customer-facing content library, `/admin/elaya-training`), **Playbooks** (the team-facing
+method per kind of question, `/settings/elaya-playbooks`), **Exam** (how well she does before a
+change ships; runs from the engineering side today, marked "not in the app yet"). The Settings
+hub card and the sidebar item now point at the hub; the playbooks page's back button returns to
+it. The training page itself is untouched.
 
 ## 2026-09-21 — Speak a playbook: record it, Elaya drafts it, you approve it
 

@@ -65,10 +65,10 @@ export default async function SettingsPage() {
                 index={2}
               />
               <SettingsLinkCard
-                href="/settings/elaya-playbooks"
+                href="/settings/teach-elaya"
                 icon="book"
-                title="Elaya Playbooks"
-                description="Teach Elaya how a kind of question is answered: example questions and plain instructions, live on the next message."
+                title="Teach Elaya"
+                description="Three doors: what she can show customers (Training), how she answers the team (Playbooks), and how well she does (Exam)."
               />
               <SettingsLinkCard
                 href="/settings/lead-revival"

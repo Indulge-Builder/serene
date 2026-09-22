@@ -101,7 +101,7 @@ function getConfigurationNav(isPrivileged: boolean): NavItem[] {
       icon: Film,
     });
   }
-  items.push({ href: "/admin/elaya-training", label: "Elaya Training", icon: GraduationCap });
+  items.push({ href: "/settings/teach-elaya", label: "Teach Elaya", icon: GraduationCap });
   items.push({ href: "/settings", label: "Settings", icon: Settings });
   return items;
 }
@@ -123,6 +123,7 @@ const MOBILE_TRIGGER_PATHS = new Set<string>([
   ...ANALYTICS_NAV.map((i) => i.href),
   "/admin/ad-creatives",
   "/admin/elaya-training",
+  "/settings/teach-elaya",
   "/settings",
   "/sia",
   "/freshdesk",
@@ -142,8 +143,7 @@ function NavLink({
   isActive,
 }: NavItem & { isActive: boolean }) {
   const reduceMotion = useReducedMotion();
-  // Hover feedback is the ICON colour fill (accent) — no background wash
-  // (removed 2026-07-03); tracked as state so the icon tile can react.
+  // Hover warms the row and icon; selection keeps a persistent pastel wash.
   const [hovered, setHovered] = useState(false);
   // md icon rail (md..lg) hides labels — the charcoal Tooltip (right side)
   // carries them there; full sidebar / mobile drawer show the label inline,
@@ -158,14 +158,14 @@ function NavLink({
       // Layout props live in .serene-nav-link (globals.css) so the md icon-rail
       // media query can centre the icon — inline styles would win otherwise.
       className="serene-nav-link"
-      // Active nav item stays CLEAN (2026-07-03): no background wash, no
-      // border/shadow chip, no left pill — the accent icon tile below is the
-      // one active indicator. Label just firms up (active colour + medium).
+      aria-current={isActive ? "page" : undefined}
       style={{
         color: isActive
           ? "var(--theme-sidebar-active)"
           : "var(--theme-sidebar-text)",
-        background: "transparent",
+        background: isActive
+          ? "var(--theme-sidebar-active-bg)"
+          : hovered ? "var(--theme-sidebar-hover-bg)" : "transparent",
         border: "1px solid transparent",
         fontFamily: "var(--font-sans)",
         fontSize: "var(--text-sm)",
@@ -188,11 +188,7 @@ function NavLink({
         }
       }}
     >
-      {/* Icon tile — THE active indicator: the current page's icon sits on a
-          small accent-gradient tile; inactive icons stay bare. (The left
-          travelling pill + active background wash were removed 2026-07-03.)
-          Hover on an inactive item fills the ICON with the theme accent —
-          no row background (removed 2026-07-03). */}
+      {/* Pastel icon tile supports the selected row without extra elevation. */}
       <span
         aria-hidden="true"
         style={{
@@ -205,7 +201,7 @@ function NavLink({
           flexShrink: 0,
           margin: "-4px 0",
           background: isActive ? "var(--neu-accent-gradient)" : "transparent",
-          boxShadow: isActive ? "var(--neu-shadow-knob)" : "none",
+          boxShadow: "none",
           // Hover fill uses the DEEP accent (the pastel --theme-accent is too
           // faint on the cream rail) + a heavier stroke — bold and unmissable.
           color: isActive
@@ -253,7 +249,7 @@ function NavSection({ label }: { label: string }) {
           padding: "0 var(--space-3)",
           marginBottom: "var(--space-2)",
           color:
-            "color-mix(in srgb, var(--theme-sidebar-text) 40%, transparent)",
+            "var(--theme-sidebar-text)",
         }}
       >
         {label}
@@ -366,14 +362,11 @@ export function Sidebar({ profile }: SidebarProps) {
     <aside
       className="serene-sidebar"
       data-open={drawerOpen ? "true" : "false"}
-      // Cream raised rail (neumorphic Sidebar specimen): the dark shell
-      // retires — the rail floats on the canvas with the paired shadow +
-      // hairline edge. Height/margin/radius live in .serene-sidebar
-      // (globals.css) so the mobile drawer + md icon-rail modes can differ.
+      // Matte clay rail; responsive dimensions live in globals.css.
       style={{
         background: "var(--theme-sidebar-bg)",
         border: "1px solid var(--neu-edge)",
-        boxShadow: "var(--neu-shadow-raised)",
+        boxShadow: "var(--neu-shadow-shell)",
         display: "flex",
         flexDirection: "column",
         flexShrink: 0,
@@ -416,8 +409,7 @@ export function Sidebar({ profile }: SidebarProps) {
             className="serene-sidebar-logo-img"
             style={{
               objectFit: "contain",
-              filter:
-                "drop-shadow(0 0 12px color-mix(in srgb, var(--theme-accent) 18%, transparent))",
+
             }}
           />
         </Link>
@@ -621,7 +613,7 @@ export function Sidebar({ profile }: SidebarProps) {
                   fontSize: "var(--text-2xs)",
                   fontWeight: "var(--weight-normal)",
                   color:
-                    "color-mix(in srgb, var(--theme-sidebar-text) 55%, transparent)",
+                    "var(--theme-sidebar-text)",
                   margin: 0,
                   marginTop: "2px",
                   letterSpacing: "var(--tracking-wide)",
@@ -652,7 +644,7 @@ export function Sidebar({ profile }: SidebarProps) {
               border: "none",
               background: "transparent",
               color:
-                "color-mix(in srgb, var(--theme-sidebar-text) 50%, transparent)",
+                "var(--theme-sidebar-text)",
               cursor: "pointer",
               flexShrink: 0,
               transition:
@@ -665,7 +657,7 @@ export function Sidebar({ profile }: SidebarProps) {
             }}
             onMouseLeave={(e) => {
               e.currentTarget.style.color =
-                "color-mix(in srgb, var(--theme-sidebar-text) 50%, transparent)";
+                "var(--theme-sidebar-text)";
               e.currentTarget.style.transform = "rotate(0deg) scale(1)";
             }}
           >

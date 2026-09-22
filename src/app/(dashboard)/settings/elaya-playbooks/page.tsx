@@ -20,7 +20,7 @@ export default async function ElayaPlaybooksPage() {
   return (
     <main className="flex-1 p-4 sm:p-6 lg:p-8">
       <div className="flex items-center gap-4 mb-8">
-        <BackButton href="/settings" label="Back to Settings" />
+        <BackButton href="/settings/teach-elaya" label="Back to Teach Elaya" />
         <h1 className="type-page-title m-0">
           Elaya Playbooks<span className="page-title-dot">.</span>
         </h1>

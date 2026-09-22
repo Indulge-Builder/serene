@@ -152,3 +152,8 @@ export function pickElayaDailyLine(userId: string, now: Date): string {
 
 /** The founder's playbooks page (migration 0234): how a KIND of question is answered, editable without a deploy. */
 export const ELAYA_PLAYBOOKS_PATH = '/settings/elaya-playbooks';
+
+/** The hub with the three doors to teaching Elaya: Training, Playbooks, Exam (2026-09-22). */
+export const TEACH_ELAYA_PATH = '/settings/teach-elaya';
+/** The customer-facing content library (migration 0150). */
+export const ELAYA_TRAINING_PATH = '/admin/elaya-training';
