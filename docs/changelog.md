@@ -305,6 +305,29 @@ Fix (operator): paste the production secret key from cloud.trigger.dev (Project 
 `tr_prod_…`) into the Vercel environment variable `TRIGGER_SECRET_KEY` for Production, then
 redeploy. Code change: `setTaskNudgeCore` uses the static Trigger import like the other reminders.
 
+## 2026-09-22 — Staff WhatsApp contacts link themselves to Serene accounts by phone
+
+Why: the founder's rule: every employee gets a company phone and an email; the phone joins the
+WhatsApp groups, the email signs up on Serene. Until now the two were tied only by a script run
+by hand (the roster, by display names), so a contact could show up in Elaya's answers as
+"Indulge Global" with no person behind it, and there was no screen to see or fix a link.
+
+What changed:
+
+- **`linkStaffContactsByPhone`** (`src/lib/services/sia-staff-link.ts`): every
+  `sia.wag_contacts` row whose phone equals an active profile's phone gets `staff_profile_id`
+  and the position from the profile (`sia_role`, or `founder`); the hidden-id rows (`@lid`) are
+  linked through the pairing the connector keeps on the phone row; a link whose account is gone
+  or deactivated is cleared (the phone may pass to the next hire). Phones compare in E.164 on
+  both sides, so "98xxx" and "+91 98xxx" are one number.
+- **Every 15 minutes** (`src/trigger/sia-staff-link.ts`) and **on demand**: the user page
+  (Admin → Users → person) has a **WhatsApp** card (`StaffWhatsAppCard`) listing the contacts
+  linked to that account (WhatsApp name, position, groups, last seen) with a **Link now** button
+  (`linkStaffWhatsAppNowAction`, admin/founder).
+- Onboarding is now: create the account with the company phone; the WhatsApp contact links
+  itself the next time the job runs, and Elaya, the profiler and the group reads all label that
+  person as staff. Needs `pnpm trigger:deploy` for the schedule.
+
 ## 2026-09-22 — Teach Elaya: one hub, three doors
 
 Why: Elaya Training (what she can show customers, June) and Elaya Playbooks (how she answers the

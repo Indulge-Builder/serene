@@ -9,6 +9,8 @@ import { EditAuthorizationForm } from "@/components/admin/EditAuthorizationForm"
 import { UserStatusControls } from "@/components/admin/UserStatusControls";
 import { Avatar } from "@/components/ui/Avatar";
 import { SectionCard } from "@/components/ui/SectionCard";
+import { StaffWhatsAppCard } from "@/components/admin/StaffWhatsAppCard";
+import { getStaffWhatsAppLinks } from "@/lib/services/sia-staff-link";
 import { BackButton } from "@/components/ui/BackButton";
 import { ROLE_LABELS } from "@/lib/constants/roles";
 import { DOMAIN_LABELS } from "@/lib/constants/domains";
@@ -34,6 +36,7 @@ export default async function UserDetailPage({ params }: Props) {
   const isPrivileged     = ["admin", "founder"].includes(caller.role);
   const canToggleRouting = ["manager", "admin", "founder"].includes(caller.role);
 
+  const waLinks = await getStaffWhatsAppLinks(user.id);
   const [routingConfig, queendoms] = await Promise.all([
     user.role === "agent" && canToggleRouting ? getAgentRoutingConfig(user.id) : Promise.resolve(null),
     isPrivileged ? getQueendoms() : Promise.resolve([]),
@@ -84,6 +87,8 @@ export default async function UserDetailPage({ params }: Props) {
               <EditAuthorizationForm user={user} queendoms={queendoms} />
             </SectionCard>
           )}
+
+          <StaffWhatsAppCard profileId={user.id} phone={user.phone} links={waLinks} canLink={isPrivileged} />
         </div>
 
         {/* Right column — identity sidebar, sticky on scroll */}
