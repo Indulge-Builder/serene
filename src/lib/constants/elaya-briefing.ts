@@ -6,7 +6,7 @@
 
 export const BRIEFING_SETTING_KEY = 'daily_briefing_enabled';
 export const BRIEFING_RUN_KIND = 'briefing';
-export const BRIEFING_PROMPT_VERSION = 'briefing-v3';
+export const BRIEFING_PROMPT_VERSION = 'briefing-v4';
 /** IST hours: the morning brief and the evening brief, and where the overnight window starts. */
 export const BRIEFING_MORNING_HOUR = 10;
 export const BRIEFING_EVENING_HOUR = 18;
@@ -21,7 +21,7 @@ export const BRIEFING_NOTABLE_TICKETS = 40;
 export const BRIEFING_TONE_ROWS = 120;
 export const BRIEFING_WAITING_SHOWN = 15;
 /** The writer's allowance and patience. */
-export const BRIEFING_MAX_TOKENS = 4000;
+export const BRIEFING_MAX_TOKENS = 2500;
 export const BRIEFING_TIMEOUT_MS = 180_000;
 /** A closed WhatsApp window gets a one-line template ping; this is its body cap. */
 export const BRIEFING_PING_CHARS = 850;

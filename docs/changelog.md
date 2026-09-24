@@ -40,8 +40,16 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
   other (decisions, plans, flags, money and vendor matters), never a gap; the watcher number joins the
   remaining internal groups next, so Elaya learns how the company runs. Unmapped member groups read as
   member groups, not internal ones.
-- Dry run on production: per-queendom blocks with "right now, all time" on the backlog, Team one person
-  per line by first name, Internal team from Jokers, Revenue, Queen's Council, Onboarding, 41 seconds.
+- Brevity (`briefing-v4`, the founder's third reading: "our brain gets overwhelmed with tons of data"):
+  the writer's one rule is to say only what matters, a line earns its place when the founder would act
+  on it or feel better for knowing it, sections with nothing to say are left out (no "none recorded"),
+  the length follows the activity (usually 12 to 25 lines, never more than 40, no line over 30 words).
+  The four headings fold into **Needs you today** (1 to 5 things to save or decide, with what to do)
+  and **Going well**; By queendom is one line per queendom in a fixed shape; Team is at most four
+  lines; Money only what changed. Writer allowance 2,500 tokens. Dry run: 30 lines on a busy overnight
+  window, 34 seconds.
+- Dry run on production (v3): per-queendom blocks with "right now, all time" on the backlog, Team one
+  person per line by first name, Internal team from Jokers, Revenue, Queen's Council, Onboarding.
 
 ---
 
