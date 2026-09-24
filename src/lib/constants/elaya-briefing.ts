@@ -6,7 +6,7 @@
 
 export const BRIEFING_SETTING_KEY = 'daily_briefing_enabled';
 export const BRIEFING_RUN_KIND = 'briefing';
-export const BRIEFING_PROMPT_VERSION = 'briefing-v2';
+export const BRIEFING_PROMPT_VERSION = 'briefing-v3';
 /** IST hours: the morning brief and the evening brief, and where the overnight window starts. */
 export const BRIEFING_MORNING_HOUR = 10;
 export const BRIEFING_EVENING_HOUR = 18;
@@ -14,7 +14,7 @@ export const BRIEFING_OVERNIGHT_START_HOUR = 18;
 /** How much of the window's record the writer reads. */
 export const BRIEFING_MESSAGE_ROWS = 4000;
 export const BRIEFING_MEMBER_GROUP_LINES = 40;
-export const BRIEFING_INTERNAL_GROUP_LINES = 25;
+export const BRIEFING_INTERNAL_GROUP_LINES = 15;
 export const BRIEFING_CHARS_BUDGET = 110_000;
 export const BRIEFING_TICKET_ROWS = 150;
 export const BRIEFING_NOTABLE_TICKETS = 40;

@@ -12,6 +12,30 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-25 — The brief, fixed on the founder's reading of it: queendom blocks, time frames in words, internal groups out of the gaps
+
+- Why: the founder read the first brief and found four things wrong. "Indulge Global" named as the top
+  performer (a WhatsApp display name shared by several phones, not a person); internal groups
+  (Queen's Council, the Revenue groups) reported for "slow replies" when they are quiet by nature;
+  the Freshdesk numbers mixing the window's tickets with the all-time backlog without saying so
+  (48 created, 60 resolved, 195 overdue); non-queendom Freshdesk groups (Indulge Shop, Finance and
+  Billing) in a concierge brief; and no per-queendom view for talking to each queen.
+- `elaya-briefing.ts` (prompt `briefing-v3`): Freshdesk reads join `queendoms` only; the backlog columns
+  are named `open_total_now` / `overdue_total_now` / `escalated_total_now` and `still_open_of_created`
+  is added; the reply-gap read covers member groups only, and internal groups are tagged "context only"
+  in the transcript; tone events, feedback cards and staff rows carry the queendom; a staff name whose
+  messages all come from the connector's own number, or whose sender is not linked to a Serene account,
+  is said so in the row and never counted as one person's load. The data now carries `by_queendom`
+  (tickets in and resolved, the backlog right now, members waiting, the slowest reply, unhappy and
+  happy, who was active) and a `meaning` block that states every number's time frame; the writer is
+  told to obey it, to write a **By queendom** section with the one thing each queen should fix today,
+  one fact per line, one person per line in Team, and never to report a gap in an internal group.
+  The greeting carries the founder's name even when the writer drops the placeholder.
+- Dry run on production: per-queendom blocks with "right now, all time" on the backlog, Gunjan flagged
+  as an unlinked WhatsApp name, no internal group in the gaps, 36 seconds.
+
+---
+
 ## 2026-09-25 — The deep read has no size limit: continuation runs, saved-as-you-go verdicts, and a spend cap that asks
 
 - Why: the founder rejected the 60,000-row refusal added the day before. A question that needs the
