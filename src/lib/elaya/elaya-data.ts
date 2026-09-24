@@ -467,10 +467,19 @@ async function shapeMessages(
   });
 }
 
-/** Members whose name (or phone digits) match, filtered to what the principal may see. */
-export async function findMembersFor(principal: StaffPrincipal, query: string, limit = 8): Promise<MemberBrief[]> {
+/**
+ * Members whose name (or phone digits) match, split into what the principal may see and how
+ * many matches sit outside their seat. The second number is the difference between "no such
+ * member" and "not yours to see" (2026-09-24: a concierge manager without a queendom seat asked
+ * for three real members, was told "no match" three times, and gave up on Elaya).
+ */
+export async function findMembersScopedFor(
+  principal: StaffPrincipal,
+  query: string,
+  limit = 8,
+): Promise<{ hits: MemberBrief[]; outsideSeat: number }> {
   const token = query.trim().replace(/[%,()]/g, ' ').replace(/\s+/g, ' ').trim();
-  if (token.length < 2) return [];
+  if (token.length < 2) return { hits: [], outsideSeat: 0 };
   const digits = token.replace(/\D/g, '');
   const ors = [`full_name.ilike.%${token}%`];
   if (digits.length >= 6) ors.push(`primary_phone.ilike.%${digits}%`);
@@ -482,7 +491,112 @@ export async function findMembersFor(principal: StaffPrincipal, query: string, l
     .limit(limit);
   const rows = (data ?? []) as MemberBrief[];
   const { queendom_id } = await principalQueendom(principal);
-  return rows.filter((c) => canAccessMember({ role: principal.role, queendom_id }, c.queendom_id));
+  const hits = rows.filter((c) => canAccessMember({ role: principal.role, queendom_id }, c.queendom_id));
+  return { hits, outsideSeat: rows.length - hits.length };
+}
+
+/** Members whose name (or phone digits) match, filtered to what the principal may see. */
+export async function findMembersFor(principal: StaffPrincipal, query: string, limit = 8): Promise<MemberBrief[]> {
+  return (await findMembersScopedFor(principal, query, limit)).hits;
+}
+
+// ── The members roster with filters (2026-09-24) ─────────────────────────────
+// "All clients from Mumbai with their profession" needs a LIST, and the member tools were one
+// member at a time. City and company are FACTS the profiler and the seeders filed (member_facts,
+// facet identity: primary_city, company, company_and_designation), not columns on the member, so
+// the roster is read in two steps: the scoped member rows, then the facts for those rows. Scope is
+// the seat: admin/founder every queendom, a seated teammate their queendom, anyone else nothing.
+
+export type MemberListFilters = {
+  city?: string;
+  company?: string;
+  tier?: string;
+  status?: string;
+  queendom?: string;
+  text?: string;
+  limit?: number;
+};
+const MEMBER_LIST_SCAN = 600;
+const MEMBER_LIST_MAX = 100;
+const MEMBER_LIST_CITY_KEYS = ['primary_city', 'identity_primary_city'];
+const MEMBER_LIST_COMPANY_KEYS = ['company', 'company_and_designation', 'identity_company', 'identity_company_and_designation'];
+
+export async function listMembersFor(principal: StaffPrincipal, f: MemberListFilters) {
+  const admin = createAdminClient();
+  const scopeAll = principal.role === 'admin' || principal.role === 'founder';
+  const { queendom_id } = await principalQueendom(principal);
+  if (!scopeAll && !queendom_id) return { denied: true as const, reason: 'no_seat' as const };
+
+  const { data: qs } = await admin.schema('sia').from('queendoms').select('id, name');
+  const queendomName = new Map<string, string>();
+  mapRows<{ id: string; name: string }, void>(qs, (q) => { queendomName.set(q.id, q.name); });
+
+  let wantQueendom: string | null = null;
+  if (f.queendom) {
+    const needle = f.queendom.toLowerCase().replace(/'s queendom|queendom/g, '').trim();
+    wantQueendom = [...queendomName.entries()].find(([, n]) => n.toLowerCase().includes(needle))?.[0] ?? null;
+    if (!wantQueendom) return { members: [], total_matching: 0, note: `No queendom named "${f.queendom}". Known: ${[...queendomName.values()].join(', ')}.` };
+  }
+  const status = f.status?.trim() || 'Active';
+
+  let q = memberDb(admin).from('members').select(CLIENT_BRIEF_SELECT).order('full_name').limit(MEMBER_LIST_SCAN);
+  if (!scopeAll) q = q.eq('queendom_id', queendom_id as string);
+  else if (wantQueendom) q = q.eq('queendom_id', wantQueendom);
+  if (status.toLowerCase() !== 'any') q = q.ilike('membership_status', status);
+  if (f.tier) q = q.ilike('tier', `%${f.tier.trim()}%`);
+  if (f.text) q = q.ilike('full_name', `%${f.text.trim().replace(/[%,()]/g, ' ')}%`);
+  const { data } = await q;
+  const rows = (data ?? []) as MemberBrief[];
+  if (rows.length === 0) return { members: [], total_matching: 0, scope: scopeAll ? 'all queendoms' : (queendomName.get(queendom_id as string) ?? 'your queendom'), status };
+
+  // The facts for these members, in chunks (PostgREST's in-list has a length limit).
+  const facts = new Map<string, { city: string | null; company: string | null }>();
+  const keys = [...MEMBER_LIST_CITY_KEYS, ...MEMBER_LIST_COMPANY_KEYS];
+  for (let i = 0; i < rows.length; i += 150) {
+    const ids = rows.slice(i, i + 150).map((r) => r.id);
+    const { data: fr } = await memberDb(admin)
+      .from('member_facts')
+      .select('member_id, key, value, confidence')
+      .in('member_id', ids)
+      .in('key', keys)
+      .is('superseded_by', null)
+      .order('confidence', { ascending: false });
+    mapRows<{ member_id: string; key: string; value: string | null; confidence: number | null }, void>(fr, (x) => {
+      const cur = facts.get(x.member_id) ?? { city: null, company: null };
+      if (MEMBER_LIST_CITY_KEYS.includes(x.key) && !cur.city) cur.city = x.value;
+      if (MEMBER_LIST_COMPANY_KEYS.includes(x.key) && !cur.company) cur.company = x.value;
+      facts.set(x.member_id, cur);
+    });
+  }
+
+  const city = f.city?.trim().toLowerCase();
+  const company = f.company?.trim().toLowerCase();
+  const shaped = rows
+    .map((r) => {
+      const ff = facts.get(r.id) ?? { city: null, company: null };
+      return {
+        member_id: r.id,
+        name: r.full_name,
+        tier: r.tier,
+        status: r.membership_status,
+        membership_ends: r.membership_end,
+        queendom: r.queendom_id ? (queendomName.get(r.queendom_id) ?? null) : null,
+        city: ff.city,
+        company: ff.company,
+      };
+    })
+    .filter((m) => !city || (m.city ?? '').toLowerCase().includes(city) || (city === 'mumbai' && /bombay/i.test(m.city ?? '')))
+    .filter((m) => !company || (m.company ?? '').toLowerCase().includes(company));
+  const limit = Math.min(Math.max(f.limit ?? 50, 1), MEMBER_LIST_MAX);
+  return {
+    members: shaped.slice(0, limit),
+    total_matching: shaped.length,
+    scope: scopeAll ? (wantQueendom ? queendomName.get(wantQueendom) : 'all queendoms') : (queendomName.get(queendom_id as string) ?? 'your queendom'),
+    status,
+    note:
+      (city ? 'City comes from saved facts; a member with no city on record is not listed. ' : '') +
+      (shaped.length > limit ? `Showing ${limit} of ${shaped.length}.` : ''),
+  };
 }
 
 /** One member + their mapped group, or null when the principal may not see them (or no such member). */
@@ -881,6 +995,8 @@ export async function getBooksFor(principal: StaffPrincipal) {
     cash: { banks: b.cash.banks, cards: b.cash.cards, clearing: b.cash.clearing, accounts: b.cash.accounts.slice(0, 12).map((a) => ({ name: a.account_name, type: a.account_type, balance: a.balance })) },
     this_month: b.thisMonth,
     financial_year_to_date: b.fyToDate,
+    // Zoho's Banking queue: feed lines nobody has categorised (null = could not be read this time).
+    uncategorised_bank_feed: b.uncategorised,
     overdue_invoices: b.overdueInvoices.slice(0, 10).map(inv),
     recent_invoices: b.recentInvoices.slice(0, 8).map(inv),
     recent_payments: b.recentPayments.slice(0, 8).map((p) => ({ date: p.date, customer: p.customer_name, amount: p.amount, mode: p.payment_mode, invoices: p.invoice_numbers })),
@@ -1089,6 +1205,7 @@ const M360_BUDGET_CHARS = 22_000; // get_member_360 carries maxResultChars 24,00
 
 export type Member360 =
   | { found: false; reason: 'not_found' }
+  | { found: false; reason: 'outside_seat'; outside_seat: number }
   | { found: false; reason: 'several'; candidates: { member_id: string; name: string; tier: string | null; status: string | null }[] }
   | { found: true; data: Record<string, unknown>; trimmed: string[] };
 
@@ -1096,8 +1213,8 @@ export async function getMember360For(principal: StaffPrincipal, ref: string): P
   let memberId: string | null = null;
   if (M360_UUID_RE.test(ref.trim())) memberId = ref.trim();
   else {
-    const hits = await findMembersFor(principal, ref);
-    if (hits.length === 0) return { found: false, reason: 'not_found' };
+    const { hits, outsideSeat } = await findMembersScopedFor(principal, ref);
+    if (hits.length === 0) return outsideSeat > 0 ? { found: false, reason: 'outside_seat', outside_seat: outsideSeat } : { found: false, reason: 'not_found' };
     if (hits.length > 1) return { found: false, reason: 'several', candidates: hits.map((c) => ({ member_id: c.id, name: c.full_name, tier: c.tier, status: c.membership_status })) };
     memberId = hits[0].id;
   }

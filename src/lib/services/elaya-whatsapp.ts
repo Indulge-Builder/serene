@@ -29,7 +29,7 @@
 
 import { sanitizeText } from '@/lib/utils/sanitize';
 import { normalizeWaPhone } from '@/lib/utils/phone';
-import { markdownToWhatsApp, truncateWhatsAppText } from '@/lib/utils/whatsapp-format';
+import { markdownToWhatsApp, splitWhatsAppText } from '@/lib/utils/whatsapp-format';
 import {
   getActiveProfileByPhone,
   getActiveStaffFirstNames,
@@ -62,8 +62,12 @@ const MAX_INBOUND_CHARS = 4000;
 /** Voice-note download bounds — a real note is tens-to-hundreds of KB. */
 const VOICE_DOWNLOAD_TIMEOUT_MS = 15_000;
 const VOICE_MAX_BYTES = 16 * 1024 * 1024;
-/** WhatsApp text messages cap at 4096 chars — stay under it. */
+/** WhatsApp text messages cap at 4096 chars — stay under it PER MESSAGE. A longer answer is
+ * sent as several messages in order (2026-09-24), never cut: the founders want every name. */
 const MAX_REPLY_CHARS = 4000;
+/** A turn that runs past this sends one holding line first, so the phone is not silent while
+ * the analyst reads the database (30 to 90 seconds on a real question). */
+const ACK_AFTER_MS = 15_000;
 
 // Channel copy — short, plain text, no markdown (WhatsApp surface).
 const REPLY_TEXT_ONLY =
@@ -80,6 +84,7 @@ const REPLY_CAP_REACHED =
 const REPLY_UNAVAILABLE =
   'I could not reach my brain just now, so I cannot answer yet. Your message is saved: try again in a minute, and tell the tech team if it keeps happening.';
 const REPLY_EMPTY = 'I don’t have an answer for that one — try rephrasing?';
+const REPLY_WORKING = 'On it. This one needs a proper look, give me a minute.';
 
 /**
  * The staff routing gate. Returns true when the sender is staff and the
@@ -181,7 +186,7 @@ async function handleStaffMessage(
   let outcome: StaffTurnOutcome;
   if (brain === 'python') {
     if (isPythonBrainConfigured()) {
-      outcome = await turnViaPythonBrain(profile, content, message.id);
+      outcome = await turnViaPythonBrain(profile, content, message.id, normalizedPhone);
     } else {
       console.warn(
         '[elaya-whatsapp] brain_whatsapp=python but the Python transport is not configured — answered by the Node brain',
@@ -202,11 +207,14 @@ async function handleStaffMessage(
   // formatting (markdown ** / # would render as literal asterisks otherwise).
   // Truncation is marker-aware — a bare slice could cut a */_/~ pair in half
   // and leave the orphaned opener rendering literally.
-  const reply =
+  const parts =
     outcome.text.trim().length > 0
-      ? truncateWhatsAppText(markdownToWhatsApp(outcome.text), MAX_REPLY_CHARS)
-      : REPLY_EMPTY;
-  await sendElayaWhatsAppReply(normalizedPhone, reply, profile.id);
+      ? splitWhatsAppText(markdownToWhatsApp(outcome.text), MAX_REPLY_CHARS)
+      : [REPLY_EMPTY];
+  for (const part of parts) {
+    // Sequential and awaited: the parts must land in order, inside the after() window.
+    await sendElayaWhatsAppReply(normalizedPhone, part, profile.id);
+  }
 
   // Post-turn learned-memory update (Jarvis Phase 3) — AFTER the reply is sent, still
   // inside the webhook route's after() lambda-alive window. Throttled + non-fatal
@@ -320,14 +328,25 @@ async function turnViaPythonBrain(
   profile: Profile,
   content: string,
   waMessageId: string,
+  phone: string,
 ): Promise<StaffTurnOutcome> {
   const principal = resolveStaffPrincipal(profile);
-  const result = await runPythonBrainTurn({
+  // The holding line: if the brain is still thinking after ACK_AFTER_MS, say so once, then
+  // keep waiting for the real answer. Awaited (never detached) so it cannot outlive the lambda.
+  const turn = runPythonBrainTurn({
     userId: profile.id,
     message: content,
     channel: 'whatsapp',
     waMessageId,
   });
+  let ackTimer: ReturnType<typeof setTimeout> | undefined;
+  const ack = new Promise<'ack'>((resolve) => { ackTimer = setTimeout(() => resolve('ack'), ACK_AFTER_MS); });
+  const first = await Promise.race([turn.then(() => 'done' as const), ack]);
+  if (first === 'ack') {
+    await sendElayaWhatsAppReply(phone, REPLY_WORKING, profile.id);
+  }
+  if (ackTimer) clearTimeout(ackTimer);
+  const result = await turn;
 
   if (result.ok) {
     return {

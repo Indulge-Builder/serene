@@ -29,8 +29,7 @@ import type {
   ZbInvoiceDetail,
   ZbPageContext,
   ZbPayment,
-  ZbReportNode,
-} from "@/lib/types/zoho";
+  ZbReportNode, ZbBankTransaction } from "@/lib/types/zoho";
 
 const LOG = "[zoho-api]";
 
@@ -208,6 +207,11 @@ export function listCreditNotes(f: { customer_id?: string; status?: string }, bu
 export function listBills(f: { status?: string; vendor_id?: string }, budget: ZbBudget, maxPages = 1) {
   return zbList<ZbBill>("/bills", "bills", f, budget, maxPages);
 }
+/** The uncategorised lines of one bank account's feed (Banking → Uncategorised in Zoho). One page. */
+export function listUncategorisedBankTransactions(accountId: string, budget: ZbBudget) {
+  return zbList<ZbBankTransaction>("/banktransactions", "banktransactions", { account_id: accountId, filter_by: "Status.Uncategorized" }, budget, 1);
+}
+
 export async function listBankAccounts(budget: ZbBudget): Promise<ZbBankAccount[]> {
   return (await zbGet<{ code: number; bankaccounts: ZbBankAccount[] }>("/bankaccounts", {}, budget)).bankaccounts ?? [];
 }

@@ -53,3 +53,20 @@ export function canAccessMember(
   if (principal.role === "admin" || principal.role === "founder") return true;
   return Boolean(principal.queendom_id) && principal.queendom_id === memberQueendomId;
 }
+
+// ── Test leads (2026-09-24) ───────────────────────────────────────────────────────────
+import { ELAYA_EVAL_ACCOUNT_NAME, ELAYA_TEST_LEAD_NAME_RE, ELAYA_TEST_LEAD_SLUG_SUFFIX } from '@/lib/constants/elaya';
+
+/** The eval harness's seeded lead, by slug or name. */
+export function isTestLead(lead: { slug?: string | null; name?: string | null }): boolean {
+  return (
+    (typeof lead.slug === 'string' && lead.slug.endsWith(ELAYA_TEST_LEAD_SLUG_SUFFIX)) ||
+    (typeof lead.name === 'string' && ELAYA_TEST_LEAD_NAME_RE.test(lead.name))
+  );
+}
+
+/** Drop test leads from what a real user sees; the eval account keeps them (its exam needs them). */
+export function hideTestLeads<T>(rows: T[], principal: { displayName: string }, pick: (row: T) => { slug?: string | null; name?: string | null }): T[] {
+  if (principal.displayName === ELAYA_EVAL_ACCOUNT_NAME) return rows;
+  return rows.filter((r) => !isTestLead(pick(r)));
+}

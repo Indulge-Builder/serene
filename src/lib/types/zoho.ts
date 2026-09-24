@@ -146,6 +146,8 @@ export type BooksOverview = {
   cash: { banks: number; cards: number; clearing: number; accounts: ZbBankAccount[] };
   thisMonth: { invoiced: number; received: number; expenses: number; from: string };
   fyToDate: { income: number; expenses: number; netProfit: number; from: string };
+  /** Zoho's Banking queue: bank-feed lines nobody has matched or categorised yet (2026-09-24). null = could not be read. */
+  uncategorised: { count: number; inflow: number; outflow: number; byAccount: { account: string; count: number; inflow: number; outflow: number }[] } | null;
   overdueInvoices: ZbInvoice[];
   recentInvoices: ZbInvoice[];
   recentPayments: ZbPayment[];
@@ -162,4 +164,15 @@ export type MemberFinance = {
   totals: { invoiced: number; paid: number; outstanding: number; credits: number; invoiceCount: number };
   fetchedAt: string;
   apiCalls: number;
+};
+
+/** One line of a bank feed as Zoho lists it (GET /banktransactions). Only the fields we read. */
+export type ZbBankTransaction = {
+  transaction_id: string;
+  date: string;
+  amount: number;
+  debit_or_credit: 'debit' | 'credit' | string;
+  status: string;
+  payee?: string;
+  description?: string;
 };

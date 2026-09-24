@@ -12,6 +12,43 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-24 — Elaya reads the room better: members by city, the whole waiting list, no WhatsApp cut, a verified layer for SQL
+
+- Why: the transcript audit (289 real turns) found the misses that were not routing. A concierge manager
+  asked for three real members and was told "no match" three times (she had no queendom seat; the gate
+  reported absence). "All clients from Mumbai" had no tool. The pulse dropped anyone waiting longer than
+  a day. WhatsApp replies were cut at 4,000 characters. The database tool answered "waiting on us" and
+  "response time" a different way each time. Test leads sat in founders' task lists. The founder asked
+  twice for Zoho's uncategorised bank feed and there was no read for it.
+- `list_members` (new read tool, all staff): the roster with filters city, company or profession, tier,
+  status, queendom, name fragment; scoped to the seat (founder and admin every queendom, a seated teammate
+  their own). City and company come from the saved facts (`member_facts` primary_city, company,
+  company_and_designation), so a member with no city on record is not in a city list and the tool says so.
+  `elayaData.listMembersFor` in `src/lib/elaya/elaya-data.ts`; registered on both brains.
+- Outside the seat is not "not found": `findMembersScopedFor` returns how many matches sit outside the
+  seat; `get_member_overview` and `get_member_360` now answer "exists but outside your seat, an admin can
+  seat you" instead of "no member matching".
+- The pulse's waiting list has no day ceiling (`PULSE_WAITING_MAX_HOURS` 24 → 720): a member who has
+  waited a week is the one who matters most.
+- WhatsApp replies are sent whole, as several messages when long (`splitWhatsAppText` in
+  `src/lib/utils/whatsapp-format.ts`, cuts on paragraph breaks, markers kept closed), never truncated. A
+  turn still thinking after 15 seconds sends "On it. This one needs a proper look, give me a minute." once
+  (`elaya-whatsapp.ts`, the holding line races the brain turn and is awaited, never detached).
+- `src/lib/constants/elaya-metrics.ts`: six verified metrics with a working query each (active members
+  by queendom, members waiting on us, response time by queendom, Freshdesk by queendom, frustrated members,
+  renewals with usage). `describe_database` folds them in as `verified_metrics`; `query_database` tells the
+  model to reuse them and to default to the last 30 days when no window is given. Each query was run
+  against the read-only door before shipping.
+- Test leads hidden: `isTestLead` / `hideTestLeads` in `src/lib/elaya/access.ts` drop the eval harness's
+  seeded lead (slug `-eval`, "Evalson") from search_leads, get_cold_leads, get_my_tasks and
+  get_escalations for everyone except the eval account (constants in `src/lib/constants/elaya.ts`).
+- Zoho: the books overview now reads the Banking queue (`listUncategorisedBankTransactions` in
+  `zoho-api.ts`, one call per active bank or card account, at most 8) and reports count, inflow, outflow
+  and the split by account as `uncategorised`; Elaya's `get_books_overview` carries it as
+  `uncategorised_bank_feed`. Fails soft to null.
+- Python: `list_members` in `BRIDGED_READ_TOOL_NAMES` and the role map; in the `members` and `general`
+  hot sets; the `members` specialist description now claims lists by city, company, tier or status.
+
 ## 2026-09-24 — Elaya finds her own tools: the router no longer decides what she may call
 
 - Why: eleven times in the last fortnight Elaya answered "that tool isn't in my hands this turn" and told

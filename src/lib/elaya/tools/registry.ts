@@ -17,9 +17,10 @@
 // registry, so the brain has one entry point and one masking/truncation/try-catch path.
 
 import { z } from 'zod';
+import { verifiedMetricsBlock } from '@/lib/constants/elaya-metrics';
 import type { StaffPrincipal } from '@/lib/elaya/principal';
 import { maskPii } from '@/lib/elaya/pii';
-import { canAccessLead } from '@/lib/elaya/access';
+import { canAccessLead, hideTestLeads } from '@/lib/elaya/access';
 import type { PiiMaskingDepth } from '@/lib/services/llm-providers-service';
 import type { LlmToolDefinition } from '@/lib/elaya/provider';
 import {
@@ -91,6 +92,7 @@ export type ElayaReadToolName =
   | 'get_live_pulse'
   // Everything on one member, live, in one call (2026-09-19)
   | 'get_member_360'
+  | 'list_members'
   // The lead WhatsApp line, subscriptions, the live activity feed (2026-09-19)
   | 'get_lead_whatsapp_chat'
   | 'get_subscriptions'
@@ -217,7 +219,7 @@ const searchLeads: ElayaTool = {
       ...(searchTooShort
         ? { searchTooShort: true, note: 'The search term was too short to match on — showing recent leads instead. Ask the user for the full name or phone number.' }
         : {}),
-      leads: result.leads.map((l) => ({
+      leads: hideTestLeads(result.leads, principal, (l) => ({ slug: l.slug, name: [l.first_name, l.last_name].filter(Boolean).join(' ') })).map((l) => ({
         // leadId is the STABLE opaque handle the write tools target (UUID-or-slug
         // accepted). Surfaced like get_my_tasks' taskId; the PII gateway's UUID
         // guard keeps it intact through masking. Prefer it over slug for writes.
@@ -262,7 +264,7 @@ const getColdLeads: ElayaTool = {
     // and canAccessLead): agent → own assigned leads only; manager → own domain;
     // admin/founder → all domains. The model supplies NO scope (empty schema) — the
     // principal drives it inside elayaData.getColdLeads.
-    const cold = await elayaData.getColdLeads(principal);
+    const cold = hideTestLeads(await elayaData.getColdLeads(principal), principal, (l) => l);
     return {
       thresholdDays: COLD_LEAD_THRESHOLD_DAYS,
       totalCount: cold.length,
@@ -361,7 +363,7 @@ const getMyTasks: ElayaTool = {
     if (giaTasks.length > GIA_CAP) truncatedKinds.push('lead follow-ups');
     if (groups.length > GROUP_CAP) truncatedKinds.push('group workspaces');
     return {
-      followUps: giaTasks.slice(0, GIA_CAP).map((t) => ({
+      followUps: hideTestLeads(giaTasks, principal, (t) => ({ slug: t.lead_slug, name: [t.lead_first_name, t.lead_last_name].filter(Boolean).join(' ') })).slice(0, GIA_CAP).map((t) => ({
         taskId: t.id,
         title: t.title,
         status: t.status,
@@ -617,10 +619,12 @@ const getEscalations: ElayaTool = {
   schema: z.object({}),
   jsonSchema: { type: 'object', properties: {}, additionalProperties: false },
   run: async (principal) => {
-    const [breachedLeads, overdueTasks] = await Promise.all([
+    const [breachedRaw, overdueRaw] = await Promise.all([
       elayaData.getEscalations(principal),
       elayaData.getOverdueTasks(principal),
     ]);
+    const breachedLeads = hideTestLeads(breachedRaw, principal, (l) => l);
+    const overdueTasks = hideTestLeads(overdueRaw, principal, (t) => ({ slug: t.leadSlug, name: t.leadName }));
     return {
       breachedLeads: breachedLeads.slice(0, 25).map((l) => ({
         name: l.name,
@@ -949,8 +953,11 @@ const getMemberOverview: ElayaTool = {
       match = await elayaData.getMemberBriefFor(principal, member);
       if (!match) return { found: false, note: 'No member with that id that you can see.' };
     } else {
-      const hits = await elayaData.findMembersFor(principal, member);
+      const { hits, outsideSeat } = await elayaData.findMembersScopedFor(principal, member);
       if (hits.length === 0) {
+        if (outsideSeat > 0) {
+          return { found: false, outside_seat: outsideSeat, note: `A member matching "${member}" exists but is outside this user's seat (their queendom). Say exactly that: the member is on record, an admin can seat the user on their page in Serene. Never say the member does not exist.` };
+        }
         return { found: false, note: `No member matching "${member}". Say so; do not describe anyone.` };
       }
       if (hits.length > 1) {
@@ -975,6 +982,46 @@ const getMemberOverview: ElayaTool = {
         : null,
       note: group ? undefined : 'No WhatsApp group is mapped to this member yet, so there is no chat history to read.',
     };
+  },
+};
+
+const listMembers: ElayaTool = {
+  name: 'list_members',
+  description:
+    'A LIST of members (clients) by filters, for "all clients from Mumbai with their profession", "who is ' +
+    'in Sanika\'s queendom", "premium members renewing soon". Filters: `city` (from their saved facts), ' +
+    '`company` (company or profession words), `tier`, `status` (default Active; pass "any" for all), ' +
+    '`queendom` (name), `text` (a name fragment), `limit` (up to 100). Scoped to the user\'s seat: a ' +
+    'founder or admin sees every queendom, a seated concierge teammate their own. Each row carries the ' +
+    'member_id for get_member_360 when the user wants one member\'s full picture. `total_matching` is the ' +
+    'true count; say when the list was cut. A member with no city on record is not in a city list: say so ' +
+    'rather than implying the list is complete.',
+  schema: z.object({
+    city: z.string().trim().min(2).max(60).optional(),
+    company: z.string().trim().min(2).max(80).optional(),
+    tier: z.string().trim().min(2).max(40).optional(),
+    status: z.string().trim().min(2).max(30).optional(),
+    queendom: z.string().trim().min(2).max(60).optional(),
+    text: z.string().trim().min(2).max(80).optional(),
+    limit: z.number().int().min(1).max(100).optional(),
+  }),
+  jsonSchema: {
+    type: 'object',
+    properties: {
+      city: { type: 'string', description: 'City as the user said it (Mumbai, Bangalore, Dubai)' },
+      company: { type: 'string', description: 'Company or profession words to match' },
+      tier: { type: 'string', description: 'Membership tier' },
+      status: { type: 'string', description: 'Membership status; default Active; "any" for all' },
+      queendom: { type: 'string', description: "A queendom's name" },
+      text: { type: 'string', description: 'A fragment of the name' },
+      limit: { type: 'integer', description: 'Rows to return, up to 100 (default 50)' },
+    },
+    additionalProperties: false,
+  },
+  run: async (principal, input) => {
+    const r = await elayaData.listMembersFor(principal, input as Parameters<typeof elayaData.listMembersFor>[1]);
+    if ('denied' in r) return { error: 'This user has no queendom seat, so no member list is visible to them. Say that an admin can seat them on their page in Serene.' };
+    return r;
   },
 };
 
@@ -1159,6 +1206,7 @@ export const BRIDGED_READ_TOOL_NAMES: ReadonlySet<string> = new Set([
   'get_lead_whatsapp_chat',
   'get_subscriptions',
   'get_activity_feed',
+  'list_members',
 ]);
 
 // ── Tickets (Sia, 0195/0199/0200) — the genie's queue and one ticket's whole story ──
@@ -1516,7 +1564,11 @@ const describeDatabase: ElayaTool = {
     const picked = want ? r.views.filter((v) => want.has(v.view)) : r.views;
     // One text block, not JSON rows: the whole catalog has to fit under the tool result cap.
     const catalog = picked.map((v) => `${v.view}${v.about ? ' — ' + v.about : ''}\n  ${v.columns.replace(/:uuid/g, '')}`).join('\n');
-    return { view_count: picked.length, catalog };
+    // The verified layer (constants/elaya-metrics.ts): the founders' own metric definitions with a
+    // query each that has been run. Copy or adapt these before writing a metric from scratch.
+    return want
+      ? { view_count: picked.length, catalog }
+      : { view_count: picked.length, catalog, verified_metrics: verifiedMetricsBlock(), note: 'verified_metrics are the business definitions the founders use (waiting on us, response time, active members, renewals with usage, frustrated members, Freshdesk per queendom). Reuse or adapt their SQL before inventing a definition, and name the metric you used.' };
   },
 };
 
@@ -1533,6 +1585,11 @@ const queryDatabase: ElayaTool = {
     'one plain sentence saying what this query finds; it is logged. In your answer say in one line HOW ' +
     'you worked it out (what you counted, over which dates, any filter) so the founder can sanity-check ' +
     'it, and say so when the result was cut at the row cap. Never present a guess as a number. ' +
+    'TIME WINDOW: when the user gives none, use the last 30 days and say so; "since last Thursday", ' +
+    '"this week", "last month" resolve against today. describe_database also returns verified_metrics: ' +
+    'the founders\' own definitions with a working query each (waiting on us, response time, active ' +
+    'members, renewals with usage, frustrated members, Freshdesk per queendom); reuse or adapt those ' +
+    'before writing your own version of the same idea, so the same question gets the same number. ' +
     'SQL RULES: PostgreSQL; ONE SELECT (or WITH ... SELECT); no semicolon, no comments, no schema names ' +
     '(write `from leads`, never `from gia.leads`); never alias a table as public / auth / gia / sia / ' +
     'member / freshdesk. Joins: owner_id / assignee_id / actor_id / author_id / *_staff_id -> staff.staff_id; ' +
@@ -1590,7 +1647,7 @@ const getLivePulseTool: ElayaTool = {
   run: async (principal) => {
     const r = await elayaData.getLivePulseFor(principal);
     if ('denied' in r) return { error: 'Only founders and admins can see the company pulse.' };
-    return { ...r.pulse, note: 'Waiting = a linked member group whose last real message is from the member side, 30 minutes to 24 hours old.' };
+    return { ...r.pulse, note: 'Waiting = a linked member group whose last real message is from the member side, at least 30 minutes ago and up to 30 days, oldest first. Sign-offs (ok, thanks, an emoji) are already excluded.' };
   },
 };
 
@@ -1627,6 +1684,7 @@ const getMember360: ElayaTool = {
     const r = await elayaData.getMember360For(principal, member);
     if (!r.found) {
       if (r.reason === 'several') return { found: false, candidates: r.candidates, note: 'Several members match. Ask the user which one they mean, naming them.' };
+      if (r.reason === 'outside_seat') return { found: false, outside_seat: r.outside_seat, note: `A member matching "${member}" exists but is outside this user's seat (their queendom). Say exactly that, and that an admin can seat them on their page in Serene. Never say the member does not exist.` };
       return { found: false, note: `No member matching "${member}" that you can see. Say so; never describe anyone.` };
     }
     return {
@@ -1734,6 +1792,7 @@ const ALL_TOOLS = [
   listTickets,
   getTicket,
   getMemberOverview,
+  listMembers,
   getMemberProfile,
   getMemberFinance,
   getMemberRecentMessages,

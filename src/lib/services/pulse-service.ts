@@ -18,7 +18,9 @@ import { getFreshdeskOverview } from "@/lib/services/freshdesk-service";
 import { isOnlyAcknowledgement } from "@/lib/services/ticket-intake";
 
 export const PULSE_WAITING_MIN_MINUTES = 30;
-export const PULSE_WAITING_MAX_HOURS = 24;
+// 30 days, not 24 hours (2026-09-24): a member who has waited a week is the one who matters most,
+// and the day ceiling kept dropping exactly those from the list ("the older gaps don't show here").
+export const PULSE_WAITING_MAX_HOURS = 24 * 30;
 const PULSE_WAITING_SHOWN = 8;
 
 export type PulseWaiting = { member: string | null; group: string | null; waiting_minutes: number; last_text: string | null };

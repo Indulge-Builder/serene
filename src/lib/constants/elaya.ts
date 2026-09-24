@@ -157,3 +157,11 @@ export const ELAYA_PLAYBOOKS_PATH = '/settings/elaya-playbooks';
 export const TEACH_ELAYA_PATH = '/settings/teach-elaya';
 /** The customer-facing content library (migration 0150). */
 export const ELAYA_TRAINING_PATH = '/admin/elaya-training';
+
+// ── Test data Elaya must not show a real user (2026-09-24) ──────────────────────────
+// The eval harness (evals/) seeds one lead, "Testak Evalson", slug `testak-evalson-eval`, and runs
+// as the "Eval Manager" account. Those rows kept surfacing in founders' task lists and escalations.
+// Every Elaya lead-shaped read drops them, except for the eval account itself (its exam needs them).
+export const ELAYA_TEST_LEAD_SLUG_SUFFIX = '-eval';
+export const ELAYA_TEST_LEAD_NAME_RE = /\bevalson\b/i;
+export const ELAYA_EVAL_ACCOUNT_NAME = 'Eval Manager';

@@ -230,6 +230,8 @@ SPECIALISTS: dict[str, Specialist] = {
         id="members",
         description=(
             "a member of Indulge, named: 'tell me about X', 'brief me on X before I call', 'is X happy', "
+            "a LIST of members by city, company, profession, tier or status ('all clients from Mumbai', "
+            "'members in Sanika's queendom', 'who renews next month'), "
             "'what should I know about X'; what we know about them (preferences, dislikes, dietary, family, the "
             "people around them, their genie and queendom, their health score, their open requests, their "
             "renewal), what they said in their WhatsApp group (asked for lately, ever mentioned a topic, "
@@ -251,7 +253,7 @@ SPECIALISTS: dict[str, Specialist] = {
                "nothing is on record — never fill the gap from memory, and never describe a member the tool "
                "did not return."),
         # Founders and admins also carry the analyst's SQL here (the role gate cuts it for everyone else).
-        toolset=["get_member_360", "get_member_overview", "get_member_profile", "get_member_recent_messages",
+        toolset=["get_member_360", "get_member_overview", "list_members", "get_member_profile", "get_member_recent_messages",
                  "search_member_history", "get_member_finance", "find_teammate", "describe_database", "query_database"],
     ),
     "general": Specialist(
@@ -267,6 +269,7 @@ SPECIALISTS: dict[str, Specialist] = {
             "find_teammate",
             "search_leads",
             "get_member_360",
+            "list_members",
             "search_sia_messages",
             "get_sia_group_messages",
             "get_freshdesk_overview",

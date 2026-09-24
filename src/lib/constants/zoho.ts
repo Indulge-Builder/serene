@@ -16,6 +16,8 @@ export const ZOHO_BOOKS_API_PREFIX = "/books/v3";
 
 /** Calls one read may spend (a page open, a card open). */
 export const ZOHO_RUN_MAX_CALLS = 25;
+/** Bank + card accounts whose uncategorised feed the overview reads (one call each, inside the run budget). */
+export const ZOHO_UNCATEGORISED_MAX_ACCOUNTS = 8;
 /** Never spend below this many of the day's allowance — the app server shares the org. */
 export const ZOHO_DAILY_RESERVE = 500;
 /** Zoho's list page cap. */

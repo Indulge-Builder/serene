@@ -1107,6 +1107,7 @@ BRIDGED_READ_TOOL_NAMES: frozenset[str] = frozenset({
     "get_member_360",
     # The lead WhatsApp line, subscriptions, the live activity feed (2026-09-19): page rules in Node.
     "get_lead_whatsapp_chat", "get_subscriptions", "get_activity_feed",
+    "list_members",
 })
 
 # The ticket pair (2026-09-15) is bridged for the same reason: the sentinel's ledger and the
@@ -1141,6 +1142,8 @@ _BRIDGED_READ_ROLES: dict[str, frozenset[str]] = {
     "get_lead_whatsapp_chat": frozenset({"agent", "manager", "admin", "founder"}),
     "get_subscriptions": frozenset({"agent", "manager", "admin", "founder"}),  # Node narrows to finance/tech + admin/founder
     "get_activity_feed": frozenset({"manager", "admin", "founder"}),
+    # The members roster with filters (city, company, tier, status), scoped to the seat in Node.
+    "list_members": frozenset({"agent", "manager", "admin", "founder"}),
 }
 
 

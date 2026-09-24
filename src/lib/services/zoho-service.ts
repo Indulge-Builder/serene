@@ -10,7 +10,7 @@ import "server-only";
 import { withRedisCache } from "@/lib/services/cache-helpers";
 import { redis } from "@/lib/redis";
 import { getISTMonthStart, toIst, istToUtc } from "@/lib/utils/ist";
-import { ZOHO_CACHE_TTL, ZOHO_REDIS_KEYS } from "@/lib/constants/zoho";
+import { ZOHO_CACHE_TTL, ZOHO_REDIS_KEYS, ZOHO_UNCATEGORISED_MAX_ACCOUNTS } from "@/lib/constants/zoho";
 import {
   createZbBudget,
   getArAgingSummary,
@@ -25,8 +25,7 @@ import {
   listCustomerPayments,
   listInvoices,
   reportTotal,
-  zbAmount,
-} from "@/lib/services/zoho-api";
+  zbAmount, listUncategorisedBankTransactions } from "@/lib/services/zoho-api";
 import type { BooksOverview, MemberFinance, ZbBankAccount, ZbContact } from "@/lib/types/zoho";
 
 const LOG = "[zoho-service]";
@@ -74,6 +73,30 @@ async function fetchBooksOverview(): Promise<BooksOverview> {
   const active = banks.filter((a) => a.is_active);
   const byType = (t: string) => sum(active.filter((a) => a.account_type === t).map((a) => a.balance));
 
+  // The Banking queue (2026-09-24): the founder asked twice for "unrecorded transactions" and the
+  // overview could only show payments not applied to invoices. One call per active bank or card
+  // account (capped so the read stays inside the run budget); a failure leaves the section null.
+  const feedAccounts = active.filter((a) => a.account_type === "bank" || a.account_type === "credit_card").slice(0, ZOHO_UNCATEGORISED_MAX_ACCOUNTS);
+  let uncategorised: BooksOverview["uncategorised"] = null;
+  try {
+    const perAccount = await Promise.all(
+      feedAccounts.map(async (a) => {
+        const { rows } = await listUncategorisedBankTransactions(a.account_id, budget);
+        const inflow = sum(rows.filter((t) => t.debit_or_credit === "credit").map((t) => t.amount));
+        const outflow = sum(rows.filter((t) => t.debit_or_credit === "debit").map((t) => t.amount));
+        return { account: a.account_name, count: rows.length, inflow, outflow };
+      }),
+    );
+    uncategorised = {
+      count: sum(perAccount.map((x) => x.count)),
+      inflow: sum(perAccount.map((x) => x.inflow)),
+      outflow: sum(perAccount.map((x) => x.outflow)),
+      byAccount: perAccount.filter((x) => x.count > 0),
+    };
+  } catch (e) {
+    console.warn("[zoho-service] uncategorised feed unavailable:", e instanceof Error ? e.message : e);
+  }
+
   return {
     org: { name: org.name, currency: org.currency_code },
     receivables: {
@@ -91,6 +114,7 @@ async function fetchBooksOverview(): Promise<BooksOverview> {
       more: bills.more,
     },
     cash: { banks: byType("bank"), cards: byType("credit_card"), clearing: byType("payment_clearing"), accounts: active },
+    uncategorised,
     thisMonth: {
       invoiced: reportTotal(plMonth, "Total Operating Income") ?? 0,
       received: sum(monthPayments.rows.map((p) => p.amount)),

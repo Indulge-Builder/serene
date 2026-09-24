@@ -62,3 +62,26 @@ export function truncateWhatsAppText(text: string, max: number): string {
   }
   return out.trimEnd();
 }
+
+/**
+ * Split a converted WhatsApp reply into parts of at most `max` chars, so a long answer is
+ * delivered whole as several messages instead of being cut (2026-09-24: the founders asked
+ * for the complete answer, never a summary). Cuts land on paragraph breaks first, then line
+ * breaks, then a hard cut; each part is closed with `truncateWhatsAppText` so no formatting
+ * marker is left open. A reply under `max` comes back as one part.
+ */
+export function splitWhatsAppText(text: string, max: number): string[] {
+  const clean = text.trim();
+  if (clean.length <= max) return [clean];
+  const parts: string[] = [];
+  let rest = clean;
+  while (rest.length > max) {
+    let cut = rest.lastIndexOf('\n\n', max);
+    if (cut < max * 0.4) cut = rest.lastIndexOf('\n', max);
+    if (cut < max * 0.4) cut = max;
+    parts.push(truncateWhatsAppText(rest.slice(0, cut), max));
+    rest = rest.slice(cut).trim();
+  }
+  if (rest) parts.push(rest);
+  return parts.filter((p) => p.length > 0);
+}
