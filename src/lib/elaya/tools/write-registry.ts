@@ -1394,23 +1394,28 @@ const startDeepRead: ElayaWriteTool = {
     "the same question. The labels it decides are saved and topped up every night, so a follow-up ('split " +
     "that by queendom', 'how many this week') is a quick query_database over the labels view afterwards, and " +
     "a repeat of the same question is fast: rows judged before keep their verdict, only new rows are read. " +
-    "A question covering more than 60,000 rows is refused with a line asking for a narrower scope; pass that on.",
+    "There is no size limit: a question over the whole history reads the whole history, in more than one run " +
+    "if needed, and every answer ends with what it cost. When the estimated cost is above the founders' spend " +
+    "cap the read stops and asks first (a line in this chat); if the user then agrees, call this again with " +
+    "the same question and confirm_spend: true. Never pass confirm_spend without that agreement.",
   schema: z.object({
     question: z.string().trim().min(10).max(1200),
+    confirm_spend: z.boolean().optional(),
   }),
   jsonSchema: {
     type: "object",
     properties: {
       question: { type: "string", description: "The founder's question, complete and in their words (window, scope, what counts)" },
+      confirm_spend: { type: "boolean", description: "true ONLY after the user agreed to a spend the read asked about" },
     },
     required: ["question"],
     additionalProperties: false,
   },
   run: async (principal, input, ctx) => {
-    const { question } = input as { question: string };
+    const { question, confirm_spend } = input as { question: string; confirm_spend?: boolean };
     const clean = sanitizeText(question);
     if (clean.length < 10) return { error: "The question was empty after cleaning." };
-    const job = await createElayaJob({ kind: "deep_read", requestedBy: principal.userId, conversationId: ctx.conversationId, channel: ctx.channel, question: clean });
+    const job = await createElayaJob({ kind: "deep_read", requestedBy: principal.userId, conversationId: ctx.conversationId, channel: ctx.channel, question: clean, plan: confirm_spend ? { confirm_spend: true } : {} });
     if (!job) return { error: "The read could not be queued just now. Say it did not start and offer to try again." };
     try {
       await startDeepReadJob(job.id);

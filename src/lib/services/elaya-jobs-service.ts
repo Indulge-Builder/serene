@@ -9,7 +9,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { mapRows } from '@/lib/utils/rows';
-import { runElayaQuery, ELAYA_EXPORT_MAX_ROWS } from '@/lib/services/elaya-query-service';
+import { runElayaQuery } from '@/lib/services/elaya-query-service';
 import type { Json } from '@/lib/types/database';
 import type { ElayaChannel } from '@/lib/types/elaya';
 import { ELAYA_LABEL_SUBJECTS, type ElayaJobKind, type ElayaJobStatus, type ElayaLabelSubject } from '@/lib/constants/elaya-jobs';
@@ -160,23 +160,23 @@ export async function countElayaLabels(labelSet: string): Promise<{ label: strin
 
 export type ExistingLabel = { label: string; evidence: string | null };
 
-/** Every saved verdict of one set, keyed by subject id, read in keyset pages through the door (the
- *  door caps a page at ELAYA_EXPORT_MAX_ROWS; a single select would be cut there and say nothing).
- *  The deep read compares each row's text with the saved evidence and re-judges what changed. */
+/** Every saved verdict of one set, keyed by subject id, with the FULL evidence text (the door's view
+ *  clips evidence at 200 characters, so this reads the table through the admin client in keyset pages
+ *  under PostgREST's 1,000-row response cap). The deep read compares each row's whole text with the
+ *  evidence its verdict rested on and re-judges anything that changed. */
 export async function getExistingLabels(subjectKind: ElayaLabelSubject, labelSet: string): Promise<Map<string, ExistingLabel>> {
   const out = new Map<string, ExistingLabel>();
+  const PAGE = 1000;
   let last: string | null = null;
   for (;;) {
-    const after = last ? ` and label_id > ${sqlLit(last)}` : '';
-    const r = await runElayaQuery(
-      `select label_id, subject_id, label, evidence from labels where subject_kind = ${sqlLit(subjectKind)} and label_set = ${sqlLit(labelSet)}${after} order by label_id limit ${ELAYA_EXPORT_MAX_ROWS}`,
-      ELAYA_EXPORT_MAX_ROWS,
-      ELAYA_EXPORT_MAX_ROWS,
-    );
-    if (!r.ok) throw new Error(`Reading the saved labels failed: ${r.error}`);
-    for (const row of r.rows) out.set(String(row.subject_id), { label: String(row.label), evidence: (row.evidence as string | null) ?? null });
-    if (r.rows.length < ELAYA_EXPORT_MAX_ROWS) break;
-    last = String(r.rows[r.rows.length - 1].label_id);
+    let q = admin().from('elaya_labels').select('id, subject_id, label, evidence').eq('subject_kind', subjectKind).eq('label_set', labelSet).order('id').limit(PAGE);
+    if (last) q = q.gt('id', last);
+    const { data, error } = await q;
+    if (error) throw new Error(`Reading the saved labels failed: ${error.message}`);
+    const rows = mapRows<{ id: string; subject_id: string; label: string; evidence: string | null }, { id: string; subject_id: string; label: string; evidence: string | null }>(data, (r) => r);
+    for (const row of rows) out.set(row.subject_id, { label: row.label, evidence: row.evidence });
+    if (rows.length < PAGE) break;
+    last = rows[rows.length - 1].id;
   }
   return out;
 }

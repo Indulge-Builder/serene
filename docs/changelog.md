@@ -12,6 +12,32 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-25 — The deep read has no size limit: continuation runs, saved-as-you-go verdicts, and a spend cap that asks
+
+- Why: the founder rejected the 60,000-row refusal added the day before. A question that needs the
+  whole history must read the whole history; time is not a reason to cut credibility. Money is a
+  different question, so that one gets a switch the founders own.
+- No row cap and no refusal for size (`elaya-deep-read.ts`). What bounds one run is its time
+  budget; near the end the job saves where it got to, queues a new job with the same plan and the
+  cost so far, fires it, and posts "still reading" in the chat. Verdicts are now saved after every
+  batch (not once at the end), so a continuation reuses every one of them and nothing is judged twice.
+- The count is `count(*)` (3.6 seconds over the 180,267 WhatsApp messages); the exact distinct count
+  is asked only when the read looks short. A count that times out is "unknown", the read goes ahead,
+  and the answer says the total was not verified. A page that hits the statement timeout is halved.
+- Never a refusal for trust either: a read short of the count gets one re-read, then the answer states
+  the share read; rows still unjudged get three more passes, then the answer states how many and that
+  tonight's top-up fills them. A number with its coverage stated beats no number.
+- Reuse compares the row's whole text with the saved evidence (the door's view clips at 200
+  characters, so `getExistingLabels` reads the full evidence through the admin client).
+- Money: before the first judge call the job estimates rows to judge × `DEEP_READ_COST_PER_1000_ROWS_USD`;
+  above `elaya_deep_read_spend_cap_usd` (missing row = $50) it stops and asks in the chat, and
+  `start_deep_read` with `confirm_spend: true` runs it once the founder agrees. A read of three minutes
+  or more posts a "this one is big" line first. Every answer ends with what it cost in rupees.
+- Measured on production: a fresh 4,689-ticket question in 31 seconds (judging 13.6 s at 12 calls in
+  flight), ₹21; the top-up 7 seconds; the spend-ask path stops in 11 seconds after planning only.
+
+---
+
 ## 2026-09-24 -- The member vault (migration 0236), and the Freshdesk contact notes imported
 
 **Why.** The concierge team books on members' behalf with the member's own card, passport, Aadhaar

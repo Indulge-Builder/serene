@@ -22,10 +22,12 @@ export const DEEP_READ_PLAN_PROMPT_VERSION = 'deep-read-plan-v2';
 export const DEEP_READ_LABEL_PROMPT_VERSION = 'deep-read-label-v2';
 export const DEEP_READ_ANSWER_PROMPT_VERSION = 'deep-read-answer-v2';
 
-/** Rows a deep read will fetch at most: 12 pages of the query door's export cap. A question that
- *  matches more is REFUSED before anything is paid for, never quietly cut at the cap. */
-export const DEEP_READ_MAX_ROWS = 60_000;
+/** The read never caps the rows: a question over the whole history reads the whole history. What
+ *  bounds one RUN is time (DEEP_READ_MAX_MINUTES); past it the job saves where it got to and continues
+ *  in a new run, and every verdict is saved per batch so nothing judged is ever judged twice. */
 export const DEEP_READ_PAGE_ROWS = 5_000;
+/** A page that hits the door's statement timeout is halved, down to this, before the job gives up. */
+export const DEEP_READ_MIN_PAGE_ROWS = 500;
 /** Rows judged per model call, and calls in flight side by side (the rate gate below slows this
  *  down the moment the provider says so; it never fails the job on a rate limit). */
 export const DEEP_READ_BATCH_ROWS = 100;
@@ -34,15 +36,27 @@ export const DEEP_READ_PARALLEL_CALLS = 12;
 export const DEEP_READ_ROW_TEXT_CAP = 240;
 /** A batch that fails after these retries is counted, never re-run forever. */
 export const DEEP_READ_BATCH_RETRIES = 3;
+/** Rows still unjudged after the first pass are asked again, this many passes, while time remains. */
+export const DEEP_READ_UNJUDGED_PASSES = 3;
 /** The rate gate: on a 429 / overloaded reply every worker pauses this long (or the provider's
  *  retry-after when longer), doubling per hit up to the max; a batch gives up after this many hits. */
 export const DEEP_READ_RATE_PAUSE_MS = 8_000;
 export const DEEP_READ_RATE_PAUSE_MAX_MS = 60_000;
 export const DEEP_READ_RATE_RETRIES = 8;
-/** Trust floors. Rows read must cover this share of the rows the count said exist, and no more than
- *  this share may end unjudged; below either the job FAILS and says so, it never delivers a number. */
+/** Trust: rows read below this share of the count get ONE re-read; the answer then states the share.
+ *  Never a refusal: a number with its coverage stated beats no number. */
 export const DEEP_READ_COVERAGE_MIN_PCT = 99;
-export const DEEP_READ_MAX_UNJUDGED_PCT = 5;
+/** Leave this much of the run's budget to save labels and hand over to the continuation run. */
+export const DEEP_READ_CONTINUE_MARGIN_MS = 120_000;
+/** Money. The estimate the founder sees and the switch that asks before a big spend: rows to judge ×
+ *  cost per thousand (measured 24 Sep 2026: $0.335 for 4,694 rows, plan and answer included). */
+export const DEEP_READ_COST_PER_1000_ROWS_USD = 0.08;
+export const DEEP_READ_ROWS_PER_SECOND = 200;
+export const DEEP_READ_USD_TO_INR = 88;
+/** Row `elaya_deep_read_spend_cap_usd`: above this estimate a read stops and asks the founder first
+ *  (start_deep_read with confirm_spend runs it). Missing row = the default. */
+export const DEEP_READ_SPEND_CAP_SETTING_KEY = 'elaya_deep_read_spend_cap_usd';
+export const DEEP_READ_SPEND_CAP_DEFAULT_USD = 50;
 /** Sample rows handed to the answer writer as evidence, per label. */
 export const DEEP_READ_ANSWER_SAMPLES_PER_LABEL = 6;
 /** The whole job's wall-clock budget (Trigger.dev maxDuration is set from this). */

@@ -148,3 +148,18 @@ export async function getElayaAlertsEnabled(): Promise<boolean> {
 export async function getElayaLabelsRefreshEnabled(): Promise<boolean> {
   try { return (await getSettingValue('elaya_labels_refresh_enabled')) !== false; } catch { return true; }
 }
+
+/**
+ * The deep read's spend switch (row `elaya_deep_read_spend_cap_usd`, a number): a read whose
+ * estimate is above it stops and asks the founder before judging. Missing or malformed row = the
+ * default in constants/elaya-jobs.ts; 0 or a negative number = always ask.
+ */
+export async function getDeepReadSpendCapUsd(): Promise<number> {
+  const { DEEP_READ_SPEND_CAP_SETTING_KEY, DEEP_READ_SPEND_CAP_DEFAULT_USD } = await import('@/lib/constants/elaya-jobs');
+  try {
+    const v = await getSettingValue(DEEP_READ_SPEND_CAP_SETTING_KEY);
+    return typeof v === 'number' && Number.isFinite(v) ? v : DEEP_READ_SPEND_CAP_DEFAULT_USD;
+  } catch {
+    return DEEP_READ_SPEND_CAP_DEFAULT_USD;
+  }
+}
