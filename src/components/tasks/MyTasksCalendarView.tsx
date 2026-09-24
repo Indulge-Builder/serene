@@ -1,5 +1,6 @@
 'use client';
 
+import { SelectionButton } from '@/components/ui/SelectionButton';
 import {
   memo,
   useCallback,
@@ -462,16 +463,10 @@ export function MyTasksCalendarView({
     const sIsOverdue = !!section.isOverdue;
     const isCollapsed = collapsedKeys.has(section.key);
 
-    const headerBg = sIsOverdue
-      ? 'var(--color-danger-light)'
-      : sIsToday
-      ? 'var(--theme-accent-surface)'
-      : 'var(--theme-paper-subtle)';
-
     const headerColor = sIsOverdue
       ? 'var(--color-danger-text)'
       : sIsToday
-      ? 'var(--theme-accent)'
+      ? 'var(--neu-accent-deep)'
       : 'var(--theme-text-secondary)';
 
     const dotColor = sIsOverdue
@@ -494,22 +489,20 @@ export function MyTasksCalendarView({
         }}
       >
         {/* Section header — always clickable to collapse */}
-        <button
-          type="button"
-          onClick={() => { if (!isEmpty) toggleCollapse(section.key); }}
-          style={{
-            display:        'flex',
-            alignItems:     'center',
-            gap:            'var(--space-2)',
-            width:          '100%',
-            padding:        'var(--space-3) var(--space-4)',
-            background:     headerBg,
-            border:         'none',
-            borderBottom:   (!isEmpty && !isCollapsed) ? '1px solid var(--theme-paper-border)' : 'none',
-            cursor:         isEmpty ? 'default' : 'pointer',
-            textAlign:      'left',
-          }}
-        >
+        <SelectionButton appearance="option"
+      type="button"
+      onClick={() => { if (!isEmpty) toggleCollapse(section.key); }}
+      aria-expanded={!isEmpty && !isCollapsed}
+      style={{
+        display:        'flex',
+        alignItems:     'center',
+        gap:            'var(--space-2)',
+        width:          '100%',
+        padding:        'var(--space-3) var(--space-4)',
+        borderBottom:   (!isEmpty && !isCollapsed) ? '1px solid var(--theme-paper-border)' : 'none',
+        textAlign:      'left',
+      }}
+    >
           <span style={{
             width: 6, height: 6, borderRadius: 'var(--radius-full)',
             background: dotColor, flexShrink: 0,
@@ -546,7 +539,7 @@ export function MyTasksCalendarView({
               </motion.span>
             </>
           )}
-        </button>
+        </SelectionButton>
 
         {/* Body: task rows or empty state */}
         <AnimatePresence initial={false}>
@@ -560,7 +553,7 @@ export function MyTasksCalendarView({
                   background: 'var(--theme-paper)',
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 'var(--space-3)' }}>
-                    <Sparkles style={{ width: 28, height: 28, strokeWidth: 1, color: 'var(--theme-accent)', opacity: 0.5 }} />
+                    <Sparkles style={{ width: 28, height: 28, strokeWidth: 1, color: "var(--neu-accent-deep)", opacity: 0.5 }} />
                   </div>
                   <p style={{
                     fontFamily: 'var(--font-serif)', fontStyle: 'italic',
@@ -632,23 +625,14 @@ export function MyTasksCalendarView({
           {/* Today button — bottom of calendar, inside the card */}
           {!isAllMode && (
             <div style={{ borderTop: '1px solid var(--theme-paper-border)', padding: 'var(--space-2) var(--space-4)' }}>
-              <button
+              <Button
+                variant="control"
+                style={{ width: '100%' }}
                 type="button"
                 onClick={goToToday}
-                style={{
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  width: '100%', padding: 'var(--space-2) 0',
-                  background: 'transparent', border: 'none',
-                  fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)',
-                  fontWeight: 'var(--weight-semibold)', letterSpacing: 'var(--tracking-wide)',
-                  color: 'var(--theme-accent)', cursor: 'pointer',
-                  transition: 'opacity 150ms',
-                }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = '0.7'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
               >
                 Back To Present
-              </button>
+              </Button>
             </div>
           )}
         </div>
@@ -677,35 +661,14 @@ export function MyTasksCalendarView({
         </div>
 
         {/* Quick-add trigger */}
-        <button
+        <Button
+          variant="control"
           type="button"
           onClick={() => setShowQuickAdd((v) => !v)}
-          style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            gap: 'var(--space-2)', width: '100%',
-            padding: 'var(--space-2) var(--space-3)',
-            borderRadius: 'var(--radius-md)', border: '1px dashed var(--theme-paper-border)',
-            background:   showQuickAdd ? 'var(--theme-accent-surface)' : 'transparent',
-            color:        showQuickAdd ? 'var(--theme-accent)' : 'var(--theme-text-tertiary)',
-            fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-medium)',
-            cursor: 'pointer', transition: 'var(--transition-hover)',
-          }}
-          onMouseEnter={(e) => {
-            if (!showQuickAdd) {
-              (e.currentTarget as HTMLElement).style.borderColor = 'var(--theme-accent)';
-              (e.currentTarget as HTMLElement).style.color = 'var(--theme-accent)';
-            }
-          }}
-          onMouseLeave={(e) => {
-            if (!showQuickAdd) {
-              (e.currentTarget as HTMLElement).style.borderColor = 'var(--theme-paper-border)';
-              (e.currentTarget as HTMLElement).style.color = 'var(--theme-text-tertiary)';
-            }
-          }}
         >
           <CalendarDays style={{ width: 13, height: 13, strokeWidth: 1.5 }} />
           Quick add task
-        </button>
+        </Button>
       </div>
 
       {/* ── Right: Date-grouped task list ─────────────────────────────────── */}
@@ -746,53 +709,41 @@ export function MyTasksCalendarView({
                   aria-label="Due date" style={{ flexShrink: 0 }}
                 />
                 {['manager', 'admin', 'founder'].includes(callerRole) && (
-                  <button
-                    type="button" onClick={() => setShowAssigneePicker(true)}
+                  <Button
+                    variant="control"
+                    size="sm"
+                    type="button"
+                    onClick={() => setShowAssigneePicker(true)}
                     aria-label="Pick assignee"
                     title={quickAssignee?.full_name ?? `${currentUserName} (you)`}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      width: 'var(--space-7)', height: 'var(--space-7)',
-                      borderRadius: 'var(--radius-sm)', border: '1px solid var(--theme-paper-border)',
-                      background: quickAssignee ? 'var(--theme-accent-surface)' : 'transparent',
-                      color: quickAssignee ? 'var(--theme-accent)' : 'var(--theme-text-tertiary)',
-                      cursor: 'pointer', transition: 'var(--transition-hover)', flexShrink: 0,
-                    }}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 'var(--space-7)', height: 'var(--space-7)', flexShrink: 0 }}
                   >
                     <Avatar
                       name={(quickAssignee ?? { full_name: currentUserName }).full_name}
                       size="xs"
                       style={{ width: 18, height: 18, minWidth: 18 }}
                     />
-                  </button>
+                  </Button>
                 )}
-                <button
-                  type="button" onClick={handleQuickAddSave}
+                <Button
+                  variant="primary"
+                  size="sm"
+                  type="button"
+                  onClick={handleQuickAddSave}
                   disabled={isPending || !quickTitle.trim()}
-                  style={{
-                    padding: 'var(--space-1) var(--space-3)', borderRadius: 'var(--radius-sm)', border: 'none',
-                    background: quickTitle.trim() ? 'var(--theme-accent)' : 'var(--theme-paper-border)',
-                    color: quickTitle.trim() ? 'var(--theme-accent-fg)' : 'var(--theme-text-tertiary)',
-                    fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-semibold)',
-                    cursor: isPending || !quickTitle.trim() ? 'not-allowed' : 'pointer',
-                    opacity: isPending ? 0.6 : 1, transition: 'var(--transition-interactive)', flexShrink: 0,
-                  }}
                 >
                   {isPending ? 'Saving…' : 'Save'}
-                </button>
-                <button
-                  type="button" onClick={() => { setShowQuickAdd(false); setQuickTitle(''); }}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  iconOnly
+                  type="button"
+                  onClick={() => { setShowQuickAdd(false); setQuickTitle(''); }}
                   aria-label="Cancel"
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    width: 'var(--space-6)', height: 'var(--space-6)',
-                    borderRadius: 'var(--radius-sm)', border: 'none',
-                    background: 'transparent', color: 'var(--theme-text-tertiary)',
-                    cursor: 'pointer', flexShrink: 0,
-                  }}
                 >
                   <X style={{ width: 13, height: 13, strokeWidth: 1.5 }} />
-                </button>
+                </Button>
               </div>
               <p style={{
                 fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)',
@@ -815,7 +766,11 @@ export function MyTasksCalendarView({
             description="Add your first task and it will find its place on the calendar."
             minHeight="340px"
             action={
-              <Button variant="primary" iconLeft={Plus} onClick={() => setCreateModalOpen(true)}>
+              <Button
+                variant="primary"
+                iconLeft={Plus}
+                onClick={() => setCreateModalOpen(true)}
+              >
                 New task
               </Button>
             }
@@ -1014,7 +969,7 @@ const CalendarTaskRow = memo(function CalendarTaskRow({
               title={`Open ${leadName}'s lead`}
               style={{
                 fontFamily: 'var(--font-sans)', fontSize: 'var(--text-sm)',
-                color: 'var(--theme-accent)', textDecoration: 'none',
+                color: "var(--neu-accent-deep)", textDecoration: 'none',
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 flex: '1 1 auto', minWidth: 0,
               }}
@@ -1031,7 +986,7 @@ const CalendarTaskRow = memo(function CalendarTaskRow({
             border: '1px solid var(--theme-paper-border)',
             display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
           }}>
-            <User style={{ width: 10, height: 10, strokeWidth: 1.5, color: 'var(--theme-accent)' }} />
+            <User style={{ width: 10, height: 10, strokeWidth: 1.5, color: "var(--neu-accent-deep)" }} />
           </div>
         )}
       </div>
@@ -1047,29 +1002,16 @@ const CalendarTaskRow = memo(function CalendarTaskRow({
         </span>
       )}
 
-      <button
+      <Button
+        variant="ghost"
+        iconOnly size="sm"
         type="button"
         onClick={() => onOpen(task)}
         aria-label="Open task details"
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          width: 'var(--space-6)', height: 'var(--space-6)',
-          borderRadius: 'var(--radius-xs)',
-          border: '1px solid var(--theme-paper-border)',
-          background: 'transparent', color: 'var(--theme-text-tertiary)',
-          cursor: 'pointer', flexShrink: 0, transition: 'var(--transition-hover)',
-        }}
-        onMouseEnter={(e) => {
-          (e.currentTarget as HTMLElement).style.color = 'var(--theme-accent)';
-          (e.currentTarget as HTMLElement).style.borderColor = 'var(--theme-accent)';
-        }}
-        onMouseLeave={(e) => {
-          (e.currentTarget as HTMLElement).style.color = 'var(--theme-text-tertiary)';
-          (e.currentTarget as HTMLElement).style.borderColor = 'var(--theme-paper-border)';
-        }}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 'var(--space-6)', height: 'var(--space-6)', flexShrink: 0 }}
       >
         <ArrowRight style={{ width: 12, height: 12, strokeWidth: 1.5 }} />
-      </button>
+      </Button>
     </div>
   );
 });

@@ -9,8 +9,8 @@
  * from the list (it "goes away" once opened).
  */
 
+import { MotionSelectionButton } from '@/components/ui/MotionButton';
 import { useRouter } from "next/navigation";
-import { m as motion } from "framer-motion";
 import { UserPlus, Trophy, Clock, CheckSquare, AtSign, Info, AlertTriangle, MessageSquarePlus } from "lucide-react";
 import { formatRelativeTime } from "@/lib/utils/dates";
 import { assertNever } from "@/lib/utils/assert-never";
@@ -86,33 +86,13 @@ export function NotificationItem({ notification, onMarkRead, onClose }: Notifica
   }
 
   return (
-    <motion.button
-      type="button"
-      onClick={handleClick}
-      whileTap={{ scale: 0.98, transition: { type: "spring", bounce: 0, duration: 0.15 } }}
-      style={{
-        display:      "flex",
-        alignItems:   "flex-start",
-        gap:          "var(--space-3)",
-        width:        "100%",
-        padding:      "var(--space-3) var(--space-4)",
-        // One uniform row — every shown item is unread. Transparent at rest,
-        // faint accent wash on hover. No per-item pill chrome, no unread dot.
-        background:   "transparent",
-        border:       "none",
-        cursor:       "pointer",
-        textAlign:    "left",
-        transition:   "background var(--transition-hover)",
-      }}
-      onMouseEnter={(e) => {
-        // Hover never darkens on the soft-UI material — a faint accent wash instead.
-        (e.currentTarget as HTMLElement).style.background =
-          "color-mix(in srgb, var(--theme-accent) 6%, transparent)";
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLElement).style.background = "transparent";
-      }}
-    >
+    <MotionSelectionButton
+          appearance="option"
+          type="button"
+          onClick={handleClick}
+          whileTap={{ scale: 0.98, transition: { type: "spring", bounce: 0, duration: 0.15 } }}
+          style={{display:      "flex", alignItems:   "flex-start", gap:          "var(--space-3)", width:        "100%", padding:      "var(--space-3) var(--space-4)", textAlign:    "left"}}
+        >
       {/* Type icon container */}
       <div
         style={{
@@ -175,6 +155,6 @@ export function NotificationItem({ notification, onMarkRead, onClose }: Notifica
           {formatRelativeTime(notification.created_at)}
         </p>
       </div>
-    </motion.button>
+    </MotionSelectionButton>
   );
 }

@@ -228,6 +228,7 @@ export function CreatePersonalTaskModal({
   return (
     <Modal
       open={open}
+      pending={isPending}
       onClose={onClose}
       title="New Task"
       footer={footer}
@@ -366,30 +367,22 @@ export function CreatePersonalTaskModal({
                 border:       '1px solid var(--theme-paper-border)',
                 fontFamily:   'var(--font-sans)',
                 fontSize:     'var(--text-xs)',
-                color:        'var(--theme-accent)',
+                color:        "var(--neu-accent-deep)",
                 fontWeight:   'var(--weight-semibold)',
                 userSelect:   'none',
               }}
             >
               {tag}
-              <button
+              <Button
+                variant="ghost"
+                iconOnly size="sm"
                 type="button"
                 onClick={(e) => { e.stopPropagation(); removeTag(tag); }}
                 aria-label={`Remove tag ${tag}`}
-                style={{
-                  display:        'flex',
-                  alignItems:     'center',
-                  justifyContent: 'center',
-                  background:     'none',
-                  border:         'none',
-                  padding:        0,
-                  cursor:         'pointer',
-                  color:          'var(--theme-accent)',
-                  lineHeight:     1,
-                }}
+                style={{ display:        'flex', alignItems:     'center', justifyContent: 'center' }}
               >
                 <X style={{ width: 10, height: 10, strokeWidth: 2 }} />
-              </button>
+              </Button>
             </span>
           ))}
           {tags.length < 10 && (
@@ -433,7 +426,9 @@ export function CreatePersonalTaskModal({
       {/* ─── Notes (collapsed toggle) ─────────────────────────────────────── */}
       <div>
         {!showNotes ? (
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             type="button"
             onClick={() => {
               setShowNotes(true);
@@ -441,21 +436,9 @@ export function CreatePersonalTaskModal({
                 notesRef.current?.focus();
               }, 50);
             }}
-            style={{
-              background: 'none',
-              border:     'none',
-              padding:    0,
-              fontFamily: 'var(--font-sans)',
-              fontSize:   'var(--text-sm)',
-              color:      'var(--theme-accent)',
-              cursor:     'pointer',
-              transition: 'opacity var(--duration-fast) var(--ease-in-out)',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.75'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; }}
           >
             + Add notes
-          </button>
+          </Button>
         ) : (
           <div>
             <FieldLabel>Notes</FieldLabel>

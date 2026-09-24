@@ -1,5 +1,6 @@
 "use client";
 
+import { SelectionButton } from '@/components/ui/SelectionButton';
 import { useState, useTransition } from "react";
 import { Check } from "lucide-react";
 import { updateProfile } from "@/lib/actions/profiles";
@@ -73,7 +74,8 @@ export function IconSelector({ currentIcon, profileId }: Props) {
           const isActive = active === option.id;
 
           return (
-            <button
+            <SelectionButton
+              appearance="option" selected={isActive}
               key={option.id}
               role="radio"
               aria-checked={isActive}
@@ -85,11 +87,7 @@ export function IconSelector({ currentIcon, profileId }: Props) {
                 flexDirection: "column",
                 alignItems:    "center",
                 gap:           "var(--space-2)",
-                background:    "transparent",
-                border:        "none",
                 padding:       0,
-                cursor:        isPending ? "wait" : "pointer",
-                opacity:       isPending && !isActive ? 0.6 : 1,
               }}
             >
               {/* Accent ring on the active tile — scoped outside any preview */}
@@ -172,7 +170,7 @@ export function IconSelector({ currentIcon, profileId }: Props) {
               >
                 {option.label}
               </span>
-            </button>
+            </SelectionButton>
           );
         })}
       </div>

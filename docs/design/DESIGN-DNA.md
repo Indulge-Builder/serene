@@ -1,5 +1,22 @@
 # Serene — Design DNA
 
+> **Control contract — 2026-09-22:** [control-system.md](./control-system.md) defines
+> the current shared action, filter, field, focus, and sizing rules. It supersedes
+> older per-component button radius and focus-suppression instructions below.
+
+> **Material update — 2026-09-22:** The current shell uses a softly layered pastel-gradient sidebar,
+> ivory workspace, and porcelain cards. Two broad washes derive from the selected
+> theme accent over an opaque pearl base (18% / 9% pigment in light mode;
+> 12% / 6% in dark mode). Dedicated `--neu-sidebar` and
+> `--neu-workspace` roles separate navigation from content in light and dark modes.
+> Warm contact shadows and inner highlights replace external white blooms;
+> fields use shallow inset shading, status badges remain flat, and active navigation
+> highlights only the icon; rows stay transparent. This supersedes the older dark-canvas,
+> paired-white-shadow, and always-floating-input descriptions below.
+> Filter triggers share `filterTriggerStyle`; data tiles share `clayTileStyle`
+> (`src/components/ui/material-styles.ts`), independently of badge shadows.
+> Runtime material values live in `src/styles/serene-neumorphic-tokens.css`.
+
 > **Purpose:** the design constitution — the law for every visual and interaction decision in Serene.
 > **Audience:** designers + engineers. · **Source-of-truth scope:** design rules, theme system, motion law, component visual spec, Elaya design language. Token *values* live in `src/styles/design-tokens.css`; component *implementation* notes live in `design-system.md`; dated design decisions in `decision-log.md`.
 > **Last verified:** 2026-07-02 (six-theme swap; TopBar/PageControls, toast-bar, motion-number, and unbuilt-spec corrections applied).

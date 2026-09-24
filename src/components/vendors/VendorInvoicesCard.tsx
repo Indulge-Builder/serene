@@ -11,6 +11,7 @@
 // Client component only because opening a file is an action; the rows
 // themselves are display-only.
 
+import { Button } from '@/components/ui/Button';
 import { useState, useTransition } from 'react';
 import { FileText, ExternalLink } from 'lucide-react';
 import { CardHeader } from '@/components/leads/CardHeader';
@@ -151,29 +152,18 @@ export function VendorInvoicesCard({
                 {inv.amountInr == null ? '—' : formatCurrency(inv.amountInr, 'INR')}
               </span>
 
-              <button
+              <Button
+                variant="control"
+                size="sm"
                 type="button"
                 onClick={() => open(inv.path)}
                 disabled={pendingPath === inv.path}
                 className="serene-pressable"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 'var(--space-1)',
-                  background: 'transparent',
-                  border: 'none',
-                  padding: 'var(--space-1) var(--space-2)',
-                  cursor: pendingPath === inv.path ? 'wait' : 'pointer',
-                  fontSize: 'var(--text-xs)',
-                  fontWeight: 'var(--weight-medium)',
-                  color: 'var(--neu-accent-deep)',
-                  opacity: pendingPath === inv.path ? 0.6 : 1,
-                  whiteSpace: 'nowrap',
-                }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)', whiteSpace: 'nowrap' }}
               >
                 {pendingPath === inv.path ? 'Opening…' : 'Open'}
                 <ExternalLink style={{ width: '0.75rem', height: '0.75rem', strokeWidth: 1.7 }} />
-              </button>
+              </Button>
             </div>
           ))}
         </div>

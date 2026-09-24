@@ -12,23 +12,7 @@ export interface SectionCardProps {
   children:     React.ReactNode;
 }
 
-/**
- * SectionCard — the canonical card shell for single-record detail pages.
- *
- * Matches the Profile page treatment exactly:
- *   - `--theme-paper` background, 1px paper-border, `--shadow-1` (flat, grounded — NOT levitating)
- *   - Header strip on the THEMED accent-surface wash (`--theme-accent-surface`,
- *     re-tints with every theme) + accent-tinted hairline + accent `label-micro`
- *     title — the shared CardHeader treatment. Never repaint it with
- *     `--theme-paper-subtle` (the sunken well tone; inset marks state only,
- *     neumorphic Rule 4)
- *   - Body padded `--space-6` by default
- *
- * Used by:
- *   - src/app/(dashboard)/profile/page.tsx
- *   - src/app/(dashboard)/admin/users/[id]/page.tsx
- *   - src/app/(dashboard)/admin/users/new/page.tsx
- */
+/** Canonical detail card: porcelain body, neutral section header, quiet contact edge. */
 export function SectionCard({
   title,
   description,
@@ -54,7 +38,7 @@ export function SectionCard({
           gap:          "var(--space-4)",
           padding:      "var(--space-4) var(--space-6)",
           background:   "var(--neu-header-wash)",
-          borderBottom: "1px solid var(--neu-header-edge)",
+          borderBottom: "1px solid var(--neu-edge)",
         }}
       >
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -66,9 +50,7 @@ export function SectionCard({
               style={{
                 fontFamily: "var(--font-sans)",
                 fontSize:   "var(--text-xs)",
-                /* Inside the accent wash, so header ink — tertiary measures
-                   1.8:1 here. Size and case still separate it from the title. */
-                color:      "var(--neu-header-ink)",
+                color:      "var(--theme-text-secondary)",
                 margin:     "var(--space-1) 0 0",
               }}
             >

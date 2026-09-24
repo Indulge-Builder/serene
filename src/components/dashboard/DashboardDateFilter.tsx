@@ -1,5 +1,9 @@
 'use client';
 
+import { SelectionButton } from '@/components/ui/SelectionButton';
+import { Button } from '@/components/ui/Button';
+import { filterTriggerStyle } from '@/components/ui/material-styles';
+
 import { useState, useRef, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Calendar, ChevronDown } from 'lucide-react';
@@ -107,6 +111,7 @@ export function DashboardDateFilter({ activePreset, fromParam, toParam }: Dashbo
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
+        className="serene-filter-trigger"
         aria-label={isMobile ? `Date range: ${activeLabel}` : undefined}
         title={isMobile ? activeLabel : undefined}
         style={{
@@ -117,13 +122,7 @@ export function DashboardDateFilter({ activePreset, fromParam, toParam }: Dashbo
           height:         '36px',
           width:          isMobile ? '36px' : undefined,
           padding:        isMobile ? 0 : '0 var(--space-3)',
-          borderRadius:   'var(--radius-md)',
-          border:       '1px solid var(--neu-edge)',
-          background:   open || isActive
-            ? 'color-mix(in srgb, var(--theme-accent) 12%, var(--neu-surface))'
-            : 'var(--theme-paper)',
-          color:        open || isActive ? 'var(--neu-accent-deep)' : 'var(--theme-text-secondary)',
-          boxShadow:    'var(--neu-shadow-chip)',
+          ...filterTriggerStyle(isActive, open),
           fontSize:     'var(--text-xs)',
           fontWeight:   'var(--weight-medium)',
           cursor:       'pointer',
@@ -174,37 +173,23 @@ export function DashboardDateFilter({ activePreset, fromParam, toParam }: Dashbo
               {PRESETS.map((p) => {
                 const isSelected = activePreset === p.value;
                 return (
-                  <button
+                  <SelectionButton
+                    appearance="option"
+                    selected={isSelected}
                     key={p.value}
                     type="button"
                     onClick={() => selectPreset(p.value)}
                     style={{
-                      display:      'flex',
-                      alignItems:   'center',
-                      width:        '100%',
-                      padding:      'var(--space-2) var(--space-3)',
-                      borderRadius: 'var(--radius-sm)',
-                      background:   isSelected
-                        ? 'color-mix(in srgb, var(--theme-accent) 12%, var(--neu-surface))'
-                        : 'transparent',
-                      boxShadow:    isSelected ? 'var(--neu-shadow-chip)' : 'none',
-                      color:        isSelected ? 'var(--neu-accent-deep)' : 'var(--theme-text-primary)',
-                      fontSize:     'var(--text-xs)',
-                      fontWeight:   isSelected ? 'var(--weight-semibold)' : 'var(--weight-normal)',
-                      cursor:       'pointer',
-                      border:       'none',
-                      textAlign:    'left',
-                      transition:   'background var(--duration-fast) var(--ease-in-out)',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isSelected) (e.currentTarget as HTMLButtonElement).style.background = 'var(--neu-accent-wash)';
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isSelected) (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
-                    }}
+                            display: 'flex',
+                            alignItems: 'center',
+                            width: '100%',
+                            padding: 'var(--space-2) var(--space-3)',
+                            fontSize: 'var(--text-xs)',
+                            textAlign: 'left',
+                        }}
                   >
                     {p.label}
-                  </button>
+                  </SelectionButton>
                 );
               })}
             </div>
@@ -246,27 +231,16 @@ export function DashboardDateFilter({ activePreset, fromParam, toParam }: Dashbo
                   style={{ flex: 1, minWidth: 0 }}
                 />
               </div>
-              <button
+              <Button
+                variant="primary"
+                size="sm"
+                style={{ width: '100%' }}
                 type="button"
                 onClick={applyCustomRange}
                 disabled={!customFrom || !customTo || customFrom >= customTo}
-                style={{
-                  width:        '100%',
-                  height:       '30px',
-                  borderRadius: 'var(--radius-sm)',
-                  background:   'var(--neu-accent-gradient)',
-                  boxShadow:    'var(--neu-shadow-raised-sm)',
-                  color:        'var(--theme-accent-fg)',
-                  fontSize:     'var(--text-xs)',
-                  fontWeight:   'var(--weight-semibold)',
-                  cursor:       'pointer',
-                  border:       'none',
-                  opacity:      (!customFrom || !customTo || customFrom >= customTo) ? 0.4 : 1,
-                  transition:   'opacity 150ms',
-                }}
               >
                 Apply
-              </button>
+              </Button>
             </div>
           </motion.div>
         )}

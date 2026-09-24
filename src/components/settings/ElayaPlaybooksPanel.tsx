@@ -4,6 +4,7 @@
 // fired (specialist, playbook, tools). Display + form state only (A-06); every write goes through
 // actions/elaya-playbooks.ts; the try-it rides the SAME transport the /elaya page uses
 // (streamElayaChat) on the user's own active conversation.
+import { SelectionButton } from '@/components/ui/SelectionButton';
 import { useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Trash2, Play, Wand2 } from 'lucide-react';
@@ -68,14 +69,29 @@ export function ElayaPlaybooksPanel({ initialPlaybooks, conversationId }: { init
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {initialPlaybooks.map((p) => (
-                <button key={p.id} type="button" onClick={() => setDraft(toDraft(p))} className="serene-pressable text-left"
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', padding: 'var(--space-3) var(--space-5)', background: draft.id === p.id ? 'var(--theme-accent-surface)' : 'transparent', borderBottom: '1px solid var(--theme-paper-border)', cursor: 'pointer', border: 'none', borderBottomWidth: 1, width: '100%' }}>
+                <SelectionButton
+                  appearance="row"
+                  key={p.id}
+                  type="button"
+                  onClick={() => setDraft(toDraft(p))}
+                  className="serene-pressable text-left"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 'var(--space-3)',
+                    padding: 'var(--space-3) var(--space-5)',
+                    borderBottom: '1px solid var(--theme-paper-border)',
+                    borderBottomWidth: 1,
+                    width: '100%',
+                  }}
+                >
                   <span style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
                     <span style={{ fontSize: 'var(--text-sm)', color: 'var(--theme-text-primary)', fontWeight: 'var(--weight-medium)' }}>{p.title}</span>
                     <span style={{ fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.example_questions[0]}</span>
                   </span>
                   <span style={{ fontSize: 'var(--text-2xs)', color: p.active ? 'var(--color-success-text)' : 'var(--theme-text-tertiary)', flexShrink: 0 }}>{p.active ? 'on' : 'off'}</span>
-                </button>
+                </SelectionButton>
               ))}
             </div>
           )}
@@ -84,7 +100,13 @@ export function ElayaPlaybooksPanel({ initialPlaybooks, conversationId }: { init
         <SectionCard title={draft.id ? 'Edit playbook' : drafted ? 'Preview: drafted from your notes' : 'New playbook'} description="Example questions are how people really ask (one per line). The instructions are the method: what to look at, which time window, what to lead with. Elaya reads them word for word.">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
             {drafted && !draft.id && (
-              <div style={{ padding: 'var(--space-3) var(--space-4)', borderRadius: 'var(--radius-md)', background: 'var(--theme-accent-surface)', color: 'var(--theme-accent)', fontSize: 'var(--text-sm)' }}>
+              <div style={{
+                padding: 'var(--space-3) var(--space-4)',
+                borderRadius: 'var(--radius-md)',
+                background: 'var(--theme-accent-surface)',
+                color: "var(--neu-accent-deep)",
+                fontSize: 'var(--text-sm)',
+              }}>
                 Elaya shaped your notes into this draft. Read it, change anything, then press <strong>Add playbook</strong> to approve. Nothing is saved until you do.
               </div>
             )}
@@ -196,7 +218,14 @@ function TryIt({ conversationId }: { conversationId: string }) {
         </div>
       )}
       {answer && (
-        <div style={{ marginTop: 'var(--space-4)', padding: 'var(--space-4)', borderRadius: 'var(--radius-md)', background: 'var(--theme-paper-subtle)', fontSize: 'var(--text-sm)', color: 'var(--theme-text-primary)' }}>
+        <div style={{
+          marginTop: 'var(--space-4)',
+          padding: 'var(--space-4)',
+          borderRadius: 'var(--radius-md)',
+          background: 'var(--theme-paper-subtle)',
+          fontSize: 'var(--text-sm)',
+          color: 'var(--theme-text-primary)',
+        }}>
           <ChatMarkdown content={answer} />
         </div>
       )}
@@ -206,7 +235,15 @@ function TryIt({ conversationId }: { conversationId: string }) {
 
 function Chip({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
-    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', padding: '3px var(--space-3)', borderRadius: 'var(--radius-full)', border: '1px solid var(--theme-paper-border)', background: strong ? 'var(--theme-accent-surface)' : 'var(--theme-paper)' }}>
+    <span style={{
+      display: 'inline-flex',
+      gap: 6,
+      alignItems: 'center',
+      padding: '3px var(--space-3)',
+      borderRadius: 'var(--radius-full)',
+      border: '1px solid var(--theme-paper-border)',
+      background: strong ? 'var(--theme-accent-surface)' : 'var(--theme-paper)',
+    }}>
       <span className="label-micro" style={{ color: 'var(--theme-text-tertiary)' }}>{label}</span>
       <span style={{ color: strong ? 'var(--theme-accent)' : 'var(--theme-text-primary)' }}>{value}</span>
     </span>

@@ -22,7 +22,7 @@ export async function RevivalDossierAction({ leadId }: { leadId: string }) {
       <div style={{ display: 'flex', gap: 'var(--space-4)', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-            <Sparkles className="w-4 h-4" strokeWidth={1.5} style={{ color: 'var(--theme-accent)' }} />
+            <Sparkles className="w-4 h-4" strokeWidth={1.5} style={{ color: "var(--neu-accent-deep)" }} />
             <span className="type-eyebrow m-0">Revival suggested</span>
           </div>
           <p

@@ -58,7 +58,16 @@ export function TicketLabelsPanel({ statusOverrides, tags: initialTags }: { stat
             {tags.map((t) => (
               <span key={t} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 'var(--text-xs)', padding: '3px var(--space-3)', borderRadius: 'var(--radius-full)', background: 'var(--theme-accent-surface)', color: 'var(--neu-accent-deep)' }}>
                 {t}
-                <button type="button" onClick={() => setTags(tags.filter((x) => x !== t))} aria-label={`Remove ${t}`} style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', color: 'inherit', display: 'inline-flex' }}><X style={{ width: 10, height: 10 }} /></button>
+                <Button
+                  variant="ghost" size="sm" iconOnly
+                  type="button"
+                  onClick={() => setTags(tags.filter((x) => x !== t))}
+                  aria-label={`Remove ${t}`}
+                  style={{
+                    padding: 0,
+                    display: 'inline-flex',
+                  }}
+                ><X style={{ width: 10, height: 10 }} /></Button>
               </span>
             ))}
             {tags.length === 0 && <span style={{ fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>No tags yet.</span>}

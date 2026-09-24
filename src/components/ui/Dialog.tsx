@@ -1,5 +1,7 @@
 'use client';
 
+import { ModalScopeContext, useModalFocus } from '@/hooks/useModalFocus';
+import { Button } from '@/components/ui/Button';
 import React, { useEffect, useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, m as motion } from 'framer-motion';
@@ -17,6 +19,8 @@ export type DialogSize = 'sm' | 'md' | 'lg' | 'xl' | 'full';
 
 export interface DialogProps {
   open: boolean;
+  /** Prevent dismissal while a mutation is in flight. */
+  pending?: boolean;
   onClose: () => void;
   title?: React.ReactNode;
   description?: string;
@@ -47,6 +51,7 @@ const MAX_WIDTH: Record<Exclude<DialogSize, 'full'>, string> = {
 
 export function Dialog({
   open,
+  pending = false,
   onClose,
   title,
   description,
@@ -62,14 +67,7 @@ export function Dialog({
   const isFull = size === 'full';
   const panelRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
-    }
-    document.addEventListener('keydown', handleKey);
-    return () => document.removeEventListener('keydown', handleKey);
-  }, [open, onClose]);
+  const scopeId = useModalFocus(open, panelRef, onClose, !pending);
 
   // Lock body scroll while open — stops the scrollbar disappear/reappear that
   // shifts the page one frame as the fixed overlay mounts (the Called-modal
@@ -77,12 +75,6 @@ export function Dialog({
   useEffect(() => {
     if (!open) return;
     return lockBodyScroll();
-  }, [open]);
-
-  // Take focus on the panel itself (not a field) so no input paints its accent
-  // ring mid scale-in, and preventScroll stops the animating panel scroll-jump.
-  useEffect(() => {
-    if (open) panelRef.current?.focus({ preventScroll: true });
   }, [open]);
 
   // SSR guard — after the hooks so hook order stays stable (ConfirmDialog pattern).
@@ -94,6 +86,7 @@ export function Dialog({
   // every Dialog consumer transform-safe by construction, matching
   // ConfirmDialog / FloatingPanel / NotificationPanel. z tokens unchanged.
   return createPortal(
+    <ModalScopeContext.Provider value={scopeId}>
     <AnimatePresence>
       {open && (
         <>
@@ -104,7 +97,7 @@ export function Dialog({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: ENTER_DURATION, ease: EASE_IN_OUT }}
-            onClick={onClose}
+            onClick={() => { if (!pending) onClose(); }}
             className={
               isFull
                 ? 'flex items-stretch justify-center p-0'
@@ -130,6 +123,7 @@ export function Dialog({
               tabIndex={-1}
               role="dialog"
               aria-modal="true"
+              aria-busy={pending || undefined}
               aria-labelledby={title ? titleId : undefined}
               aria-describedby={description ? descId : undefined}
               initial={{ opacity: 0, y: 10, scale: 0.98 }}
@@ -172,7 +166,7 @@ export function Dialog({
                     alignItems:     'center',
                     justifyContent: 'space-between',
                     padding:        'var(--space-4) var(--space-6)',
-                    background:     'var(--theme-paper-subtle)',
+                    background:     'var(--neu-section-bg)',
                     borderBottom:   '1px solid var(--theme-paper-border)',
                     flexShrink:     0,
                   }}
@@ -209,29 +203,18 @@ export function Dialog({
                   </div>
 
                   {!hideCloseButton && (
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      iconOnly
+                      iconMotion="rotate"
                       type="button"
-                      onClick={onClose}
+                      onClick={() => { if (!pending) onClose(); }}
                       aria-label="Close dialog"
-                      className="serene-pressable serene-icon-rotate-hover serene-touch"
-                      style={{
-                        display:        'flex',
-                        alignItems:     'center',
-                        justifyContent: 'center',
-                        width:          '1.75rem',
-                        height:         '1.75rem',
-                        border:         '1px solid var(--theme-paper-border)',
-                        borderRadius:   'var(--radius-sm)',
-                        background:     'transparent',
-                        color:          'var(--theme-text-tertiary)',
-                        cursor:         'pointer',
-                        transition:     'var(--transition-hover), transform var(--duration-instant) var(--ease-spring)',
-                        flexShrink:     0,
-                        marginLeft:     'var(--space-4)',
-                      }}
+                      disabled={pending}
                     >
                       <X style={{ width: 16, height: 16, strokeWidth: 1.5 }} aria-hidden="true" />
-                    </button>
+                    </Button>
                   )}
                 </div>
               )}
@@ -276,7 +259,8 @@ export function Dialog({
           </motion.div>
         </>
       )}
-    </AnimatePresence>,
+    </AnimatePresence>
+    </ModalScopeContext.Provider>,
     document.body,
   );
 }

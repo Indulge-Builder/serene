@@ -1,5 +1,6 @@
 "use client";
 
+import { SelectionButton } from '@/components/ui/SelectionButton';
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Check } from "lucide-react";
 import { updateProfile } from "@/lib/actions/profiles";
@@ -84,7 +85,8 @@ export function ThemeSelector({ currentTheme, profileId }: Props) {
           const isActive = active === theme.id;
 
           return (
-            <button
+            <SelectionButton
+              appearance="option" selected={isActive}
               key={theme.id}
               role="radio"
               aria-checked={isActive}
@@ -96,11 +98,7 @@ export function ThemeSelector({ currentTheme, profileId }: Props) {
                 flexDirection: "column",
                 alignItems:    "center",
                 gap:           "var(--space-2)",
-                background:    "transparent",
-                border:        "none",
                 padding:       0,
-                cursor:        isPending ? "wait" : "pointer",
-                opacity:       isPending && !isActive ? 0.6 : 1,
               }}
             >
               {/*
@@ -214,7 +212,7 @@ export function ThemeSelector({ currentTheme, profileId }: Props) {
               >
                 {theme.label}
               </span>
-            </button>
+            </SelectionButton>
           );
         })}
       </div>

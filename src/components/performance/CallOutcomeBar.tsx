@@ -1,5 +1,8 @@
 'use client';
 
+import { SelectionButton } from '@/components/ui/SelectionButton';
+import { clayTileStyle } from '@/components/ui/material-styles';
+
 import { m as motion } from 'framer-motion';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import type { OutcomeBreakdownItem } from '@/lib/services/performance-service';
@@ -146,11 +149,11 @@ export function CallOutcomeBar({ breakdown, onSliceClick }: Props) {
               gap:            'var(--space-3)',
               padding:        '6px var(--space-3)',
               borderRadius:   'var(--radius-sm)',
-              background:     config.bgColor,
+              ...clayTileStyle(config.bgColor),
               width:          '100%',
               textAlign:      'left' as const,
               border:         '1px solid var(--neu-edge)',
-              boxShadow:      'var(--neu-shadow-chip)',
+
               cursor:         onSliceClick ? 'pointer' : 'default',
             };
             const rowInner = (
@@ -210,16 +213,24 @@ export function CallOutcomeBar({ breakdown, onSliceClick }: Props) {
               </>
             );
             return onSliceClick ? (
-              <button
-                key={outcome}
-                type="button"
-                onClick={() => onSliceClick(outcome)}
-                aria-label={`Show leads whose latest call was ${config.label}`}
-                className="serene-pressable serene-touch"
-                style={rowStyle}
-              >
+              <SelectionButton appearance="option"
+      key={outcome}
+      type="button"
+      onClick={() => onSliceClick(outcome)}
+      aria-label={`Show leads whose latest call was ${config.label}`}
+      className="serene-pressable serene-touch"
+      style={{
+        display:        'flex',
+        alignItems:     'center',
+        gap:            'var(--space-3)',
+        padding:        '6px var(--space-3)',
+        ...clayTileStyle(config.bgColor),
+        width:          '100%',
+        textAlign:      'left' as const,
+      }}
+    >
                 {rowInner}
-              </button>
+              </SelectionButton>
             ) : (
               <div key={outcome} style={rowStyle}>
                 {rowInner}

@@ -16,29 +16,6 @@ type ExportModalProps = {
 export function ExportModal({ open, onClose, onExport, loading }: ExportModalProps) {
   const [format, setFormat] = useState<ExportFormat>('csv');
 
-  const pillBase: React.CSSProperties = {
-    padding:      'var(--space-2) var(--space-4)',
-    borderRadius: 'var(--radius-sm)',
-    fontSize:     'var(--text-sm)',
-    fontWeight:   'var(--weight-medium)',
-    cursor:       'pointer',
-    border:       '1px solid var(--neu-edge)',
-    transition:   'background var(--duration-fast) var(--ease-in-out), box-shadow var(--duration-fast) var(--ease-in-out), color var(--duration-fast) var(--ease-in-out)',
-  };
-
-  /* Selected floats on an accent wash (neumorphic Rule 4) — never a coloured border */
-  const pillActive: React.CSSProperties = {
-    background: 'color-mix(in srgb, var(--theme-accent) 12%, var(--neu-surface))',
-    boxShadow:  'var(--neu-shadow-chip)',
-    color:      'var(--neu-accent-deep)',
-  };
-
-  const pillInactive: React.CSSProperties = {
-    background: 'transparent',
-    boxShadow:  'none',
-    color:      'var(--theme-text-secondary)',
-  };
-
   return (
     <Modal
       open={open}
@@ -73,20 +50,22 @@ export function ExportModal({ open, onClose, onExport, loading }: ExportModalPro
         </p>
 
         <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-          <button
-            style={{ ...pillBase, ...(format === 'csv' ? pillActive : pillInactive) }}
+          <Button
+            variant="control"
+            size="sm" active={format === 'csv'} aria-pressed={format === 'csv'}
             onClick={() => setFormat('csv')}
             type="button"
           >
             CSV
-          </button>
-          <button
-            style={{ ...pillBase, ...(format === 'xlsx' ? pillActive : pillInactive) }}
+          </Button>
+          <Button
+            variant="control"
+            size="sm" active={format === 'xlsx'} aria-pressed={format === 'xlsx'}
             onClick={() => setFormat('xlsx')}
             type="button"
           >
             XLSX
-          </button>
+          </Button>
         </div>
 
         <p

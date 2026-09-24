@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from '@/components/ui/Button';
 import {
   forwardRef,
   useEffect,
@@ -136,7 +137,8 @@ export const MessageBar = forwardRef<HTMLTextAreaElement, MessageBarProps>(
             }}
           />
 
-          <button
+          <Button
+            variant="primary" iconOnly
             type="button"
             onClick={onSend}
             disabled={!canSend}
@@ -145,17 +147,10 @@ export const MessageBar = forwardRef<HTMLTextAreaElement, MessageBarProps>(
             style={{
               width:          `${SEND_SIZE}px`,
               height:         `${SEND_SIZE}px`,
-              // The send button is the ONLY accent-filled circle on screen.
-              borderRadius:   "var(--radius-full)",
-              border:         "none",
-              cursor:         canSend ? "pointer" : "not-allowed",
               display:        "flex",
               alignItems:     "center",
               justifyContent: "center",
               flexShrink:     0,
-              background:     canSend ? "var(--neu-accent-gradient)" : "var(--neu-well)",
-              boxShadow:      canSend ? "var(--neu-shadow-raised-sm)" : "none",
-              transition:     "background var(--duration-fast) var(--ease-in-out), box-shadow var(--duration-fast) var(--ease-in-out), transform var(--duration-instant) var(--ease-spring)",
             }}
           >
             {loading ? (
@@ -175,7 +170,7 @@ export const MessageBar = forwardRef<HTMLTextAreaElement, MessageBarProps>(
                 }}
               />
             )}
-          </button>
+          </Button>
         </div>
       </>
     );

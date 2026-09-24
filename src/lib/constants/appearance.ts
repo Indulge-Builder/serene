@@ -30,7 +30,7 @@ export function isAppearanceKey(value: unknown): value is AppearanceKey {
 // Hardcoded hex is sanctioned only for these surfaces (meta tags and manifest
 // JSON cannot read CSS vars) — keep in lockstep with
 // serene-neumorphic-tokens.css --neu-canvas (:root / [data-neu="dark"]).
-export const NEU_CANVAS_LIGHT = "#ECE8E1";
+export const NEU_CANVAS_LIGHT = "#ECEBED";
 export const NEU_CANVAS_DARK  = "#28241C";
 
 // SSR mirror of profiles.appearance (the serene-theme pattern). The root
@@ -62,7 +62,7 @@ export function resolvesDark(appearance: AppearanceKey): boolean {
 /**
  * Client-only — apply an appearance preference to the DOM: flips the
  * <html data-neu> attribute and updates the <meta name="theme-color">
- * tag(s) so the browser/PWA chrome follows (#ECE8E1 ↔ #28241C).
+ * tag(s) so the browser/PWA chrome follows (#ECEBED ↔ #28241C).
  * 'system' needs the two media-scoped metas so the chrome tracks the OS
  * without JS; 'light'/'dark' need one resolved meta.
  *

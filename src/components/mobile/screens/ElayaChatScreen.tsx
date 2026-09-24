@@ -1,5 +1,7 @@
 'use client';
 
+import { Fab } from '@/components/mobile/buttons';
+import { SelectionButton } from '@/components/ui/SelectionButton';
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Send } from 'lucide-react';
@@ -273,14 +275,14 @@ export function ElayaChatScreen({
       {showStarters && (
         <div className="flex gap-2 overflow-x-auto">
           {ELAYA_STARTER_PROMPTS.map((s) => (
-            <button
+            <SelectionButton
+              appearance="choice"
               key={s}
               onClick={() => prefill(s)}
               className="neu-m-touch h-9 px-3.5 shrink-0 rounded-full bg-(--neu-surface) border border-(--neu-edge) text-[11px] font-medium text-(--neu-accent-deep)"
-              style={{ boxShadow: 'var(--neu-shadow-raised-sm)' }}
             >
               {s}
-            </button>
+            </SelectionButton>
           ))}
         </div>
       )}
@@ -324,18 +326,15 @@ export function ElayaChatScreen({
               className="flex-1 bg-transparent outline-none border-none text-[12.5px] text-(--neu-text-primary) placeholder:text-(--neu-text-tertiary)"
             />
           </div>
-          <button
+          <Fab
+
             onClick={() => void send()}
             aria-label="Send"
             disabled={isStreaming || draft.trim().length === 0}
             className="neu-m-touch-knob w-[50px] h-[50px] shrink-0 rounded-full border border-(--neu-accent-btn-edge) flex items-center justify-center text-(--neu-accent-fg) disabled:opacity-60"
-            style={{
-              background: 'var(--neu-accent-gradient)',
-              boxShadow: 'var(--neu-shadow-raised)',
-            }}
           >
             <Send size={17} strokeWidth={1.7} />
-          </button>
+          </Fab>
         </div>
       )}
     </div>

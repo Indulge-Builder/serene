@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@/components/ui/Button';
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { AdCreativePlayer } from './AdCreativePlayer';
@@ -140,30 +141,14 @@ export function AdCreativeCarousel({ creatives, showMeta = false, align = 'cente
 function CarouselArrow({ side, onClick }: { side: 'left' | 'right'; onClick: () => void }) {
   const Icon = side === 'left' ? ChevronLeft : ChevronRight;
   return (
-    <button
+    <Button
+      variant="control"
+      iconOnly size="sm"
       type="button"
       onClick={onClick}
       aria-label={side === 'left' ? 'Previous ad' : 'Next ad'}
-      style={{
-        position:       'absolute',
-        top:            '50%',
-        [side]:         'var(--space-2)',
-        transform:      'translateY(-50%)',
-        display:        'inline-flex',
-        alignItems:     'center',
-        justifyContent: 'center',
-        width:          '2.25rem',
-        height:         '2.25rem',
-        borderRadius:   'var(--radius-full)',
-        background:     'var(--theme-paper)',
-        border:         '1px solid var(--theme-paper-border)',
-        boxShadow:      'var(--shadow-2)',
-        color:          'var(--theme-text-primary)',
-        cursor:         'pointer',
-        zIndex:         1,
-      } as React.CSSProperties}
     >
       <Icon style={{ width: '1.1rem', height: '1.1rem', strokeWidth: 1.5 }} />
-    </button>
+    </Button>
   );
 }

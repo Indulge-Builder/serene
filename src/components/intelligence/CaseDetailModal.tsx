@@ -71,7 +71,7 @@ export function CaseDetailModal({ open, onClose, serviceCase: c, canEdit = false
                 borderRadius:  'var(--radius-full)',
                 background:    'var(--theme-paper-subtle)',
                 border:        '1px solid var(--theme-paper-border)',
-                color:         'var(--theme-accent)',
+                color:         "var(--neu-accent-deep)",
                 fontFamily:    'var(--font-sans)',
                 fontSize:      'var(--text-2xs)',
                 fontWeight:    'var(--weight-medium)',

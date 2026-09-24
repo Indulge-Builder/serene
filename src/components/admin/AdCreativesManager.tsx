@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from '@/components/ui/Button';
 import { useMemo, useState, useTransition } from "react";
 import { m as motion } from "framer-motion";
 import { Plus, Pencil, Trash2, Film, SlidersHorizontal } from "lucide-react";
@@ -320,38 +321,23 @@ function CreativeCard({
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", flexShrink: 0 }}>
-        <button
+        <Button
+          variant="control"
+          size="sm"
           type="button"
           onClick={onEdit}
           aria-label="Edit creative"
-          style={actionBtnStyle}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = "var(--theme-accent-muted)";
-            e.currentTarget.style.color = "var(--theme-text-primary)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = "var(--theme-paper-border)";
-            e.currentTarget.style.color = "var(--theme-text-secondary)";
-          }}
         >
           <Pencil style={{ width: 12, height: 12, strokeWidth: 1.5 }} />
           Edit
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="danger"
+          iconOnly size="sm"
           type="button"
           onClick={onDelete}
           disabled={isDeleting}
           aria-label="Delete creative"
-          style={actionBtnStyle}
-          onMouseEnter={(e) => {
-            if (isDeleting) return;
-            e.currentTarget.style.borderColor = "var(--color-danger)";
-            e.currentTarget.style.color = "var(--color-danger-text)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = "var(--theme-paper-border)";
-            e.currentTarget.style.color = "var(--theme-text-secondary)";
-          }}
         >
           {isDeleting ? (
             <SeedMandala size={14} variant="currentColor" spin={3.5} />
@@ -361,25 +347,8 @@ function CreativeCard({
               Delete
             </>
           )}
-        </button>
+        </Button>
       </div>
     </motion.div>
   );
 }
-
-const actionBtnStyle: React.CSSProperties = {
-  display:        "inline-flex",
-  alignItems:     "center",
-  gap:            "var(--space-1)",
-  padding:        "var(--space-1) var(--space-3)",
-  background:     "transparent",
-  border:         "1px solid var(--theme-paper-border)",
-  borderRadius:   "var(--radius-sm)",
-  fontFamily:     "var(--font-sans)",
-  fontSize:       "var(--text-xs)",
-  fontWeight:     "var(--weight-medium)",
-  color:          "var(--theme-text-secondary)",
-  cursor:         "pointer",
-  transition:     "var(--transition-interactive)",
-  whiteSpace:     "nowrap",
-};

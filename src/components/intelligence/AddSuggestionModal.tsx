@@ -393,32 +393,24 @@ export function AddSuggestionModal({ open, onClose, initialDomain, serviceCase }
                 border:       '1px solid var(--theme-paper-border)',
                 fontFamily:   'var(--font-mono)',
                 fontSize:     'var(--text-xs)',
-                color:        'var(--theme-accent)',
+                color:        "var(--neu-accent-deep)",
                 userSelect:   'none',
               }}
             >
               {tag}
-              <button
+              <Button
+                variant="ghost"
+                iconOnly size="sm"
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   setTags((prev) => prev.filter((t) => t !== tag));
                 }}
                 aria-label={`Remove tag ${tag}`}
-                style={{
-                  display:        'flex',
-                  alignItems:     'center',
-                  justifyContent: 'center',
-                  background:     'none',
-                  border:         'none',
-                  padding:        0,
-                  cursor:         'pointer',
-                  color:          'var(--theme-accent)',
-                  lineHeight:     1,
-                }}
+                style={{ display:        'flex', alignItems:     'center', justifyContent: 'center' }}
               >
                 <X style={{ width: 10, height: 10, strokeWidth: 2 }} />
-              </button>
+              </Button>
             </span>
           ))}
           {tags.length < MAX_TAGS && (

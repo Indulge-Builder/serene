@@ -4,6 +4,7 @@
 // pill. One home so the rail, the chat header, and the console modal can never
 // drift (R-01). Display-only (A-06).
 
+import { SelectionButton } from '@/components/ui/SelectionButton';
 import { FileText, ImageIcon, Images, IndianRupee, Mic, ShoppingBag, Smile, Video } from "lucide-react";
 import { AVATAR_COLOUR_PAIRS } from "@/components/ui/Avatar";
 import { hashString } from "@/lib/utils/strings";
@@ -109,24 +110,21 @@ export function KindPillRow({
       {KIND_ORDER.map((k) => {
         const active = value === k;
         return (
-          <button
+          <SelectionButton
+            appearance="choice"
+            selected={active}
+            aria-pressed={active}
             key={k}
             type="button"
             disabled={disabled}
             onClick={() => !active && onPick(k)}
             className="serene-pressable type-caption rounded-full border-0"
             style={{
-              padding: "3px 10px",
-              background: active ? "var(--theme-accent)" : "var(--theme-paper-subtle)",
-              color: active ? "var(--theme-accent-fg)" : "var(--theme-text-secondary)",
-              fontWeight: active ? "var(--weight-medium)" : "var(--weight-normal)",
-              cursor: disabled || active ? "default" : "pointer",
-              transition:
-                "background var(--duration-fast) var(--ease-in-out), color var(--duration-fast) var(--ease-in-out)",
-            }}
+                    padding: "3px 10px",
+                }}
           >
             {KIND_LABEL[k]}
-          </button>
+          </SelectionButton>
         );
       })}
     </div>

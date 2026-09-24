@@ -8,6 +8,8 @@
  * Closes on outside click, Escape, or item click with action_url.
  */
 
+import { useModalFocus } from '@/hooks/useModalFocus';
+import { Button } from '@/components/ui/Button';
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { m as motion, AnimatePresence } from "framer-motion";
@@ -120,17 +122,7 @@ export function NotificationPanel({
     return () => document.removeEventListener("pointerdown", handlePointerDown);
   }, [open, onClose, anchorRef]);
 
-  // Close on Escape
-  useEffect(() => {
-    if (!open) return;
-
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [open, onClose]);
+  useModalFocus(open && mounted, panelRef, onClose);
 
   if (!mounted) return null;
 
@@ -158,6 +150,8 @@ export function NotificationPanel({
           <motion.div
             ref={panelRef}
             role="dialog"
+            aria-modal="true"
+            tabIndex={-1}
             aria-label="Notifications"
             className="notification-panel"
             variants={PANEL_VARIANTS}
@@ -204,25 +198,14 @@ export function NotificationPanel({
               </span>
 
               {unreadCount > 0 && (
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
                   type="button"
                   onClick={onMarkAllRead}
-                  style={{
-                    fontFamily:  "var(--font-sans)",
-                    fontSize:    "var(--text-xs)",
-                    fontWeight:  "var(--weight-normal)",
-                    color:       "var(--theme-text-tertiary)",
-                    background:  "none",
-                    border:      "none",
-                    cursor:      "pointer",
-                    padding:     0,
-                    transition:  "color var(--transition-hover)",
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.color = "var(--theme-accent)"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.color = "var(--theme-text-tertiary)"; }}
                 >
                   Mark all read
-                </button>
+                </Button>
               )}
             </div>
 

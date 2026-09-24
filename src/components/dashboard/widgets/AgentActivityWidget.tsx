@@ -287,6 +287,15 @@ function ScopeSwitch({
             key={opt.value}
             type="button"
             role="tab"
+            tabIndex={active ? 0 : -1}
+            onKeyDown={(event) => {
+              if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+              event.preventDefault();
+              const index = options.findIndex(option => option.value === scope);
+              const next = event.key === 'Home' ? 0 : event.key === 'End' ? options.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + options.length) % options.length;
+              onChange(options[next].value);
+              event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
+            }}
             aria-selected={active}
             disabled={disabled}
             onClick={() => !active && onChange(opt.value)}

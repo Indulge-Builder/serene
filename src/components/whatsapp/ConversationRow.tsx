@@ -1,7 +1,7 @@
 "use client";
 
+import { MotionSelectionButton } from '@/components/ui/MotionButton';
 import { useState } from "react";
-import { m as motion } from "framer-motion";
 import { Avatar } from "@/components/ui/Avatar";
 import { ENTER_DURATION, EASE_OUT_EXPO } from "@/lib/constants/motion";
 import { formatRelativeTime } from "@/lib/utils/dates";
@@ -33,43 +33,25 @@ export function ConversationRow({
     : null;
 
   const trailingColor = isHighlighted
-    ? "var(--theme-accent)"
+    ? "var(--neu-accent-deep)"
     : "var(--theme-text-tertiary)";
 
   return (
-    <motion.button
-      type="button"
-      initial={{ opacity: 0, x: -8 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{
+    <MotionSelectionButton
+          appearance="option" selected={isActive} aria-pressed={isActive}
+          type="button"
+          initial={{ opacity: 0, x: -8 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{
         duration: ENTER_DURATION,
         delay: delay / 1000,
         ease: EASE_OUT_EXPO,
       }}
-      onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "var(--space-3)",
-        padding: "var(--space-3) var(--space-4)",
-        borderRadius: "var(--radius-md)",
-        // Selected floats on an accent wash — never inset, never a coloured edge.
-        background: isActive
-          ? "color-mix(in srgb, var(--theme-accent) 12%, var(--neu-surface))"
-          : "transparent",
-        border: isActive
-          ? "1px solid var(--neu-edge)"
-          : "1px solid transparent",
-        boxShadow: isActive ? "var(--neu-shadow-chip)" : "none",
-        cursor: "pointer",
-        width: "100%",
-        textAlign: "left",
-        transition:
-          "background var(--duration-fast) var(--ease-in-out), box-shadow var(--duration-fast) var(--ease-in-out)",
-      }}
-    >
+          onClick={onClick}
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+          style={{display: "flex", alignItems: "center", gap: "var(--space-3)", padding: "var(--space-3) var(--space-4)", width: "100%", textAlign: "left"}}
+        >
       <div style={{ position: "relative", flexShrink: 0 }}>
         <Avatar name={displayName} size="sm" selected={isHighlighted} />
         {hasUnread && (
@@ -82,7 +64,7 @@ export function ConversationRow({
               width: "10px",
               height: "10px",
               borderRadius: "50%",
-              background: "var(--theme-accent)",
+              background: "var(--neu-accent-deep)",
               border: "2px solid var(--theme-paper)",
             }}
           />
@@ -124,7 +106,7 @@ export function ConversationRow({
           {trailing}
         </span>
       )}
-    </motion.button>
+    </MotionSelectionButton>
   );
 }
 

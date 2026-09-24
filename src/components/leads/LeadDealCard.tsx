@@ -66,7 +66,7 @@ export function LeadDealCard({ deal }: LeadDealCardProps) {
         <Trophy
           size={20}
           strokeWidth={1.5}
-          style={{ color: 'var(--theme-accent)', flexShrink: 0 }}
+          style={{ color: "var(--neu-accent-deep)", flexShrink: 0 }}
           aria-hidden
         />
         <span
@@ -85,7 +85,7 @@ export function LeadDealCard({ deal }: LeadDealCardProps) {
             fontSize:           'var(--text-2xl)',
             fontWeight:         'var(--weight-normal)',
             fontVariantNumeric: 'tabular-nums',
-            color:              'var(--theme-accent)',
+            color:              "var(--neu-accent-deep)",
             lineHeight:         1,
             whiteSpace:         'nowrap',
           }}

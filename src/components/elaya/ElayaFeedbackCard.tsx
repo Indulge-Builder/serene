@@ -10,6 +10,7 @@
 // already use (R-01, never a second feedback mechanism). The dashboard layout
 // already wraps /elaya in SuggestionFeedbackProvider, so the hook is in scope.
 
+import { Button } from '@/components/ui/Button';
 import { m as motion } from 'framer-motion';
 import { MessageSquarePlus } from 'lucide-react';
 import { useSuggestionFeedback } from '@/components/suggestions/SuggestionFeedbackProvider';
@@ -34,7 +35,7 @@ export function ElayaFeedbackCard() {
             height: '40px',
             borderRadius: 'var(--radius-md)',
             background: 'var(--theme-accent-surface)',
-            color: 'var(--theme-accent)',
+            color: "var(--neu-accent-deep)",
             flexShrink: 0,
           }}
         >
@@ -65,23 +66,15 @@ export function ElayaFeedbackCard() {
         </div>
       </div>
 
-      <button
+      <Button
+        variant="control"
+        size="sm"
         type="button"
         onClick={() => openComposer()}
-        className="serene-pressable serene-icon-lift-hover w-full flex items-center justify-center border border-(--theme-paper-border) text-(--theme-text-secondary) hover:border-(--theme-accent-muted) hover:text-(--theme-text-primary)"
-        style={{
-          gap: 'var(--space-2)',
-          background: 'transparent',
-          borderRadius: 'var(--radius-md)',
-          padding: 'var(--space-2) var(--space-3)',
-          fontSize: 'var(--text-sm)',
-          cursor: 'pointer',
-          transition: 'var(--transition-hover)',
-        }}
       >
         <MessageSquarePlus style={{ width: 16, height: 16, strokeWidth: 1.5 }} aria-hidden="true" />
         Send feedback
-      </button>
+      </Button>
     </motion.section>
   );
 }

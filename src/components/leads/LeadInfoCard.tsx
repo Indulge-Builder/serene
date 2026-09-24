@@ -1,5 +1,9 @@
 'use client';
 
+import { useModalScope } from '@/hooks/useModalFocus';
+import { usePopoverKeyboard } from '@/hooks/usePopoverKeyboard';
+import { SelectionButton } from '@/components/ui/SelectionButton';
+import { Button } from '@/components/ui/Button';
 import { useState, useEffect, useRef, useCallback, type ComponentType } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
@@ -422,13 +426,13 @@ function FieldSaveFeedback({
         size={16}
         variant="currentColor"
         spin={3.5}
-        style={{ color: 'var(--theme-accent)' }}
+        style={{ color: "var(--neu-accent-deep)" }}
       />
     );
   if (success) {
     return (
       <Check
-        style={{ width: '0.75rem', height: '0.75rem', color: 'var(--color-success)', strokeWidth: 2, flexShrink: 0 }}
+        style={{ width: '0.75rem', height: '0.75rem', color: "var(--color-success-text)", strokeWidth: 2, flexShrink: 0 }}
       />
     );
   }
@@ -536,23 +540,13 @@ function EmailInlineField({
             }}
           />
         ) : (
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             type="button"
             disabled={saving}
             onClick={() => setEditing(true)}
-            style={{
-              display:    'inline-flex',
-              alignItems: 'center',
-              gap:        'var(--space-2)',
-              padding:    0,
-              border:     'none',
-              background: 'transparent',
-              font:       'inherit',
-              textAlign:  'left',
-              cursor:     saving ? 'not-allowed' : 'pointer',
-              minWidth:   0,
-              maxWidth:   '100%',
-            }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)', font: 'inherit', textAlign: 'left', minWidth: 0, maxWidth: '100%' }}
           >
             <FieldSaveFeedback saving={saving} success={success} error={null} />
             <EditableValueText hovered={hovered} muted={!display?.trim()}>
@@ -562,7 +556,7 @@ function EmailInlineField({
                 'Add email'
               )}
             </EditableValueText>
-          </button>
+          </Button>
         )}
       </LeadFieldShell>
       {saveErr && !editing && (
@@ -666,58 +660,38 @@ function InterestsInlineField({
               ))}
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-              <button
+              <Button
+                variant="primary"
+                size="sm"
                 type="button"
                 disabled={saving}
                 onClick={() => void commit()}
                 aria-label="Save interests"
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)',
-                  padding: '2px 10px', borderRadius: 'var(--radius-full)',
-                  border: '1px solid var(--theme-accent)', background: 'var(--theme-accent)',
-                  color: 'var(--theme-accent-fg)', fontSize: 'var(--text-xs)',
-                  fontFamily: 'var(--font-sans)', cursor: saving ? 'not-allowed' : 'pointer',
-                }}
               >
                 {saving ? <SeedMandala size={14} variant="currentColor" spin={3.5} /> : <Check style={{ width: '0.7rem', height: '0.7rem', strokeWidth: 2 }} />}
                 Save
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
                 type="button"
                 disabled={saving}
                 onClick={cancel}
                 aria-label="Cancel editing interests"
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)',
-                  padding: '2px 10px', borderRadius: 'var(--radius-full)',
-                  border: '1px solid var(--theme-paper-border)', background: 'transparent',
-                  color: 'var(--theme-text-tertiary)', fontSize: 'var(--text-xs)',
-                  fontFamily: 'var(--font-sans)', cursor: saving ? 'not-allowed' : 'pointer',
-                }}
               >
                 <X style={{ width: '0.7rem', height: '0.7rem', strokeWidth: 2 }} />
                 Cancel
-              </button>
+              </Button>
             </span>
           </span>
         ) : (
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             type="button"
             disabled={saving}
             onClick={() => setEditing(true)}
-            style={{
-              display:    'inline-flex',
-              alignItems: 'center',
-              gap:        'var(--space-2)',
-              padding:    0,
-              border:     'none',
-              background: 'transparent',
-              font:       'inherit',
-              textAlign:  'left',
-              cursor:     saving ? 'not-allowed' : 'pointer',
-              minWidth:   0,
-              maxWidth:   '100%',
-            }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)', font: 'inherit', textAlign: 'left', minWidth: 0, maxWidth: '100%' }}
           >
             <FieldSaveFeedback saving={saving} success={success} error={null} />
             <EditableValueText hovered={hovered} muted={display.length === 0}>
@@ -725,7 +699,7 @@ function InterestsInlineField({
                 ? display.map(getServiceCategoryLabel).join(', ')
                 : 'Add interests'}
             </EditableValueText>
-          </button>
+          </Button>
         )}
       </LeadFieldShell>
       {saveErr && (
@@ -905,6 +879,8 @@ function InlineSelectField({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef    = useRef<HTMLDivElement>(null);
 
+  const modalScope = useModalScope();
+  usePopoverKeyboard(open && !!menuPos, menuRef, triggerRef, () => setOpen(false));
   const updateMenuPosition = useCallback(() => {
     if (triggerRef.current) {
       setMenuPos(computeSelectMenuPosition(triggerRef.current));
@@ -949,6 +925,8 @@ function InlineSelectField({
       ? (
           <motion.div
             ref={menuRef}
+            data-modal-owner={modalScope}
+            aria-label={label}
             key={`${label}-menu`}
             role="listbox"
             variants={DROPDOWN_VARIANTS}
@@ -976,40 +954,26 @@ function InlineSelectField({
             {items.map((item) => {
               const isSelected = item.id === selectedId;
               return (
-                <button
+                <SelectionButton
+                  appearance="option"
+                  selected={isSelected}
                   key={item.id}
                   type="button"
                   role="option"
                   aria-selected={isSelected}
                   onClick={() => {
-                    setOpen(false);
-                    onSelect(item.id);
-                  }}
+                          setOpen(false);
+                          onSelect(item.id);
+                      }}
                   style={{
-                    display:    'flex',
-                    alignItems: 'center',
-                    gap:        'var(--space-2)',
-                    width:      '100%',
-                    padding:    'var(--space-2) var(--space-3)',
-                    border:     'none',
-                    background: isSelected ? 'var(--theme-accent-surface)' : 'transparent',
-                    fontFamily: 'var(--font-sans)',
-                    fontSize:   'var(--text-sm)',
-                    color:      isSelected ? 'var(--theme-accent)' : 'var(--theme-text-primary)',
-                    cursor:     'pointer',
-                    textAlign:  'left',
-                    transition: 'var(--transition-hover)',
-                  }}
-                  onMouseEnter={(e) => {
-                    if (!isSelected) {
-                      (e.currentTarget as HTMLButtonElement).style.background = 'color-mix(in srgb, var(--theme-accent) 5%, transparent)';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isSelected) {
-                      (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
-                    }
-                  }}
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 'var(--space-2)',
+                          width: '100%',
+                          padding: 'var(--space-2) var(--space-3)',
+                          fontSize: 'var(--text-sm)',
+                          textAlign: 'left',
+                      }}
                 >
                   <span style={{ flex: 1 }}>{item.label}</span>
                   {isSelected && (
@@ -1018,7 +982,7 @@ function InlineSelectField({
                       aria-hidden
                     />
                   )}
-                </button>
+                </SelectionButton>
               );
             })}
           </motion.div>
@@ -1032,7 +996,8 @@ function InlineSelectField({
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
       >
-        <button
+        <Button
+          variant="ghost" size="sm"
           ref={triggerRef}
           type="button"
           disabled={saving}
@@ -1042,11 +1007,7 @@ function InlineSelectField({
           style={{
             width:      '100%',
             padding:    0,
-            border:     'none',
-            background: 'transparent',
             textAlign:  'left',
-            cursor:     saving ? 'not-allowed' : 'pointer',
-            opacity:    saving ? 0.6 : 1,
           }}
         >
           <LeadFieldShell icon={icon} label={label} open={open} disabled={saving}>
@@ -1069,7 +1030,7 @@ function InlineSelectField({
               />
             )}
           </LeadFieldShell>
-        </button>
+        </Button>
 
         {saveErr && (
           <p style={{ margin: 'var(--space-1) 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-danger-text)' }}>
@@ -1167,7 +1128,7 @@ function CampaignLinkTrigger({ value, onClick }: { value: string; onClick: () =>
         outline:             'none',
       }}
       onMouseEnter={(e) => {
-        (e.currentTarget as HTMLElement).style.color = 'var(--theme-accent)';
+        (e.currentTarget as HTMLElement).style.color = 'var(--neu-accent-deep)';
         (e.currentTarget as HTMLElement).style.textDecorationColor = 'var(--theme-accent)';
       }}
       onMouseLeave={(e) => {

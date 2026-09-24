@@ -50,6 +50,31 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-25 — Form families, quiet surfaces, and consistent save behaviour
+
+Added shared Field/Input/Textarea/Select, Badge, Alert, and LoadingState families.
+Adopted them in lead, account, role/domain, and subscription forms and in ticket,
+Freshdesk, and Zoho status wrappers. Native field refs and change/blur handlers
+remain intact, with labels, hints, and validation messages connected.
+
+Reduced header pigment and separated section, field, card, and table surfaces.
+Dark table selection uses a restrained tint and visible edge after contrast
+checks caught low-contrast tertiary text. The existing sidebar gradient remains.
+
+Dialogs support pending dismissal protection; selectors support native disabled
+and required-choice behaviour. Lead assignee loading has distinct recovery feedback.
+Lead/subscription save errors preserve entered values; subscriptions now use a
+native form. Table refreshes retain rows, nested actions do not activate the row,
+and tooltips connect descriptions and support Escape dismissal.
+
+Validation: targeted TypeScript for 24 changed components, changed-source lint,
+13 component contract tests, expanded browser keyboard fixtures, 1,536 theme/material
+contrast pairs, and the control appearance baseline passed. The full-codebase
+TypeScript run was stopped after prolonged local resource contention.
+This is the initial adoption of the new families, not completion of all legacy
+field migrations or authenticated workflow verification. See
+`docs/design/control-system.md` for scope and remaining checks.
+
 ## 2026-09-25 — The brief, fixed on the founder's reading of it: queendom blocks, time frames in words, internal groups out of the gaps
 
 - Why: the founder read the first brief and found four things wrong. "Indulge Global" named as the top
@@ -116,6 +141,25 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
   flight), ₹21; the top-up 7 seconds; the spend-ask path stops in 11 seconds after planning only.
 
 ---
+
+## 2026-09-24 — Shared controls and modal keyboard behavior
+
+Consolidated remaining ordinary actions and selectable rows into the shared
+Button, SelectionButton, and motion wrappers across desktop and mobile components.
+Added shared warning and quiet destructive variants. Native declarations with
+local appearance properties fell from 52 to 23; specialized primitives remain
+documented in an enforceable source-audit baseline, with animated controls tracked
+separately.
+
+Dialogs now contain and restore keyboard focus, including nested confirmations
+and owned portaled pickers. Calendar, time-wheel, radio, segmented, drag-handle,
+and voice-seeking controls gained keyboard behavior and state semantics.
+
+Validation: Serene-only TypeScript, changed-source lint, token references, ten
+component contract tests, appearance baseline, real-component keyboard fixtures,
+and 816 measured theme/material contrast pairs passed. Authenticated screen review,
+screen-reader and live-service verification remain outside this validation;
+responsive testing remains user-owned. See `docs/design/control-system.md`.
 
 ## 2026-09-24 -- The member vault (migration 0236), and the Freshdesk contact notes imported
 
@@ -344,6 +388,110 @@ were re-read with `--reread`.
 - Research behind it: docs are in the 2026-09-24 conversation; the pattern is Anthropic's tool search
   (accuracy degrades past 30 to 50 loaded tools), Shopify's just-in-time instructions, one agent per
   chat turn.
+
+## 2026-09-23 — Founder lead and SLA notifications paused
+
+- Paused, at the founder's request, every lead and SLA notification that reaches a
+  founder. This is a pause, not a removal: the categories, the code and the
+  templates are all untouched, and each founder can turn their own rows back on
+  from /profile at any time.
+- Done through the existing per-user control plane (migration 0133,
+  `notification_preferences`), not through new code. Twelve rows were written, one
+  per founder per category, for Advita Bihani, Ethan Alvares, Karan Bhangay and
+  Syndia:
+  - `sla_escalation` off on both in-app and WhatsApp. This is the SLA escalation
+    that founders were getting about ten times a fortnight each.
+  - `new_lead_founder_alert` off on WhatsApp. The code flag
+    `FOUNDER_LEAD_ALERTS_PAUSED` (2026-09-21) already stops this send; the row makes
+    the pause survive a flip of that flag.
+  - `lead_won` off in-app.
+- Only the channel a category can actually fire on is muted. The unused channel is
+  left on so the sparse-row rule in `src/lib/actions/notification-prefs.ts` still
+  deletes the row when a founder re-enables the category from /profile.
+- Untouched: deals, tasks, Sia tickets, the Elaya daily briefing, and every
+  notification reaching agents and managers. Agent SLA breach alerts still fire.
+
+## 2026-09-24 — Upload surfaces and mobile action materials
+
+- Centralized three file-chooser surfaces in UploadButton with matched inset
+  material, busy announcements, and disabled behavior.
+- Moved voice-note, video-load, and document-download actions to Button.
+- Consolidated mobile action material, footer actions, and stepper knobs; replaced
+  the floating action button's hardcoded bright shadow with shared elevation.
+  Resting shadows now allow the existing hover/pressed CSS to take effect.
+- Local native-button appearance instances decreased from 65 to 52. Ten component
+  tests and 784 theme/material contrast pairs pass, alongside TypeScript, lint,
+  and token checks. Responsive testing remains user-owned.
+
+## 2026-09-24 — Shared selection controls
+
+- Added SelectionButton for choices, menu options, and selectable rows. Thirty
+  controls now share hover, selected, pressed, and disabled material while
+  retaining their native selection semantics, handlers, and refs.
+- Migrated task icon actions and status/priority triggers plus the vendor-category
+  trigger to Button. Removed obsolete local appearance recipes.
+- Reduced native button declarations with local appearance styles from 76 to 65.
+  The inventory separately reports 310 shared action and 30 selection controls.
+- Expanded the contrast specimen/check to actual rendered selections: 720 pairs
+  pass across eight themes and both appearances, measured after theme transitions.
+  Eight contract tests and real-component keyboard checks pass.
+
+## 2026-09-23 — Control families and readable pastel themes
+
+- Migrated 73 more ordinary actions to Button; shared usage is now 306. Native
+  button declarations decreased from 196 to 123, and inline appearance instances
+  from 161 to 76. Specialized widgets retain their own interaction structures.
+- Centralized selectable choices and menu option material across 21 declarations.
+  Extended consistent controls to calendar navigation, format choices, task
+  editors, dialogs, password visibility, attachments, and clear actions.
+- Retained pastel fills while deepening badge and semantic label inks, improving
+  secondary/tertiary text hierarchy, and correcting blue/rose primary action ink.
+  All 624 measured theme/appearance/token pairs meet the configured contrast targets.
+- Added keyboard navigation and focus return to shared tabs and filters, plus
+  keyboard activation for shared table rows. Real-component Chromium keyboard
+  checks and Button contract tests pass. Responsive testing is user-owned.
+- Documented repeatable inventory, contrast, and keyboard checks in the control
+  system contract. Authenticated screen and screen-reader review remain unverified.
+
+## 2026-09-22 — Shared action and control system
+
+- Audited 506 TSX files and migrated 58 ordinary native actions to the existing
+  Button component across list toolbars, pagination, dashboard, performance,
+  task editors, subscriptions, notes, admin, and messaging screens.
+- Added the control variant and icon-only sizing. Filters and controls share
+  hover, pressed, open, and applied states; action corners use one control token.
+- Unified compact search/date/time field shapes, subscription field material,
+  keyboard focus outlines, and coarse-pointer target minimums. Semantic action
+  hover states retain readable ink; loading buttons expose aria-busy.
+- Added a repeatable source inventory, a real-component HTML specimen generator,
+  and the control-system usage contract. Click/change/submit handlers and disabled
+  expressions were checked for preservation during migration.
+
+## 2026-09-22 — Minimal theme-derived sidebar gradient
+
+- Simplified the sidebar to two broad tonal washes derived from the selected
+  theme's primary accent, replacing the fixed lilac/mist/blush palette.
+- Kept pigment restrained over an opaque neutral base, with lower strength in
+  dark mode. All eight themes share the same static composition.
+
+## 2026-09-22 — Soft pastel collage sidebar
+
+- Replaced the uniform theme wash with overlapping lilac, mist, and blush gradients
+  over a pearl base. Theme color is a small influence in one corner.
+- Added muted dark-mode pigments using the same composition. The material is static
+  and opaque, including on mobile; icon-only navigation feedback is preserved.
+
+## 2026-09-22 — Theme-tinted navigation and shared clay controls
+
+- Replaced the yellowish neutral sidebar with a pastel mix of the selected theme
+  and a neutral porcelain base; removed full-row active and hover fills.
+  Active icons retain their filled tile and hover still deepens the icon.
+- Date, range, and option filter triggers now share one raised material recipe,
+  including open state and keyboard focus treatment.
+- Added an independent clay tile recipe for performance stats, outcome rows,
+  shared stat tiles, and dashboard status totals. Badges keep their own chrome.
+- Neutralized the darker light-mode ground, wells, and field shading. Preserved
+  the ivory workspace and synchronized browser/PWA canvas color.
 
 ## 2026-09-22 — Matte clay surfaces and calmer controls
 

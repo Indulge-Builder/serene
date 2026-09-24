@@ -17,6 +17,10 @@
  *   initialDomain    — domain to pre-select (caller's domain)
  */
 
+import { useRef as useModalPanelRef } from 'react';
+import { ModalScopeContext, useModalFocus } from '@/hooks/useModalFocus';
+import { SelectionButton } from '@/components/ui/SelectionButton';
+import { Button } from '@/components/ui/Button';
 import { useEffect, useMemo, useRef, useState } from "react";
 import { m as motion, AnimatePresence } from "framer-motion";
 import { X, Search } from "lucide-react";
@@ -56,6 +60,9 @@ export function AssigneePickerModal({
   users,
   initialDomain,
 }: AssigneePickerModalProps) {
+  const modalPanelRef = useModalPanelRef<HTMLDivElement>(null);
+  const modalScopeId = useModalFocus(open, modalPanelRef, onClose);
+
   const [selectedDomain, setSelectedDomain] = useState<AppDomain>(initialDomain);
   const [search,         setSearch]         = useState("");
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
@@ -72,14 +79,7 @@ export function AssigneePickerModal({
   }, [open, initialDomain]);
 
   // Keyboard dismiss
-  useEffect(() => {
-    if (!open) return;
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [open, onClose]);
+
 
   // ── Filter users by domain + search ──────────────────────────────────────
 
@@ -113,7 +113,7 @@ export function AssigneePickerModal({
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  return (
+  return <ModalScopeContext.Provider value={modalScopeId}>{(
     <AnimatePresence>
       {open && (
         <>
@@ -146,7 +146,7 @@ export function AssigneePickerModal({
               pointerEvents:     "none",
             }}
           >
-          <motion.div
+          <motion.div ref={modalPanelRef} tabIndex={-1}
             key="assignee-picker-container"
             role="dialog"
             aria-modal="true"
@@ -191,26 +191,17 @@ export function AssigneePickerModal({
               >
                 Assign to
               </h2>
-              <button
+              <Button
+                variant="ghost"
+                iconOnly
+                size="sm"
                 type="button"
                 onClick={onClose}
                 aria-label="Close"
-                style={{
-                  display:        "flex",
-                  alignItems:     "center",
-                  justifyContent: "center",
-                  width:          "28px",
-                  height:         "28px",
-                  borderRadius:   "var(--radius-sm)",
-                  border:         "1px solid var(--theme-paper-border)",
-                  background:     "transparent",
-                  color:          "var(--theme-text-tertiary)",
-                  cursor:         "pointer",
-                  transition:     "var(--transition-hover)",
-                }}
+                style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "28px", height: "28px" }}
               >
                 <X style={{ width: "14px", height: "14px", strokeWidth: 1.5 }} />
-              </button>
+              </Button>
             </div>
 
             {/* Domain tabs */}
@@ -229,34 +220,29 @@ export function AssigneePickerModal({
               {domainsWithUsers.map((domain) => {
                 const active = domain === selectedDomain;
                 return (
-                  <button
+                  <SelectionButton
+                    appearance="choice"
+                    selected={selectedDomain === domain}
+                    aria-pressed={selectedDomain === domain}
                     key={domain}
                     type="button"
                     onClick={() => {
-                      setSelectedDomain(domain);
-                      setSearch("");
-                      setSelectedUserId(null);
-                    }}
+                            setSelectedDomain(domain);
+                            setSearch("");
+                            setSelectedUserId(null);
+                        }}
                     style={{
-                      padding:       "var(--space-2) var(--space-3)",
-                      borderRadius:  "var(--radius-sm) var(--radius-sm) 0 0",
-                      border:        "none",
-                      borderBottom:  active
-                        ? "2px solid var(--theme-accent)"
-                        : "2px solid transparent",
-                      background:    active ? "var(--theme-accent-surface)" : "transparent",
-                      color:         active ? "var(--theme-accent)" : "var(--theme-text-secondary)",
-                      fontFamily:    "var(--font-sans)",
-                      fontSize:      "var(--text-xs)",
-                      fontWeight:    active ? "var(--weight-semibold)" : "var(--weight-normal)",
-                      cursor:        "pointer",
-                      whiteSpace:    "nowrap",
-                      transition:    "var(--transition-hover)",
-                      marginBottom:  "-1px",
-                    }}
+                            padding: "var(--space-2) var(--space-3)",
+                            borderBottom: active
+                                ? "2px solid var(--theme-accent)"
+                                : "2px solid transparent",
+                            fontSize: "var(--text-xs)",
+                            whiteSpace: "nowrap",
+                            marginBottom: "-1px",
+                        }}
                   >
                     {DOMAIN_LABELS[domain]}
-                  </button>
+                  </SelectionButton>
                 );
               })}
             </div>
@@ -355,35 +341,20 @@ export function AssigneePickerModal({
                   const selected   = user.id === selectedUserId;
                   const roleBadge  = ROLE_BADGE_COLORS[user.role] ?? ROLE_BADGE_COLORS.agent;
                   return (
-                    <button
+                    <SelectionButton
+                      appearance="option"
+                      selected={selected}
                       key={user.id}
                       type="button"
                       onClick={() => setSelectedUserId(selected ? null : user.id)}
                       style={{
-                        display:        "flex",
-                        alignItems:     "center",
-                        gap:            "var(--space-3)",
-                        width:          "100%",
-                        padding:        "var(--space-2) var(--space-5)",
-                        border:         "none",
-                        background:     selected
-                          ? "var(--theme-accent-surface)"
-                          : "transparent",
-                        cursor:         "pointer",
-                        transition:     "var(--transition-hover)",
-                        textAlign:      "left",
-                      }}
-                      onMouseEnter={(e) => {
-                        if (!selected) {
-                          (e.currentTarget as HTMLElement).style.background =
-                            "var(--theme-paper-subtle)";
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (!selected) {
-                          (e.currentTarget as HTMLElement).style.background = "transparent";
-                        }
-                      }}
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "var(--space-3)",
+                              width: "100%",
+                              padding: "var(--space-2) var(--space-5)",
+                              textAlign: "left",
+                          }}
                     >
                       {/* Avatar */}
                       <div
@@ -406,7 +377,7 @@ export function AssigneePickerModal({
                         }}
                       >
                         {user.avatar_url ? (
-                           
+
                           <img
                             src={user.avatar_url}
                             alt={user.full_name}
@@ -479,7 +450,7 @@ export function AssigneePickerModal({
                           }}
                         />
                       )}
-                    </button>
+                    </SelectionButton>
                   );
                 })
               )}
@@ -532,46 +503,23 @@ export function AssigneePickerModal({
 
               {/* Actions */}
               <div style={{ display: "flex", gap: "var(--space-2)" }}>
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
                   type="button"
                   onClick={onClose}
-                  style={{
-                    padding:      "var(--space-2) var(--space-4)",
-                    borderRadius: "var(--radius-sm)",
-                    border:       "1px solid var(--theme-paper-border)",
-                    background:   "transparent",
-                    fontFamily:   "var(--font-sans)",
-                    fontSize:     "var(--text-sm)",
-                    color:        "var(--theme-text-secondary)",
-                    cursor:       "pointer",
-                    transition:   "var(--transition-hover)",
-                  }}
                 >
                   Cancel
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
                   type="button"
                   onClick={handleConfirm}
                   disabled={!selectedUserId}
-                  style={{
-                    padding:      "var(--space-2) var(--space-4)",
-                    borderRadius: "var(--radius-sm)",
-                    border:       "none",
-                    background:   selectedUserId
-                      ? "var(--theme-accent)"
-                      : "var(--theme-paper-border)",
-                    fontFamily:   "var(--font-sans)",
-                    fontSize:     "var(--text-sm)",
-                    fontWeight:   "var(--weight-semibold)",
-                    color:        selectedUserId
-                      ? "var(--theme-accent-fg)"
-                      : "var(--theme-text-tertiary)",
-                    cursor:       selectedUserId ? "pointer" : "not-allowed",
-                    transition:   "var(--transition-interactive)",
-                  }}
                 >
                   Confirm
-                </button>
+                </Button>
               </div>
             </div>
           </motion.div>
@@ -579,5 +527,5 @@ export function AssigneePickerModal({
         </>
       )}
     </AnimatePresence>
-  );
+  )}</ModalScopeContext.Provider>;
 }

@@ -10,6 +10,7 @@
 // consumes CallOutcomeBar. Both are fed from getAgentDetailMetrics
 // (pipelineBreakdown + callOutcomeBreakdown) — no new query.
 
+import { SelectionButton } from '@/components/ui/SelectionButton';
 import { LEAD_STATUS_LABELS } from '@/lib/constants/lead-statuses';
 
 // ─────────────────────────────────────────────
@@ -149,16 +150,21 @@ export function PipelineBar({
             </>
           );
           return onSegmentClick ? (
-            <button
-              key={status}
-              type="button"
-              onClick={() => onSegmentClick(status)}
-              aria-label={`Show ${count} ${label} lead${count === 1 ? '' : 's'}`}
-              className="serene-pressable serene-touch"
-              style={{ ...chipStyle, cursor: 'pointer' }}
-            >
+            <SelectionButton appearance="option"
+      key={status}
+      type="button"
+      onClick={() => onSegmentClick(status)}
+      aria-label={`Show ${count} ${label} lead${count === 1 ? '' : 's'}`}
+      className="serene-pressable serene-touch"
+      style={{
+        display:      'inline-flex',
+        alignItems:   'center',
+        gap:          'var(--space-1)',
+        padding:      '3px 8px 3px 6px',
+      }}
+    >
               {chipInner}
-            </button>
+            </SelectionButton>
           ) : (
             <div key={status} style={chipStyle}>
               {chipInner}

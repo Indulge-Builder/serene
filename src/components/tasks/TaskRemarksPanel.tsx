@@ -23,6 +23,7 @@
  * - No tasks-service import — all data via props or actions.
  */
 
+import { Button } from '@/components/ui/Button';
 import {
   useCallback,
   useEffect,
@@ -542,7 +543,8 @@ export function TaskRemarksPanel({
                 boxSizing:    "border-box",
               }}
             />
-            <button
+            <Button
+              variant="primary" iconOnly
               type="button"
               onClick={postRemark}
               disabled={!canPost}
@@ -551,15 +553,10 @@ export function TaskRemarksPanel({
               style={{
                 width:          `${COMPOSER_SEND_SIZE}px`,
                 height:         `${COMPOSER_SEND_SIZE}px`,
-                borderRadius:   "var(--radius-md)",
-                border:         "none",
-                cursor:         canPost ? "pointer" : "not-allowed",
                 display:        "flex",
                 alignItems:     "center",
                 justifyContent: "center",
                 flexShrink:     0,
-                background:     canPost ? "var(--theme-accent)" : "var(--theme-paper-border)",
-                transition:     "var(--transition-interactive)",
               }}
             >
               <Send
@@ -570,7 +567,7 @@ export function TaskRemarksPanel({
                   color:       canPost ? "var(--theme-accent-fg)" : "var(--theme-text-tertiary)",
                 }}
               />
-            </button>
+            </Button>
           </div>
         </div>
       </div>

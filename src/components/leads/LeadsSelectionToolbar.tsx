@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@/components/ui/Button';
 import { useState } from 'react';
 import dynamic from 'next/dynamic';
 import { m as motion } from 'framer-motion';
@@ -76,21 +77,7 @@ export function LeadsSelectionToolbar({
     }
   }
 
-  const actionBtn: React.CSSProperties = {
-    display:      'inline-flex',
-    alignItems:   'center',
-    height:       '1.75rem',
-    padding:      '0 var(--space-3)',
-    border:       '1px solid var(--theme-paper-border)',
-    borderRadius: 'var(--radius-sm)',
-    background:   'transparent',
-    color:        'var(--theme-text-primary)',
-    fontSize:     'var(--text-xs)',
-    fontWeight:   'var(--weight-medium)',
-    cursor:       loading ? 'wait' : 'pointer',
-    opacity:      loading ? 0.6 : 1,
-    transition:   'background var(--duration-fast) var(--ease-in-out)',
-  };
+
 
   return (
     <>
@@ -130,50 +117,47 @@ export function LeadsSelectionToolbar({
         }}
       />
 
-      <button
-        style={{ ...actionBtn, display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)' }}
+      <Button
+        variant="control"
+        size="sm"
         onClick={() => setBulkOpen(true)}
         disabled={loading}
         type="button"
       >
         <Pencil style={{ width: '0.8125rem', height: '0.8125rem', strokeWidth: 1.5 }} aria-hidden="true" />
         Bulk Edit
-      </button>
+      </Button>
 
-      <button
-        style={actionBtn}
+      <Button
+        variant="control"
+        size="sm"
         onClick={() => handleExport('csv')}
         disabled={loading}
         type="button"
       >
         Export CSV
-      </button>
+      </Button>
 
-      <button
-        style={actionBtn}
+      <Button
+        variant="control"
+        size="sm"
         onClick={() => handleExport('xlsx')}
         disabled={loading}
         type="button"
       >
         Export XLSX
-      </button>
+      </Button>
 
-      <button
+      <Button
+        variant="ghost"
+        size="sm"
+        style={{ marginLeft: 'auto' }}
         onClick={onClear}
         disabled={loading}
         type="button"
-        style={{
-          marginLeft: 'auto',
-          background: 'none',
-          border:     'none',
-          fontSize:   'var(--text-xs)',
-          color:      'var(--theme-text-tertiary)',
-          cursor:     'pointer',
-          padding:    0,
-        }}
       >
         Clear
-      </button>
+      </Button>
     </motion.div>
 
     {/* Bulk-edit modal — only mounted once opened (next/dynamic + conditional). */}

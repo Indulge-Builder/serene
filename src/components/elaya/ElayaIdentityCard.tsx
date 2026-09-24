@@ -6,6 +6,7 @@
 // presence, starter prompts picked for the viewer's role (prefill the composer only — never
 // auto-send), and what she can read for them (lib/constants/elaya.ts).
 
+import { Button } from '@/components/ui/Button';
 import { m as motion } from 'framer-motion';
 import {
   Users, ListChecks, Handshake, TrendingUp, BookOpen, MessageSquare, LifeBuoy, Ticket, Store,
@@ -74,24 +75,17 @@ export function ElayaIdentityCard({ busy, onPromptSelect, viewer = null }: Props
           Ask her
         </span>
         {starters.map((prompt) => (
-          <button
+          <Button
+            variant="control"
+            size="sm"
             key={prompt}
             type="button"
             disabled={busy}
             onClick={() => onPromptSelect(prompt)}
             className="serene-pressable w-full text-left border border-(--theme-paper-border) text-(--theme-text-secondary) hover:border-(--theme-accent-muted) hover:text-(--theme-text-primary) disabled:opacity-50 disabled:pointer-events-none"
-            style={{
-              background: 'transparent',
-              borderRadius: 'var(--radius-md)',
-              padding: 'var(--space-2) var(--space-3)',
-              fontSize: 'var(--text-xs)',
-              lineHeight: 'var(--leading-normal)',
-              cursor: 'pointer',
-              transition: 'var(--transition-hover)',
-            }}
           >
             {prompt}
-          </button>
+          </Button>
         ))}
       </div>
 

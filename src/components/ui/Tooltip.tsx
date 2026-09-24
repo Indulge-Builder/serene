@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { m as motion, AnimatePresence } from 'framer-motion';
+import { m as motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   TOOLTIP_DURATION,
   TOOLTIP_INTENT_MS,
@@ -19,7 +19,7 @@ import { useMediaQuery, MQ } from '@/hooks/useMediaQuery';
  * 180ms fade + 5px directional slide from the trigger side, ~500ms
  * hover-intent delay with instant reshow when moving between adjacent
  * triggers. Shows on :focus-visible too; NEVER on coarse pointers
- * (gated on MQ.finePointer). pointer-events: none always.
+ * (gated on MQ.finePointer). Hoverable content; Escape dismisses without closing a parent dialog.
  *
  * Positioning is deliberately NOT usePortalAnchor — that hook owns
  * click-driven dropdown panels (open state, outside-close, flip-down).
@@ -79,6 +79,9 @@ export function Tooltip({
   wrap = 'inline',
   children,
 }: TooltipProps) {
+  const tooltipId = useId();
+  const reducedMotion = useReducedMotion();
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
   const finePointer = useMediaQuery(MQ.finePointer);
   const wrapperRef = useRef<HTMLElement>(null);
   const intentTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -118,6 +121,7 @@ export function Tooltip({
 
   const onEnter = useCallback(() => {
     if (disabled || !finePointer) return;
+    setKeyboardOpen(false);
     if (Date.now() - lastHiddenAt < RESHOW_WINDOW_MS) {
       show(); // adjacent-trigger reshow — no second intent delay
       return;
@@ -131,6 +135,7 @@ export function Tooltip({
     (e: React.FocusEvent) => {
       if (disabled) return;
       if (!(e.target instanceof Element) || !e.target.matches(':focus-visible')) return;
+      setKeyboardOpen(true);
       show();
     },
     [disabled, show],
@@ -151,7 +156,43 @@ export function Tooltip({
     [],
   );
 
-  const slide = slideOffset(side);
+  // Attach the description to the actual trigger while preserving its own hints.
+  useEffect(() => {
+    if (!open || disabled) return;
+    const wrapper = wrapperRef.current;
+    const active = document.activeElement;
+    const target = active instanceof HTMLElement && wrapper?.contains(active)
+      ? active : wrapper?.querySelector<HTMLElement>('button,a,input,[tabindex]');
+    if (target) {
+      const ids = new Set((target.getAttribute('aria-describedby') ?? '').split(' ').filter(Boolean));
+      ids.add(tooltipId);
+      target.setAttribute('aria-describedby', [...ids].join(' '));
+    }
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      hide();
+    };
+    document.addEventListener('keydown', dismiss, true);
+    return () => {
+      document.removeEventListener('keydown', dismiss, true);
+      if (target) {
+        const ids = (target.getAttribute('aria-describedby') ?? '').split(' ').filter(id => id && id !== tooltipId);
+        if (ids.length) target.setAttribute('aria-describedby', ids.join(' '));
+        else target.removeAttribute('aria-describedby');
+      }
+    };
+  }, [open, disabled, tooltipId, hide]);
+
+  const deferHide = () => {
+    if (intentTimer.current) clearTimeout(intentTimer.current);
+    intentTimer.current = setTimeout(hide, 120);
+  };
+  const keepOpen = () => {
+    if (intentTimer.current) clearTimeout(intentTimer.current);
+  };
+  const slide = reducedMotion || keyboardOpen ? { x: 0, y: 0 } : slideOffset(side);
   // Centre the pill on the trigger along the cross axis.
   const centreTransform =
     side === 'top' || side === 'bottom'
@@ -164,7 +205,7 @@ export function Tooltip({
     <Wrapper
       ref={wrapperRef as React.RefObject<HTMLDivElement>}
       onMouseEnter={onEnter}
-      onMouseLeave={hide}
+      onMouseLeave={deferHide}
       onPointerDown={hide}
       onFocus={onFocus}
       onBlur={hide}
@@ -175,17 +216,20 @@ export function Tooltip({
         typeof document !== 'undefined' &&
         createPortal(
           <AnimatePresence>
-            {open && pos && (
+            {open && !disabled && pos && (
               <motion.span
                 key="tooltip"
                 role="tooltip"
+                id={tooltipId}
+                onMouseEnter={keepOpen}
+                onMouseLeave={deferHide}
                 initial={{ opacity: 0, x: slide.x, y: slide.y }}
                 animate={{ opacity: 1, x: 0, y: 0 }}
                 exit={{ opacity: 0, transition: { duration: TOOLTIP_DURATION / 2, ease: EASE_IN_OUT } }}
                 transition={{
-                  opacity: { duration: TOOLTIP_DURATION, ease: EASE_IN_OUT },
-                  x: { duration: TOOLTIP_DURATION, ease: EASE_SPRING },
-                  y: { duration: TOOLTIP_DURATION, ease: EASE_SPRING },
+                  opacity: { duration: keyboardOpen ? 0 : TOOLTIP_DURATION, ease: EASE_IN_OUT },
+                  x: { duration: keyboardOpen ? 0 : TOOLTIP_DURATION, ease: EASE_SPRING },
+                  y: { duration: keyboardOpen ? 0 : TOOLTIP_DURATION, ease: EASE_SPRING },
                 }}
                 // Framer owns x/y — the static centring shift must ride
                 // transformTemplate or it gets clobbered (see motion.ts).
@@ -210,7 +254,7 @@ export function Tooltip({
                   lineHeight:    'var(--leading-none)',
                   whiteSpace:    'nowrap',
                   boxShadow:     'var(--neu-tooltip-shadow)',
-                  pointerEvents: 'none',
+                  pointerEvents: 'auto',
                 }}
               >
                 {label}

@@ -1,5 +1,6 @@
 "use client";
 
+import { SelectionButton } from '@/components/ui/SelectionButton';
 import { useState, useTransition, useMemo } from "react";
 import { m as motion } from "framer-motion";
 import { X } from "lucide-react";
@@ -64,7 +65,9 @@ function WorkDayPicker({ days, onChange, disabled }: WorkDayPickerProps) {
       {DAY_DISPLAY_ORDER.map((day) => {
         const selected = days.includes(day);
         return (
-          <button
+          <SelectionButton
+            appearance="choice"
+            selected={selected}
             key={day}
             type="button"
             onClick={() => toggle(day)}
@@ -73,32 +76,18 @@ function WorkDayPicker({ days, onChange, disabled }: WorkDayPickerProps) {
             aria-label={`${selected ? "Deselect" : "Select"} ${DAY_LABELS[day]}`}
             className="serene-touch"
             style={{
-              width:          "26px",
-              height:         "26px",
-              borderRadius:   "var(--radius-xs)",
-              // Selected floats on the accent wash — hairline edge + chip
-              // shadow, never a coloured border (soft-UI Rule 4).
-              border:         "1px solid var(--neu-edge)",
-              background:     selected
-                ? "color-mix(in srgb, var(--theme-accent) 12%, var(--neu-surface))"
-                : "transparent",
-              boxShadow:      selected ? "var(--neu-shadow-chip)" : "none",
-              color:          selected ? "var(--neu-accent-deep)" : "var(--theme-text-tertiary)",
-              fontFamily:     "var(--font-sans)",
-              fontSize:       "var(--text-2xs)",
-              fontWeight:     selected ? "var(--weight-semibold)" : "var(--weight-normal)",
-              cursor:         disabled ? "not-allowed" : "pointer",
-              opacity:        disabled ? 0.4 : 1,
-              padding:        0,
-              display:        "flex",
-              alignItems:     "center",
-              justifyContent: "center",
-              transition:     "background var(--duration-fast) var(--ease-in-out), box-shadow var(--duration-fast) var(--ease-in-out), color var(--duration-fast) var(--ease-in-out)",
-              flexShrink:     0,
-            }}
+                    width: "26px",
+                    height: "26px",
+                    fontSize: "var(--text-2xs)",
+                    padding: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexShrink: 0,
+                }}
           >
             {DAY_LABELS[day]}
-          </button>
+          </SelectionButton>
         );
       })}
     </div>

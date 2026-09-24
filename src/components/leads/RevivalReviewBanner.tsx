@@ -57,7 +57,7 @@ export function RevivalReviewBanner({ rows }: Props) {
   return (
     <div className="mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)">
       <div className="px-5 py-4 border-b border-(--theme-paper-border) flex items-center gap-2">
-        <Sparkles className="w-4 h-4" strokeWidth={1.5} style={{ color: 'var(--theme-accent)' }} />
+        <Sparkles className="w-4 h-4" strokeWidth={1.5} style={{ color: "var(--neu-accent-deep)" }} />
         <span className="type-eyebrow m-0">Revival review</span>
         <span className="type-eyebrow m-0" style={{ color: 'var(--theme-text-tertiary)' }}>
           · {visible.length}

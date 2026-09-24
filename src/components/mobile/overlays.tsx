@@ -1,5 +1,8 @@
 'use client';
 
+import { MobileButton } from '@/components/mobile/buttons';
+import { useRef as useModalPanelRef } from 'react';
+import { ModalScopeContext, useModalFocus } from '@/hooks/useModalFocus';
 import { useEffect, useState, type ReactNode } from 'react';
 import { AnimatePresence, m as motion } from 'framer-motion';
 import type { LucideIcon } from 'lucide-react';
@@ -42,17 +45,20 @@ export function MobileBottomSheet({
   onClose: () => void;
   children: ReactNode;
 }) {
+  const modalPanelRef = useModalPanelRef<HTMLDivElement>(null);
+  const modalScopeId = useModalFocus(open, modalPanelRef, onClose);
+
   useEffect(() => {
     if (!open) return;
     return lockBodyScroll();
   }, [open]);
 
-  return (
+  return <ModalScopeContext.Provider value={modalScopeId}>{(
     <AnimatePresence>
       {open && (
         <div className="fixed inset-0 z-50">
           <Scrim onClose={onClose} />
-          <motion.div
+          <motion.div ref={modalPanelRef} tabIndex={-1}
             initial={{ y: '105%' }}
             animate={{ y: 0 }}
             exit={{ y: '105%' }}
@@ -71,6 +77,8 @@ export function MobileBottomSheet({
               paddingBottom: 'max(20px, env(safe-area-inset-bottom))',
             }}
             role="dialog"
+            aria-modal="true"
+            aria-label="Actions"
           >
             {/* Grabber — 44×5 pill inside a 44px touch zone */}
             <button
@@ -85,7 +93,7 @@ export function MobileBottomSheet({
         </div>
       )}
     </AnimatePresence>
-  );
+  )}</ModalScopeContext.Provider>;
 }
 
 /** The NEW REQUEST sheet — one sheet for every ask. */
@@ -129,13 +137,13 @@ export function NewRequestSheet({
         rows={2}
         placeholder="Describe it in a line — we'll take it from there…"
       />
-      <button
+      <MobileButton
+        variant="primary"
         onClick={onPlace}
         className="neu-m-touch h-13 rounded-full border border-(--neu-accent-btn-edge) text-sm font-semibold text-(--neu-accent-fg)"
-        style={{ background: 'var(--neu-accent-gradient)', boxShadow: 'var(--neu-shadow-raised)' }}
       >
         Place request
-      </button>
+      </MobileButton>
     </MobileBottomSheet>
   );
 }
@@ -161,17 +169,20 @@ export function MobileActionSheet({
   items: ActionSheetItem[];
   cancelLabel?: string;
 }) {
+  const modalPanelRef = useModalPanelRef<HTMLDivElement>(null);
+  const modalScopeId = useModalFocus(open, modalPanelRef, onClose);
+
   useEffect(() => {
     if (!open) return;
     return lockBodyScroll();
   }, [open]);
 
-  return (
+  return <ModalScopeContext.Provider value={modalScopeId}>{(
     <AnimatePresence>
       {open && (
         <div className="fixed inset-0 z-50">
           <Scrim onClose={onClose} />
-          <motion.div
+          <motion.div ref={modalPanelRef} tabIndex={-1}
             initial={{ y: '105%' }}
             animate={{ y: 0 }}
             exit={{ y: '105%' }}
@@ -179,6 +190,8 @@ export function MobileActionSheet({
             className="absolute inset-x-0 bottom-0 mx-auto max-w-[430px] flex flex-col gap-2.5 px-4"
             style={{ paddingBottom: 'max(20px, env(safe-area-inset-bottom))' }}
             role="dialog"
+            aria-label={title}
+            aria-modal="true"
           >
             <div
               className="rounded-3xl bg-(--neu-surface) border border-(--neu-edge-strong) overflow-hidden"
@@ -228,16 +241,16 @@ export function MobileActionSheet({
                 );
               })}
             </div>
-            <button
+            <MobileButton
+              variant="secondary"
               onClick={onClose}
               className="neu-m-touch h-[54px] rounded-full bg-(--neu-surface) border border-(--neu-edge-strong) text-sm font-semibold text-(--neu-text-primary)"
-              style={{ boxShadow: 'var(--neu-shadow-raised-lg)' }}
             >
               {cancelLabel}
-            </button>
+            </MobileButton>
           </motion.div>
         </div>
       )}
     </AnimatePresence>
-  );
+  )}</ModalScopeContext.Provider>;
 }

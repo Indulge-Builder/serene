@@ -3,6 +3,9 @@
 // P-03 guard: if this list ever exceeds ~20 items, replace the map() with a
 // virtualised list (e.g. @tanstack/react-virtual). At 11 columns today this is not needed.
 
+import { useModalScope } from '@/hooks/useModalFocus';
+import { usePopoverKeyboard } from '@/hooks/usePopoverKeyboard';
+import { Button } from '@/components/ui/Button';
 import { useRef, useEffect, useLayoutEffect, useCallback, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { m as motion, AnimatePresence } from 'framer-motion';
@@ -10,12 +13,14 @@ import {
   DndContext,
   closestCenter,
   PointerSensor,
+  KeyboardSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
 } from '@dnd-kit/core';
 import {
   SortableContext,
+  sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
   arrayMove,
@@ -157,6 +162,8 @@ function SortableColumnRow({
         <span style={{ width: '0.75rem', height: '0.75rem', flexShrink: 0 }} />
       ) : (
         <span
+          data-drag-handle
+          aria-label={`Reorder ${col.label}`}
           {...attributes}
           {...listeners}
           style={{
@@ -173,23 +180,20 @@ function SortableColumnRow({
       )}
 
       {/* Label — click toggles visibility (design-dna §7.5) */}
-      <button
+      <Button
+        variant="ghost" size="sm" aria-pressed={isVisible}
         type="button"
         onClick={col.locked ? undefined : onToggle}
         disabled={col.locked}
         style={{
           flex:       1,
           fontSize:   'var(--text-sm)',
-          color:      isVisible ? 'var(--theme-text-secondary)' : 'var(--theme-text-primary)',
-          background: 'transparent',
-          border:     'none',
           padding:    0,
           textAlign:  'left',
-          cursor:     col.locked ? 'default' : 'pointer',
         }}
       >
         {col.label}
-      </button>
+      </Button>
 
       {/* Checkbox / lock icon */}
       {col.locked ? (
@@ -235,22 +239,19 @@ function HiddenColumnRow({
       {/* Spacer in place of drag handle */}
       <span style={{ width: '0.75rem', height: '0.75rem', flexShrink: 0 }} />
 
-      <button
+      <Button
+        variant="ghost" size="sm"
         type="button"
         onClick={onToggle}
         style={{
           flex:       1,
           fontSize:   'var(--text-sm)',
-          color:      'var(--theme-text-secondary)',
-          background: 'transparent',
-          border:     'none',
           padding:    0,
           textAlign:  'left',
-          cursor:     'pointer',
         }}
       >
         {col.label}
-      </button>
+      </Button>
 
       <ColumnCheckbox checked={false} onToggle={onToggle} label={col.label} />
     </div>
@@ -271,6 +272,8 @@ export function LeadColumnPicker({
   resetToDefaults,
 }: LeadColumnPickerProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const modalScope = useModalScope();
+  usePopoverKeyboard(open, panelRef, anchorRef, onClose);
   const [mounted, setMounted] = useState(false);
   const [panelPos, setPanelPos] = useState({ top: 0, left: 0 });
 
@@ -356,6 +359,7 @@ export function LeadColumnPicker({
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
   // Visible columns in current order (locked first, then unlocked visible)
@@ -381,6 +385,7 @@ export function LeadColumnPicker({
       {open && (
         <motion.div
           ref={panelRef}
+          data-modal-owner={modalScope}
           key="lead-column-picker"
           variants={DROPDOWN_VARIANTS}
           initial="hidden"
@@ -467,22 +472,14 @@ export function LeadColumnPicker({
               flexShrink:     0,
             }}
           >
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               type="button"
               onClick={resetToDefaults}
-              style={{
-                background:          'transparent',
-                border:              'none',
-                padding:             0,
-                cursor:              'pointer',
-                fontSize:            'var(--text-xs)',
-                color:               'var(--theme-text-tertiary)',
-                textDecoration:      'underline',
-                textUnderlineOffset: '2px',
-              }}
             >
               Reset to defaults
-            </button>
+            </Button>
           </div>
         </motion.div>
       )}

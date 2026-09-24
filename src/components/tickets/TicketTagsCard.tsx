@@ -3,6 +3,7 @@
 // TicketTagsCard — the ticket's tags: the vocabulary from settings as toggles, plus a free
 // one (letters, digits, dashes). Saves on every change; reverts with a toast on error.
 
+import { SelectionButton } from '@/components/ui/SelectionButton';
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Tag } from 'lucide-react';
@@ -47,9 +48,22 @@ export function TicketTagsCard({ ticketId, tags: initial, vocabulary }: { ticket
           {all.map((t) => {
             const on = tags.includes(t);
             return (
-              <button key={t} type="button" onClick={() => toggle(t)} disabled={pending} className="serene-pressable" style={{ fontSize: 'var(--text-xs)', padding: '3px var(--space-3)', borderRadius: 'var(--radius-full)', border: `1px solid ${on ? 'var(--theme-accent)' : 'var(--theme-paper-border)'}`, background: on ? 'var(--theme-accent-surface)' : 'var(--theme-paper)', color: on ? 'var(--neu-accent-deep)' : 'var(--theme-text-secondary)', cursor: 'pointer' }}>
+              <SelectionButton
+                appearance="choice"
+                selected={on}
+                aria-pressed={on}
+                key={t}
+                type="button"
+                onClick={() => toggle(t)}
+                disabled={pending}
+                className="serene-pressable"
+                style={{
+                        fontSize: 'var(--text-xs)',
+                        padding: '3px var(--space-3)',
+                    }}
+              >
                 {t}
-              </button>
+              </SelectionButton>
             );
           })}
           {all.length === 0 && <span style={{ fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>No tags yet.</span>}

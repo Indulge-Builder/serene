@@ -6,25 +6,11 @@
    Source of truth: design_handoff_neumorphic_system/ (README +
    serene-neumorphic-tokens.css + the two .dc.html specimens).
 
-   FINAL FEEL (locked): "Whisper" shadow depth + "Marshmallow" radii.
-   There is exactly ONE depth and ONE radius scale — the previous
-   drop's "Reference" depth (6px/14px offsets, .38/.42 alphas) and
-   24px card radii are OBSOLETE. Never reintroduce depth/radius
-   variants.
-
-   THE FIVE RULES
-   1. One material, one light — warm midtone ground, light from
-      top-left (315°). Never pure white or black surfaces.
-   2. Shadows come in pairs — dark bottom-right + light top-left.
-      Never a lone drop shadow.
-   3. Raised = touchable. Inputs FLOAT too — distinguished from
-      buttons by the gradient sheen + inner top highlight
-      (--neu-input-bg + --neu-shadow-input), never by sinking.
-   4. Inset marks only state — pressed buttons, toggle/tab tracks,
-      skeletons. Selected items float on an accent wash instead.
-   5. Hover: --neu-shadow-hover + translateY(-1px), gated to
-      (hover:hover) and (pointer:fine). Press: --neu-shadow-pressed
-      + scale(0.98). Focus-visible: --neu-focus-ring.
+   MATERIAL REVISION (2026-09-22): tonal gradient rail, ivory workspace,
+   porcelain cards. Warm contact shadows with inner edge highlights replace
+   external white blooms. Fields are shallow recesses; badges stay flat.
+   Existing radius scale and theme accents are retained. Dark mode has its
+   own material values. Focus remains explicit; pressed controls sink.
 
    THEME SCOPE (README "Theme Scope"): EIGHT themes — earth / air /
    water / fire / candy / rose / moss / lilac (martini RETIRED).
@@ -35,7 +21,7 @@
    chips, and the --domain-* chart palette NEVER re-tint.
 
    Sections:
-   1. Cream material (:root) — surfaces, Whisper shadows, radii,
+   1. Cream material (:root) — surfaces, contact shadows, radii,
       text, pastels, chips
    2. Accent — theme-derived + softened per-theme overrides
    3. data-neu="dark" — warm charcoal variant (accents auto-lift)
@@ -49,97 +35,92 @@
 
 
 /* ================================================================
-   1. CREAM MATERIAL — theme-invariant surfaces (Whisper depth)
+   1. CREAM MATERIAL — theme-invariant matte surfaces
    ================================================================ */
 
 :root {
-  /* Surfaces */
-  --neu-canvas:        #ECE8E1;
-  --neu-surface:       #F1EDE6;
-  --neu-surface-high:  #F3EFE8;
-  --neu-well:          #E9E4DB;   /* state-only: tracks, skeletons */
+  /* Tonal gradient rail → ivory workspace → porcelain cards. */
+  --neu-canvas:        #ECEBED;
+  --neu-sidebar:       #EFEEED;
+  /* One hue, two broad washes. Pigment strength stays low so each theme
+     feels distinct without turning the rail into a saturated colour panel.
+     The opaque pearl base also keeps drawer text legible over any content. */
+  --neu-sidebar-pigment: color-mix(in srgb, var(--theme-accent) 18%, var(--neu-sidebar));
+  --neu-sidebar-wash: color-mix(in srgb, var(--theme-accent) 9%, var(--neu-sidebar));
+  --neu-sidebar-gradient:
+    radial-gradient(ellipse at 0% 0%, var(--neu-sidebar-pigment) 0%, transparent 65%),
+    radial-gradient(ellipse at 100% 100%, var(--neu-sidebar-wash) 0%, transparent 65%);
+  --neu-workspace:     #F6F3ED;
+  --neu-surface:       #FAF8F3;
+  --neu-surface-high:  #FCFAF6;
+  --neu-well:          #EAE8EC;
+  --neu-sidebar-ink:   #58545E;
 
-  /* Shadow primitives */
-  --neu-dark:   166 156 140;               /* warm putty */
-  --neu-light:  255 255 255;
-  --neu-edge:   rgba(255, 255, 255, 0.55); /* 1px hairline on raised */
-  --neu-edge-strong: rgba(255, 255, 255, 0.7);
+  /* Warm contact shadows; highlights stay inside the material, never bloom. */
+  --neu-dark:   116 108 122;
+  --neu-light:  255 250 240;
+  --neu-edge:   rgba(116, 108, 122, 0.14);
+  --neu-edge-strong: rgba(116, 108, 122, 0.24);
   --neu-shadow-shell: inset 0 1px 0 rgb(var(--neu-light) / 0.45);
 
-  /* Raised (out) — FINAL: Whisper (2/10) */
   --neu-shadow-raised-sm:
-    2px 2px 6px   rgb(var(--neu-dark) / 0.24),
-    -2px -2px 6px rgb(var(--neu-light) / 0.65);
+    0 1px 2px rgb(var(--neu-dark) / 0.16),
+    0 3px 5px -3px rgb(var(--neu-dark) / 0.18),
+    inset 0 1px 0 rgb(var(--neu-light) / 0.45);
   --neu-shadow-raised:
-    3px 3px 8px   rgb(var(--neu-dark) / 0.26),
-    -3px -3px 8px rgb(var(--neu-light) / 0.70);
+    0 2px 3px -1px rgb(var(--neu-dark) / 0.12),
+    0 6px 12px -7px rgb(var(--neu-dark) / 0.18),
+    inset 0 1px 0 rgb(var(--neu-light) / 0.45);
   --neu-shadow-raised-lg:
-    6px 6px 16px   rgb(var(--neu-dark) / 0.28),
-    -6px -6px 16px rgb(var(--neu-light) / 0.75);
-
-  /* Hover lift (pair with transform: translateY(-1px)) */
+    0 3px 6px -2px rgb(var(--neu-dark) / 0.16),
+    0 12px 24px -12px rgb(var(--neu-dark) / 0.24),
+    inset 0 1px 0 rgb(var(--neu-light) / 0.45);
   --neu-shadow-hover:
-    5px 5px 12px   rgb(var(--neu-dark) / 0.30),
-    -5px -5px 12px rgb(var(--neu-light) / 0.80);
+    0 2px 3px rgb(var(--neu-dark) / 0.16),
+    0 5px 8px -4px rgb(var(--neu-dark) / 0.22),
+    inset 0 1px 0 rgb(var(--neu-light) / 0.45);
 
-  /* Inset (state-only) */
   --neu-shadow-inset:
-    inset 2px 2px 5px   rgb(var(--neu-dark) / 0.32),
-    inset -2px -2px 5px rgb(var(--neu-light) / 0.75);
+    inset 0 1px 3px rgb(var(--neu-dark) / 0.13);
   --neu-shadow-pressed:
-    inset 2px 2px 4px   rgb(var(--neu-dark) / 0.35),
-    inset -2px -2px 4px rgb(var(--neu-light) / 0.60);
+    inset 0 2px 3px rgb(var(--neu-dark) / 0.22);
 
-  /* Text inputs FLOAT (Rule 3): gradient sheen + inner top highlight */
-  --neu-input-bg: linear-gradient(180deg, #F7F4EE, #F1EDE6);
-  --neu-input-edge: rgba(255, 255, 255, 0.65);
-  --neu-shadow-input:
-    3px 3px 8px   rgb(var(--neu-dark) / 0.22),
-    -3px -3px 8px rgb(var(--neu-light) / 0.70),
-    inset 0 1px 0 rgb(var(--neu-light) / 0.85);
+  /* Fields are shallow, matte recesses; buttons retain the raised treatment. */
+  --neu-input-bg: linear-gradient(180deg, #ECEAED, #F4F2F4);
+  --neu-input-edge: rgba(116, 108, 122, 0.20);
+  --neu-shadow-input: inset 0 1px 2px rgb(var(--neu-dark) / 0.10);
+  --neu-track-bg: linear-gradient(180deg, #E3E0E6, #EEECF0);
+  --neu-shadow-track: inset 0 1px 3px rgb(var(--neu-dark) / 0.14);
+  --neu-tab-active-bg: linear-gradient(180deg, #FAF8F3, #F4F0E8);
+  --neu-shadow-tab-active: var(--neu-shadow-raised-sm);
 
-  /* Satin inset track (toggle/tab tracks — Rule 4) */
-  --neu-track-bg: linear-gradient(180deg, #E8E3DA, #F0ECE5);
-  --neu-shadow-track:
-    inset 2px 2px 5px   rgb(var(--neu-dark) / 0.20),
-    inset -1px -1px 3px rgb(var(--neu-light) / 0.55),
-    0 1px 0             rgb(var(--neu-light) / 0.65);
-
-  /* The active pill floating inside a track */
-  --neu-tab-active-bg: linear-gradient(180deg, #F9F6F0, #F0ECE5);
-  --neu-shadow-tab-active:
-    2px 2px 6px    rgb(var(--neu-dark) / 0.28),
-    -2px -2px 6px  rgb(var(--neu-light) / 0.70),
-    inset 0 1px 0  rgb(var(--neu-light) / 0.85);
-
-  /* Chips / status pills (pastel fill + deep label + raised-sm) */
-  --neu-shadow-chip:
-    2px 2px 5px   rgb(var(--neu-dark) / 0.22),
-    -2px -2px 5px rgb(var(--neu-light) / 0.60);
-
-  /* Small knobs (toggle knob, calendar selected day) */
-  --neu-shadow-knob:
-    2px 2px 5px   rgb(var(--neu-dark) / 0.45),
-    -1px -1px 3px rgb(var(--neu-light) / 0.55);
-
-  /* Modal panel above the scrim (README modal recipe) */
+  /* Status is communicated by pastel fill and ink, not elevation.
+     A zero-size transparent shadow stays valid when consumers append a ring. */
+  --neu-shadow-chip: inset 0 0 0 0 transparent;
+  --neu-shadow-tile:
+    inset 0 1px 0 rgb(var(--neu-light) / 0.50),
+    inset 0 -2px 3px rgb(var(--neu-dark) / 0.07),
+    0 2px 3px -1px rgb(var(--neu-dark) / 0.16),
+    0 5px 9px -6px rgb(var(--neu-dark) / 0.20);
+  --neu-shadow-knob: var(--neu-shadow-raised-sm);
   --neu-shadow-modal:
-    14px 14px 40px rgba(120, 110, 92, 0.35),
-    -8px -8px 24px rgb(var(--neu-light) / 0.50);
+    0 8px 16px -6px rgb(var(--neu-dark) / 0.22),
+    0 24px 48px -16px rgb(var(--neu-dark) / 0.30);
   --neu-scrim: rgba(56, 51, 43, 0.35);
 
   /* Radii — FINAL: Marshmallow scale (the ONLY radius scale) */
   --neu-radius-card:  32px;
   --neu-radius-panel: 28px;
   --neu-radius-field: 22px;
+  --neu-radius-control: 14px;
   --neu-radius-tile:  18px;
   --neu-radius-chip:  14px;
   --neu-radius-pill:  999px;
 
   /* Text on the cream material */
   --neu-text-primary:   #38332B;
-  --neu-text-secondary: #8A8274;
-  --neu-text-tertiary:  #ABA396;
+  --neu-text-secondary: #6C6359;
+  --neu-text-tertiary:  #70665C;
   --neu-text-disabled:  #C4BCAE;
   --neu-on-accent-soft: #FDF9F0; /* warm white on deep pastel fills */
 
@@ -156,13 +137,13 @@
   /* ── Pastel support family (equal lightness/chroma) ─────────────
      -deep for text/icons on cream; base for fills/knobs/dots.
      THEME-INVARIANT — chart series 2+ and semantic accents. */
-  --neu-sage:        #A9C4A0;  --neu-sage-deep:   #7E9B76;
-  --neu-powder:      #A3BFD6;  --neu-powder-deep: #7797B3;
-  --neu-butter:      #E3CB96;  --neu-butter-deep: #B39C63;
-  --neu-lilac:       #B3A9D4;  --neu-lilac-deep:  #8A7FB0;
-  --neu-peach:       #E5B896;  --neu-peach-deep:  #BC8E67;
-  --neu-teal:        #8FBFB5;  --neu-teal-deep:   #5F8F86;
-  --neu-danger:      #D98E85;  --neu-danger-deep: #B06A61;
+  --neu-sage:        #A9C4A0;  --neu-sage-deep:   #4C6345;
+  --neu-powder:      #A3BFD6;  --neu-powder-deep: #465E73;
+  --neu-butter:      #E3CB96;  --neu-butter-deep: #6A5C36;
+  --neu-lilac:       #B3A9D4;  --neu-lilac-deep:  #5D547A;
+  --neu-peach:       #E5B896;  --neu-peach-deep:  #795237;
+  --neu-teal:        #8FBFB5;  --neu-teal-deep:   #42635D;
+  --neu-danger:      #D98E85;  --neu-danger-deep: #85483F;
 
   /* Semantic mapping */
   --neu-success:      var(--neu-sage);   --neu-success-deep: var(--neu-sage-deep);
@@ -171,13 +152,13 @@
 
   /* Chip fills (pastel) + deep-tone labels — exact specimen pairs.
      SEMANTIC, never re-tinted by the theme (README Theme Scope). */
-  --neu-chip-sage-bg:   #DCE8D6;  --neu-chip-sage-fg:   #5F7D57;
-  --neu-chip-powder-bg: #D9E4EE;  --neu-chip-powder-fg: #5E7F9B;
-  --neu-chip-butter-bg: #F0E4C8;  --neu-chip-butter-fg: #96814C;
-  --neu-chip-rose-bg:   #F0D9D4;  --neu-chip-rose-fg:   #A85B50;
-  --neu-chip-lilac-bg:  #E2DDEE;  --neu-chip-lilac-fg:  #7A6FA0;
-  --neu-chip-teal-bg:   #D6E8E4;  --neu-chip-teal-fg:   #5F8F86;
-  --neu-chip-neutral-bg:#E9E4DB;  --neu-chip-neutral-fg:#8A8274;
+  --neu-chip-sage-bg:   #DCE8D6;  --neu-chip-sage-fg:   #4C6345;
+  --neu-chip-powder-bg: #D9E4EE;  --neu-chip-powder-fg: #465E73;
+  --neu-chip-butter-bg: #F0E4C8;  --neu-chip-butter-fg: #6A5C36;
+  --neu-chip-rose-bg:   #F0D9D4;  --neu-chip-rose-fg:   #85483F;
+  --neu-chip-lilac-bg:  #E2DDEE;  --neu-chip-lilac-fg:  #5D547A;
+  --neu-chip-teal-bg:   #D6E8E4;  --neu-chip-teal-fg:   #42635D;
+  --neu-chip-neutral-bg:#E9E4DB;  --neu-chip-neutral-fg:#625C52;
 
   /* ── Polish layer (design_handoff_polish_layer) ─────────────────
      Charcoal family — tooltip / action-toast / palette-scrim
@@ -192,8 +173,7 @@
   --neu-palette-scrim:      rgba(56, 51, 43, 0.28);
   /* Floating palette panel — deeper drop than raised-lg, one light kick */
   --neu-shadow-floating:
-    12px 12px 32px rgba(120, 110, 92, 0.35),
-    -6px -6px 16px rgb(var(--neu-light) / 0.50);
+    0 12px 32px -8px rgb(var(--neu-dark) / 0.28);
   /* Save-morph success re-tint (semantic sage — NOT the theme accent) */
   --neu-success-gradient: linear-gradient(145deg, #B8CFAF, #98B58E);
   --neu-success-ink:      #26301F;
@@ -256,12 +236,10 @@
   );
   --neu-accent-wash: color-mix(in srgb, var(--neu-accent) 16%, transparent);
 
-  /* Card-header strip wash (CardHeader / SectionCard / SubTaskModal headers) —
-     deliberately STRONGER than --neu-accent-wash: 12% of the softened pastel
-     over cream read washed-out (2026-07-03). Mixed into the surface (opaque)
-     so it renders identically on any card. Tune header intensity HERE only. */
-  --neu-header-wash: color-mix(in srgb, var(--neu-accent) 22%, var(--neu-surface));
-  --neu-header-edge: color-mix(in srgb, var(--neu-accent) 32%, transparent);
+  /* Quiet section wash: a small theme tint on the neutral header surface.
+     Header identity stays visible without competing with selected controls. */
+  --neu-header-wash: color-mix(in srgb, var(--neu-accent) 6%, var(--neu-section-bg));
+  --neu-header-edge: var(--neu-edge);
 
   /* Header TEXT vocabulary (2026-08-10). The wash and the label can never be the
      same tone: full --theme-accent on the 22% accent wash measured 1.6–2.0:1, and
@@ -302,7 +280,7 @@
   --theme-accent-hover:   color-mix(in srgb, #7CA3C8 86%, black);
   --theme-accent-muted:   #4B6E8B;
   --theme-accent-surface: color-mix(in srgb, #7CA3C8 16%, transparent);
-  --theme-accent-fg:      #223240;
+  --theme-accent-fg:      #192632;
 }
 [data-theme="water"] {
   --theme-accent:         #68B1A5;   /* seafoam (retune; was #8FC3B9, stock #1e7d72) */
@@ -336,28 +314,25 @@
 
 [data-neu="dark"] {
   --neu-canvas:        #28241C;
-  --neu-surface:       #2D2920;
+  --neu-sidebar:       #27262D;
+  --neu-sidebar-pigment: color-mix(in srgb, var(--theme-accent) 12%, var(--neu-sidebar));
+  --neu-sidebar-wash: color-mix(in srgb, var(--theme-accent) 6%, var(--neu-sidebar));
+  --neu-workspace:     #2D2920;
+  --neu-sidebar-ink:   #C1B7A7;
+  --neu-shadow-shell: inset 0 1px 0 rgb(var(--neu-light) / 0.04);
+  --neu-surface:       #332E25;
   --neu-surface-high:  #332E24;
   --neu-well:          #221E17;
 
   --neu-dark:   0 0 0;
   --neu-light:  255 240 214;                /* warm candle highlight */
   --neu-edge:   rgba(255, 240, 214, 0.06);
-  --neu-shadow-shell: inset 0 1px 0 rgb(var(--neu-light) / 0.04);
   --neu-edge-strong: rgba(255, 240, 214, 0.09);
 
-  --neu-shadow-raised-sm:
-    3px 3px 8px   rgb(var(--neu-dark) / 0.45),
-    -3px -3px 8px rgb(var(--neu-light) / 0.045);
-  --neu-shadow-raised:
-    6px 6px 14px   rgb(var(--neu-dark) / 0.50),
-    -6px -6px 14px rgb(var(--neu-light) / 0.05);
-  --neu-shadow-raised-lg:
-    10px 10px 24px   rgb(var(--neu-dark) / 0.55),
-    -10px -10px 24px rgb(var(--neu-light) / 0.055);
-  --neu-shadow-hover:
-    8px 8px 18px   rgb(var(--neu-dark) / 0.55),
-    -8px -8px 18px rgb(var(--neu-light) / 0.06);
+  --neu-shadow-raised-sm: 0 1px 3px rgb(var(--neu-dark) / 0.30), inset 0 1px 0 rgb(var(--neu-light) / 0.04);
+  --neu-shadow-raised: 0 3px 8px -3px rgb(var(--neu-dark) / 0.35), inset 0 1px 0 rgb(var(--neu-light) / 0.04);
+  --neu-shadow-raised-lg: 0 8px 20px -8px rgb(var(--neu-dark) / 0.45), inset 0 1px 0 rgb(var(--neu-light) / 0.04);
+  --neu-shadow-hover: 0 4px 8px -3px rgb(var(--neu-dark) / 0.45), inset 0 1px 0 rgb(var(--neu-light) / 0.05);
   --neu-shadow-inset:
     inset 3px 3px 7px   rgb(var(--neu-dark) / 0.50),
     inset -3px -3px 7px rgb(var(--neu-light) / 0.05);
@@ -365,12 +340,9 @@
     inset 2px 2px 5px   rgb(var(--neu-dark) / 0.55),
     inset -2px -2px 5px rgb(var(--neu-light) / 0.04);
 
-  --neu-input-bg: linear-gradient(180deg, #332E24, #2D2920);
+  --neu-input-bg: linear-gradient(180deg, #28231C, #2D2920);
   --neu-input-edge: rgba(255, 240, 214, 0.08);
-  --neu-shadow-input:
-    3px 3px 8px   rgb(var(--neu-dark) / 0.45),
-    -3px -3px 8px rgb(var(--neu-light) / 0.045),
-    inset 0 1px 0 rgb(var(--neu-light) / 0.06);
+  --neu-shadow-input: inset 0 1px 3px rgb(var(--neu-dark) / 0.25);
 
   --neu-track-bg: linear-gradient(180deg, #221E17, #2B261E);
   --neu-shadow-track:
@@ -384,15 +356,10 @@
     -2px -2px 6px  rgb(var(--neu-light) / 0.05),
     inset 0 1px 0  rgb(var(--neu-light) / 0.06);
 
-  --neu-shadow-chip:
-    2px 2px 5px   rgb(var(--neu-dark) / 0.40),
-    -2px -2px 5px rgb(var(--neu-light) / 0.04);
-  --neu-shadow-knob:
-    2px 2px 5px   rgb(var(--neu-dark) / 0.55),
-    -1px -1px 3px rgb(var(--neu-light) / 0.05);
-  --neu-shadow-modal:
-    14px 14px 40px rgba(0, 0, 0, 0.55),
-    -8px -8px 24px rgb(var(--neu-light) / 0.04);
+  --neu-shadow-tile: inset 0 1px 0 rgb(var(--neu-light) / 0.06), inset 0 -2px 3px rgb(var(--neu-dark) / 0.15), 0 3px 7px -2px rgb(var(--neu-dark) / 0.35);
+  --neu-shadow-chip: inset 0 0 0 0 transparent;
+  --neu-shadow-knob: var(--neu-shadow-raised-sm);
+  --neu-shadow-modal: 0 16px 40px -10px rgb(var(--neu-dark) / 0.55);
   --neu-scrim: rgba(12, 10, 7, 0.5);
 
   /* Dark: accent lifts lighter so it holds on charcoal */
@@ -415,8 +382,8 @@
   --neu-header-icon: var(--neu-accent);
 
   --neu-text-primary:   #E8E0D4;
-  --neu-text-secondary: #A39A88;
-  --neu-text-tertiary:  #6E675C;
+  --neu-text-secondary: #B9AF9F;
+  --neu-text-tertiary:  #A39A88;
   --neu-text-disabled:  #55503F;
   --neu-on-accent-soft: #FDF9F0;
 
@@ -430,7 +397,7 @@
   --neu-lilac:       #A79DC8;  --neu-lilac-deep:  #C5BCE0;
   --neu-peach:       #D9AC8A;  --neu-peach-deep:  #EBC5A8;
   --neu-teal:        #83AFA5;  --neu-teal-deep:   #A5CCC3;
-  --neu-danger:      #CD8279;  --neu-danger-deep: #E0A29A;
+  --neu-danger:      #CD8279;  --neu-danger-deep: #E7B7B0;
 
   /* Chips derive from the pastels so they stay legible on charcoal */
   --neu-chip-sage-bg:   color-mix(in srgb, var(--neu-sage) 24%, var(--neu-surface));
@@ -446,7 +413,7 @@
   --neu-chip-teal-bg:   color-mix(in srgb, var(--neu-teal) 24%, var(--neu-surface));
   --neu-chip-teal-fg:   var(--neu-teal-deep);
   --neu-chip-neutral-bg:color-mix(in srgb, var(--neu-text-tertiary) 24%, var(--neu-surface));
-  --neu-chip-neutral-fg:var(--neu-text-secondary);
+  --neu-chip-neutral-fg:var(--neu-text-primary);
 
   /* ── Dark-specific deltas (design_handoff_dark_mode README) ─────── */
 
@@ -535,13 +502,13 @@
   --theme-text-tertiary:     var(--neu-text-tertiary);
   --theme-text-inverse:      var(--neu-on-accent-soft);
 
-  /* Sidebar → cream raised rail */
-  --theme-sidebar-bg:        var(--neu-surface);
+  /* Sidebar → deeper matte clay rail */
+  --theme-sidebar-bg:        var(--neu-sidebar);
   --theme-sidebar-border:    var(--neu-edge);
-  --theme-sidebar-text:      var(--neu-text-secondary);
-  --theme-sidebar-active:    var(--theme-accent-muted);
+  --theme-sidebar-text:      var(--neu-sidebar-ink);
+  --theme-sidebar-active:    var(--neu-text-primary);
   --theme-sidebar-hover-bg:  color-mix(in srgb, var(--theme-accent) 6%, transparent);
-  --theme-sidebar-active-bg: var(--theme-accent-surface);
+  --theme-sidebar-active-bg: color-mix(in srgb, var(--theme-accent) 12%, var(--neu-surface));
   --theme-sidebar-active-pill: var(--theme-accent);
 
   /* Legacy radius scale → Marshmallow roles. Utility classes
@@ -553,7 +520,7 @@
   --radius-lg: var(--neu-radius-field);  /* 22px */
   --radius-xl: var(--neu-radius-card);   /* 32px */
 
-  /* Shadow scale → paired Whisper shadows */
+  /* Legacy shadow scale → material elevation roles */
   --shadow-color: var(--neu-dark);
   --shadow-1:     var(--neu-shadow-raised-sm);
   --shadow-2:     var(--neu-shadow-raised);
@@ -698,14 +665,14 @@
   box-shadow: var(--neu-shadow-raised-sm);
 }
 
-/* State-only well (toggle/tab tracks, skeleton ground) — NEVER inputs */
+/* Recessed well for tracks and skeleton ground. */
 .neu-well {
   background: var(--neu-well);
   border-radius: var(--neu-radius-field);
   box-shadow: var(--neu-shadow-inset);
 }
 
-/* Floating text field (Rule 3) — gradient sheen + inner top highlight */
+/* Shallow matte field — quiet inset distinguishes it from raised actions. */
 .neu-input {
   background: var(--neu-input-bg);
   border: 1px solid var(--neu-input-edge);
@@ -764,7 +731,7 @@
   box-shadow: var(--neu-focus-ring);
 }
 
-/* Chart panel — charts sit RAISED on the gradient sheen, never a well */
+/* Chart panel — quiet inset surface. */
 .neu-chart-panel {
   background: var(--neu-input-bg);
   border: 1px solid var(--neu-input-edge);
@@ -802,13 +769,13 @@
   background: var(--neu-chip-rose-bg);
   color: var(--neu-chip-rose-fg);
   border: 1px solid var(--neu-edge);
-  box-shadow: var(--neu-shadow-chip);
+  box-shadow: var(--neu-shadow-raised-sm);
 }
 .serene-btn-success {
   background: var(--neu-chip-sage-bg);
   color: var(--neu-chip-sage-fg);
   border: 1px solid var(--neu-edge);
-  box-shadow: var(--neu-shadow-chip);
+  box-shadow: var(--neu-shadow-raised-sm);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -826,14 +793,14 @@
     background: var(--neu-accent-wash);
   }
   .serene-btn-danger:hover:not(:disabled) {
-    background: var(--neu-danger-deep);
-    color: var(--neu-on-accent-soft);
+    background: color-mix(in srgb, var(--neu-chip-rose-bg) 88%, var(--neu-danger));
+    color: var(--neu-chip-rose-fg);
     border-color: transparent;
     box-shadow: var(--neu-shadow-hover);
   }
   .serene-btn-success:hover:not(:disabled) {
-    background: var(--neu-sage-deep);
-    color: var(--neu-on-accent-soft);
+    background: color-mix(in srgb, var(--neu-chip-sage-bg) 88%, var(--neu-sage));
+    color: var(--neu-chip-sage-fg);
     border-color: transparent;
     box-shadow: var(--neu-shadow-hover);
   }
@@ -849,9 +816,7 @@
   transform: scale(0.98);
 }
 
-/* Status pills — pastel fill + deep label + raised-sm, hairline edge.
-   Fill/text arrive via the bridged --status-* tokens; the pill chrome
-   itself swaps the flat drop shadow for the paired chip shadow. */
+/* Status pills: pastel fill, readable ink, quiet edge; no floating shadow. */
 .status-pill {
   border: 1px solid var(--neu-edge);
   box-shadow: var(--neu-shadow-chip);
@@ -1019,3 +984,131 @@
     animation: none;
   }
 }
+
+/* Ordinary actions share one material; filters expose state through custom
+   properties so hover/press/focus cannot be defeated by inline box shadows. */
+.serene-btn-control,
+.serene-filter-trigger {
+  background: var(--control-fill, var(--neu-surface));
+  color: var(--control-ink, var(--neu-text-secondary));
+  border: 1px solid var(--neu-edge);
+  border-radius: var(--neu-radius-control);
+  box-shadow: var(--control-ring, 0 0 0 0 transparent), var(--neu-shadow-raised-sm);
+}
+@media (hover: hover) and (pointer: fine) {
+  .serene-btn-control:hover:not(:disabled),
+  .serene-filter-trigger:hover:not(:disabled) {
+    border-color: var(--neu-edge-strong);
+    box-shadow: var(--control-ring, 0 0 0 0 transparent), var(--neu-shadow-hover);
+  }
+}
+.serene-btn-control:active:not(:disabled),
+.serene-filter-trigger:active:not(:disabled) {
+  box-shadow: var(--control-ring, 0 0 0 0 transparent), var(--neu-shadow-pressed);
+}
+/* Visible keyboard focus across custom controls, including inline-styled ones.
+   Outline is independent of material elevation and never creates a bloom. */
+:where(button, a[href], input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--theme-accent-muted) !important;
+  outline-offset: 3px;
+}
+@media (pointer: coarse) {
+  .serene-action, .serene-filter-trigger, .serene-compact-field {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* Accent fills are decorative; labels always use the contrasting ink tier. */
+.status-pill--accent { color: var(--neu-accent-deep); }
+
+/* Choices, menu options, and rich rows share material and interaction states.
+   Layout remains with the consumer; selection is never communicated by color alone. */
+.serene-selection {
+  background: var(--selection-fill, transparent);
+  color: var(--selection-ink, var(--neu-text-primary));
+  box-shadow: var(--selection-shadow, none);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-normal);
+  cursor: pointer;
+  transition: var(--transition-hover);
+}
+.serene-selection[data-appearance="choice"],
+.serene-selection[data-appearance="row"] {
+  border-color: var(--neu-edge);
+  border-radius: var(--neu-radius-control);
+}
+.serene-selection[data-appearance="choice"] {
+  font-weight: var(--weight-medium);
+}
+.serene-selection[data-selected="true"] {
+  font-weight: var(--weight-semibold);
+}
+@media (hover: hover) and (pointer: fine) {
+  .serene-selection:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--theme-accent) 6%, var(--neu-surface));
+  }
+  .serene-selection[data-selected="true"]:hover:not(:disabled) {
+    background: var(--selection-fill);
+  }
+  .serene-selection[data-appearance="choice"]:hover:not(:disabled) {
+    box-shadow: var(--neu-shadow-hover);
+  }
+}
+.serene-selection:active:not(:disabled) {
+  box-shadow: var(--neu-shadow-pressed);
+}
+.serene-selection:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* File pickers share a quiet inset surface, distinct from raised actions. */
+.serene-upload {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-8) var(--space-4);
+  border: 1px dashed var(--neu-edge-strong);
+  border-radius: var(--neu-radius-control);
+  background: var(--neu-well);
+  color: var(--neu-text-secondary);
+  box-shadow: var(--neu-shadow-inset);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: var(--transition-hover);
+}
+@media (hover: hover) and (pointer: fine) {
+  .serene-upload:hover:not(:disabled) {
+    border-color: var(--neu-accent-deep);
+    background: color-mix(in srgb, var(--theme-accent) 6%, var(--neu-well));
+  }
+}
+.serene-upload:active:not(:disabled) { box-shadow: var(--neu-shadow-pressed); }
+.serene-upload:disabled { opacity: 0.6; cursor: not-allowed; }
+.serene-upload[aria-busy="true"] { cursor: wait; }
+
+.serene-btn-warning {
+  background: var(--neu-chip-butter-bg);
+  color: var(--neu-chip-butter-fg);
+  border: 1px solid var(--neu-edge);
+  box-shadow: var(--neu-shadow-raised-sm);
+}
+.serene-btn-ghost-danger {
+  background: transparent;
+  color: var(--neu-chip-rose-fg);
+  border: none;
+  box-shadow: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .serene-btn-warning:hover:not(:disabled) { box-shadow: var(--neu-shadow-hover); }
+  .serene-btn-ghost-danger:hover:not(:disabled) { background: var(--neu-chip-rose-bg); }
+}
+.serene-btn-warning:active:not(:disabled) { box-shadow: var(--neu-shadow-pressed); }

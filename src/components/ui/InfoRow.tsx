@@ -1,5 +1,6 @@
 'use client';
 
+import { MotionButton } from '@/components/ui/MotionButton';
 import React from 'react';
 import { Copy, Check } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -103,29 +104,15 @@ export function InfoRow({
           </span>
 
           {copyable && (
-            <motion.button
-              type="button"
-              onClick={handleCopy}
-              aria-label={copied ? 'Copied' : `Copy ${label}`}
-              whileTap={{ scale: 0.8 }}
-              transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
-              style={{
-                display:        'inline-flex',
-                alignItems:     'center',
-                justifyContent: 'center',
-                flexShrink:     0,
-                width:          24,
-                height:         24,
-                background:     'transparent',
-                border:         'none',
-                borderRadius:   'var(--radius-xs)',
-                cursor:         'pointer',
-                color:          copied ? 'var(--color-success-text)' : 'var(--theme-text-tertiary)',
-                transition:     'color var(--transition-hover)',
-                padding:        0,
-                willChange:     'transform',
-              }}
-            >
+            <MotionButton
+          variant={copied ? "success" : "ghost"} size="sm" iconOnly
+          type="button"
+          onClick={handleCopy}
+          aria-label={copied ? 'Copied' : `Copy ${label}`}
+          whileTap={{ scale: 0.8 }}
+          transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
+          style={{display:        'inline-flex', alignItems:     'center', justifyContent: 'center', flexShrink:     0, width:          24, height:         24, padding:        0, willChange:     'transform'}}
+        >
               <AnimatePresence mode="wait" initial={false}>
                 {copied ? (
                   <motion.span
@@ -151,7 +138,7 @@ export function InfoRow({
                   </motion.span>
                 )}
               </AnimatePresence>
-            </motion.button>
+            </MotionButton>
           )}
         </div>
       </div>

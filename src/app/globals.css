@@ -1,6 +1,7 @@
 @import "../styles/design-tokens.css";
 @import "../styles/serene-neumorphic-tokens.css";
 @import "../styles/serene-mobile.css";
+@import "../styles/serene-families.css";
 @import "tailwindcss";
 
 /* ── Tailwind v4 default-theme isolation (design audit §3.3 / Phase 4.2) ──────
@@ -88,9 +89,7 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Dashboard shell — flat canvas matching sidebar (--theme-sidebar-bg uses same token).
-   Gutter strips around the paper card must not use grain/gradients; those read as
-   a mismatched wash next to the flat sidebar. */
+/* Warm ground around the independent clay rail and ivory workspace. */
 .layout-shell {
   background-color: var(--theme-canvas);
 }
@@ -120,19 +119,16 @@ body {
   padding: 12px 12px 12px 0;
   background: var(--theme-canvas);
 }
-/* Neumorphic ground: the content region is the FLOATING PAPER SHEET raised
-   from the warm canvas gutter (the two-layer shell survives the restyle —
-   restored 2026-07-03). Raised cream surface + Whisper pair + hairline edge;
-   cards inside raise themselves a step further via their own shadow pairs. */
+/* Ivory workspace: separation comes from material tone, with a quiet edge. */
 .serene-shell-paper {
   flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--neu-surface);
+  background: var(--neu-workspace);
   border: 1px solid var(--neu-edge);
   border-radius: var(--neu-radius-card);
-  box-shadow: var(--neu-shadow-raised);
+  box-shadow: var(--neu-shadow-shell);
   overflow-y: auto;
   overflow-x: hidden;
 }
@@ -580,12 +576,11 @@ body {
 
 /* Back-link hover — dossier page breadcrumb */
 .back-link:hover {
-  color: var(--theme-accent) !important;
+  color: var(--neu-accent-deep) !important;
 }
 
 /* Base input style — used by form fields across the app.
-   Neumorphic Rule 3: text fields FLOAT — gradient sheen + 1px inner top
-   highlight distinguishes them from buttons. Never sunken. */
+   Matte fields use a shallow inset to distinguish them from raised actions. */
 .serene-input {
   width: 100%;
   background: var(--neu-input-bg);
@@ -1014,12 +1009,13 @@ body {
 /* Auth link — accent-coloured, subtle at rest */
 .serene-auth-link {
   font-size: var(--text-xs);
-  color: color-mix(in srgb, var(--theme-accent) 65%, transparent);
+  color: var(--neu-accent-deep);
   text-decoration: none;
   transition: color var(--duration-fast) var(--ease-in-out);
 }
 .serene-auth-link:hover {
-  color: var(--theme-accent);
+  color: var(--neu-accent-deep);
+  text-decoration: underline;
 }
 
 /* Dashboard "Recent Activity" deck card — a Link to the lead dossier.

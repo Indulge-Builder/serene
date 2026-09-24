@@ -41,12 +41,13 @@ function DomainHeader({
         {vertical.label}
       </span>
       {domains.length > 1 && (
-        <span className="flex items-center gap-1.5" aria-hidden>
+        <span className="flex items-center gap-1.5" role="group" aria-label="Choose domain">
           {domains.map((d) => (
             <button
               key={d}
               type="button"
               aria-label={DOMAIN_VERTICALS[d].label}
+              aria-pressed={d === domain}
               onClick={() => onDomainChange(d)}
               className="neu-m-touch-quiet rounded-full border-none p-0"
               style={{

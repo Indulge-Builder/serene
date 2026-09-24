@@ -1,5 +1,7 @@
 "use client";
 
+import { SelectionButton } from '@/components/ui/SelectionButton';
+import { Button } from '@/components/ui/Button';
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { m as motion, AnimatePresence } from "framer-motion";
@@ -22,32 +24,24 @@ function periodOptionRow(
 ) {
   const isActive = selected === id;
   return (
-    <button
+    <SelectionButton
+      appearance="option"
+      selected={isActive}
       key={id ?? "all"}
       type="button"
       onClick={() => {
-        onSelect(id);
-        if (id !== "custom") onClose();
-      }}
+              onSelect(id);
+              if (id !== "custom")
+                  onClose();
+          }}
       style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "var(--space-2)",
-        width: "100%",
-        padding: "var(--space-2) var(--space-3)",
-        borderRadius: "var(--radius-sm)",
-        background: isActive ? "var(--theme-accent-surface)" : "transparent",
-        border: "none",
-        cursor: "pointer",
-        textAlign: "left",
-        transition: "background var(--duration-fast) var(--ease-in-out)",
-      }}
-      onMouseEnter={(e) => {
-        if (!isActive) e.currentTarget.style.background = "var(--theme-paper-subtle)";
-      }}
-      onMouseLeave={(e) => {
-        if (!isActive) e.currentTarget.style.background = "transparent";
-      }}
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--space-2)",
+              width: "100%",
+              padding: "var(--space-2) var(--space-3)",
+              textAlign: "left",
+          }}
     >
       <span
         style={{
@@ -62,11 +56,11 @@ function periodOptionRow(
       </span>
       {isActive && (
         <Check
-          style={{ width: 13, height: 13, color: "var(--theme-accent)", flexShrink: 0 }}
+          style={{ width: 13, height: 13, color: "var(--neu-accent-deep)", flexShrink: 0 }}
           strokeWidth={2}
         />
       )}
-    </button>
+    </SelectionButton>
   );
 }
 
@@ -137,7 +131,8 @@ export function WhatsAppConversationPeriodFilter() {
 
   return (
     <div style={{ position: "relative" }} ref={popoverRef}>
-      <button
+      <Button
+        variant="control" size="sm" iconOnly
         type="button"
         onClick={() => setOpen((v) => !v)}
         title="Filter by last message"
@@ -149,20 +144,6 @@ export function WhatsAppConversationPeriodFilter() {
           justifyContent: "center",
           width: "26px",
           height: "26px",
-          borderRadius: "var(--radius-sm)",
-          border: isFiltered
-            ? "1px solid color-mix(in srgb, var(--theme-accent) 40%, transparent)"
-            : "1px solid transparent",
-          background: isFiltered ? "var(--theme-accent-surface)" : "transparent",
-          cursor: "pointer",
-          transition:
-            "background var(--duration-fast) var(--ease-in-out), border-color var(--duration-fast) var(--ease-in-out)",
-        }}
-        onMouseEnter={(e) => {
-          if (!isFiltered) e.currentTarget.style.background = "var(--theme-paper-subtle)";
-        }}
-        onMouseLeave={(e) => {
-          if (!isFiltered) e.currentTarget.style.background = "transparent";
         }}
       >
         <SlidersHorizontal
@@ -174,7 +155,7 @@ export function WhatsAppConversationPeriodFilter() {
           }}
           strokeWidth={1.5}
         />
-      </button>
+      </Button>
 
       <AnimatePresence>
         {open && (
@@ -234,26 +215,16 @@ export function WhatsAppConversationPeriodFilter() {
                   onChange={setToDate}
                   placeholder="To"
                 />
-                <button
+                <Button
+                  variant="primary"
+                  size="sm"
+                  style={{ width: "100%" }}
                   type="button"
                   onClick={applyCustomRange}
                   disabled={!fromDate && !toDate}
-                  style={{
-                    width: "100%",
-                    padding: "var(--space-2)",
-                    borderRadius: "var(--radius-sm)",
-                    border: "none",
-                    background: "var(--theme-accent)",
-                    color: "var(--theme-accent-fg)",
-                    fontFamily: "var(--font-sans)",
-                    fontSize: "var(--text-xs)",
-                    fontWeight: "var(--weight-semibold)",
-                    cursor: fromDate || toDate ? "pointer" : "not-allowed",
-                    opacity: fromDate || toDate ? 1 : 0.5,
-                  }}
                 >
                   Apply range
-                </button>
+                </Button>
               </div>
             )}
           </motion.div>

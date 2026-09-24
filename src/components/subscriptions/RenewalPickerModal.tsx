@@ -5,6 +5,7 @@
 // subscription up to the parent, which opens Record Payment (or Log Top-up for a
 // top_up). List-style modal (bodyPadding={false}): the CompletedTasksModal anatomy.
 
+import { SelectionButton } from '@/components/ui/SelectionButton';
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Modal } from "@/components/ui/modal";
 import { SearchBar } from "@/components/ui/SearchBar";
@@ -129,29 +130,19 @@ function RenewalRow({
   onSelect: (sub: SubscriptionListItem) => void;
 }) {
   return (
-    <button
+    <SelectionButton
+      appearance="option"
       type="button"
       onClick={() => onSelect(sub)}
       style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "var(--space-3)",
-        width: "100%",
-        textAlign: "left",
-        padding: "var(--space-3) var(--space-5)",
-        border: "none",
-        borderBottom: "1px solid var(--theme-paper-border)",
-        background: "transparent",
-        cursor: "pointer",
-        fontFamily: "var(--font-sans)",
-        transition: "background var(--duration-fast) var(--ease-in-out)",
-      }}
-      onMouseEnter={(e) => {
-        (e.currentTarget as HTMLElement).style.background = "var(--theme-paper-subtle)";
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLElement).style.background = "transparent";
-      }}
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--space-3)",
+              width: "100%",
+              textAlign: "left",
+              padding: "var(--space-3) var(--space-5)",
+              borderBottom: "1px solid var(--theme-paper-border)",
+          }}
     >
       <span style={{ display: "flex", flexDirection: "column", gap: "0.125rem", flex: 1, minWidth: 0 }}>
         <span
@@ -174,6 +165,6 @@ function RenewalRow({
         </span>
       </span>
       <SubscriptionStatusPill status={sub.status} daysOverdue={sub.daysOverdue} />
-    </button>
+    </SelectionButton>
   );
 }

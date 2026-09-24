@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@/components/ui/Button';
 import { useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { BookOpen, Send } from 'lucide-react';
@@ -150,27 +151,11 @@ export function LeadNotesInput({ leadId, canAdd, onNoteAdded }: Props) {
                 onBusyChange={setDictationBusy}
               />
 
-              <button
+              <Button
+                variant="primary"
+                size="sm"
                 onClick={handleSubmit}
                 disabled={!content.trim() || isBusy}
-                style={{
-                  display:        'inline-flex',
-                  alignItems:     'center',
-                  gap:            'var(--space-2)',
-                  padding:        'var(--space-2) var(--space-4)',
-                  borderRadius:   'var(--radius-md)',
-                  border:         '1px solid var(--neu-edge)',
-                  background:     content.trim() && !isBusy
-                    ? 'color-mix(in srgb, var(--theme-accent) 12%, var(--neu-surface))'
-                    : 'transparent',
-                  boxShadow:      content.trim() && !isBusy ? 'var(--neu-shadow-chip)' : 'none',
-                  color:          'var(--neu-accent-deep)',
-                  fontSize:       'var(--text-xs)',
-                  fontWeight:     'var(--weight-medium)',
-                  cursor:         content.trim() && !isBusy ? 'pointer' : 'not-allowed',
-                  opacity:        content.trim() && !isBusy ? 1 : 0.45,
-                  transition:     'opacity 150ms, background 150ms, box-shadow 150ms',
-                }}
               >
                 {isPending ? (
                   <SeedMandala size={14} variant="currentColor" spin={3.5} />
@@ -178,7 +163,7 @@ export function LeadNotesInput({ leadId, canAdd, onNoteAdded }: Props) {
                   <Send style={{ width: '0.75rem', height: '0.75rem', strokeWidth: 1.5 }} />
                 )}
                 Post note
-              </button>
+              </Button>
               </span>
             </div>
           </>

@@ -1,5 +1,7 @@
 'use client';
 
+import { MotionSelectionButton } from '@/components/ui/MotionButton';
+import { Button } from '@/components/ui/Button';
 import { useState, useRef, useEffect, useMemo }  from 'react';
 import dynamic                                   from 'next/dynamic';
 import { useSearchParams }                      from 'next/navigation';
@@ -48,26 +50,16 @@ function AgentCard({
   const isHighlighted = isSelected || hovered;
 
   return (
-    <motion.button
-      initial={{ opacity: 0, x: -8 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ duration: ENTER_DURATION, delay: delay / 1000, ease: EASE_OUT_EXPO }}
-      onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        display:      'flex',
-        alignItems:   'center',
-        gap:          'var(--space-3)',
-        padding:      'var(--space-3) var(--space-4)',
-        borderRadius: 'var(--radius-md)',
-        background:   'transparent',
-        border:       'none',
-        cursor:     'pointer',
-        width:      '100%',
-        textAlign:  'left',
-      }}
-    >
+    <MotionSelectionButton
+          appearance="option" selected={isSelected} aria-pressed={isSelected}
+          initial={{ opacity: 0, x: -8 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: ENTER_DURATION, delay: delay / 1000, ease: EASE_OUT_EXPO }}
+          onClick={onClick}
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+          style={{display:      'flex', alignItems:   'center', gap:          'var(--space-3)', padding:      'var(--space-3) var(--space-4)', width:      '100%', textAlign:  'left'}}
+        >
       <Avatar
         src={agent.avatar_url}
         name={agent.full_name}
@@ -95,7 +87,7 @@ function AgentCard({
         {agent.full_name}
       </p>
 
-    </motion.button>
+    </MotionSelectionButton>
   );
 }
 
@@ -177,7 +169,8 @@ function RosterHeader({
       }}
     >
       {collapsible ? (
-        <button
+        <Button
+          variant="ghost"
           onClick={onToggle}
           aria-expanded={expanded}
           style={{
@@ -187,9 +180,6 @@ function RosterHeader({
             flex:       1,
             minWidth:   0,
             padding:    0,
-            background: 'transparent',
-            border:     'none',
-            cursor:     'pointer',
             textAlign:  'left',
           }}
         >
@@ -242,7 +232,7 @@ function RosterHeader({
             }}
             strokeWidth={1.5}
           />
-        </button>
+        </Button>
       ) : (
         label
       )}
@@ -434,30 +424,14 @@ export function ManagerPerformancePanel({
   const deckTrigger = useMemo(
     () =>
       showDeckTrigger ? (
-        <button
+        <Button
+          variant="control"
           type="button"
           onClick={() => setDeckOpen(true)}
-          className="serene-pressable serene-touch"
-          style={{
-            display:      'inline-flex',
-            alignItems:   'center',
-            gap:          'var(--space-2)',
-            padding:      'var(--space-2) var(--space-4)',
-            borderRadius: 'var(--radius-md)',
-            border:       '1px solid var(--theme-paper-border)',
-            background:   'var(--theme-paper)',
-            boxShadow:    'var(--shadow-1)',
-            color:        'var(--theme-text-primary)',
-            fontFamily:   'var(--font-sans)',
-            fontSize:     'var(--text-sm)',
-            fontWeight:   'var(--weight-medium)',
-            cursor:       'pointer',
-            flexShrink:   0,
-          }}
         >
           <LayoutGrid style={{ width: 15, height: 15, strokeWidth: 1.5 }} aria-hidden="true" />
           Deck view
-        </button>
+        </Button>
       ) : null,
     [showDeckTrigger],
   );
@@ -559,29 +533,14 @@ export function ManagerPerformancePanel({
               size="lg"
               style={{ padding: 0 }}
             />
-            <button
+            <Button
+              variant="control"
               type="button"
               onClick={() => setDeckOpen(true)}
-              className="serene-pressable serene-touch"
-              style={{
-                display:      'inline-flex',
-                alignItems:   'center',
-                gap:          'var(--space-2)',
-                padding:      'var(--space-2) var(--space-4)',
-                borderRadius: 'var(--radius-md)',
-                border:       '1px solid var(--theme-paper-border)',
-                background:   'var(--theme-paper)',
-                boxShadow:    'var(--shadow-1)',
-                color:        'var(--theme-text-primary)',
-                fontFamily:   'var(--font-sans)',
-                fontSize:     'var(--text-sm)',
-                fontWeight:   'var(--weight-medium)',
-                cursor:       'pointer',
-              }}
             >
               <LayoutGrid style={{ width: 15, height: 15, strokeWidth: 1.5 }} aria-hidden="true" />
               Open agent deck
-            </button>
+            </Button>
           </div>
         )}
       </div>

@@ -28,6 +28,7 @@
 // target — showing a number would break the zero-per-swipe-fetch rule for the
 // tiles. The call COUNT lives only inside the Recent-calls modal.
 
+import { SelectionButton } from '@/components/ui/SelectionButton';
 import { useState, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { m as motion } from 'framer-motion';
@@ -516,7 +517,8 @@ function BreakdownTab({
   onClick: () => void;
 }) {
   return (
-    <button
+    <SelectionButton
+      appearance="choice" selected={active}
       type="button"
       onClick={onClick}
       aria-pressed={active}
@@ -529,22 +531,13 @@ function BreakdownTab({
         justifyContent: 'center',
         gap: 'var(--space-2)',
         padding: 'var(--space-2) var(--space-3)',
-        borderRadius: 'var(--radius-sm)',
-        border: 'none',
-        cursor: 'pointer',
-        background: active ? 'var(--theme-paper)' : 'transparent',
-        boxShadow: active ? 'var(--shadow-1)' : 'none',
-        color: active ? 'var(--theme-text-primary)' : 'var(--theme-text-tertiary)',
-        fontFamily: 'var(--font-sans)',
         fontSize: 'var(--text-xs)',
-        fontWeight: 'var(--weight-medium)',
         whiteSpace: 'nowrap',
-        transition: 'background var(--duration-fast) var(--ease-in-out), color var(--duration-fast) var(--ease-in-out)',
       }}
     >
       {icon}
       {label}
-    </button>
+    </SelectionButton>
   );
 }
 
@@ -564,7 +557,8 @@ function DeckTile({
   onClick: () => void;
 }) {
   return (
-    <button
+    <SelectionButton
+      appearance="row"
       type="button"
       onClick={onClick}
       className="serene-pressable serene-touch"
@@ -574,14 +568,8 @@ function DeckTile({
         alignItems: 'flex-start',
         gap: 'var(--space-2)',
         padding: 'var(--space-4)',
-        background: 'var(--theme-paper)',
-        border: '1px solid var(--theme-paper-border)',
-        borderRadius: 'var(--radius-lg)',
-        boxShadow: 'var(--shadow-1)',
-        cursor: 'pointer',
         textAlign: 'left',
         minWidth: 0,
-        transition: 'box-shadow var(--duration-fast) var(--ease-in-out), border-color var(--duration-fast) var(--ease-in-out)',
       }}
     >
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)', minWidth: 0, maxWidth: '100%' }}>
@@ -614,9 +602,9 @@ function DeckTile({
       >
         {value}
       </span>
-      <span style={{ fontSize: 'var(--text-2xs)', color: 'var(--theme-accent)' }}>
+      <span style={{ fontSize: 'var(--text-2xs)', color: "var(--neu-accent-deep)" }}>
         {hint ?? 'View details'}
       </span>
-    </button>
+    </SelectionButton>
   );
 }

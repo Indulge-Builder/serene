@@ -4,7 +4,8 @@ import { useState, useTransition, useEffect, useMemo } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle } from 'lucide-react';
+import { Field, Input } from '@/components/ui/Field';
+import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { FilterDropdown } from '@/components/ui/FilterDropdown';
 import { FormChip } from '@/components/ui/TaskFormFields';
@@ -55,31 +56,11 @@ type Props = {
 // ─────────────────────────────────────────────
 
 const fieldLabel: React.CSSProperties = {
-  display:       'block',
-  fontSize:      'var(--text-2xs)',
-  fontWeight:    'var(--weight-semibold)',
-  letterSpacing: 'var(--tracking-widest)',
-  textTransform: 'uppercase',
-  color:         'var(--theme-text-tertiary)',
-  marginBottom:  'var(--space-2)',
-};
-
-/* Inputs FLOAT (neumorphic Rule 3): gradient sheen + paired input shadow. */
-const fieldInput: React.CSSProperties = {
-  width:        '100%',
-  height:       '2.25rem',
-  paddingLeft:  'var(--space-3)',
-  paddingRight: 'var(--space-3)',
-  border:       '1px solid var(--neu-input-edge)',
-  borderRadius: 'var(--radius-lg)',
-  background:   'var(--neu-input-bg)',
-  boxShadow:    'var(--neu-shadow-input)',
-  fontSize:     'var(--text-sm)',
-  color:        'var(--theme-text-primary)',
-  outline:      'none',
-  transition:   'box-shadow var(--duration-fast) var(--ease-in-out)',
-  boxSizing:    'border-box',
-  fontFamily:   'var(--font-sans)',
+  display: 'block',
+  fontSize: 'var(--text-xs)',
+  fontWeight: 'var(--weight-medium)',
+  color: 'var(--theme-text-secondary)',
+  marginBottom: 'var(--space-2)',
 };
 
 const fieldError: React.CSSProperties = {
@@ -105,6 +86,9 @@ export function AddLeadModal({
   const [isPending, startTransition] = useTransition();
   const [serverError, setServerError] = useState<string | null>(null);
   const [duplicateLeadId, setDuplicateLeadId] = useState<string | null>(null);
+  const [agentsLoading, setAgentsLoading] = useState(false);
+  const [agentError, setAgentError] = useState<string | null>(null);
+  const [agentRetry, setAgentRetry] = useState(0);
   const [agents, setAgents] = useState<Agent[]>(initialAgents);
 
   const canChangeDomain = callerProfile.role !== 'agent';
@@ -173,15 +157,18 @@ export function AddLeadModal({
   );
 
   const assigneeLabel = useMemo(() => {
+    if (agentsLoading) return 'Loading assignees…';
+    if (agentError) return 'Assignees unavailable';
     if (agents.length === 0) return 'No one to assign in this domain';
     const match = agents.find((a) => a.id === watchedAssignedTo);
     return match?.full_name ?? 'Select assignee…';
-  }, [agents, watchedAssignedTo]);
+  }, [agents, watchedAssignedTo, agentsLoading, agentError]);
 
   // When domain changes (manager/admin/founder), refetch agents for the new domain.
   // This is the only permitted useEffect + data refetch as per spec.
   useEffect(() => {
-    if (!canChangeDomain) return;
+    if (!open || !canChangeDomain) return;
+    setAgentError(null);
 
     // Failure-mode guard (call-intelligence Phase 1.1): a domain switch must
     // clear picks outside the new domain's vocabulary — 'travel' selected
@@ -199,23 +186,33 @@ export function AddLeadModal({
     const isInitialDomain = watchedDomain === initialDomain;
     if (isInitialDomain && initialAgents.length > 0) {
       setAgents(initialAgents);
+      setAgentsLoading(false);
       return;
     }
     let cancelled = false;
 
-    startTransition(async () => {
-      const result = await getAssignableUsersAction(watchedDomain as AppDomain);
-      if (cancelled) return;
-      const list = result.data ?? [];
-      setAgents(list);
-      // A switched domain resets assigned_to to its first agent (or empty).
-      // The initial domain keeps the caller as the default assignee.
-      if (!isInitialDomain) setValue('assigned_to', list[0]?.id ?? '');
-    });
+    setAgentsLoading(true);
+    setAgents([]);
+    void (async () => {
+      try {
+        const result = await getAssignableUsersAction(watchedDomain as AppDomain);
+        if (cancelled) return;
+        if (result.error) { setAgentError(result.error); return; }
+        const list = result.data ?? [];
+        setAgents(list);
+        // Keep a valid current choice; otherwise use the first eligible assignee.
+        const currentAssignee = getValues('assigned_to');
+        if (!list.some(agent => agent.id === currentAssignee)) setValue('assigned_to', list[0]?.id ?? '');
+      } catch {
+        if (!cancelled) setAgentError('Could not load assignees. Try again.');
+      } finally {
+        if (!cancelled) setAgentsLoading(false);
+      }
+    })();
 
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [watchedDomain, canChangeDomain]);
+  }, [open, watchedDomain, canChangeDomain, agentRetry]);
 
   // Reset form state when modal is opened
   useEffect(() => {
@@ -243,55 +240,46 @@ export function AddLeadModal({
     if (!isPending) onClose();
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  function onSubmit(values: any) {
+  function onSubmit(values: FormValues) {
+    if (isPending || agentsLoading || agentError) return;
     setServerError(null);
     setDuplicateLeadId(null);
 
     startTransition(async () => {
-      const result = await createManualLead({
-        first_name:        values.first_name,
-        last_name:         values.last_name || undefined,
-        phone:             values.phone,
-        email:             values.email || undefined,
-        domain:            values.domain,
-        assigned_to:       values.assigned_to || undefined,
-        source:            values.source || undefined,
-        service_interests: values.service_interests ?? [],
-      });
+      try {
+        const result = await createManualLead({
+          first_name:        values.first_name,
+          last_name:         values.last_name || undefined,
+          phone:             values.phone,
+          email:             values.email || undefined,
+          domain:            values.domain,
+          assigned_to:       values.assigned_to || undefined,
+          source:            values.source || undefined,
+          service_interests: values.service_interests ?? [],
+        });
 
-      if (result.error) {
-        setServerError(result.error);
-        return;
-      }
+        if (result.error) {
+          setServerError(result.error);
+          return;
+        }
 
-      if (result.data?.duplicate) {
-        setDuplicateLeadId(result.data.leadId);
-        return;
-      }
+        if (result.data?.duplicate) {
+          setDuplicateLeadId(result.data.leadId);
+          return;
+        }
 
-      if (result.data?.leadId) {
-        onSuccess(result.data.leadId);
-        router.refresh();
-        onClose();
+        if (result.data?.leadId) {
+          onSuccess(result.data.leadId);
+          router.refresh();
+          onClose();
+        } else {
+          setServerError("The lead could not be saved. Your entries are still here.");
+        }
+      } catch {
+        setServerError("We could not confirm whether the lead was saved. Check the leads list before trying again.");
       }
     });
   }
-
-  // ─────────────────────────────────────────────
-  // Shared input focus style handlers (inline)
-  // ─────────────────────────────────────────────
-  function focusOn(e: React.FocusEvent<HTMLInputElement>) {
-    e.currentTarget.style.boxShadow = '0 0 0 1px var(--theme-accent), var(--neu-shadow-input)';
-  }
-  function focusOff(e: React.FocusEvent<HTMLInputElement>) {
-    e.currentTarget.style.boxShadow = 'var(--neu-shadow-input)';
-  }
-
-  const dropdownWrapStyle = {
-    opacity:       isPending ? 0.6 : 1,
-    pointerEvents: isPending ? 'none' as const : 'auto' as const,
-  };
 
   return (
     <Modal
@@ -299,6 +287,7 @@ export function AddLeadModal({
       onClose={handleClose}
       title="Add Lead"
       maxWidth="max-w-xl"
+      pending={isPending}
       footer={
         <>
           <Button variant="ghost" type="button" onClick={handleClose} disabled={isPending}>
@@ -308,9 +297,10 @@ export function AddLeadModal({
             variant="primary"
             type="submit"
             form="add-lead-form"
-            disabled={isPending}
+            disabled={isPending || agentsLoading || !!agentError}
             loading={isPending}
-            style={{ minWidth: '6.5rem', boxShadow: 'var(--shadow-accent-glow)' }}
+            loadingLabel="Adding…"
+            style={{ minWidth: '6.5rem' }}
           >
             {isPending ? 'Adding…' : '+ Add Lead'}
           </Button>
@@ -319,44 +309,17 @@ export function AddLeadModal({
     >
       {/* Duplicate warning banner */}
       {duplicateLeadId && (
-        <div
-          style={{
-            display:      'flex',
-            alignItems:   'flex-start',
-            gap:          'var(--space-3)',
-            background:   'var(--color-warning-light)',
-            border:       '1px solid var(--neu-edge)',
-            boxShadow:    'var(--neu-shadow-chip)',
-            borderRadius: 'var(--radius-md)',
-            padding:      'var(--space-3)',
-            marginBottom: 'var(--space-5)',
-          }}
-        >
-          <AlertTriangle
-            style={{
-              width:      '1rem',
-              height:     '1rem',
-              color:      'var(--color-warning-text)',
-              flexShrink: 0,
-              marginTop:  '1px',
-              strokeWidth: 1.5,
-            }}
-          />
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--color-warning-text)', margin: 0, lineHeight: 'var(--leading-normal)' }}>
-            An active lead with this phone number already exists.{' '}
-            <a
-              href={`/leads/${duplicateLeadId}`}
-              style={{ fontWeight: 'var(--weight-semibold)', color: 'var(--color-warning-text)', textDecoration: 'underline' }}
-            >
-              View existing lead →
-            </a>
-          </p>
-        </div>
+        <Alert tone="warning" style={{ marginBottom: 'var(--space-5)' }}>
+          An active lead with this phone number already exists.{' '}
+          <a href={`/leads/${duplicateLeadId}`}>View existing lead →</a>
+        </Alert>
       )}
 
       <form
         id="add-lead-form"
         onSubmit={handleSubmit(onSubmit)}
+        noValidate
+        aria-busy={isPending}
         style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}
       >
         {/* Row 1: First name + Last name */}
@@ -368,85 +331,52 @@ export function AddLeadModal({
           }}
           className="add-lead-name-row"
         >
-          <div>
-            <label htmlFor="al-first-name" style={fieldLabel}>
-              First name <span style={{ color: 'var(--color-danger)' }}>*</span>
-            </label>
-            <input
+          <Field htmlFor="al-first-name" label="First name" required error={errors.first_name?.message}>
+            <Input
               id="al-first-name"
               type="text"
               autoComplete="off"
               disabled={isPending}
               placeholder="First name"
               {...register('first_name')}
-              style={{ ...fieldInput, opacity: isPending ? 0.6 : 1 }}
-              onFocus={focusOn}
-              onBlur={focusOff}
             />
-            {errors.first_name && (
-              <p style={fieldError}>{errors.first_name.message}</p>
-            )}
-          </div>
+          </Field>
 
-          <div>
-            <label htmlFor="al-last-name" style={fieldLabel}>
-              Last name
-            </label>
-            <input
+          <Field htmlFor="al-last-name" label="Last name" error={errors.last_name?.message}>
+            <Input
               id="al-last-name"
               type="text"
               autoComplete="off"
               disabled={isPending}
               placeholder="Last name"
               {...register('last_name')}
-              style={{ ...fieldInput, opacity: isPending ? 0.6 : 1 }}
-              onFocus={focusOn}
-              onBlur={focusOff}
             />
-          </div>
+          </Field>
         </div>
 
         {/* Row 2: Phone */}
-        <div>
-          <label htmlFor="al-phone" style={fieldLabel}>
-            Phone <span style={{ color: 'var(--color-danger)' }}>*</span>
-          </label>
-          <input
+        <Field htmlFor="al-phone" label="Phone" required error={errors.phone?.message}>
+          <Input
             id="al-phone"
             type="tel"
             autoComplete="off"
             disabled={isPending}
             placeholder="+91 98765 43210"
             {...register('phone')}
-            style={{ ...fieldInput, opacity: isPending ? 0.6 : 1 }}
-            onFocus={focusOn}
-            onBlur={focusOff}
           />
-          {errors.phone && (
-            <p style={fieldError}>{errors.phone.message}</p>
-          )}
-        </div>
+        </Field>
 
         {/* Row 3: Email */}
-        <div>
-          <label htmlFor="al-email" style={fieldLabel}>
-            Email
-          </label>
-          <input
+        <Field htmlFor="al-email" label="Email" error={errors.email?.message}>
+          <Input
             id="al-email"
             type="email"
             autoComplete="off"
             disabled={isPending}
             placeholder="name@example.com"
             {...register('email')}
-            style={{ ...fieldInput, opacity: isPending ? 0.6 : 1 }}
-            onFocus={focusOn}
-            onBlur={focusOff}
           />
-          {errors.email && (
-            <p style={fieldError}>{errors.email.message}</p>
-          )}
-        </div>
+        </Field>
 
         {/* Row 4: Source · Domain · Assign to */}
         <div
@@ -462,8 +392,10 @@ export function AddLeadModal({
             <span id="al-source-label" style={fieldLabel}>
               Source
             </span>
-            <div aria-labelledby="al-source-label" style={dropdownWrapStyle}>
+            <div aria-labelledby="al-source-label">
               <FilterDropdown
+                disabled={isPending}
+                ariaLabel={`Source: ${sourceLabel}`}
                 label={sourceLabel}
                 items={LEAD_SOURCE_OPTIONS}
                 selected={watchedSource ? [watchedSource] : []}
@@ -480,8 +412,13 @@ export function AddLeadModal({
               <span id="al-domain-label" style={fieldLabel}>
                 Domain
               </span>
-              <div aria-labelledby="al-domain-label" style={dropdownWrapStyle}>
+              <div aria-labelledby="al-domain-label">
                 <FilterDropdown
+                  disabled={isPending}
+                  clearable={false}
+                  ariaLabel={`Domain: ${domainLabel}`}
+                  invalid={!!errors.domain}
+                  ariaDescribedBy={errors.domain ? "al-domain-error" : undefined}
                   label={domainLabel}
                   items={GIA_DOMAIN_FILTER_ITEMS}
                   selected={watchedDomain ? [watchedDomain] : []}
@@ -492,7 +429,7 @@ export function AddLeadModal({
                 />
               </div>
               {errors.domain && (
-                <p style={fieldError}>{errors.domain.message}</p>
+                <p id="al-domain-error" role="alert" style={fieldError}>{errors.domain.message}</p>
               )}
             </div>
           )}
@@ -504,13 +441,12 @@ export function AddLeadModal({
             {canChangeAssignee ? (
               <div
                 aria-labelledby="al-assigned-to-label"
-                style={{
-                  ...dropdownWrapStyle,
-                  pointerEvents: isPending || agents.length === 0 ? 'none' : dropdownWrapStyle.pointerEvents,
-                  opacity:       isPending || agents.length === 0 ? 0.6 : dropdownWrapStyle.opacity,
-                }}
               >
                 <FilterDropdown
+                  disabled={isPending || agentsLoading || !!agentError || agents.length === 0}
+                  ariaLabel={`Assign to: ${assigneeLabel}`}
+                  invalid={!!errors.assigned_to}
+                  ariaDescribedBy={errors.assigned_to ? "al-assigned-error" : undefined}
                   label={assigneeLabel}
                   items={agentItems}
                   selected={watchedAssignedTo ? [watchedAssignedTo] : []}
@@ -544,7 +480,7 @@ export function AddLeadModal({
               </div>
             )}
             {errors.assigned_to && (
-              <p style={fieldError}>{errors.assigned_to.message}</p>
+              <p id="al-assigned-error" role="alert" style={fieldError}>{errors.assigned_to.message}</p>
             )}
           </div>
         </div>
@@ -575,11 +511,11 @@ export function AddLeadModal({
           </div>
         </div>
 
+        {agentError && <Alert tone="danger" action={<Button variant="ghost" size="sm" onClick={() => setAgentRetry(value => value + 1)}>Retry loading assignees</Button>}>{agentError}</Alert>}
+
         {/* Server error */}
         {serverError && (
-          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-danger-text)', margin: 0 }}>
-            {serverError}
-          </p>
+          <Alert tone="danger">{serverError}</Alert>
         )}
       </form>
     </Modal>

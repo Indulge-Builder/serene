@@ -76,7 +76,7 @@ export function CaseListRow({ serviceCase: c, index = 0, onClick }: CaseListRowP
           height:         '36px',
           borderRadius:   'var(--radius-sm)',
           background:     'var(--theme-accent-surface)',
-          color:          'var(--theme-accent)',
+          color:          "var(--neu-accent-deep)",
           flexShrink:     0,
         }}
       >
@@ -106,7 +106,7 @@ export function CaseListRow({ serviceCase: c, index = 0, onClick }: CaseListRowP
               strokeWidth={1.5}
               aria-label="Featured"
               style={{
-                color:      'var(--theme-accent)',
+                color:      "var(--neu-accent-deep)",
                 fill:       'var(--theme-accent)',
                 flexShrink: 0,
               }}

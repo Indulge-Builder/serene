@@ -1,5 +1,7 @@
 'use client';
 
+import { SelectionButton } from '@/components/ui/SelectionButton';
+import { Button } from '@/components/ui/Button';
 import { Plus } from 'lucide-react';
 import { usePortalAnchor } from '@/hooks/usePortalAnchor';
 import { FloatingPanel } from '@/components/ui/FloatingPanel';
@@ -36,31 +38,15 @@ export function AddWidgetMenu({
 
   return (
     <>
-      <button
+      <Button
+        variant="control"
+        iconOnly={isMobile}
         ref={anchor.triggerRef}
         type="button"
         onClick={anchor.toggle}
         aria-expanded={anchor.open}
         aria-haspopup="menu"
         aria-label="Add a widget"
-        className="serene-pressable serene-touch"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 'var(--space-1)',
-          fontSize: 'var(--text-xs)',
-          fontWeight: 'var(--weight-medium)',
-          color: 'var(--theme-text-secondary)',
-          background: 'var(--theme-paper-subtle)',
-          border: '1px solid var(--theme-paper-border)',
-          borderRadius: isMobile ? 'var(--radius-full)' : 'var(--radius-sm)',
-          cursor: 'pointer',
-          padding: isMobile ? 0 : '0 var(--space-3)',
-          width: isMobile ? '32px' : undefined,
-          height: '32px',
-          flexShrink: 0,
-        }}
       >
         <Plus size={isMobile ? 15 : 12} strokeWidth={1.5} />
         {!isMobile && 'Add widget'}
@@ -72,7 +58,7 @@ export function AddWidgetMenu({
               padding: '0 var(--space-1)',
               borderRadius: 'var(--radius-full)',
               background: 'var(--theme-accent-surface)',
-              color: 'var(--theme-accent)',
+              color: "var(--neu-accent-deep)",
               fontSize: 'var(--text-2xs)',
               fontWeight: 'var(--weight-semibold)',
               display: 'inline-flex',
@@ -83,7 +69,7 @@ export function AddWidgetMenu({
             {available.length}
           </span>
         )}
-      </button>
+      </Button>
 
       <FloatingPanel {...anchor.panelProps} panelKey="add-widget" style={{ width: '300px', padding: 'var(--space-2)' }}>
         {available.length === 0 ? (
@@ -94,31 +80,21 @@ export function AddWidgetMenu({
         ) : (
           <div role="menu" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)', maxHeight: '320px', overflowY: 'auto' }}>
             {available.map((w) => (
-              <button
+              <SelectionButton
+                appearance="option"
                 key={w.id}
                 role="menuitem"
                 type="button"
                 onClick={() => onAdd(w.id)}
                 className="serene-pressable"
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--space-3)',
-                  width: '100%',
-                  textAlign: 'left',
-                  padding: 'var(--space-2) var(--space-3)',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px solid transparent',
-                  background: 'transparent',
-                  cursor: 'pointer',
-                  transition: 'background var(--duration-fast) var(--ease-in-out)',
-                }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.background = 'var(--neu-accent-wash)';
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.background = 'transparent';
-                }}
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 'var(--space-3)',
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: 'var(--space-2) var(--space-3)',
+                    }}
               >
                 <span style={{ display: 'flex', flexDirection: 'column', gap: '0.125rem', flex: 1, minWidth: 0 }}>
                   <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: 'var(--theme-text-primary)' }}>
@@ -128,8 +104,8 @@ export function AddWidgetMenu({
                     {w.description}
                   </span>
                 </span>
-                <Plus size={16} strokeWidth={1.5} style={{ color: 'var(--theme-accent)', flexShrink: 0 }} />
-              </button>
+                <Plus size={16} strokeWidth={1.5} style={{ color: "var(--neu-accent-deep)", flexShrink: 0 }} />
+              </SelectionButton>
             ))}
           </div>
         )}

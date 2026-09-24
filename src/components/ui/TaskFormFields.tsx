@@ -18,6 +18,7 @@
  * or task-type radio list inline — extend this file.
  */
 
+import { SelectionButton } from '@/components/ui/SelectionButton';
 import { DatePicker } from '@/components/ui/DatePicker';
 import { TASK_PRIORITY } from '@/lib/constants/task-constants';
 import { TASK_TYPES, TASK_TYPE_LABELS } from '@/lib/constants/task-types';
@@ -43,7 +44,7 @@ export function FieldLabel({
       style={{ display: 'block', marginBottom: 'var(--space-1)', ...style }}
     >
       {children}
-      {required && <span style={{ color: 'var(--color-danger)' }}> *</span>}
+      {required && <span style={{ color: "var(--color-danger-text)" }}> *</span>}
       {optional && (
         <span style={{ fontWeight: 'var(--weight-normal)', textTransform: 'none', letterSpacing: 0 }}>
           {' '}(optional)
@@ -62,7 +63,7 @@ export function FieldError({ message }: { message: string | null | undefined }) 
       style={{
         fontFamily:   'var(--font-sans)',
         fontSize:     'var(--text-xs)',
-        color:        'var(--color-danger)',
+        color:        "var(--color-danger-text)",
         marginTop:    'var(--space-1)',
         marginBottom: 0,
       }}
@@ -90,37 +91,26 @@ export function FormChip({
   disabled?: boolean;
 }) {
   return (
-    <button
+    <SelectionButton
+      tone={color ? { fill: `color-mix(in srgb, ${color} 12%, var(--neu-surface))`, ink: 'var(--neu-text-primary)' } : undefined}
+      appearance="choice"
+      selected={active}
+      aria-pressed={active}
       type="button"
       onClick={onClick}
       disabled={disabled}
       style={{
-        display:      'inline-flex',
-        alignItems:   'center',
-        height:       28,
-        padding:      '0 var(--space-3)',
-        borderRadius: 'var(--radius-full)',
-        // Selected chips FLOAT on a wash + chip shadow — never a coloured border.
-        border:       '1px solid var(--theme-paper-border)',
-        background:   active
-          ? `color-mix(in srgb, ${color ?? 'var(--theme-accent)'} 12%, var(--neu-surface))`
-          : 'transparent',
-        boxShadow:    active ? 'var(--neu-shadow-chip)' : 'none',
-        color:        active
-          ? (color ?? 'var(--neu-accent-deep)')
-          : 'var(--theme-text-secondary)',
-        fontFamily:   'var(--font-sans)',
-        fontSize:     'var(--text-xs)',
-        fontWeight:   active ? 'var(--weight-semibold)' : 'var(--weight-normal)',
-        cursor:       disabled ? 'not-allowed' : 'pointer',
-        opacity:      disabled ? 0.6 : 1,
-        transition:   'var(--transition-hover)',
-        whiteSpace:   'nowrap',
-        flexShrink:   0,
-      }}
+              display: 'inline-flex',
+              alignItems: 'center',
+              height: 28,
+              padding: '0 var(--space-3)',
+              fontSize: 'var(--text-xs)',
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
+          }}
     >
       {label}
-    </button>
+    </SelectionButton>
   );
 }
 
@@ -162,6 +152,7 @@ export function PriorityChipRow({
               key={p}
               type="button"
               title={cfg.label}
+              aria-pressed={isActive}
               aria-label={cfg.label}
               disabled={disabled}
               onClick={() => handleClick(p)}

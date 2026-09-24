@@ -1,5 +1,8 @@
 'use client';
 
+import { EmptyState } from './EmptyState';
+import { LoadingState } from './LoadingState';
+import { Button } from '@/components/ui/Button';
 import React from 'react';
 import { ChevronDown } from 'lucide-react';
 
@@ -94,6 +97,7 @@ export function Table<T>({
       }}
     >
       <table
+        aria-busy={loading}
         style={{
           width:           '100%',
           borderCollapse:  'collapse',
@@ -112,11 +116,12 @@ export function Table<T>({
             {columns.map((col) => (
               <th
                 key={col.id}
+                scope="col"
                 className="label-micro"
                 style={{
                   width:       col.width,
                   padding:     'var(--space-2) var(--space-4)',
-                  background:  'var(--theme-paper-subtle)',
+                  background:  'var(--neu-table-header-bg)',
                   borderBottom:'1px solid var(--theme-paper-border)',
                   textAlign:   col.align ?? 'left',
                   fontWeight:  'var(--weight-semibold)',
@@ -130,7 +135,7 @@ export function Table<T>({
         </thead>
 
         <tbody>
-          {loading || rows.length === 0 ? (
+          {rows.length === 0 ? (
             <tr>
               <td
                 colSpan={columns.length}
@@ -140,18 +145,7 @@ export function Table<T>({
                   color:      'var(--theme-text-tertiary)',
                 }}
               >
-                {loading ? null : (emptyState ?? (
-                  <span
-                    style={{
-                      fontFamily:  'var(--font-serif)',
-                      fontStyle:   'italic',
-                      fontSize:    'var(--text-base)',
-                      color:       'var(--theme-text-tertiary)',
-                    }}
-                  >
-                    Nothing to show here.
-                  </span>
-                ))}
+                {loading ? <LoadingState label="Loading records…" /> : (emptyState ?? <EmptyState title="Nothing to show here." />)}
               </td>
             </tr>
           ) : (
@@ -163,25 +157,28 @@ export function Table<T>({
               return (
                 <tr
                   key={key}
-                  onClick={onRowClick ? () => onRowClick(row) : undefined}
-                  className={entering ? 'serene-row-enter' : undefined}
+                  onClick={onRowClick ? (event) => {
+                    if (event.target instanceof Element && event.target.closest('button,a,input,select,textarea,[role="button"],[role="checkbox"],[contenteditable="true"]')) return;
+                    onRowClick(row);
+                  } : undefined}
+                  tabIndex={onRowClick ? 0 : undefined}
+                  onKeyDown={onRowClick ? (event) => {
+                    if (event.target !== event.currentTarget) return;
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      onRowClick(row);
+                    }
+                  } : undefined}
+                  className={entering ? 'serene-table-row serene-row-enter' : 'serene-table-row'}
+                  data-selected={isSelected}
+                  data-interactive={!!onRowClick}
                   style={{
-                    background:  isSelected ? 'var(--theme-accent-surface)' : 'transparent',
                     cursor:      onRowClick ? 'pointer' : 'default',
                     transition:  'background var(--duration-fast) var(--ease-in-out)',
                     borderBottom:'1px solid var(--theme-paper-border)',
                     animationDelay: entering ? `${i * 30}ms` : undefined,
                   }}
-                  onMouseEnter={(e) => {
-                    if (!isSelected) {
-                      (e.currentTarget as HTMLTableRowElement).style.background = 'color-mix(in srgb, var(--theme-accent) 5%, transparent)';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (!isSelected) {
-                      (e.currentTarget as HTMLTableRowElement).style.background = 'transparent';
-                    }
-                  }}
+
                 >
                   {columns.map((col) => (
                     <td
@@ -203,40 +200,21 @@ export function Table<T>({
           {!loading && collapsed && (
             <tr>
               <td colSpan={columns.length} style={{ padding: 0 }}>
-                <button
+                <Button
+                  variant="ghost"
+                  style={{ width: '100%' }}
                   type="button"
                   onClick={() => setExpanded(true)}
-                  className="serene-pressable"
-                  style={{
-                    width:          '100%',
-                    display:        'flex',
-                    alignItems:     'center',
-                    justifyContent: 'center',
-                    gap:            'var(--space-1)',
-                    padding:        'var(--space-3) var(--space-4)',
-                    background:     'transparent',
-                    border:         'none',
-                    cursor:         'pointer',
-                    fontFamily:     'var(--font-sans)',
-                    fontSize:       'var(--text-xs)',
-                    color:          'var(--theme-text-secondary)',
-                    transition:     'color var(--duration-fast) var(--ease-in-out)',
-                  }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLButtonElement).style.color = 'var(--theme-accent)';
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLButtonElement).style.color = 'var(--theme-text-secondary)';
-                  }}
                 >
                   Show all {rows.length}
                   <ChevronDown style={{ width: '12px', height: '12px', strokeWidth: 1.5 }} aria-hidden />
-                </button>
+                </Button>
               </td>
             </tr>
           )}
         </tbody>
       </table>
+      {loading && rows.length > 0 && <LoadingState label="Updating records…" />}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@/components/ui/Button';
 import { useState } from 'react';
 import { Download } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
@@ -72,38 +73,16 @@ export function ExportButton({ filters }: ExportButtonProps) {
 
   return (
     <>
-      <button
+      <Button
+        variant="control"
+        iconMotion="drop"
         onClick={() => setOpen(true)}
-        className="serene-pressable serene-icon-drop-hover"
-        style={{
-          display:      'inline-flex',
-          alignItems:   'center',
-          gap:          'var(--space-1)',
-          height:       '2.25rem',
-          padding:      '0 var(--space-3)',
-          border:       '1px solid var(--theme-paper-border)',
-          borderRadius: 'var(--radius-sm)',
-          background:   'transparent',
-          color:        'var(--theme-text-secondary)',
-          fontSize:     'var(--text-sm)',
-          cursor:       'pointer',
-          flexShrink:   0,
-          transition:   'background var(--duration-fast) var(--ease-in-out), color var(--duration-fast) var(--ease-in-out), transform var(--duration-instant) var(--ease-spring)',
-        }}
-        onMouseEnter={(e) => {
-          (e.currentTarget as HTMLButtonElement).style.background = 'color-mix(in srgb, var(--theme-accent) 5%, transparent)';
-          (e.currentTarget as HTMLButtonElement).style.color = 'var(--theme-text-primary)';
-        }}
-        onMouseLeave={(e) => {
-          (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
-          (e.currentTarget as HTMLButtonElement).style.color = 'var(--theme-text-secondary)';
-        }}
         aria-label="Export leads"
         type="button"
       >
         <Download style={{ width: '1rem', height: '1rem', strokeWidth: 1.5 }} />
         <span className="max-md:hidden">Export</span>
-      </button>
+      </Button>
 
       <AnimatePresence>
         {open && (

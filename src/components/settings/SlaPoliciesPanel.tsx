@@ -390,7 +390,9 @@ export function SlaPoliciesPanel({ initialPolicies }: SlaPoliciesPanelProps) {
               {/* Advanced disclosure (channels + hours basis per step) */}
               {hasAdvanced && (
                 <>
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     type="button"
                     onClick={() => toggleAdvanced(card.key)}
                     style={{
@@ -398,25 +400,13 @@ export function SlaPoliciesPanel({ initialPolicies }: SlaPoliciesPanelProps) {
                       alignItems:  "center",
                       gap:         "var(--space-2)",
                       width:       "100%",
-                      padding:     "var(--space-3) var(--space-5)",
-                      border:      "none",
                       borderTop:   "1px solid var(--theme-paper-border)",
-                      background:  "transparent",
-                      cursor:      "pointer",
-                      fontFamily:  "var(--font-sans)",
-                      fontSize:    "var(--text-2xs)",
-                      fontWeight:  "var(--weight-semibold)",
-                      letterSpacing: "var(--tracking-wide)",
                       textTransform: "uppercase",
-                      color:       isAdvancedOpen
-                        ? "var(--theme-accent)"
-                        : "var(--theme-text-tertiary)",
-                      transition:  "color var(--duration-fast) var(--ease-in-out)",
                     }}
                   >
                     <SlidersHorizontal style={{ width: 13, height: 13, strokeWidth: 1.5 }} />
                     {isAdvancedOpen ? "Hide advanced" : "Advanced — channels & timing"}
-                  </button>
+                  </Button>
 
                   <AnimatePresence initial={false}>
                     {isAdvancedOpen && (

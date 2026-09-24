@@ -153,7 +153,12 @@ export function NotesManager({ initialNotes }: NotesManagerProps) {
             description="Notes you write will appear here, and Elaya will keep them in mind whenever she helps you."
             minHeight="340px"
             action={
-              <Button variant="primary" iconLeft={Plus} onClick={openCreate} disabled={atCap}>
+              <Button
+                variant="primary"
+                iconLeft={Plus}
+                onClick={openCreate}
+                disabled={atCap}
+              >
                 Add a note
               </Button>
             }
@@ -247,37 +252,26 @@ function NoteCard({
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", flexShrink: 0 }}>
-        <button
+        <Button
+          variant="control"
+          size="sm"
           type="button"
           onClick={onEdit}
           aria-label="Edit note"
-          style={actionBtnStyle}
-          onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--theme-accent-muted)"; e.currentTarget.style.color = "var(--theme-text-primary)"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--theme-paper-border)"; e.currentTarget.style.color = "var(--theme-text-secondary)"; }}
         >
           <Pencil style={{ width: 12, height: 12, strokeWidth: 1.5 }} />
           Edit
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="danger"
+          size="sm"
           type="button"
           onClick={onDelete}
           aria-label="Delete note"
-          style={actionBtnStyle}
-          onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--color-danger)"; e.currentTarget.style.color = "var(--color-danger-text)"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--theme-paper-border)"; e.currentTarget.style.color = "var(--theme-text-secondary)"; }}
         >
           <Trash2 style={{ width: 12, height: 12, strokeWidth: 1.5 }} />Delete
-        </button>
+        </Button>
       </div>
     </div>
   );
 }
-
-const actionBtnStyle: React.CSSProperties = {
-  display: "inline-flex", alignItems: "center", gap: "var(--space-1)",
-  padding: "var(--space-1) var(--space-3)", background: "transparent",
-  border: "1px solid var(--theme-paper-border)", borderRadius: "var(--radius-sm)",
-  fontFamily: "var(--font-sans)", fontSize: "var(--text-xs)", fontWeight: "var(--weight-medium)",
-  color: "var(--theme-text-secondary)", cursor: "pointer",
-  transition: "var(--transition-interactive)", whiteSpace: "nowrap",
-};

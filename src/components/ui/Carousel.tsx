@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@/components/ui/Button';
 import React, { useRef } from 'react';
 import { m as motion } from 'framer-motion';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -231,7 +232,8 @@ function CarouselArrow({
 }) {
   const Icon = side === 'left' ? ChevronLeft : ChevronRight;
   return (
-    <button
+    <Button
+      variant="control" iconOnly
       type="button"
       onClick={onClick}
       disabled={disabled}
@@ -244,20 +246,10 @@ function CarouselArrow({
         width: '2.25rem',
         height: '2.25rem',
         flexShrink: 0,
-        borderRadius: 'var(--radius-full)',
-        // Raised = touchable: buttons sit on the surface tone, never the well.
-        background: 'var(--neu-surface)',
-        border: '1px solid var(--theme-paper-border)',
-        boxShadow: 'var(--shadow-1)',
-        color: disabled ? 'var(--theme-text-tertiary)' : 'var(--theme-text-primary)',
-        cursor: disabled ? 'default' : 'pointer',
-        opacity: disabled ? 0.45 : 1,
         pointerEvents: disabled ? 'none' : undefined,
-        transition:
-          'opacity var(--duration-fast) var(--ease-in-out), border-color var(--duration-fast) var(--ease-in-out), color var(--duration-fast) var(--ease-in-out)',
       }}
     >
       <Icon style={{ width: '1.05rem', height: '1.05rem', strokeWidth: 1.5 }} aria-hidden="true" />
-    </button>
+    </Button>
   );
 }

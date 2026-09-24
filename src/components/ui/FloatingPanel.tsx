@@ -1,5 +1,6 @@
 'use client';
 
+import { useModalScope } from '@/hooks/useModalFocus';
 import { createPortal } from 'react-dom';
 import { m as motion, AnimatePresence } from 'framer-motion';
 import {
@@ -42,6 +43,7 @@ export function FloatingPanel({
   style,
   children,
 }: FloatingPanelProps) {
+  const modalScope = useModalScope();
   if (!mounted || typeof document === 'undefined') return null;
 
   return createPortal(
@@ -49,6 +51,7 @@ export function FloatingPanel({
       {open && (
         <motion.div
           ref={panelRef}
+          data-modal-owner={modalScope}
           key={panelKey}
           variants={position.flipUp ? DROPDOWN_VARIANTS_UP : DROPDOWN_VARIANTS}
           initial="hidden"

@@ -1,5 +1,7 @@
 'use client';
 
+import { useRef as useModalPanelRef } from 'react';
+import { ModalScopeContext, useModalFocus } from '@/hooks/useModalFocus';
 import { useEffect, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, m as motion } from 'framer-motion';
@@ -90,6 +92,9 @@ export function MobileDrawer({
   open: boolean;
   onClose: () => void;
 }) {
+  const modalPanelRef = useModalPanelRef<HTMLDivElement>(null);
+  const modalScopeId = useModalFocus(open, modalPanelRef, onClose);
+
   const session = useMobileSession();
   const rooms = getMobileRooms(session.role);
   const router = useRouter();
@@ -100,7 +105,7 @@ export function MobileDrawer({
     return lockBodyScroll();
   }, [open]);
 
-  return (
+  return <ModalScopeContext.Provider value={modalScopeId}>{(
     <AnimatePresence>
       {open && (
         <div className="fixed inset-0 z-50">
@@ -113,7 +118,7 @@ export function MobileDrawer({
             className="absolute inset-0"
             style={{ background: 'var(--neu-m-scrim)', backdropFilter: 'blur(2px)' }}
           />
-          <motion.div
+          <motion.div ref={modalPanelRef} tabIndex={-1}
             initial={{ x: '-105%' }}
             animate={{ x: 0 }}
             exit={{ x: '-105%' }}
@@ -132,6 +137,7 @@ export function MobileDrawer({
               paddingTop: 'max(20px, env(safe-area-inset-top))',
             }}
             role="dialog"
+            aria-modal="true"
             aria-label="The rest of the house"
           >
             {/* Profile row */}
@@ -211,5 +217,5 @@ export function MobileDrawer({
         </div>
       )}
     </AnimatePresence>
-  );
+  )}</ModalScopeContext.Provider>;
 }

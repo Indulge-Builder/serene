@@ -92,6 +92,8 @@ export function ProfileAvatarSection({ profile }: Props) {
         type="button"
         onClick={() => !uploading && fileInputRef.current?.click()}
         aria-label="Change profile photo"
+        disabled={uploading}
+        aria-busy={uploading || undefined}
         style={{
           display:      "block",
           position:     "relative",
@@ -115,7 +117,7 @@ export function ProfileAvatarSection({ profile }: Props) {
         }}
       >
         {avatarUrl ? (
-           
+
           <img
             src={avatarUrl}
             alt={profile.full_name}
@@ -132,7 +134,7 @@ export function ProfileAvatarSection({ profile }: Props) {
               fontFamily:     "var(--font-sans)",
               fontSize:       "var(--text-2xl)",
               fontWeight:     "var(--weight-semibold)",
-              color:          "var(--theme-accent)",
+              color:          "var(--neu-accent-deep)",
               letterSpacing:  "var(--tracking-tight)",
             }}
           >

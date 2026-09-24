@@ -37,7 +37,13 @@ export function MemberPeopleCard({ clientId, people }: { clientId: string; peopl
   }
 
   return (
-    <div style={{ background: 'var(--theme-paper)', border: '1px solid var(--theme-paper-border)', borderRadius: 'var(--neu-radius-card)', boxShadow: 'var(--shadow-1)', overflow: 'hidden' }}>
+    <div style={{
+      background: 'var(--theme-paper)',
+      border: '1px solid var(--theme-paper-border)',
+      borderRadius: 'var(--neu-radius-card)',
+      boxShadow: 'var(--shadow-1)',
+      overflow: 'hidden',
+    }}>
       <CardHeader icon={UsersRound} label="People" right={<span style={{ marginLeft: 'auto' }}><Button variant="ghost" size="xs" onClick={() => setAdding((v) => !v)}>Add</Button></span>} />
       <div style={{ padding: 'var(--space-4) var(--space-6) var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
         {people.length === 0 && !adding && <EmptyState variant="inline" title="Only the member so far." description="Add the spouse, the children, the driver: who is around them and who may ask." />}
@@ -45,9 +51,17 @@ export function MemberPeopleCard({ clientId, people }: { clientId: string; peopl
           <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', fontSize: 'var(--text-sm)' }}>
             <span style={{ fontWeight: 'var(--weight-medium)' }}>{p.name}</span>
             <span style={{ color: 'var(--theme-text-tertiary)', fontSize: 'var(--text-xs)' }}>{p.relation}{p.phone_e164 ? ` · ${p.phone_e164}` : ''}{p.note ? ` · ${p.note}` : ''}</span>
-            <button type="button" onClick={() => remove(p.id)} aria-label={`Remove ${p.name}`} disabled={pending} style={{ marginLeft: 'auto', background: 'none', border: 0, cursor: 'pointer', color: 'var(--theme-text-tertiary)', display: 'inline-flex' }}>
+            <Button
+              variant="danger"
+              iconOnly size="sm"
+              type="button"
+              onClick={() => remove(p.id)}
+              aria-label={`Remove ${p.name}`}
+              disabled={pending}
+              style={{ marginLeft: 'auto', display: 'inline-flex' }}
+            >
               <X style={{ width: 12, height: 12 }} />
-            </button>
+            </Button>
           </div>
         ))}
         {adding && (

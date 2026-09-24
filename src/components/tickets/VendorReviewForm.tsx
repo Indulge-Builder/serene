@@ -4,6 +4,7 @@
 // is resolved (founder, 2026-09-19). Four ratings of 1 to 5, any subset, and a few words. The
 // review lands on the vendor's record against this ticket's job, which is what moves their score.
 
+import { SelectionButton } from '@/components/ui/SelectionButton';
 import { useState, useTransition } from 'react';
 import { Button } from '@/components/ui/Button';
 import { toast } from '@/lib/toast';
@@ -38,12 +39,23 @@ export function VendorReviewForm({ ticketId, vendorName, onDone }: { ticketId: s
             {Array.from({ length: REVIEW_RATING_MAX }, (_, i) => i + 1).map((n) => {
               const on = ratings[d] === n;
               return (
-                <button key={n} type="button" role="radio" aria-checked={on} disabled={pending}
+                <SelectionButton
+                  appearance="choice" selected={on}
+                  key={n}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  disabled={pending}
                   onClick={() => setRatings((r) => ({ ...r, [d]: on ? undefined : n }))}
                   className="serene-pressable"
-                  style={{ width: 32, height: 32, borderRadius: 'var(--radius-full)', border: '1px solid var(--theme-paper-border)', cursor: 'pointer', fontSize: 'var(--text-sm)', fontFamily: 'var(--font-mono)', background: on ? 'var(--theme-accent)' : 'var(--theme-paper)', color: on ? 'var(--theme-accent-fg)' : 'var(--theme-text-secondary)' }}>
+                  style={{
+                    width: 32,
+                    height: 32,
+                    fontSize: 'var(--text-sm)',
+                  }}
+                >
                   {n}
-                </button>
+                </SelectionButton>
               );
             })}
           </div>

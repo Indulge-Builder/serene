@@ -51,7 +51,13 @@ export function MemberFactsCard({ clientId, facts, facets, title, icon }: { clie
   }
 
   return (
-    <div style={{ background: 'var(--theme-paper)', border: '1px solid var(--theme-paper-border)', borderRadius: 'var(--neu-radius-card)', boxShadow: 'var(--shadow-1)', overflow: 'hidden' }}>
+    <div style={{
+      background: 'var(--theme-paper)',
+      border: '1px solid var(--theme-paper-border)',
+      borderRadius: 'var(--neu-radius-card)',
+      boxShadow: 'var(--shadow-1)',
+      overflow: 'hidden',
+    }}>
       <CardHeader icon={ICONS[icon]} label={title} />
       <div style={{ padding: 'var(--space-4) var(--space-6) var(--space-5)' }}>
         {groups.length === 0 && !composing && (
@@ -65,17 +71,28 @@ export function MemberFactsCard({ clientId, facts, facets, title, icon }: { clie
                 <div className="label-micro" style={{ color: 'var(--theme-text-tertiary)', marginBottom: 'var(--space-1)' }}>{keyLabel(facet, key)}</div>
                 <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '2px' }}>
                   {list.map((f) => (
-                    <li key={f.id} style={{ fontSize: 'var(--text-sm)', color: f.polarity === 'dislikes' ? 'var(--color-danger-text)' : 'var(--theme-text-primary)', display: 'flex', alignItems: 'baseline', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+                    <li key={f.id} style={{
+                      fontSize: 'var(--text-sm)',
+                      color: f.polarity === 'dislikes' ? 'var(--color-danger-text)' : 'var(--theme-text-primary)',
+                      display: 'flex',
+                      alignItems: 'baseline',
+                      gap: 'var(--space-2)',
+                      flexWrap: 'wrap',
+                    }}>
                       <span>{f.polarity === 'dislikes' ? 'Avoids ' : ''}{f.value}</span>
                       <span title={`${f.sources.map((src) => FACT_SOURCES.labels[src] ?? src).join(' and ')}, ${formatDate(f.observed_at, 'd MMM yyyy')}${f.created_by_name ? `, by ${f.created_by_name}` : ''}, confidence ${Math.round(f.confidence * 100)}%`}
                         style={{ fontSize: 'var(--text-2xs)', color: 'var(--theme-text-tertiary)', display: 'inline-flex', alignItems: 'center', gap: 2 }}>
                         {f.source === 'agent_note' ? <ShieldCheck style={{ width: 10, height: 10 }} /> : <Sparkles style={{ width: 10, height: 10 }} />}
                         {formatDate(f.observed_at, 'MMM yy')}{f.sources.length > 1 ? ` · ${f.sources.length} sources` : ''}
                       </span>
-                      <button type="button" onClick={() => setComposing({ facet: f.facet, key: f.key, polarity: f.polarity, value: f.value, supersedes: f.id })}
-                        style={{ background: 'none', border: 0, padding: 0, cursor: 'pointer', fontSize: 'var(--text-2xs)', color: 'var(--neu-accent-deep)' }}>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        type="button"
+                        onClick={() => setComposing({ facet: f.facet, key: f.key, polarity: f.polarity, value: f.value, supersedes: f.id })}
+                      >
                         correct
-                      </button>
+                      </Button>
                     </li>
                   ))}
                 </ul>
@@ -85,7 +102,14 @@ export function MemberFactsCard({ clientId, facts, facets, title, icon }: { clie
         </div>
 
         {composing && (
-          <div style={{ marginTop: 'var(--space-4)', paddingTop: 'var(--space-4)', borderTop: '1px solid var(--theme-paper-border)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+          <div style={{
+            marginTop: 'var(--space-4)',
+            paddingTop: 'var(--space-4)',
+            borderTop: '1px solid var(--theme-paper-border)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 'var(--space-2)',
+          }}>
             <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
               <select className="serene-input neu-input" value={composing.facet} onChange={(e) => setComposing({ ...composing, facet: e.target.value as MemberFacet })} style={{ width: 140 }} disabled={Boolean(composing.supersedes)}>
                 {facets.map((f) => <option key={f} value={f}>{CLIENT_FACETS.labels[f]}</option>)}

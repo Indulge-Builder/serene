@@ -1,5 +1,6 @@
 "use client";
 
+import { UploadButton } from '@/components/ui/UploadButton';
 import { useEffect, useRef, useState } from "react";
 import { UploadCloud, FileText, ChevronDown, X } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
@@ -63,7 +64,7 @@ const chevronStyle: React.CSSProperties = {
   flexShrink:    0,
 };
 
-const requiredStar = <span style={{ color: "var(--color-danger)" }}>*</span>;
+const requiredStar = <span style={{ color: "var(--color-danger-text)" }}>*</span>;
 
 export function TrainingAssetFormModal({
   open,
@@ -240,7 +241,12 @@ export function TrainingAssetFormModal({
       maxWidth="max-w-2xl"
       footer={
         <>
-          <Button variant="ghost" type="button" onClick={onClose} disabled={busy}>
+          <Button
+            variant="ghost"
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+          >
             Cancel
           </Button>
           <Button
@@ -363,32 +369,24 @@ export function TrainingAssetFormModal({
                   <p style={{ fontSize: "var(--text-sm)", color: "var(--theme-text-primary)", margin: 0 }}>
                     {storagePath ? "File uploaded" : "Linked"}
                   </p>
-                  <button
+                  <Button
+                    variant="control"
+                    size="sm"
+                    style={{ marginTop: "var(--space-1)" }}
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     disabled={busy}
-                    style={{
-                      marginTop: "var(--space-1)", fontSize: "var(--text-xs)",
-                      color: "var(--theme-accent)", background: "none", border: "none",
-                      cursor: busy ? "not-allowed" : "pointer", padding: 0,
-                    }}
                   >
                     Replace file
-                  </button>
+                  </Button>
                 </div>
               </div>
             ) : (
-              <button
+              <UploadButton
+                busy={uploading}
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
-                style={{
-                  width: "100%", display: "flex", flexDirection: "column", alignItems: "center",
-                  justifyContent: "center", gap: "var(--space-2)", padding: "var(--space-8) var(--space-4)",
-                  background: "var(--theme-paper-subtle)", border: "1px dashed var(--theme-paper-border)",
-                  borderRadius: "var(--radius-md)", cursor: uploading ? "wait" : "pointer",
-                  color: "var(--theme-text-secondary)",
-                }}
               >
                 {uploading ? (
                   <>
@@ -406,7 +404,7 @@ export function TrainingAssetFormModal({
                     )}
                   </>
                 )}
-              </button>
+              </UploadButton>
             )}
             {/* Paste-a-link alternative for media kinds (satisfies the refine via url) */}
             <input
@@ -447,19 +445,21 @@ export function TrainingAssetFormModal({
                   style={{
                     display: "inline-flex", alignItems: "center", gap: "var(--space-1)",
                     padding: "2px var(--space-2)", background: "var(--theme-accent-surface)",
-                    color: "var(--theme-accent)", borderRadius: "var(--radius-full)",
+                    color: "var(--neu-accent-deep)", borderRadius: "var(--radius-full)",
                     fontSize: "var(--text-xs)",
                   }}
                 >
                   {t}
-                  <button
+                  <Button
+                    variant="ghost"
+                    iconOnly size="sm"
                     type="button"
                     onClick={() => setTags((prev) => prev.filter((x) => x !== t))}
                     aria-label={`Remove ${t}`}
-                    style={{ background: "none", border: "none", color: "inherit", cursor: "pointer", padding: 0, display: "inline-flex" }}
+                    style={{ display: "inline-flex" }}
                   >
                     <X style={{ width: 12, height: 12, strokeWidth: 2 }} />
-                  </button>
+                  </Button>
                 </span>
               ))}
             </div>

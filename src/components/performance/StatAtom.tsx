@@ -1,5 +1,7 @@
 'use client';
 
+import { clayTileStyle } from '@/components/ui/material-styles';
+
 import { m as motion } from 'framer-motion';
 import { ENTER_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber';
@@ -44,14 +46,11 @@ export function StatAtom({ label, value, paletteIndex, delay = 0, onClick }: Sta
           justifyContent: 'space-between',
           gap:            'var(--space-2)',
           padding:        'var(--space-3) var(--space-4)',
-          background:     p.bg,
-          borderRadius:   'var(--radius-lg)',
-          border:         '1px solid var(--neu-edge)',
+        ...clayTileStyle(p.bg),
           minWidth:       0,
           overflow:       'hidden',
           cursor:         'pointer',
           textAlign:      'left',
-          boxShadow:      'var(--neu-shadow-chip)',
           transition:     'box-shadow var(--duration-fast) var(--ease-in-out)',
         }}
       >
@@ -72,10 +71,7 @@ export function StatAtom({ label, value, paletteIndex, delay = 0, onClick }: Sta
         justifyContent: 'space-between',
         gap:            'var(--space-2)',
         padding:        'var(--space-3) var(--space-4)',
-        background:     p.bg,
-        borderRadius:   'var(--radius-lg)',
-        border:         '1px solid var(--neu-edge)',
-        boxShadow:      'var(--neu-shadow-chip)',
+        ...clayTileStyle(p.bg),
         minWidth:       0,
         overflow:       'hidden',
       }}

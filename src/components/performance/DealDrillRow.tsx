@@ -75,7 +75,7 @@ export function DealDrillRow({ deal }: { deal: DealDrillRowItem }) {
           fontFamily: 'var(--font-serif)',
           fontSize: 'var(--text-base)',
           fontWeight: 'var(--weight-light)',
-          color: 'var(--theme-accent)',
+          color: "var(--neu-accent-deep)",
         }}
       >
         {formatCurrency(deal.deal_amount)}

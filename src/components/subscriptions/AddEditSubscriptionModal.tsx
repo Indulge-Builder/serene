@@ -8,10 +8,12 @@ import { useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Save, Eye, EyeOff, type LucideIcon } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { Input, Textarea, Select } from "@/components/ui/Field";
+import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { FilterDropdown } from "@/components/ui/FilterDropdown";
 import { useToast } from "@/hooks/useToast";
-import { FIELD_LABEL_STYLE, INPUT_STYLE, HELP_TEXT_STYLE } from "./form-styles";
+import { FIELD_LABEL_STYLE, HELP_TEXT_STYLE } from "./form-styles";
 import {
   SUBSCRIPTION_TYPE_OPTIONS,
   SUBSCRIPTION_CURRENCY_OPTIONS,
@@ -55,6 +57,7 @@ export function AddEditSubscriptionModal({ open, onClose, subscription, toolOpti
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [notes, setNotes] = useState(subscription?.notes ?? "");
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   // Re-seed every field each time the modal OPENS.
@@ -69,6 +72,7 @@ export function AddEditSubscriptionModal({ open, onClose, subscription, toolOpti
   // The AddLeadModal precedent (R-01), which does the same on `open`.
   useEffect(() => {
     if (!open) return;
+    setSaveError(null);
     setName(subscription?.name ?? "");
     setToolName(subscription?.toolName ?? "");
     setDepartments(subscription?.departments ?? []);
@@ -103,6 +107,7 @@ export function AddEditSubscriptionModal({ open, onClose, subscription, toolOpti
 
   function handleSubmit() {
     if (!canSubmit) return;
+    setSaveError(null);
     const payload = {
       name: name.trim(),
       departments,
@@ -120,25 +125,28 @@ export function AddEditSubscriptionModal({ open, onClose, subscription, toolOpti
     };
 
     startTransition(async () => {
-      const result = isEdit
-        ? await updateSubscriptionAction({ ...payload, id: subscription!.id })
-        : await createSubscriptionAction(payload);
-      if (result.error || !result.data) {
-        toast.danger(isEdit ? "Couldn't update subscription" : "Couldn't add subscription", {
-          message: result.error ?? undefined,
-        });
-        return;
+      try {
+        const result = isEdit
+          ? await updateSubscriptionAction({ ...payload, id: subscription!.id })
+          : await createSubscriptionAction(payload);
+        if (result.error || !result.data) {
+          setSaveError(result.error ?? "The subscription could not be saved. Your entries are still here.");
+          return;
+        }
+        toast.success(isEdit ? "Subscription updated" : "Subscription added");
+        onSaved?.();
+        onClose();
+        router.refresh();
+      } catch {
+        setSaveError("We could not confirm whether the subscription was saved. Check the list before trying again.");
       }
-      toast.success(isEdit ? "Subscription updated" : "Subscription added");
-      onSaved?.();
-      onClose();
-      router.refresh();
     });
   }
 
   return (
     <Modal
       open={open}
+      pending={isPending}
       onClose={handleClose}
       title={isEdit ? "Edit Subscription" : "Add Subscription"}
       description={
@@ -154,7 +162,8 @@ export function AddEditSubscriptionModal({ open, onClose, subscription, toolOpti
           </Button>
           <Button
             variant="primary"
-            onClick={handleSubmit}
+            type="submit"
+            form="subscription-form"
             disabled={!canSubmit}
             loading={isPending}
             iconLeft={Save as LucideIcon}
@@ -164,13 +173,13 @@ export function AddEditSubscriptionModal({ open, onClose, subscription, toolOpti
         </>
       }
     >
-      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
+      <form id="subscription-form" onSubmit={event => { event.preventDefault(); handleSubmit(); }} aria-busy={isPending} style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
         {/* Name */}
         <div>
-          <label className="label-micro" style={FIELD_LABEL_STYLE} htmlFor="sub-name">
+          <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="sub-name">
             Name
           </label>
-          <input
+          <Input
             id="sub-name"
             type="text"
             value={name}
@@ -178,17 +187,16 @@ export function AddEditSubscriptionModal({ open, onClose, subscription, toolOpti
             disabled={isPending}
             placeholder="e.g. Figma, AWS, Adobe Creative Cloud"
             maxLength={200}
-            style={INPUT_STYLE}
             autoFocus
           />
         </div>
 
         {/* Tool */}
         <div>
-          <label className="label-micro" style={FIELD_LABEL_STYLE} htmlFor="sub-tool">
+          <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="sub-tool">
             Tool (optional)
           </label>
-          <input
+          <Input
             id="sub-tool"
             type="text"
             value={toolName}
@@ -197,7 +205,6 @@ export function AddEditSubscriptionModal({ open, onClose, subscription, toolOpti
             placeholder="Groups accounts of one tool — e.g. Claude"
             maxLength={120}
             list={toolOptions && toolOptions.length > 0 ? "sub-tool-options" : undefined}
-            style={INPUT_STYLE}
           />
           {toolOptions && toolOptions.length > 0 && (
             <datalist id="sub-tool-options">
@@ -210,10 +217,11 @@ export function AddEditSubscriptionModal({ open, onClose, subscription, toolOpti
 
         {/* Departments */}
         <div>
-          <label className="label-micro" style={FIELD_LABEL_STYLE}>
+          <label className="serene-field-label" style={FIELD_LABEL_STYLE}>
             Departments
           </label>
           <FilterDropdown
+              disabled={isPending}
             label="Select departments"
             items={SUBSCRIPTION_DEPARTMENT_OPTIONS}
             selected={departments}
@@ -227,40 +235,38 @@ export function AddEditSubscriptionModal({ open, onClose, subscription, toolOpti
         {/* Type + Currency */}
         <div style={{ display: "flex", gap: "var(--space-3)" }}>
           <div style={{ flex: 1 }}>
-            <label className="label-micro" style={FIELD_LABEL_STYLE} htmlFor="sub-type">
+            <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="sub-type">
               Billing Type
             </label>
-            <select
+            <Select
               id="sub-type"
               value={type}
               onChange={(e) => setType(e.target.value as SubscriptionType)}
               disabled={isPending}
-              style={INPUT_STYLE}
             >
               {SUBSCRIPTION_TYPE_OPTIONS.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
           <div style={{ flex: 1 }}>
-            <label className="label-micro" style={FIELD_LABEL_STYLE} htmlFor="sub-currency">
+            <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="sub-currency">
               Currency
             </label>
-            <select
+            <Select
               id="sub-currency"
               value={currency}
               onChange={(e) => setCurrency(e.target.value as SubscriptionCurrency)}
               disabled={isPending}
-              style={INPUT_STYLE}
             >
               {SUBSCRIPTION_CURRENCY_OPTIONS.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
         </div>
 
@@ -268,10 +274,10 @@ export function AddEditSubscriptionModal({ open, onClose, subscription, toolOpti
         <div style={{ display: "flex", gap: "var(--space-3)" }}>
           {!isTopUp && (
             <div style={{ flex: 1 }}>
-              <label className="label-micro" style={FIELD_LABEL_STYLE} htmlFor="sub-amount">
+              <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="sub-amount">
                 Amount
               </label>
-              <input
+              <Input
                 id="sub-amount"
                 type="number"
                 inputMode="decimal"
@@ -281,16 +287,15 @@ export function AddEditSubscriptionModal({ open, onClose, subscription, toolOpti
                 onChange={(e) => setAmount(e.target.value)}
                 disabled={isPending}
                 placeholder="0.00"
-                style={INPUT_STYLE}
               />
             </div>
           )}
           {needsDay && (
             <div style={{ flex: 1 }}>
-              <label className="label-micro" style={FIELD_LABEL_STYLE} htmlFor="sub-due-day">
+              <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="sub-due-day">
                 Due Day (of month)
               </label>
-              <input
+              <Input
                 id="sub-due-day"
                 type="number"
                 inputMode="numeric"
@@ -300,22 +305,20 @@ export function AddEditSubscriptionModal({ open, onClose, subscription, toolOpti
                 onChange={(e) => setDueDay(e.target.value)}
                 disabled={isPending}
                 placeholder="1–31"
-                style={INPUT_STYLE}
               />
             </div>
           )}
           {needsDate && (
             <div style={{ flex: 1 }}>
-              <label className="label-micro" style={FIELD_LABEL_STYLE} htmlFor="sub-due-date">
+              <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="sub-due-date">
                 Due Date
               </label>
-              <input
+              <Input
                 id="sub-due-date"
                 type="date"
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
                 disabled={isPending}
-                style={INPUT_STYLE}
               />
             </div>
           )}
@@ -329,10 +332,10 @@ export function AddEditSubscriptionModal({ open, onClose, subscription, toolOpti
         {/* Login + Password */}
         <div style={{ display: "flex", gap: "var(--space-3)" }}>
           <div style={{ flex: 1 }}>
-            <label className="label-micro" style={FIELD_LABEL_STYLE} htmlFor="sub-login">
+            <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="sub-login">
               Login <span style={{ color: "var(--theme-text-tertiary)" }}>(optional)</span>
             </label>
-            <input
+            <Input
               id="sub-login"
               type="text"
               value={login}
@@ -341,15 +344,14 @@ export function AddEditSubscriptionModal({ open, onClose, subscription, toolOpti
               autoComplete="off"
               maxLength={300}
               placeholder="username or email"
-              style={INPUT_STYLE}
             />
           </div>
           <div style={{ flex: 1 }}>
-            <label className="label-micro" style={FIELD_LABEL_STYLE} htmlFor="sub-password">
+            <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="sub-password">
               Password <span style={{ color: "var(--theme-text-tertiary)" }}>(optional)</span>
             </label>
             <div style={{ position: "relative" }}>
-              <input
+              <Input
                 id="sub-password"
                 type={showPassword ? "text" : "password"}
                 value={password}
@@ -357,32 +359,23 @@ export function AddEditSubscriptionModal({ open, onClose, subscription, toolOpti
                 disabled={isPending}
                 autoComplete="new-password"
                 maxLength={300}
-                style={{ ...INPUT_STYLE, paddingRight: "var(--space-8)" }}
+                style={{ paddingRight: "var(--space-8)" }}
               />
-              <button
+              <Button
+                variant="ghost"
+                iconOnly size="sm"
                 type="button"
                 onClick={() => setShowPassword((s) => !s)}
                 tabIndex={-1}
                 aria-label={showPassword ? "Hide password" : "Show password"}
-                style={{
-                  position: "absolute",
-                  right: "var(--space-2)",
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  display: "inline-flex",
-                  background: "transparent",
-                  border: "none",
-                  cursor: "pointer",
-                  color: "var(--theme-text-tertiary)",
-                  padding: 0,
-                }}
+                style={{ position: "absolute", right: "var(--space-2)", top: "50%", transform: "translateY(-50%)", display: "inline-flex" }}
               >
                 {showPassword ? (
                   <EyeOff style={{ width: 15, height: 15, strokeWidth: 1.5 }} />
                 ) : (
                   <Eye style={{ width: 15, height: 15, strokeWidth: 1.5 }} />
                 )}
-              </button>
+              </Button>
             </div>
             {isEdit && (
               <p style={HELP_TEXT_STYLE}>Leave blank to keep the current password.</p>
@@ -392,20 +385,21 @@ export function AddEditSubscriptionModal({ open, onClose, subscription, toolOpti
 
         {/* Notes */}
         <div>
-          <label className="label-micro" style={FIELD_LABEL_STYLE} htmlFor="sub-notes">
+          <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="sub-notes">
             Notes <span style={{ color: "var(--theme-text-tertiary)" }}>(optional)</span>
           </label>
-          <textarea
+          <Textarea
             id="sub-notes"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             disabled={isPending}
             rows={2}
             maxLength={2000}
-            style={{ ...INPUT_STYLE, resize: "vertical" }}
+            style={{ resize: "vertical" }}
           />
         </div>
-      </div>
+      </form>
+      {saveError && <Alert tone="danger" style={{ marginTop: "var(--space-4)" }}>{saveError}</Alert>}
     </Modal>
   );
 }

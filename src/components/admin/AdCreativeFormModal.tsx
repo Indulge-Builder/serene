@@ -1,5 +1,6 @@
 "use client";
 
+import { UploadButton } from '@/components/ui/UploadButton';
 import { useEffect, useRef, useState } from "react";
 import { UploadCloud, Film, ChevronDown } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
@@ -184,7 +185,12 @@ export function AdCreativeFormModal({
       maxWidth="max-w-2xl"
       footer={
         <>
-          <Button variant="ghost" type="button" onClick={onClose} disabled={busy}>
+          <Button
+            variant="ghost"
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+          >
             Cancel
           </Button>
           <Button
@@ -220,7 +226,7 @@ export function AdCreativeFormModal({
         {/* Campaign */}
         <div>
           <label htmlFor="ac-campaign" className="label-micro block mb-2">
-            Campaign <span style={{ color: "var(--color-danger)" }}>*</span>
+            Campaign <span style={{ color: "var(--color-danger-text)" }}>*</span>
           </label>
           <div style={{ position: "relative" }}>
             <select
@@ -252,7 +258,7 @@ export function AdCreativeFormModal({
         {/* Video uploader */}
         <div>
           <label className="label-micro block mb-2">
-            Video <span style={{ color: "var(--color-danger)" }}>*</span>
+            Video <span style={{ color: "var(--color-danger-text)" }}>*</span>
           </label>
           <input
             ref={fileInputRef}
@@ -293,43 +299,24 @@ export function AdCreativeFormModal({
                   <Film style={{ width: "1rem", height: "1rem", strokeWidth: 1.5 }} />
                   Video uploaded
                 </p>
-                <button
+                <Button
+                  variant="control"
+                  size="sm"
+                  style={{ marginTop:  "var(--space-1)" }}
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={busy}
-                  style={{
-                    marginTop:  "var(--space-1)",
-                    fontSize:   "var(--text-xs)",
-                    color:      "var(--theme-accent)",
-                    background: "none",
-                    border:     "none",
-                    cursor:     busy ? "not-allowed" : "pointer",
-                    padding:    0,
-                  }}
                 >
                   Replace video
-                </button>
+                </Button>
               </div>
             </div>
           ) : (
-            <button
+            <UploadButton
+              busy={uploading}
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
-              style={{
-                width:          "100%",
-                display:        "flex",
-                flexDirection:  "column",
-                alignItems:     "center",
-                justifyContent: "center",
-                gap:            "var(--space-2)",
-                padding:        "var(--space-8) var(--space-4)",
-                background:     "var(--theme-paper-subtle)",
-                border:         "1px dashed var(--theme-paper-border)",
-                borderRadius:   "var(--radius-md)",
-                cursor:         uploading ? "wait" : "pointer",
-                color:          "var(--theme-text-secondary)",
-              }}
             >
               {uploading ? (
                 <>
@@ -345,7 +332,7 @@ export function AdCreativeFormModal({
                   </span>
                 </>
               )}
-            </button>
+            </UploadButton>
           )}
         </div>
 

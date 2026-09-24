@@ -10,8 +10,9 @@
 // gear (SiaControlModal), so both panes stay clean. Data crosses the server
 // boundary via the actions in lib/actions/sia.ts (A-15).
 
+import { MotionSelectionButton } from '@/components/ui/MotionButton';
+import { SelectionButton } from '@/components/ui/SelectionButton';
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { m as motion } from "framer-motion";
 import { MessagesSquare, Settings2 } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { SearchBar } from "@/components/ui/SearchBar";
@@ -19,7 +20,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useMediaQuery, MQ } from "@/hooks/useMediaQuery";
 import { formatRelativeTime } from "@/lib/utils/dates";
-import { EASE_OUT_EXPO, FAST_DURATION } from "@/lib/constants/motion";
+import { EASE_OUT_EXPO } from "@/lib/constants/motion";
 import { getSiaGroupsAction, getSiaHealthAction } from "@/lib/actions/sia";
 import { SiaChat } from "./SiaChat";
 import { SiaControlModal } from "./SiaControlModal";
@@ -223,19 +224,14 @@ export function SiaWorkspace({ groups: initialGroups, initialGroupJid = null, ca
                     const active = filter === f;
                     const label = f === "all" ? "All" : f === "nomember" ? "No member" : KIND_LABEL[f];
                     return (
-                      <button
+                      <SelectionButton
+                        appearance="choice" selected={active} aria-pressed={active}
                         key={f}
                         type="button"
                         onClick={() => setFilter(f)}
                         className="serene-pressable type-caption rounded-full border-0 shrink-0"
                         style={{
                           padding: "3px 11px",
-                          background: active ? "var(--theme-accent)" : "var(--theme-paper-subtle)",
-                          color: active ? "var(--theme-accent-fg)" : "var(--theme-text-secondary)",
-                          fontWeight: active ? "var(--weight-medium)" : "var(--weight-normal)",
-                          cursor: "pointer",
-                          transition:
-                            "background var(--duration-fast) var(--ease-in-out), color var(--duration-fast) var(--ease-in-out)",
                         }}
                       >
                         {label}
@@ -244,7 +240,7 @@ export function SiaWorkspace({ groups: initialGroups, initialGroupJid = null, ca
                             {counts[f]}
                           </span>
                         )}
-                      </button>
+                      </SelectionButton>
                     );
                   })}
                 </div>
@@ -322,20 +318,16 @@ function RailRow({
 }) {
   const title = groupTitle(group);
   return (
-    <motion.button
-      type="button"
-      data-sia-jid={group.group_jid}
-      onClick={onSelect}
-      initial={{ opacity: 0, y: 4 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25, ease: EASE_OUT_EXPO, delay: Math.min(index * 0.015, 0.24) }}
-      className="w-full text-left px-3 py-2.5 flex items-center gap-3 border-b border-(--theme-paper-border)"
-      style={{
-        background: selected ? "var(--theme-paper-subtle)" : "transparent",
-        cursor: "pointer",
-        transition: `background ${FAST_DURATION}s var(--ease-in-out)`,
-      }}
-    >
+    <MotionSelectionButton
+          appearance="option" selected={selected} aria-pressed={selected}
+          type="button"
+          data-sia-jid={group.group_jid}
+          onClick={onSelect}
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25, ease: EASE_OUT_EXPO, delay: Math.min(index * 0.015, 0.24) }}
+          className="w-full text-left px-3 py-2.5 flex items-center gap-3 border-b border-(--theme-paper-border)"
+        >
       <Avatar name={title} size="md" />
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
@@ -354,7 +346,7 @@ function RailRow({
         </div>
         <RailPreview group={group} />
       </div>
-    </motion.button>
+    </MotionSelectionButton>
   );
 }
 

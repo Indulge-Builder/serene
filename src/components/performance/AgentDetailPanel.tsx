@@ -314,7 +314,7 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
                 borderRadius: 'var(--radius-full)',
                 background:   'var(--theme-accent-surface)',
                 border:       '1px solid color-mix(in srgb, var(--theme-accent) 22%, transparent)',
-                color:        'var(--theme-accent)',
+                color:        "var(--neu-accent-deep)",
                 fontFamily:   'var(--font-sans)',
                 fontSize:     'var(--text-xs)',
                 fontWeight:   'var(--weight-medium)',

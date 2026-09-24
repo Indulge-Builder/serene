@@ -1,5 +1,22 @@
 # Serene Design System — Component Implementation Reference
 
+> **Control contract — 2026-09-22:** [control-system.md](./control-system.md) defines
+> the current shared action, filter, field, focus, and sizing rules. It supersedes
+> older per-component button radius and focus-suppression instructions below.
+
+> **Material update — 2026-09-22:** The current shell uses a softly layered pastel-gradient sidebar,
+> ivory workspace, and porcelain cards. Two broad washes derive from the selected
+> theme accent over an opaque pearl base (18% / 9% pigment in light mode;
+> 12% / 6% in dark mode). Dedicated `--neu-sidebar` and
+> `--neu-workspace` roles separate navigation from content in light and dark modes.
+> Warm contact shadows and inner highlights replace external white blooms;
+> fields use shallow inset shading, status badges remain flat, and active navigation
+> highlights only the icon; rows stay transparent. This supersedes the older dark-canvas,
+> paired-white-shadow, and always-floating-input descriptions below.
+> Filter triggers share `filterTriggerStyle`; data tiles share `clayTileStyle`
+> (`src/components/ui/material-styles.ts`), independently of badge shadows.
+> Runtime material values live in `src/styles/serene-neumorphic-tokens.css`.
+
 > **Purpose:** how the design law is implemented — shell classes, component library behaviour, layout patterns, form system.
 > **Audience:** engineers (designers read `DESIGN-DNA.md` first). · **Source-of-truth scope:** implementation reference only — where this file and `DESIGN-DNA.md` disagree, DNA is law and this file is a bug.
 > **Last verified:** 2026-07-02 (six-theme swap + 2026-07-02 component purge applied).

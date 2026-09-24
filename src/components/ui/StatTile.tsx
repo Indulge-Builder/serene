@@ -1,3 +1,5 @@
+import { clayTileStyle } from './material-styles';
+
 // StatTile — THE labelled stat tile (dry-audit L-8). Server-component-safe; the value
 // renders as plain text (the count-up animation was removed 2026-09-15: on money tiles
 // the digits rolling in read as noise, and a number should be readable the instant it
@@ -75,10 +77,7 @@ export function StatTile({
   return (
     <div
       style={{
-        background:   'var(--theme-paper)',
-        border:       '1px solid var(--theme-paper-border)',
-        borderRadius: 'var(--neu-radius-card)',
-        boxShadow:    'var(--shadow-1)',
+        ...clayTileStyle(),
         padding:      'var(--space-4)',
       }}
     >

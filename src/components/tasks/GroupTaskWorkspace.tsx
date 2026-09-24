@@ -34,6 +34,7 @@
  * - Completion circle on each row toggles completed ↔ to_do (optimistic).
  */
 
+import { Button } from '@/components/ui/Button';
 import {
   useCallback,
   useEffect,
@@ -650,35 +651,16 @@ export function GroupTaskWorkspace({
 
             {/* Delete button — admin/founder only */}
             {(callerRole === "admin" || callerRole === "founder") && (
-              <button
+              <Button
+                variant="danger"
+                iconOnly size="sm"
                 type="button"
                 onClick={() => setConfirmDeleteOpen(true)}
                 title="Delete group task"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  width: 32,
-                  height: 32,
-                  borderRadius: "var(--radius-sm)",
-                  border: "1px solid var(--theme-paper-border)",
-                  background: "transparent",
-                  color: "var(--color-danger-text)",
-                  cursor: "pointer",
-                  transition: "var(--transition-hover)",
-                  flexShrink: 0,
-                }}
-                onMouseEnter={(e) => {
-                  (e.currentTarget as HTMLElement).style.background =
-                    "var(--color-danger-light)";
-                }}
-                onMouseLeave={(e) => {
-                  (e.currentTarget as HTMLElement).style.background =
-                    "transparent";
-                }}
+                style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, flexShrink: 0 }}
               >
                 <Trash2 style={{ width: 15, height: 15, strokeWidth: 1.5 }} />
-              </button>
+              </Button>
             )}
           </div>
         </div>
@@ -742,38 +724,19 @@ export function GroupTaskWorkspace({
                 ["board", LayoutGrid, "Board view"],
               ] as const
             ).map(([v, Icon, label]) => (
-              <button
+              <Button
+                variant="control"
+                size="sm" active={view === v}
                 key={v}
                 type="button"
                 onClick={() => handleViewChange(v)}
                 aria-label={label}
                 aria-pressed={view === v}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "var(--space-1)",
-                  padding: "var(--space-1) var(--space-3)",
-                  border: "none",
-                  background:
-                    view === v ? "var(--theme-accent)" : "transparent",
-                  color:
-                    view === v
-                      ? "var(--theme-accent-fg)"
-                      : "var(--theme-text-secondary)",
-                  fontFamily: "var(--font-sans)",
-                  fontSize: "var(--text-xs)",
-                  fontWeight:
-                    view === v
-                      ? "var(--weight-semibold)"
-                      : "var(--weight-normal)",
-                  cursor: "pointer",
-                  transition: "var(--transition-interactive)",
-                  whiteSpace: "nowrap",
-                }}
+                style={{ display: "flex", alignItems: "center", gap: "var(--space-1)", whiteSpace: "nowrap" }}
               >
                 <Icon style={{ width: 13, height: 13, strokeWidth: 1.5 }} />
                 {v === "list" ? "List" : "Board"}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -947,44 +910,21 @@ export function GroupTaskWorkspace({
                     </span>
 
                     {/* Arrow */}
-                    <button
+                    <Button
+                      variant="ghost"
+                      iconOnly size="sm"
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         handleOpenModal(subtask);
                       }}
                       aria-label="Open subtask details"
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        width: "24px",
-                        height: "24px",
-                        borderRadius: "var(--radius-xs)",
-                        border: "1px solid var(--theme-paper-border)",
-                        background: "transparent",
-                        color: "var(--theme-text-tertiary)",
-                        cursor: "pointer",
-                        flexShrink: 0,
-                        transition: "var(--transition-hover)",
-                      }}
-                      onMouseEnter={(e) => {
-                        (e.currentTarget as HTMLElement).style.color =
-                          "var(--theme-accent)";
-                        (e.currentTarget as HTMLElement).style.borderColor =
-                          "var(--theme-accent)";
-                      }}
-                      onMouseLeave={(e) => {
-                        (e.currentTarget as HTMLElement).style.color =
-                          "var(--theme-text-tertiary)";
-                        (e.currentTarget as HTMLElement).style.borderColor =
-                          "var(--theme-paper-border)";
-                      }}
+                      style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "24px", height: "24px", flexShrink: 0 }}
                     >
                       <ArrowRight
                         style={{ width: 12, height: 12, strokeWidth: 1.5 }}
                       />
-                    </button>
+                    </Button>
                   </div>
                   </MotionRow>
                 );
@@ -1316,27 +1256,18 @@ export function GroupTaskWorkspace({
                 >
                   New Subtask
                 </span>
-                <button
+                <Button
+                  variant="ghost"
+                  iconOnly size="sm"
                   type="button"
                   onClick={() => {
                     setShowAddPanel(false);
                     setAddTitle("");
                   }}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: "22px",
-                    height: "22px",
-                    borderRadius: "var(--radius-xs)",
-                    border: "1px solid var(--theme-paper-border)",
-                    background: "transparent",
-                    color: "var(--theme-text-tertiary)",
-                    cursor: "pointer",
-                  }}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "22px", height: "22px" }}
                 >
                   <X style={{ width: 12, height: 12, strokeWidth: 1.5 }} />
-                </button>
+                </Button>
               </div>
 
               {/* Title */}
@@ -1435,92 +1366,40 @@ export function GroupTaskWorkspace({
                   gap: "var(--space-2)",
                 }}
               >
-                <button
+                <Button
+                  variant="control"
+                  size="sm"
                   type="button"
                   onClick={() => setShowAssigneePicker(true)}
                   aria-label="Pick assignee"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "var(--space-2)",
-                    padding: "var(--space-2) var(--space-3)",
-                    borderRadius: "var(--radius-sm)",
-                    border: "1px solid var(--theme-paper-border)",
-                    background: addAssignee
-                      ? "var(--theme-accent-surface)"
-                      : "var(--theme-paper-subtle)",
-                    color: addAssignee
-                      ? "var(--theme-accent)"
-                      : "var(--theme-text-secondary)",
-                    fontFamily: "var(--font-sans)",
-                    fontSize: "var(--text-xs)",
-                    cursor: "pointer",
-                    flex: 1,
-                    transition: "var(--transition-hover)",
-                  }}
+                  style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", flex: 1 }}
                 >
                   <User style={{ width: 12, height: 12, strokeWidth: 1.5 }} />
                   {addAssignee ? addAssignee.full_name : "Assign to…"}
-                </button>
+                </Button>
 
                 {/* Save */}
-                <button
+                <Button
+                  variant="primary"
+                  size="sm"
                   type="button"
                   onClick={handleAddSubtask}
                   disabled={isPending || !addTitle.trim() || !addAssignee}
-                  style={{
-                    padding: "var(--space-2) var(--space-4)",
-                    borderRadius: "var(--radius-sm)",
-                    border: "none",
-                    background:
-                      addTitle.trim() && addAssignee
-                        ? "var(--theme-accent)"
-                        : "var(--theme-paper-border)",
-                    color:
-                      addTitle.trim() && addAssignee
-                        ? "var(--theme-accent-fg)"
-                        : "var(--theme-text-tertiary)",
-                    fontFamily: "var(--font-sans)",
-                    fontSize: "var(--text-xs)",
-                    fontWeight: "var(--weight-semibold)",
-                    cursor:
-                      isPending || !addTitle.trim() || !addAssignee
-                        ? "not-allowed"
-                        : "pointer",
-                    opacity: isPending ? 0.6 : 1,
-                    transition: "var(--transition-interactive)",
-                    flexShrink: 0,
-                  }}
                 >
                   {isPending ? "Adding…" : "Add"}
-                </button>
+                </Button>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
 
         {/* FAB — plus twirls on approach; the open-state X gets the same quarter turn */}
-        <button
+        <Button
+          variant="control"
+          active={showAddPanel}
           type="button"
           onClick={() => setShowAddPanel((v) => !v)}
           aria-label="Add subtask"
-          className="serene-pressable serene-icon-rotate-hover"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "var(--space-2)",
-            padding: "var(--space-3) var(--space-5)",
-            borderRadius: "var(--radius-full)",
-            border: "none",
-            background: "var(--theme-accent)",
-            color: "var(--theme-accent-fg)",
-            fontFamily: "var(--font-sans)",
-            fontSize: "var(--text-sm)",
-            fontWeight: "var(--weight-semibold)",
-            cursor: "pointer",
-            boxShadow: "var(--shadow-accent-glow)",
-            transition: "opacity var(--duration-fast) var(--ease-in-out)",
-          }}
           onMouseEnter={(e) => {
             e.currentTarget.style.opacity = "0.9";
           }}
@@ -1534,7 +1413,7 @@ export function GroupTaskWorkspace({
             <Plus style={{ width: 15, height: 15, strokeWidth: 1.5 }} />
           )}
           {showAddPanel ? "Close" : "Add subtask"}
-        </button>
+        </Button>
       </div>
 
       {/* Remarks-fetch window between tap and modal — see MyTasksCalendarView */}

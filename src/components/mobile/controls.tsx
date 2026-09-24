@@ -1,5 +1,7 @@
 'use client';
 
+import { SelectionButton } from '@/components/ui/SelectionButton';
+import { IconKnob } from './buttons';
 import type { ReactNode } from 'react';
 import { Check, ChevronRight, Minus, Plus, type LucideIcon } from 'lucide-react';
 
@@ -32,7 +34,17 @@ export function MobileSegmented({
         return (
           <button
             key={label}
+            type="button"
             role="tab"
+            tabIndex={active ? 0 : -1}
+            onKeyDown={(event) => {
+              if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+              event.preventDefault();
+              const rtl = getComputedStyle(event.currentTarget).direction === 'rtl';
+              const next = event.key === 'Home' ? 0 : event.key === 'End' ? options.length - 1 : (i + ((event.key === 'ArrowRight') !== rtl ? 1 : -1) + options.length) % options.length;
+              onChange(next);
+              event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]')[next]?.focus();
+            }}
             aria-selected={active}
             onClick={() => onChange(i)}
             className="neu-m-touch-quiet relative flex-1 h-11 rounded-full flex items-center justify-center"
@@ -72,7 +84,8 @@ export function FilterChip({
   onToggle: () => void;
 }) {
   return (
-    <button
+    <SelectionButton
+      appearance="choice" selected={selected}
       onClick={onToggle}
       aria-pressed={selected}
       className={`neu-m-touch-quiet h-[38px] px-4 rounded-full flex items-center gap-1.5 shrink-0 ${
@@ -80,15 +93,10 @@ export function FilterChip({
           ? 'bg-(--neu-accent-wash) border border-(--neu-accent) text-xs font-semibold text-(--neu-accent-deep)'
           : 'bg-(--neu-surface) border border-(--neu-edge) text-xs font-medium text-(--neu-text-secondary)'
       }`}
-      style={
-        selected
-          ? { boxShadow: 'inset 1px 1px 3px rgb(var(--neu-dark) / 0.2)' }
-          : { boxShadow: 'var(--neu-shadow-raised-sm)' }
-      }
     >
       {selected && <Check size={11} strokeWidth={2.4} />}
       {label}
-    </button>
+    </SelectionButton>
   );
 }
 
@@ -154,6 +162,7 @@ export function MobileToggle({
 }) {
   return (
     <button
+      type="button"
       role="switch"
       aria-checked={on}
       aria-label={label}
@@ -188,32 +197,26 @@ export function MobileStepper({
   min?: number;
   max?: number;
 }) {
-  const knob =
-    'neu-m-touch-knob w-10 h-10 rounded-full bg-(--neu-surface) border border-(--neu-edge) flex items-center justify-center text-(--neu-text-secondary)';
   return (
     <span className="flex items-center gap-3.5 shrink-0">
-      <button
+      <IconKnob size={40}
         aria-label="Fewer"
         onClick={() => onChange(Math.max(min, value - 1))}
-        className={knob}
-        style={{ boxShadow: 'var(--neu-shadow-raised-sm)' }}
       >
         <Minus size={14} strokeWidth={1.8} />
-      </button>
+      </IconKnob>
       <span
         className="min-w-[18px] text-center text-xl font-semibold text-(--neu-text-primary)"
         style={{ fontFamily: 'var(--font-serif)' }}
       >
         {value}
       </span>
-      <button
+      <IconKnob size={40}
         aria-label="More"
         onClick={() => onChange(Math.min(max, value + 1))}
-        className={knob}
-        style={{ boxShadow: 'var(--neu-shadow-raised-sm)' }}
       >
         <Plus size={14} strokeWidth={1.8} />
-      </button>
+      </IconKnob>
     </span>
   );
 }

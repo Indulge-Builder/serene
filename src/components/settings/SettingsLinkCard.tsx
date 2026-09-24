@@ -99,7 +99,7 @@ export function SettingsLinkCard({
           flexShrink:     0,
           borderRadius:   "var(--radius-md)",
           background:     "var(--theme-accent-surface)",
-          color:          "var(--theme-accent)",
+          color:          "var(--neu-accent-deep)",
         }}
       >
         <Icon style={{ width: 20, height: 20, strokeWidth: 1.5 }} />

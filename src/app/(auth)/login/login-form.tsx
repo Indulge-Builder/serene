@@ -90,25 +90,14 @@ export function LoginForm({ next }: { next?: string | null }) {
                   className="serene-input-auth"
                   style={{ paddingRight: "var(--space-10)" }}
                 />
-                <button
+                <Button
+                  variant="ghost"
+                  iconOnly size="sm"
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
                   aria-label={showPassword ? "Hide password" : "Show password"}
                   tabIndex={-1}
-                  style={{
-                    position: "absolute",
-                    right: "var(--space-3)",
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    background: "transparent",
-                    border: "none",
-                    padding: 0,
-                    cursor: "pointer",
-                    color: "var(--theme-sidebar-text)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
+                  style={{ position: "absolute", right: "var(--space-3)", top: "50%", transform: "translateY(-50%)", display: "flex", alignItems: "center", justifyContent: "center" }}
                 >
                   {showPassword ? (
                     <EyeOff
@@ -127,7 +116,7 @@ export function LoginForm({ next }: { next?: string | null }) {
                       }}
                     />
                   )}
-                </button>
+                </Button>
               </div>
             </div>
 

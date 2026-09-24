@@ -16,7 +16,7 @@
  */
 
 import { useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { Field, Select } from "@/components/ui/Field";
 import { USER_ROLES, ROLE_LABELS } from "@/lib/constants/roles";
 import { APP_DOMAINS, DOMAIN_LABELS } from "@/lib/constants/domains";
 import { SIA_ROLES, SIA_ROLE_PLATFORM_ROLE, positionsForDomain, isSiaRole, type SiaRole } from "@/lib/constants/sia-roles";
@@ -77,22 +77,21 @@ export function RoleDomainFields({ queendoms, defaults, idPrefix = "" }: Props) 
       {!position && <input type="hidden" name="queendom_id" value="" />}
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-4)" }}>
-        <FieldShell label="Domain" htmlFor={id("domain")} required>
-          <select id={id("domain")} name="domain" required value={domain} onChange={(e) => onDomain(e.target.value as AppDomain)} style={selectStyle}>
+        <Field label="Domain" htmlFor={id("domain")} required>
+          <Select id={id("domain")} name="domain" required value={domain} onChange={(e) => onDomain(e.target.value as AppDomain)}>
             {APP_DOMAINS.map((d) => (
               <option key={d} value={d}>{DOMAIN_LABELS[d]}</option>
             ))}
-          </select>
-          <ChevronDown style={chevronStyle} />
-        </FieldShell>
+          </Select>
+        </Field>
 
-        <FieldShell
+        <Field
           label={positions.length ? "Position" : "Role"}
           htmlFor={id("role")}
           required
           hint={position ? `Access level: ${ROLE_LABELS[role]} (set by the position)` : undefined}
         >
-          <select id={id("role")} required value={encode(pick)} onChange={(e) => setPick(decode(e.target.value))} style={selectStyle}>
+          <Select id={id("role")} required value={encode(pick)} onChange={(e) => setPick(decode(e.target.value))}>
             {positions.length > 0 && (
               <optgroup label="Positions">
                 {positions.map((p) => (
@@ -105,77 +104,20 @@ export function RoleDomainFields({ queendoms, defaults, idPrefix = "" }: Props) 
                 <option key={r} value={encode({ kind: "role", value: r })}>{ROLE_LABELS[r]}</option>
               ))}
             </optgroup>
-          </select>
-          <ChevronDown style={chevronStyle} />
-        </FieldShell>
+          </Select>
+        </Field>
       </div>
 
       {position && (
-        <FieldShell label="Queendom" htmlFor={id("queendom")} required hint="The team this person works in. Queen, Bishop and Joker are one seat each.">
-          <select id={id("queendom")} name="queendom_id" required value={queendomId} onChange={(e) => setQueendomId(e.target.value)} style={selectStyle}>
+        <Field label="Queendom" htmlFor={id("queendom")} required hint="The team this person works in. Queen, Bishop and Joker are one seat each.">
+          <Select id={id("queendom")} name="queendom_id" required value={queendomId} onChange={(e) => setQueendomId(e.target.value)}>
             <option value="" disabled>Choose a queendom</option>
             {queendoms.map((q) => (
               <option key={q.id} value={q.id}>{q.name}</option>
             ))}
-          </select>
-          <ChevronDown style={chevronStyle} />
-        </FieldShell>
+          </Select>
+        </Field>
       )}
     </>
   );
 }
-
-// ─── Chrome shared by the three forms ────────────────────────────────────────
-
-function FieldShell({ label, htmlFor, required, hint, children }: { label: string; htmlFor: string; required?: boolean; hint?: string; children: React.ReactNode }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
-      <label htmlFor={htmlFor} style={labelStyle}>
-        {label}
-        {required && <span style={{ color: "var(--color-danger)", lineHeight: 1 }}>*</span>}
-      </label>
-      <div style={{ position: "relative" }}>{children}</div>
-      {hint && <p style={{ fontFamily: "var(--font-sans)", fontSize: "var(--text-xs)", color: "var(--theme-text-tertiary)", margin: 0 }}>{hint}</p>}
-    </div>
-  );
-}
-
-const labelStyle: React.CSSProperties = {
-  fontFamily:    "var(--font-sans)",
-  fontSize:      "var(--text-2xs)",
-  fontWeight:    "var(--weight-semibold)",
-  color:         "var(--theme-text-tertiary)",
-  letterSpacing: "var(--tracking-widest)",
-  textTransform: "uppercase",
-  display:       "flex",
-  gap:           "var(--space-1)",
-};
-
-const selectStyle: React.CSSProperties = {
-  width:            "100%",
-  padding:          "var(--space-2) var(--space-3)",
-  paddingRight:     "var(--space-8)",
-  background:       "var(--theme-paper-subtle)",
-  border:           "1px solid var(--theme-paper-border)",
-  borderRadius:     "var(--radius-sm)",
-  fontFamily:       "var(--font-sans)",
-  fontSize:         "var(--text-sm)",
-  color:            "var(--theme-text-primary)",
-  cursor:           "pointer",
-  outline:          "none",
-  appearance:       "none",
-  WebkitAppearance: "none",
-  boxSizing:        "border-box",
-};
-
-const chevronStyle: React.CSSProperties = {
-  position:      "absolute",
-  right:         "var(--space-3)",
-  top:           "50%",
-  transform:     "translateY(-50%)",
-  width:         "12px",
-  height:        "12px",
-  strokeWidth:   1.5,
-  color:         "var(--theme-text-tertiary)",
-  pointerEvents: "none",
-};

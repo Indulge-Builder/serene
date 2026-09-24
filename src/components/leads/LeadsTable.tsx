@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@/components/ui/Button';
 import { useState, useMemo, useRef, useEffect, useTransition, useCallback, memo } from 'react';
 import dynamic from 'next/dynamic';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
@@ -222,38 +223,19 @@ export function LeadsTable({ leads, totalCount, userId, role, domain, filters, h
           </div>
         )}
 
-        <button
+        <Button
+          variant="control"
+          active={goingCold}
           type="button"
           onClick={toggleGoingCold}
           aria-pressed={goingCold}
-          className="serene-touch"
-          style={{
-            display:      'inline-flex',
-            alignItems:   'center',
-            gap:          'var(--space-1)',
-            height:       '2.25rem',
-            padding:      '0 var(--space-3)',
-            background:   goingCold ? 'var(--color-warning-light)' : 'transparent',
-            border:       '1px solid var(--neu-edge)',
-            boxShadow:    goingCold ? 'var(--neu-shadow-chip)' : 'none',
-            borderRadius: 'var(--radius-sm)',
-            fontSize:     'var(--text-sm)',
-            fontFamily:   'var(--font-sans)',
-            fontWeight:   'var(--weight-medium)',
-            color:        goingCold ? 'var(--color-warning-text)' : 'var(--theme-text-secondary)',
-            cursor:       'pointer',
-            transition:   'var(--transition-hover), box-shadow var(--duration-fast) var(--ease-in-out), color var(--duration-fast) var(--ease-in-out)',
-            whiteSpace:   'nowrap',
-            flexShrink:   0,
-            outline:      'none',
-          }}
         >
           <Clock
             style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5 }}
             aria-hidden="true"
           />
           <span>Going Cold</span>
-        </button>
+        </Button>
 
         {/* Filtered total — always visible (the pagination summary only appears
             when totalCount > pageSize, so small result sets showed no count). */}
@@ -273,32 +255,13 @@ export function LeadsTable({ leads, totalCount, userId, role, domain, filters, h
 
         {/* Sort order — commits immediately to URL (not part of filter draft) */}
         <Tooltip side="bottom" label={sortOrder === 'asc' ? 'Oldest first' : 'Newest first'}>
-          <button
+          <Button
+            variant="control"
+            active={sortOrder === 'asc'}
             type="button"
             onClick={toggleSortOrder}
             aria-label={sortOrder === 'asc' ? 'Oldest first' : 'Newest first'}
             aria-pressed={sortOrder === 'asc'}
-            className="serene-touch"
-            style={{
-              display:      'inline-flex',
-              alignItems:   'center',
-              gap:          'var(--space-1)',
-              height:       '2.25rem',
-              padding:      '0 var(--space-3)',
-              background:   sortOrder === 'asc' ? 'color-mix(in srgb, var(--theme-accent) 12%, var(--neu-surface))' : 'transparent',
-              border:       '1px solid var(--neu-edge)',
-              boxShadow:    sortOrder === 'asc' ? 'var(--neu-shadow-chip)' : 'none',
-              borderRadius: 'var(--radius-sm)',
-              fontSize:     'var(--text-sm)',
-              fontFamily:   'var(--font-sans)',
-              fontWeight:   'var(--weight-medium)',
-              color:        sortOrder === 'asc' ? 'var(--neu-accent-deep)' : 'var(--theme-text-secondary)',
-              cursor:       'pointer',
-              transition:   'var(--transition-hover), box-shadow var(--duration-fast) var(--ease-in-out), color var(--duration-fast) var(--ease-in-out)',
-              whiteSpace:   'nowrap',
-              flexShrink:   0,
-              outline:      'none',
-            }}
           >
             <ArrowDownUp
               style={{
@@ -311,34 +274,23 @@ export function LeadsTable({ leads, totalCount, userId, role, domain, filters, h
               aria-hidden="true"
             />
             <span className="max-md:hidden">{sortOrder === 'asc' ? 'Oldest first' : 'Newest first'}</span>
-          </button>
+          </Button>
         </Tooltip>
 
         {/* Column picker trigger — md+ only (table-only control, see toolbar note) */}
         <div ref={pickerAnchorRef} className="max-md:hidden" style={{ position: 'relative', flexShrink: 0 }}>
-          <button
+          <Button
+            variant="control"
+            active={pickerOpen}
+            aria-expanded={pickerOpen}
+            type="button"
             onClick={() => setPickerOpen((v) => !v)}
             aria-pressed={pickerOpen}
             aria-label="Toggle column visibility"
-            className="serene-touch"
-            style={{
-              display:      'inline-flex',
-              alignItems:   'center',
-              gap:          'var(--space-1)',
-              height:       '2.25rem',
-              padding:      '0 var(--space-3)',
-              border:       '1px solid var(--theme-paper-border)',
-              borderRadius: 'var(--radius-sm)',
-              background:   pickerOpen ? 'var(--theme-accent-surface)' : 'transparent',
-              color:        pickerOpen ? 'var(--theme-accent)' : 'var(--theme-text-secondary)',
-              fontSize:     'var(--text-sm)',
-              cursor:       'pointer',
-              transition:   'background var(--duration-fast) var(--ease-in-out), color var(--duration-fast) var(--ease-in-out)',
-            }}
           >
             <Columns style={{ width: '1rem', height: '1rem', strokeWidth: 1.5 }} />
             <span>Columns</span>
-          </button>
+          </Button>
 
           {mountPicker && (
             <LeadColumnPicker

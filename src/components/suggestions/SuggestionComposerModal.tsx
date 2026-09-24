@@ -8,6 +8,7 @@
 // PATHS reach submitSuggestionAction (never the File, never a public URL — the
 // bucket is private and signed on read). Never auto-sends; submit is explicit.
 
+import { SelectionButton } from '@/components/ui/SelectionButton';
 import { useRef, useState } from "react";
 import { Trash2, ImagePlus, Send } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -157,7 +158,7 @@ export function SuggestionComposerModal({
       footer={
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", width: "100%" }}>
           {error && (
-            <span style={{ flex: 1, color: "var(--color-danger)", fontSize: "var(--text-xs)" }}>
+            <span style={{ flex: 1, color: "var(--color-danger-text)", fontSize: "var(--text-xs)" }}>
               {error}
             </span>
           )}
@@ -188,29 +189,21 @@ export function SuggestionComposerModal({
             {SUGGESTION_CATEGORY_OPTIONS.map((opt) => {
               const selected = category === opt.id;
               return (
-                <button
+                <SelectionButton
+                  appearance="choice"
+                  selected={selected}
+                  aria-pressed={selected}
                   key={opt.id}
                   type="button"
                   className="serene-pressable"
                   onClick={() => setCategory(opt.id)}
                   style={{
-                    padding: "var(--space-2) var(--space-4)",
-                    borderRadius: "var(--radius-full)",
-                    fontSize: "var(--text-sm)",
-                    cursor: "pointer",
-                    // Selected floats on the accent wash — hairline edge + chip
-                    // shadow, never a coloured border (soft-UI Rule 4).
-                    color: selected ? "var(--neu-accent-deep)" : "var(--theme-text-secondary)",
-                    background: selected
-                      ? "color-mix(in srgb, var(--theme-accent) 12%, var(--neu-surface))"
-                      : "var(--theme-paper-subtle)",
-                    border: "1px solid var(--neu-edge)",
-                    boxShadow: selected ? "var(--neu-shadow-chip)" : "none",
-                    transition: "color var(--duration-fast) var(--ease-in-out), background var(--duration-fast) var(--ease-in-out), box-shadow var(--duration-fast) var(--ease-in-out)",
-                  }}
+                          padding: "var(--space-2) var(--space-4)",
+                          fontSize: "var(--text-sm)",
+                      }}
                 >
                   {opt.label}
-                </button>
+                </SelectionButton>
               );
             })}
           </div>
@@ -268,53 +261,34 @@ export function SuggestionComposerModal({
                   alt={`Attachment ${i + 1}`}
                   style={{ width: "100%", height: "100%", objectFit: "cover" }}
                 />
-                <button
+                <Button
+                  variant="ghost"
+                  iconOnly
+                  size="sm"
                   type="button"
                   aria-label="Remove image"
                   className="serene-pressable"
                   onClick={() => removeAttachment(i)}
-                  style={{
-                    position: "absolute",
-                    top: "2px",
-                    right: "2px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: "22px",
-                    height: "22px",
-                    borderRadius: "var(--radius-full)",
-                    border: "none",
-                    background: "var(--overlay-scrim)",
-                    color: "var(--neu-on-accent-soft)",
-                    cursor: "pointer",
-                  }}
+                  style={{ position: "absolute", top: "2px", right: "2px", display: "flex", alignItems: "center", justifyContent: "center", width: "22px", height: "22px" }}
                 >
                   <Trash2 style={{ width: "12px", height: "12px", strokeWidth: 1.5 }} />
-                </button>
+                </Button>
               </div>
             ))}
 
             {!atMax && (
-              <button
+              <Button
+                variant="control"
+                iconOnly
+                size="sm"
                 type="button"
                 className="serene-pressable serene-touch"
                 onClick={() => fileInputRef.current?.click()}
                 aria-label="Add screenshot"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  width: "72px",
-                  height: "72px",
-                  borderRadius: "var(--radius-md)",
-                  border: "1px dashed var(--theme-paper-border)",
-                  background: "var(--theme-paper-subtle)",
-                  color: "var(--theme-text-tertiary)",
-                  cursor: "pointer",
-                }}
+                style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "72px", height: "72px" }}
               >
                 <ImagePlus style={{ width: "20px", height: "20px", strokeWidth: 1.5 }} />
-              </button>
+              </Button>
             )}
           </div>
 

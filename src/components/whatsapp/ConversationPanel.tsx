@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from '@/components/ui/Button';
 import {
   useCallback,
   useEffect,
@@ -375,7 +376,9 @@ export function ConversationPanel({
       >
         {/* Back to list — single-pane mode only (<md) */}
         {onBack && (
-          <button
+          <Button
+            variant="ghost"
+            iconOnly size="sm"
             type="button"
             onClick={onBack}
             aria-label="Back to conversations"
@@ -388,18 +391,10 @@ export function ConversationPanel({
               height:         "40px",
               marginLeft:     "calc(-1 * var(--space-2))",
               flexShrink:     0,
-              background:     "transparent",
-              border:         "none",
-              borderRadius:   "var(--radius-md)",
-              /* On the accent wash, secondary lands at 2.8:1 — under the 3:1
-                 graphic bar. The header icon tone clears it. */
-              color:          "var(--neu-header-icon)",
-              cursor:         "pointer",
-              padding:        0,
             }}
           >
             <ArrowLeft style={{ width: "18px", height: "18px", strokeWidth: 1.5 }} />
-          </button>
+          </Button>
         )}
 
         {/* Contact avatar */}
@@ -539,30 +534,19 @@ export function ConversationPanel({
           maxHeight={96}
           leadingSlot={
             <div style={{ display: "flex", alignItems: "center", gap: "var(--space-1)" }}>
-              <button
+              <Button
+                variant="ghost"
+                iconOnly size="sm"
                 type="button"
                 onClick={handleAttachClick}
                 disabled={isUploading}
                 aria-label="Attach a file"
                 title="Attach a file"
                 className="serene-pressable"
-                style={{
-                  width:          "32px",
-                  height:         "32px",
-                  borderRadius:   "var(--radius-sm)",
-                  border:         "none",
-                  background:     "transparent",
-                  display:        "flex",
-                  alignItems:     "center",
-                  justifyContent: "center",
-                  flexShrink:     0,
-                  cursor:         isUploading ? "not-allowed" : "pointer",
-                  color:          "var(--theme-text-tertiary)",
-                  opacity:        isUploading ? 0.5 : 1,
-                }}
+                style={{ width:          "32px", height:         "32px", display:        "flex", alignItems:     "center", justifyContent: "center", flexShrink:     0 }}
               >
                 <Paperclip style={{ width: "18px", height: "18px", strokeWidth: 1.5 }} />
-              </button>
+              </Button>
               <DictationButton
                 onTranscript={handleTranscript}
                 onError={(message) => toast.danger(message)}

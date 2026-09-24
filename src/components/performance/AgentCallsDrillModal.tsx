@@ -148,7 +148,7 @@ export function AgentCallsDrillModal({ open, agentId, agentName, domain, onClose
                       padding: '2px 8px',
                       borderRadius: 'var(--radius-full)',
                       background: 'var(--theme-accent-surface)',
-                      color: 'var(--theme-accent)',
+                      color: "var(--neu-accent-deep)",
                       fontSize: 'var(--text-2xs)',
                       fontWeight: 'var(--weight-medium)',
                     }}

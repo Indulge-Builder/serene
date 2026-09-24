@@ -7,6 +7,7 @@
 // A range-grain export rejects the WHOLE file with the instructional message
 // from lib/utils/ad-spend-parse.ts — nothing is ever partially ingested.
 
+import { UploadButton } from '@/components/ui/UploadButton';
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { FileSpreadsheet, Upload, type LucideIcon } from "lucide-react";
@@ -120,24 +121,11 @@ export function AdSpendUploadModal({ open, onClose }: Props) {
           style={{ display: "none" }}
           onChange={(e) => handleFile(e.target.files?.[0])}
         />
-        <button
+        <UploadButton
+          busy={isParsing || isPending}
           type="button"
           onClick={() => inputRef.current?.click()}
           disabled={isParsing || isPending}
-          style={{
-            display:        "flex",
-            flexDirection:  "column",
-            alignItems:     "center",
-            gap:            "var(--space-2)",
-            padding:        "var(--space-6)",
-            background:     "var(--theme-paper-subtle)",
-            border:         "1px dashed var(--theme-paper-border)",
-            borderRadius:   "var(--radius-md)",
-            cursor:         isParsing || isPending ? "wait" : "pointer",
-            color:          "var(--theme-text-secondary)",
-            fontFamily:     "var(--font-sans)",
-            fontSize:       "var(--text-sm)",
-          }}
         >
           <FileSpreadsheet
             style={{ width: 20, height: 20, strokeWidth: 1.5, color: "var(--theme-text-tertiary)" }}
@@ -145,7 +133,7 @@ export function AdSpendUploadModal({ open, onClose }: Props) {
           {isParsing
             ? "Reading file…"
             : fileName ?? "Choose a Meta export (.csv / .xlsx)"}
-        </button>
+        </UploadButton>
 
         {/* Month-to-date is the default workflow: export from the 1st to today
             with the Day time-breakdown and re-upload any time — every covered

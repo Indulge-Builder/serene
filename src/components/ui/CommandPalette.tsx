@@ -1,5 +1,7 @@
 'use client';
 
+import { useRef as useModalPanelRef } from 'react';
+import { ModalScopeContext, useModalFocus } from '@/hooks/useModalFocus';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
@@ -176,6 +178,9 @@ function PaletteRow({ item, onRun }: { item: PaletteItem; onRun: (item: PaletteI
 }
 
 export function CommandPalette({ open, onClose, profile }: CommandPaletteProps) {
+  const modalPanelRef = useModalPanelRef<HTMLDivElement>(null);
+  const modalScopeId = useModalFocus(open, modalPanelRef, onClose);
+
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [mounted, setMounted] = useState(false);
@@ -288,7 +293,7 @@ export function CommandPalette({ open, onClose, profile }: CommandPaletteProps) 
 
   if (!mounted || typeof document === 'undefined') return null;
 
-  return createPortal(
+  return <ModalScopeContext.Provider value={modalScopeId}>{createPortal(
     <AnimatePresence>
       {open && (
         <div
@@ -320,7 +325,7 @@ export function CommandPalette({ open, onClose, profile }: CommandPaletteProps) 
           />
 
           {/* Panel — 640px, radius 28, floating shadow, 320ms spring rise */}
-          <motion.div
+          <motion.div ref={modalPanelRef} tabIndex={-1}
             role="dialog"
             aria-modal="true"
             aria-label="Command palette"
@@ -449,5 +454,5 @@ export function CommandPalette({ open, onClose, profile }: CommandPaletteProps) 
       )}
     </AnimatePresence>,
     document.body,
-  );
+  )}</ModalScopeContext.Provider>;
 }

@@ -4,5 +4,6 @@
   // Rule 01 ethos) and scripts/check-tokens.mjs guards those references.
   // The extension's "canonical class" shorthand suggestion fights that
   // convention on every file, so it is off for this workspace.
-  "tailwindCSS.lint.suggestCanonicalClasses": "ignore"
+  "tailwindCSS.lint.suggestCanonicalClasses": "ignore",
+  "liveServer.settings.port": 5501
 }

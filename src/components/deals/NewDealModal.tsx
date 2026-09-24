@@ -1,5 +1,6 @@
 'use client';
 
+import { SelectionButton } from '@/components/ui/SelectionButton';
 import { useState, useEffect, useMemo, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
@@ -270,26 +271,16 @@ export function NewDealModal({
           </>
         ) : (
           <>
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               type="button"
               onClick={() => { setError(null); setStep('contact'); }}
               disabled={isPending}
-              style={{
-                display:     'inline-flex',
-                alignItems:  'center',
-                height:      '2.25rem',
-                padding:     '0 var(--space-3)',
-                border:      'none',
-                background:  'transparent',
-                fontFamily:  'var(--font-sans)',
-                fontSize:    'var(--text-sm)',
-                color:       'var(--theme-text-secondary)',
-                cursor:      isPending ? 'not-allowed' : 'pointer',
-                opacity:     isPending ? 0.5 : 1,
-              }}
+              style={{ display: 'inline-flex', alignItems: 'center', height: '2.25rem' }}
             >
               ← Back
-            </button>
+            </Button>
             <div style={{ flex: 1 }} />
             <Button variant="secondary" type="button" onClick={handleClose} disabled={isPending}>
               Cancel
@@ -312,7 +303,7 @@ export function NewDealModal({
           {/* Contact name */}
           <div>
             <label style={labelStyle}>
-              Name <span style={{ color: 'var(--color-danger)' }}>*</span>
+              Name <span style={{ color: "var(--color-danger-text)" }}>*</span>
             </label>
             <input
               type="text"
@@ -328,7 +319,7 @@ export function NewDealModal({
           {/* Phone */}
           <div>
             <label style={labelStyle}>
-              Phone <span style={{ color: 'var(--color-danger)' }}>*</span>
+              Phone <span style={{ color: "var(--color-danger-text)" }}>*</span>
             </label>
             <input
               type="tel"
@@ -458,7 +449,7 @@ export function NewDealModal({
                 style={{
                   fontSize:   'var(--text-sm)',
                   fontWeight: 'var(--weight-semibold)',
-                  color:      'var(--theme-accent)',
+                  color:      "var(--neu-accent-deep)",
                 }}
               >
                 {dealType ? DEAL_TYPE_LABELS[dealType] : '—'}
@@ -473,7 +464,7 @@ export function NewDealModal({
           {dealType === 'retail' && categories && (
             <div>
               <p style={{ ...labelStyle, margin: '0 0 var(--space-2) 0' }}>
-                Product Category <span style={{ color: 'var(--color-danger)' }}>*</span>
+                Product Category <span style={{ color: "var(--color-danger-text)" }}>*</span>
               </p>
               <div style={{ pointerEvents: isPending ? 'none' : undefined, opacity: isPending ? 0.6 : 1 }}>
                 <FilterDropdown
@@ -493,33 +484,27 @@ export function NewDealModal({
           {dealType === 'membership' && (
             <div>
               <p style={{ ...labelStyle, margin: '0 0 var(--space-3) 0' }}>
-                Duration <span style={{ color: 'var(--color-danger)' }}>*</span>
+                Duration <span style={{ color: "var(--color-danger-text)" }}>*</span>
               </p>
               <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
                 {DEAL_DURATIONS.map((d) => (
-                  <button
+                  <SelectionButton
+                    appearance="choice"
+                    selected={duration === d}
+                    aria-pressed={duration === d}
                     key={d}
                     type="button"
                     onClick={() => { setDuration(d); setError(null); }}
                     disabled={isPending}
                     style={{
-                      flex:         1,
-                      height:       '2.5rem',
-                      border:       '1px solid var(--neu-edge)',
-                      borderRadius: 'var(--radius-sm)',
-                      background:   duration === d ? 'color-mix(in srgb, var(--theme-accent) 12%, var(--neu-surface))' : 'var(--theme-paper)',
-                      boxShadow:    duration === d ? 'var(--neu-shadow-chip)' : 'none',
-                      fontFamily:   'var(--font-sans)',
-                      fontSize:     'var(--text-sm)',
-                      fontWeight:   duration === d ? 'var(--weight-semibold)' : 'var(--weight-normal)',
-                      color:        duration === d ? 'var(--neu-accent-deep)' : 'var(--theme-text-primary)',
-                      cursor:       'pointer',
-                      transition:   'box-shadow 0.15s ease, background 0.15s ease',
-                      whiteSpace:   'nowrap',
-                    }}
+                            flex: 1,
+                            height: '2.5rem',
+                            fontSize: 'var(--text-sm)',
+                            whiteSpace: 'nowrap',
+                        }}
                   >
                     {DEAL_DURATION_LABELS[d]}
-                  </button>
+                  </SelectionButton>
                 ))}
               </div>
             </div>
@@ -529,7 +514,7 @@ export function NewDealModal({
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
             <div>
               <p style={{ ...labelStyle, margin: '0 0 var(--space-2) 0' }}>
-                Deal Date <span style={{ color: 'var(--color-danger)' }}>*</span>
+                Deal Date <span style={{ color: "var(--color-danger-text)" }}>*</span>
               </p>
               <DatePicker
                 value={wonAt}
@@ -558,7 +543,7 @@ export function NewDealModal({
           {/* Amount */}
           <div>
             <label htmlFor="new-deal-amount" style={labelStyle}>
-              Deal Amount (₹) <span style={{ color: 'var(--color-danger)' }}>*</span>
+              Deal Amount (₹) <span style={{ color: "var(--color-danger-text)" }}>*</span>
             </label>
             <div style={{ position: 'relative' }}>
               <span

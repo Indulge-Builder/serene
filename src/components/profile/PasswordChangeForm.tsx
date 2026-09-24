@@ -360,7 +360,9 @@ function PasswordField({
             e.currentTarget.style.boxShadow   = "var(--neu-shadow-input)";
           }}
         />
-        <button
+        <Button
+          variant="ghost"
+          iconOnly size="sm"
           type="button"
           onClick={onToggleShow}
           aria-label={show ? "Hide password" : "Show password"}
@@ -370,11 +372,6 @@ function PasswordField({
             right:           "var(--space-3)",
             top:             "50%",
             transform:       "translateY(-50%)",
-            background:      "transparent",
-            border:          "none",
-            padding:         0,
-            cursor:          "pointer",
-            color:           "var(--theme-text-tertiary)",
             display:         "flex",
             alignItems:      "center",
             justifyContent:  "center",
@@ -385,7 +382,7 @@ function PasswordField({
           ) : (
             <Eye style={{ width: "15px", height: "15px", strokeWidth: 1.5 }} />
           )}
-        </button>
+        </Button>
       </div>
 
       {error && (
@@ -406,7 +403,7 @@ function PasswordField({
           style={{
             fontFamily: "var(--font-sans)",
             fontSize:   "var(--text-xs)",
-            color:      "var(--color-success)",
+            color:      "var(--color-success-text)",
             margin:     0,
           }}
         >

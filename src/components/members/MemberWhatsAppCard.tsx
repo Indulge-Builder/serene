@@ -5,6 +5,7 @@
 // the groups an admin or founder can see (getSiaGroupsAction is admin/founder); a queendom
 // member sees the link read-only until Sia opens per queendom.
 
+import { SelectionButton } from '@/components/ui/SelectionButton';
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -83,11 +84,22 @@ export function MemberWhatsAppCard({ clientId, group, canLink }: { clientId: str
               <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 2 }}>
                 {candidates.map((g) => (
                   <li key={g.group_jid}>
-                    <button type="button" onClick={() => link(g.group_jid)} disabled={pending} className="serene-pressable"
-                      style={{ width: '100%', textAlign: 'left', background: 'none', border: '1px solid var(--theme-paper-border)', borderRadius: 'var(--radius-sm)', padding: 'var(--space-2) var(--space-3)', cursor: 'pointer', fontSize: 'var(--text-sm)', color: 'var(--theme-text-primary)' }}>
+                    <SelectionButton
+                      appearance="row"
+                      type="button"
+                      onClick={() => link(g.group_jid)}
+                      disabled={pending}
+                      className="serene-pressable"
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: 'var(--space-2) var(--space-3)',
+                        fontSize: 'var(--text-sm)',
+                      }}
+                    >
                       {g.subject ?? g.group_jid}
                       <span style={{ fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)', marginLeft: 'var(--space-2)' }}>{g.group_kind}{g.message_count ? ` · ${formatCount(g.message_count)} msgs` : ''}</span>
-                    </button>
+                    </SelectionButton>
                   </li>
                 ))}
                 {candidates.length === 0 && <li style={{ fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>No group matches.</li>}

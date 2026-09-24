@@ -11,6 +11,8 @@
 // every byte behind the admin/founder action boundary (Q-13). Push transport can
 // replace the interval when the connector moves to Fargate (Sia W1).
 
+import { MotionButton } from '@/components/ui/MotionButton';
+import { Button } from '@/components/ui/Button';
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, m as motion } from "framer-motion";
 import { ArrowDown, ArrowLeft, ClipboardPlus, Search, Users, X } from "lucide-react";
@@ -279,23 +281,25 @@ export function SiaChat({
       <div className="px-4 py-2.5 border-b border-(--theme-paper-border) bg-(--theme-paper)">
         <div className="flex items-center gap-3">
           {isMobile && (
-            <button
+            <Button
+              variant="ghost"
+              iconOnly size="sm"
               type="button"
               onClick={onBack}
               aria-label="Back to conversations"
               className="serene-pressable shrink-0 w-8 h-8 rounded-full border border-(--theme-paper-border) bg-(--theme-paper) flex items-center justify-center text-(--theme-text-secondary)"
-              style={{ cursor: "pointer" }}
             >
               <ArrowLeft className="w-4 h-4" strokeWidth={1.5} />
-            </button>
+            </Button>
           )}
-          <button
+          <Button
+            variant="ghost"
+            iconOnly size="sm"
             type="button"
             onClick={() => setInfoOpen((v) => !v)}
             aria-label="Open group info"
             title="Group info"
             className="min-w-0 flex-1 flex items-center gap-3 text-left border-0 bg-transparent rounded-(--radius-md) px-1 py-0.5 -mx-1 hover:bg-(--theme-paper-subtle)"
-            style={{ cursor: "pointer", transition: "background var(--duration-fast) var(--ease-in-out)" }}
           >
             <Avatar name={groupTitle(group)} size="sm" />
             <div className="min-w-0 flex-1">
@@ -310,37 +314,29 @@ export function SiaChat({
                 {memberMeta}
               </div>
             </div>
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="control"
+            iconOnly size="sm" active={selecting}
             type="button"
             onClick={() => { setSelecting((v) => !v); setSelectedIds(new Set()); }}
             aria-label={selecting ? "Cancel selection" : "Create a ticket from messages"}
             title={selecting ? "Cancel selection" : "Create a ticket from messages"}
             className="serene-pressable shrink-0 w-8 h-8 rounded-full border flex items-center justify-center"
-            style={{
-              cursor: "pointer",
-              borderColor: selecting ? "var(--theme-accent)" : "var(--theme-paper-border)",
-              background: selecting ? "var(--theme-accent-surface)" : "var(--theme-paper)",
-              color: selecting ? "var(--neu-accent-deep)" : "var(--theme-text-secondary)",
-            }}
           >
             <ClipboardPlus className="w-4 h-4" strokeWidth={1.5} />
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="control"
+            iconOnly size="sm" active={searchOpen}
             type="button"
             onClick={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
             aria-label={searchOpen ? "Close search" : "Search this conversation"}
             title={searchOpen ? "Close search" : "Search this conversation"}
             className="serene-pressable shrink-0 w-8 h-8 rounded-full border flex items-center justify-center"
-            style={{
-              cursor: "pointer",
-              borderColor: searchOpen ? "var(--theme-accent)" : "var(--theme-paper-border)",
-              background: searchOpen ? "var(--theme-accent-surface)" : "var(--theme-paper)",
-              color: searchOpen ? "var(--neu-accent-deep)" : "var(--theme-text-secondary)",
-            }}
           >
             {searchOpen ? <X className="w-4 h-4" strokeWidth={1.5} /> : <Search className="w-4 h-4" strokeWidth={1.5} />}
-          </button>
+          </Button>
         </div>
 
         <AnimatePresence initial={false}>
@@ -431,10 +427,21 @@ export function SiaChat({
               style={{ background: "var(--theme-paper)", border: "1px solid var(--theme-paper-border)", boxShadow: "var(--shadow-3)", zIndex: "var(--z-raised)" }}
             >
               <span className="type-caption" style={{ color: "var(--theme-text-secondary)" }}>{selectedIds.size} selected</span>
-              <button type="button" onClick={startTicket} disabled={selectedIds.size === 0} className="serene-btn-primary serene-pressable type-caption rounded-full px-3 py-1" style={{ cursor: selectedIds.size ? "pointer" : "default", opacity: selectedIds.size ? 1 : 0.5 }}>
+              <Button
+                variant="primary"
+                size="sm"
+                type="button"
+                onClick={startTicket}
+                disabled={selectedIds.size === 0}
+              >
                 Create ticket
-              </button>
-              <button type="button" onClick={() => { setSelecting(false); setSelectedIds(new Set()); }} className="type-caption" style={{ background: "none", border: 0, cursor: "pointer", color: "var(--theme-text-tertiary)" }}>Cancel</button>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                type="button"
+                onClick={() => { setSelecting(false); setSelectedIds(new Set()); }}
+              >Cancel</Button>
             </motion.div>
           )}
         </AnimatePresence>
@@ -444,57 +451,41 @@ export function SiaChat({
             them until it reloads. ── */}
         <AnimatePresence>
           {needsReload && (
-            <motion.button
-              key="sia-reload"
-              type="button"
-              onClick={() => window.location.reload()}
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              transition={SPRING_CONFIG}
-              className="serene-pressable absolute left-1/2 -translate-x-1/2 rounded-full inline-flex items-center gap-1.5 border-0 type-caption"
-              style={{
-                top: "12px",
-                padding: "5px 14px",
-                background: "var(--color-warning-light)",
-                color: "var(--color-warning-text)",
-                boxShadow: "var(--shadow-2)",
-                cursor: "pointer",
-                fontWeight: "var(--weight-medium)",
-                zIndex: "var(--z-raised)",
-              }}
-            >
+            <MotionButton
+          variant="warning" size="sm"
+          key="sia-reload"
+          type="button"
+          onClick={() => window.location.reload()}
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0 }}
+          transition={SPRING_CONFIG}
+          className="serene-pressable absolute left-1/2 -translate-x-1/2 rounded-full inline-flex items-center gap-1.5 border-0 type-caption"
+          style={{top: "12px", padding: "5px 14px", zIndex: "var(--z-raised)"}}
+        >
               Serene was updated — tap to refresh
-            </motion.button>
+            </MotionButton>
           )}
         </AnimatePresence>
 
         {/* ── New-messages pill (arrivals while scrolled up) ── */}
         <AnimatePresence>
           {unseen > 0 && !searching && (
-            <motion.button
-              key="sia-unseen"
-              type="button"
-              onClick={jumpToLatest}
-              initial={{ opacity: 0, y: 10, scale: 0.94 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 6, transition: { duration: FAST_DURATION, ease: EASE_IN_OUT } }}
-              transition={SPRING_CONFIG}
-              className="serene-pressable absolute left-1/2 -translate-x-1/2 rounded-full inline-flex items-center gap-1.5 border-0 type-caption"
-              style={{
-                bottom: "16px",
-                padding: "5px 14px",
-                background: "var(--theme-accent)",
-                color: "var(--theme-accent-fg)",
-                boxShadow: "var(--shadow-2)",
-                cursor: "pointer",
-                fontWeight: "var(--weight-medium)",
-                zIndex: "var(--z-raised)",
-              }}
-            >
+            <MotionButton
+          variant="control" size="sm"
+          key="sia-unseen"
+          type="button"
+          onClick={jumpToLatest}
+          initial={{ opacity: 0, y: 10, scale: 0.94 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 6, transition: { duration: FAST_DURATION, ease: EASE_IN_OUT } }}
+          transition={SPRING_CONFIG}
+          className="serene-pressable absolute left-1/2 -translate-x-1/2 rounded-full inline-flex items-center gap-1.5 border-0 type-caption"
+          style={{bottom: "16px", padding: "5px 14px", zIndex: "var(--z-raised)"}}
+        >
               <ArrowDown className="w-3.5 h-3.5" strokeWidth={2} />
               {unseen} new {unseen === 1 ? "message" : "messages"}
-            </motion.button>
+            </MotionButton>
           )}
         </AnimatePresence>
       </div>

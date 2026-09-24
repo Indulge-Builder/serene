@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@/components/ui/Button';
 import { useState, useMemo } from 'react';
 import { Search, ChevronDown, ChevronRight, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import type { LeadRawPayload } from '@/lib/types/database';
@@ -83,24 +84,12 @@ function PayloadCell({ payload }: { payload: Record<string, unknown> }) {
 
   return (
     <div>
-      <button
+      <Button
+        variant="ghost"
+        size="sm"
         type="button"
         onClick={() => setOpen((v) => !v)}
-        style={{
-          display:     'inline-flex',
-          alignItems:  'center',
-          gap:         'var(--space-1)',
-          background:  'none',
-          border:      'none',
-          cursor:      'pointer',
-          padding:     0,
-          fontSize:    'var(--text-xs)',
-          color:       'var(--theme-accent)',
-          fontWeight:  'var(--weight-medium)',
-          transition:  'opacity var(--duration-fast) var(--ease-in-out)',
-        }}
-        onMouseEnter={(e) => { e.currentTarget.style.opacity = '0.7'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.opacity = '1'; }}
+        style={{ display:     'inline-flex', alignItems:  'center', gap:         'var(--space-1)' }}
       >
         <ChevronRight
           style={{
@@ -111,7 +100,7 @@ function PayloadCell({ payload }: { payload: Record<string, unknown> }) {
           }}
         />
         {open ? 'Hide payload' : 'View payload'}
-      </button>
+      </Button>
 
       {open && (
         <pre
@@ -336,7 +325,7 @@ export function ErrorLogTable({ rows }: ErrorLogTableProps) {
                         style={{
                           width:   '2rem',
                           height:  '2rem',
-                          color:   'var(--color-success)',
+                          color:   "var(--color-success-text)",
                           margin:  '0 auto var(--space-3)',
                           display: 'block',
                         }}
@@ -354,7 +343,7 @@ export function ErrorLogTable({ rows }: ErrorLogTableProps) {
                         style={{
                           width:   '1.5rem',
                           height:  '1.5rem',
-                          color:   'var(--color-warning)',
+                          color:   "var(--color-warning-text)",
                           margin:  '0 auto var(--space-3)',
                           display: 'block',
                         }}

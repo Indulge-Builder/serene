@@ -3,8 +3,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { SeedMandala } from './SeedMandala';
+import { filterTriggerStyle } from './material-styles';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'success';
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'success' | 'control' | 'warning' | 'ghost-danger';
 export type ButtonSize = 'xs' | 'sm' | 'md' | 'lg';
 /** Icon micro-interaction family (design-tokens.css) — hover gesture on the child svg. */
 export type ButtonIconMotion = 'rotate' | 'lift' | 'drop' | 'ring';
@@ -14,6 +15,10 @@ export type ButtonStatus = 'idle' | 'pending' | 'success';
 
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
+  /** Applied toolbar/filter state; callers supply aria-pressed when appropriate. */
+  active?: boolean;
+  /** Square control; provide an accessible label when no text is visible. */
+  iconOnly?: boolean;
   size?: ButtonSize;
   loading?: boolean;
   /** Progressive-verb label shown while loading ("Placing request…",
@@ -150,6 +155,8 @@ const ICON_SIZE: Record<ButtonSize, number> = {
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   {
     variant = 'primary',
+    active = false,
+    iconOnly = false,
     size = 'md',
     loading = false,
     loadingLabel,
@@ -175,6 +182,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function 
   const isDisabled = disabled || isPending || isSuccess;
   const classes = [
     'serene-pressable',
+    'serene-action',
     `serene-btn-${variant}`,
     suppressFocusRing && 'serene-btn-no-ring',
     iconMotion && `serene-icon-${iconMotion}-hover`,
@@ -187,6 +195,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function 
     <button
       ref={ref}
       disabled={isDisabled}
+      aria-busy={isPending || undefined}
       className={classes}
       {...rest}
       style={{
@@ -194,8 +203,8 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function 
         alignItems:     'center',
         justifyContent: 'center',
         fontFamily:     'var(--font-sans)',
-        fontWeight:     'var(--weight-semibold)',
-        borderRadius:   'var(--radius-sm)', // ✓ spec — §5.01 never --radius-md
+        fontWeight:     variant === 'control' ? 'var(--weight-medium)' : 'var(--weight-semibold)',
+        borderRadius:   'var(--neu-radius-control)',
         // Loading is a live wait, not a dead control (logo-motion handoff):
         // cursor wait (pointer events stay on so it shows — the disabled
         // attribute already swallows clicks), primary softens to 0.85.
@@ -207,6 +216,9 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function 
         lineHeight:     'var(--leading-none)',
         outline:        'none',
         ...SIZE_STYLES[size],
+        flexShrink: 0,
+        ...(iconOnly ? { width: SIZE_STYLES[size].height, padding: 0 } : {}),
+        ...(variant === 'control' ? filterTriggerStyle(active, rest['aria-expanded'] === true) : {}),
         // Success re-tint — SEMANTIC sage, never the theme accent (§03).
         ...(isSuccess
           ? { background: 'var(--neu-success-gradient)', color: 'var(--neu-success-ink)' }

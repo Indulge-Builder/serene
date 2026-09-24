@@ -160,7 +160,7 @@ export function PushNotificationSettings() {
         <p
           style={{
             fontSize: "var(--text-xs)",
-            color:    "var(--color-danger)",
+            color:    "var(--color-danger-text)",
             margin:   0,
           }}
         >

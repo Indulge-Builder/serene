@@ -30,26 +30,15 @@ function TypeChip({
   onClick: () => void;
 }) {
   return (
-    <button
+    <Button
+      variant="control"
+      size="sm" active={active} aria-pressed={active}
       type="button"
       onClick={onClick}
-      style={{
-        padding:      'var(--space-1) var(--space-3)',
-        borderRadius: 'var(--radius-full)',
-        border:       active
-          ? '1px solid var(--theme-accent)'
-          : '1px solid var(--theme-paper-border)',
-        background:   active ? 'var(--theme-accent-surface)' : 'var(--theme-paper)',
-        color:        active ? 'var(--theme-accent)' : 'var(--theme-text-secondary)',
-        fontSize:     'var(--text-xs)',
-        fontWeight:   'var(--weight-medium)',
-        cursor:       'pointer',
-        whiteSpace:   'nowrap',
-        transition:   'all var(--duration-fast) var(--ease-in-out)',
-      }}
+      style={{ whiteSpace:   'nowrap' }}
     >
       {label}
-    </button>
+    </Button>
   );
 }
 
@@ -188,7 +177,7 @@ export function CalledModal({ open, leadId, onClose }: Props) {
         style={{
           width:       '1rem',
           height:      '1rem',
-          color:       'var(--theme-accent)',
+          color:       "var(--neu-accent-deep)",
           strokeWidth: 1.5,
           flexShrink:  0,
         }}
@@ -201,6 +190,7 @@ export function CalledModal({ open, leadId, onClose }: Props) {
   return (
     <Modal
       open={open}
+      pending={isPending}
       onClose={onClose}
       title={modalTitle}
       maxWidth="max-w-lg"
@@ -233,13 +223,14 @@ export function CalledModal({ open, leadId, onClose }: Props) {
         {/* Call outcome */}
         <div>
           <span id="call-outcome-label" style={fieldLabelStyle}>
-            Call outcome <span style={{ color: 'var(--color-danger)' }}>*</span>
+            Call outcome <span style={{ color: "var(--color-danger-text)" }}>*</span>
           </span>
           <div
             aria-labelledby="call-outcome-label"
-            style={{ opacity: isPending ? 0.6 : 1, pointerEvents: isPending ? 'none' : 'auto' }}
           >
             <FilterDropdown
+              disabled={isPending}
+              ariaLabel={`Call outcome: ${outcomeLabel}`}
               label={outcomeLabel}
               items={OUTCOME_ITEMS}
               selected={outcome ? [outcome] : []}
@@ -261,7 +252,7 @@ export function CalledModal({ open, leadId, onClose }: Props) {
             }}
           >
             <label htmlFor="call-note" style={{ ...fieldLabelStyle, marginBottom: 0 }}>
-              Note <span style={{ color: 'var(--color-danger)' }}>*</span>
+              Note <span style={{ color: "var(--color-danger-text)" }}>*</span>
             </label>
 
             {/* Voice dictation cluster — shared DictationButton (inline variant) */}
@@ -331,7 +322,7 @@ export function CalledModal({ open, leadId, onClose }: Props) {
           {/* Due date + time — required for Log Update + Task (drives Trigger.dev reminder) */}
           <div>
             <span style={fieldLabelStyle}>
-              Due date &amp; time <span style={{ color: 'var(--color-danger)' }}>*</span>
+              Due date &amp; time <span style={{ color: "var(--color-danger-text)" }}>*</span>
             </span>
             <DatePicker
               value={dueAt}

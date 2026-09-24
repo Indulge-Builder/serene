@@ -1,5 +1,9 @@
 'use client';
 
+import { useEffect, useId, useRef } from 'react';
+import { ModalScopeContext, useModalFocus } from '@/hooks/useModalFocus';
+import { lockBodyScroll } from '@/lib/utils/scroll';
+import { Button } from '@/components/ui/Button';
 import { createPortal } from 'react-dom';
 import { m as motion, AnimatePresence } from 'framer-motion';
 import { BASE_DURATION, EASE_OUT_EXPO, FAST_DURATION } from '@/lib/constants/motion';
@@ -47,9 +51,15 @@ export function ConfirmDialog({
   onCancel,
   dialogKey = 'confirm',
 }: ConfirmDialogProps) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  const bodyId = useId();
+  const scopeId = useModalFocus(open, panelRef, onCancel, !pending);
+  useEffect(() => { if (open) return lockBodyScroll(); }, [open]);
   if (typeof document === 'undefined') return null;
 
   return createPortal(
+    <ModalScopeContext.Provider value={scopeId}>
     <AnimatePresence>
       {open && (
         <>
@@ -74,8 +84,13 @@ export function ConfirmDialog({
           />
           <motion.div
             key={`${dialogKey}-dialog`}
+            ref={panelRef}
+            tabIndex={-1}
+            aria-labelledby={titleId}
+            aria-describedby={bodyId}
             role="alertdialog"
             aria-modal="true"
+            aria-busy={pending || undefined}
             initial={{ opacity: 0, y: 8, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, scale: 0.97 }}
@@ -95,7 +110,7 @@ export function ConfirmDialog({
               padding:      'var(--space-6)',
             }}
           >
-            <h3
+            <h3 id={titleId}
               style={{
                 fontFamily: 'var(--font-serif)',
                 fontSize:   'var(--text-lg)',
@@ -106,7 +121,7 @@ export function ConfirmDialog({
             >
               {title}
             </h3>
-            <p
+            <div id={bodyId}
               style={{
                 fontFamily: 'var(--font-sans)',
                 fontSize:   'var(--text-sm)',
@@ -116,61 +131,38 @@ export function ConfirmDialog({
               }}
             >
               {body}
-            </p>
+            </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)' }}>
-              <button
+              <Button
+                variant="ghost"
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   onCancel();
                 }}
                 disabled={pending}
-                style={{
-                  padding:      'var(--space-2) var(--space-4)',
-                  borderRadius: 'var(--radius-sm)',
-                  border:       '1px solid var(--theme-paper-border)',
-                  background:   'transparent',
-                  fontFamily:   'var(--font-sans)',
-                  fontSize:     'var(--text-sm)',
-                  color:        'var(--theme-text-secondary)',
-                  cursor:       pending ? 'not-allowed' : 'pointer',
-                  opacity:      pending ? 0.5 : 1,
-                }}
               >
                 {cancelLabel}
-              </button>
-              <button
+              </Button>
+              <Button
+                variant={danger ? "danger" : "primary"}
+                loading={pending}
+                loadingLabel={pendingLabel ?? `${confirmLabel}…`}
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   onConfirm();
                 }}
                 disabled={pending}
-                style={{
-                  padding:      'var(--space-2) var(--space-4)',
-                  borderRadius: 'var(--radius-sm)',
-                  border:       'none',
-                  boxShadow:    'var(--neu-shadow-raised-sm)',
-                  background:   pending
-                    ? (danger ? 'var(--color-danger-light)' : 'var(--theme-accent-surface)')
-                    : (danger ? 'var(--color-danger)' : 'var(--neu-accent-gradient)'),
-                  fontFamily:   'var(--font-sans)',
-                  fontSize:     'var(--text-sm)',
-                  fontWeight:   'var(--weight-semibold)',
-                  color:        pending
-                    ? (danger ? 'var(--color-danger-text)' : 'var(--theme-accent)')
-                    : (danger ? 'var(--color-danger-fg)' : 'var(--theme-accent-fg)'),
-                  cursor:       pending ? 'not-allowed' : 'pointer',
-                  transition:   'var(--transition-interactive)',
-                }}
               >
                 {pending ? (pendingLabel ?? `${confirmLabel}…`) : confirmLabel}
-              </button>
+              </Button>
             </div>
           </motion.div>
         </>
       )}
-    </AnimatePresence>,
+    </AnimatePresence>
+    </ModalScopeContext.Provider>,
     document.body,
   );
 }

@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@/components/ui/Button';
 import { useState, useEffect, useRef, useTransition } from 'react';
 import { m as motion, AnimatePresence } from 'framer-motion';
 import {
@@ -246,32 +247,28 @@ function DomainStatCard({
                   fontSize:     'var(--text-sm)',
                 }}
               />
-              <button
+              <Button
+                variant="primary"
+                size="sm"
+                iconOnly
                 type="button"
                 onClick={() => void commitEdit()}
                 disabled={isSaving}
                 aria-label="Save target"
-                style={{
-                  display: 'inline-flex',
-                  border: 'none', background: 'transparent', cursor: 'pointer',
-                  color: 'var(--color-success)', padding: 'var(--space-1)',
-                }}
               >
                 <Check style={{ width: 16, height: 16, strokeWidth: 1.5 }} />
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                iconOnly
                 type="button"
                 onClick={() => setIsEditing(false)}
                 disabled={isSaving}
                 aria-label="Cancel target edit"
-                style={{
-                  display: 'inline-flex',
-                  border: 'none', background: 'transparent', cursor: 'pointer',
-                  color: 'var(--theme-text-tertiary)', padding: 'var(--space-1)',
-                }}
               >
                 <X style={{ width: 16, height: 16, strokeWidth: 1.5 }} />
-              </button>
+              </Button>
             </div>
           ) : (
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
@@ -287,18 +284,16 @@ function DomainStatCard({
                   : 'No monthly target'}
               </span>
               {canEditTargets && (
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  iconOnly
                   type="button"
                   onClick={startEdit}
                   aria-label={`Edit monthly deals target for ${domainLabel}`}
-                  style={{
-                    display: 'inline-flex',
-                    border: 'none', background: 'transparent', cursor: 'pointer',
-                    color: 'var(--theme-text-tertiary)', padding: 'var(--space-1)',
-                  }}
                 >
                   <Pencil style={{ width: 13, height: 13, strokeWidth: 1.5 }} />
-                </button>
+                </Button>
               )}
             </div>
           )}
@@ -450,7 +445,7 @@ export function DomainOverviewPanel({
       });
 
     return () => { cancelled = true; };
-   
+
   }, [period, customFrom, customTo, scopeDomain]);
 
   // Chart data — one entry per visible domain (all GIA domains, or just the

@@ -318,7 +318,7 @@
   --theme-accent-hover:      color-mix(in srgb, #D68891 86%, black);
   --theme-accent-muted:      #915B61; /* text-safe on cream (AA 4.65:1; was #B57F84 at 2.84:1) */
   --theme-accent-surface:    rgba(214, 136, 145, 0.16);
-  --theme-accent-fg:         #45272A; /* rosewood ink — rose cannot hold white */
+  --theme-accent-fg:         #341D21; /* rosewood ink — rose cannot hold white */
 
   --theme-text-primary:      #251a1b;
   --theme-text-secondary:    #746064;

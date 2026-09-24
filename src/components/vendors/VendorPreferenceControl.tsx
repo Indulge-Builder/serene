@@ -18,6 +18,7 @@
 // picker sits inside the identity card. Deliberately short: the score card
 // must stay level with the identity card beside it.
 
+import { SelectionButton } from '@/components/ui/SelectionButton';
 import { useRef, useState, useTransition } from 'react';
 import { ThumbsUp, ThumbsDown, type LucideIcon } from 'lucide-react';
 import { toast } from '@/lib/toast';
@@ -95,30 +96,26 @@ export function VendorPreferenceControl({
           const S = STANCE_STYLE[s];
           const Icon = S.icon;
           return (
-            <button
+            <SelectionButton
+              tone={{ fill: S.bg, ink: S.fg }}
+              appearance="choice"
+              selected={active}
               key={s}
               type="button"
               aria-pressed={active}
               onClick={() => apply(active ? null : s)}
               className="serene-pressable"
               style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 'var(--space-2)',
-                padding: 'var(--space-2) var(--space-3)',
-                borderRadius: 'var(--radius-full)',
-                border: `1px solid ${active ? 'transparent' : 'var(--theme-paper-border)'}`,
-                background: active ? S.bg : 'var(--theme-paper)',
-                color: active ? S.fg : 'var(--theme-text-secondary)',
-                fontSize: 'var(--text-xs)',
-                fontWeight: 'var(--weight-medium)',
-                cursor: 'pointer',
-                transition: 'var(--transition-hover)',
-              }}
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 'var(--space-2)',
+                      padding: 'var(--space-2) var(--space-3)',
+                      fontSize: 'var(--text-xs)',
+                  }}
             >
               <Icon style={{ width: 13, height: 13, strokeWidth: 1.5 }} />
               {PREFERENCE_STANCE_LABELS[s]}
-            </button>
+            </SelectionButton>
           );
         })}
       </div>

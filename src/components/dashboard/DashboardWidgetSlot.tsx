@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from '@/components/ui/Button';
 import { Suspense, lazy, useEffect, useState } from "react";
 import {
   WIDGET_MAP,
@@ -185,26 +186,15 @@ export function DashboardWidgetSlot({
           }}
         >
           {dragHandle}
-          <button
+          <Button
+            variant="ghost"
+            iconOnly size="sm"
             onClick={() => onRemove(widgetId)}
             aria-label={`Remove ${definition.label}`}
-            style={{
-              width: "24px",
-              height: "24px",
-              borderRadius: "var(--radius-full)",
-              border: "1px solid var(--theme-paper-border)",
-              background: "var(--theme-paper)",
-              color: "var(--color-danger)",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontSize: "14px",
-              lineHeight: 1,
-            }}
+            style={{ width: "24px", height: "24px", display: "flex", alignItems: "center", justifyContent: "center" }}
           >
             ×
-          </button>
+          </Button>
         </div>
       )}
 

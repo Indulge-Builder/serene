@@ -9,6 +9,7 @@ export type ModalType = 'standard' | 'elaya';
 
 export interface ModalProps {
   open: boolean;
+  pending?: boolean;
   onClose: () => void;
   title: React.ReactNode;
   description?: string;
@@ -43,6 +44,7 @@ export interface ModalProps {
  */
 export function Modal({
   open,
+  pending = false,
   onClose,
   title,
   description,
@@ -66,6 +68,7 @@ export function Modal({
         <Button
           variant="ghost"
           size="sm"
+          disabled={pending}
           onClick={() => { onDismiss?.(); onClose(); }}
         >
           {dismissLabel}
@@ -73,6 +76,7 @@ export function Modal({
         <Button
           variant="primary"
           size="sm"
+          disabled={pending}
           onClick={() => { onApprove?.(); onClose(); }}
         >
           {approveLabel}
@@ -85,6 +89,7 @@ export function Modal({
   return (
     <Dialog
       open={open}
+      pending={pending}
       onClose={onClose}
       title={title}
       description={description}

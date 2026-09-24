@@ -15,9 +15,17 @@ export function QueendomRosterCard({ roster }: { roster: QueendomRoster[] }) {
     <SectionCard title="Queendoms" description="Concierge seats, read from each member's profile. Assign a seat from a member's Authorization card.">
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "var(--space-4)" }}>
         {roster.map(({ queendom, seats, genies }) => (
-          <div key={queendom.id} style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)", padding: "var(--space-4)", background: "var(--theme-paper-subtle)", border: "1px solid var(--theme-paper-border)", borderRadius: "var(--radius-md)" }}>
+          <div key={queendom.id} style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "var(--space-3)",
+            padding: "var(--space-4)",
+            background: "var(--theme-paper-subtle)",
+            border: "1px solid var(--theme-paper-border)",
+            borderRadius: "var(--radius-md)",
+          }}>
             <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
-              <Crown style={{ width: 14, height: 14, strokeWidth: 1.5, color: "var(--theme-accent)" }} />
+              <Crown style={{ width: 14, height: 14, strokeWidth: 1.5, color: "var(--neu-accent-deep)" }} />
               <span style={{ fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)", fontWeight: "var(--weight-semibold)", color: "var(--theme-text-primary)" }}>{queendom.name}</span>
             </div>
             {SIA_SINGLE_SEATS.map((seat) => (
@@ -51,7 +59,16 @@ function Seat({ label, member }: { label: string; member: QueendomRosterMember |
 
 function MemberChip({ member }: { member: QueendomRosterMember }) {
   return (
-    <Link href={`/admin/users/${member.id}`} style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-2)", textDecoration: "none", color: "var(--theme-text-primary)", fontFamily: "var(--font-sans)", fontSize: "var(--text-sm)", opacity: member.is_active ? 1 : 0.55 }}>
+    <Link href={`/admin/users/${member.id}`} style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "var(--space-2)",
+      textDecoration: "none",
+      color: "var(--theme-text-primary)",
+      fontFamily: "var(--font-sans)",
+      fontSize: "var(--text-sm)",
+      opacity: member.is_active ? 1 : 0.55,
+    }}>
       <Avatar src={member.avatar_url} name={member.full_name} size="xs" />
       <span>{member.full_name}</span>
       {!member.is_active && <span className="status-pill status-pill--neutral">Inactive</span>}

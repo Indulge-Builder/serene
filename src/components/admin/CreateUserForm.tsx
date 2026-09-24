@@ -1,9 +1,10 @@
 "use client";
 
 import { useActionState, useEffect } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createUser, inviteUser } from "@/lib/actions/profiles";
+import { Field, Input } from "@/components/ui/Field";
+import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { RoleDomainFields } from "@/components/admin/RoleDomainFields";
 import type { QueendomSummary } from "@/lib/types/member";
@@ -63,26 +64,24 @@ function CommonFields({ queendoms }: FieldsProps) {
   return (
     <>
       <Field label="Full Name" htmlFor="full_name" required>
-        <input
+        <Input
           id="full_name"
           name="full_name"
           type="text"
           required
           autoComplete="name"
           placeholder="e.g. Priya Sharma"
-          style={inputStyle}
         />
       </Field>
 
       <Field label="Email Address" htmlFor="email" required>
-        <input
+        <Input
           id="email"
           name="email"
           type="email"
           required
           autoComplete="email"
           placeholder="priya@indulgeglobal.com"
-          style={inputStyle}
         />
       </Field>
 
@@ -90,12 +89,11 @@ function CommonFields({ queendoms }: FieldsProps) {
       <RoleDomainFields queendoms={queendoms} defaults={{ role: "agent", domain: "concierge" }} idPrefix="new_" />
 
       <Field label="Job Title" htmlFor="job_title">
-        <input
+        <Input
           id="job_title"
           name="job_title"
           type="text"
           placeholder="e.g. Senior Concierge Agent"
-          style={inputStyle}
         />
       </Field>
     </>
@@ -112,14 +110,13 @@ function PasswordFields({ queendoms }: FieldsProps) {
         required
         hint="Minimum 8 characters. User can change after login."
       >
-        <input
+        <Input
           id="password"
           name="password"
           type="password"
           required
           autoComplete="new-password"
           placeholder="••••••••"
-          style={inputStyle}
         />
       </Field>
       <Field
@@ -127,12 +124,11 @@ function PasswordFields({ queendoms }: FieldsProps) {
         htmlFor="phone"
         hint="Stored in E.164 format (India default)."
       >
-        <input
+        <Input
           id="phone"
           name="phone"
           type="tel"
           placeholder="+91 98765 43210"
-          style={inputStyle}
         />
       </Field>
     </>
@@ -158,23 +154,11 @@ function FormFooter({
   submitLabel  = "Create Member",
   pendingLabel = "Creating…",
 }: FooterProps) {
+  const router = useRouter();
   return (
     <>
       {state.error && (
-        <div
-          role="alert"
-          style={{
-            padding:      "var(--space-3) var(--space-4)",
-            background:   "var(--color-danger-light)",
-            border:       "1px solid color-mix(in srgb, var(--color-danger) 25%, transparent)",
-            borderRadius: "var(--radius-sm)",
-            fontFamily:   "var(--font-sans)",
-            fontSize:     "var(--text-sm)",
-            color:        "var(--color-danger-text)",
-          }}
-        >
-          {state.error}
-        </div>
+        <Alert tone="danger">{state.error}</Alert>
       )}
       <div
         style={{
@@ -184,9 +168,7 @@ function FormFooter({
           paddingTop:     "var(--space-2)",
         }}
       >
-        <Link href="/admin/users">
-          <Button variant="secondary" type="button">Cancel</Button>
-        </Link>
+        <Button variant="ghost" type="button" disabled={isPending} onClick={() => router.push("/admin/users")}>Cancel</Button>
         <Button variant="primary" type="submit" disabled={isPending} loading={isPending}>
           {isPending ? pendingLabel : submitLabel}
         </Button>
@@ -197,71 +179,9 @@ function FormFooter({
 
 // ─── Sub-components ────────────────────────────────────────
 
-type FieldProps = {
-  label:    string;
-  htmlFor:  string;
-  required?: boolean;
-  hint?:    string;
-  children: React.ReactNode;
-};
-
-function Field({ label, htmlFor, required, hint, children }: FieldProps) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
-      <label
-        htmlFor={htmlFor}
-        style={{
-          fontFamily:    "var(--font-sans)",
-          fontSize:      "var(--text-2xs)",
-          fontWeight:    "var(--weight-semibold)",
-          color:         "var(--theme-text-tertiary)",
-          letterSpacing: "var(--tracking-widest)",
-          textTransform: "uppercase",
-          display:       "flex",
-          gap:           "var(--space-1)",
-        }}
-      >
-        {label}
-        {required && (
-          <span style={{ color: "var(--color-danger)", lineHeight: 1 }}>*</span>
-        )}
-      </label>
-      {children}
-      {hint && (
-        <p
-          style={{
-            fontFamily: "var(--font-sans)",
-            fontSize:   "var(--text-xs)",
-            color:      "var(--theme-text-tertiary)",
-            margin:     0,
-          }}
-        >
-          {hint}
-        </p>
-      )}
-    </div>
-  );
-}
-
-// ─── Shared styles ─────────────────────────────────────────
-
 const formStyle: React.CSSProperties = {
   display:       "flex",
   flexDirection: "column",
   gap:           "var(--space-5)",
 };
-
-const inputStyle: React.CSSProperties = {
-  width:        "100%",
-  padding:      "var(--space-2) var(--space-3)",
-  background:   "var(--theme-paper-subtle)",
-  border:       "1px solid var(--theme-paper-border)",
-  borderRadius: "var(--radius-sm)",
-  fontFamily:   "var(--font-sans)",
-  fontSize:     "var(--text-sm)",
-  color:        "var(--theme-text-primary)",
-  outline:      "none",
-  boxSizing:    "border-box",
-};
-
 

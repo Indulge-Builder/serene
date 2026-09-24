@@ -343,31 +343,20 @@ function EyeToggle({
   onToggle: () => void;
 }) {
   return (
-    <button
+    <Button
+      variant="ghost"
+      iconOnly size="sm"
       type="button"
       onClick={onToggle}
       aria-label={show ? "Hide password" : "Show password"}
       tabIndex={-1}
-      style={{
-        position: "absolute",
-        right: "var(--space-3)",
-        top: "50%",
-        transform: "translateY(-50%)",
-        background: "transparent",
-        border: "none",
-        padding: 0,
-        cursor: "pointer",
-        color: "var(--theme-sidebar-text)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
+      style={{ position: "absolute", right: "var(--space-3)", top: "50%", transform: "translateY(-50%)", display: "flex", alignItems: "center", justifyContent: "center" }}
     >
       {show ? (
         <EyeOff style={{ width: "15px", height: "15px", strokeWidth: 1.5 }} />
       ) : (
         <Eye style={{ width: "15px", height: "15px", strokeWidth: 1.5 }} />
       )}
-    </button>
+    </Button>
   );
 }

@@ -255,7 +255,7 @@ export function LeadJourneyTimeline({ lead, activities }: Props) {
                     />
                   ) : isPassed ? (
                     <CheckCircle2
-                      style={{ width: '14px', height: '14px', color: 'var(--color-success)', strokeWidth: 2 }}
+                      style={{ width: '14px', height: '14px', color: "var(--color-success-text)", strokeWidth: 2 }}
                     />
                   ) : isActive ? (
                     <div

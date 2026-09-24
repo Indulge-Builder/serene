@@ -1,5 +1,6 @@
 "use client";
 
+import { clayTileStyle } from '@/components/ui/material-styles';
 import { useCallback } from "react";
 import { RefreshCcw } from "lucide-react";
 import { getLeadStatusSummaryAction } from "@/lib/actions/dashboard";
@@ -310,15 +311,14 @@ export function ManagerLeadStatusWidget({ userId, role, initialData, dateRange, 
                 <div
                   key={s}
                   style={{
-                    background:   STATUS_BG[s],
-                    borderRadius: "var(--radius-md)",
+                    ...clayTileStyle(STATUS_BG[s]),
                     padding:      "var(--space-3) var(--space-2)",
                     display:      "flex",
                     flexDirection:"column",
                     alignItems:   "center",
                     gap:          "var(--space-1)",
                     border:       `1px solid ${STATUS_BORDER[s]}`,
-                    boxShadow:    "var(--neu-shadow-chip)",
+
                   }}
                 >
                   <span
@@ -434,7 +434,7 @@ export function ManagerLeadStatusWidget({ userId, role, initialData, dateRange, 
                     <span
                       style={{
                         fontSize:   "var(--text-2xs)",
-                        color:      "var(--theme-accent)",
+                        color:      "var(--neu-accent-deep)",
                         whiteSpace: "nowrap",
                         flexShrink: 0,
                       }}

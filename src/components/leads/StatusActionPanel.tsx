@@ -1,5 +1,6 @@
 'use client';
 
+import { SelectionButton } from '@/components/ui/SelectionButton';
 import { useEffect, useState, useTransition, useOptimistic, useRef } from 'react';
 import { Phone, TrendingUp, Leaf, XCircle, Trash2, Trophy, Zap } from 'lucide-react';
 import { m as motion, AnimatePresence } from 'framer-motion';
@@ -425,50 +426,10 @@ export function StatusActionPanel({ lead, callerProfile }: Props) {
 // ─────────────────────────────────────────────
 type ButtonVariant = 'primary' | 'secondary' | 'success' | 'accent' | 'danger-outline' | 'ghost-danger' | 'revive';
 
-const VARIANT_STYLES: Record<ButtonVariant, React.CSSProperties> = {
-  primary: {
-    background: 'var(--neu-accent-gradient)',
-    color:      'var(--theme-accent-fg)',
-    border:     '1px solid var(--neu-edge)',
-    boxShadow:  'var(--neu-shadow-raised-sm)',
-  },
-  secondary: {
-    background: 'var(--neu-surface)',
-    color:      'var(--theme-text-primary)',
-    border:     '1px solid var(--neu-edge)',
-    boxShadow:  'var(--neu-shadow-raised-sm)',
-  },
-  success: {
-    background: 'var(--color-success-light)',
-    color:      'var(--color-success-text)',
-    border:     '1px solid var(--neu-edge)',
-    boxShadow:  'var(--neu-shadow-chip)',
-  },
-  accent: {
-    background: 'color-mix(in srgb, var(--theme-accent) 12%, var(--neu-surface))',
-    color:      'var(--neu-accent-deep)',
-    border:     '1px solid var(--neu-edge)',
-    boxShadow:  'var(--neu-shadow-chip)',
-  },
-  'danger-outline': {
-    background: 'var(--color-danger-light)',
-    color:      'var(--color-danger-text)',
-    border:     '1px solid var(--neu-edge)',
-    boxShadow:  'var(--neu-shadow-chip)',
-  },
-  'ghost-danger': {
-    background: 'transparent',
-    color:      'var(--color-danger-text)',
-    border:     'none',
-  },
-  revive: {
-    background: 'var(--color-warning-light)',
-    color:      'var(--color-warning-text)',
-    border:     '1px solid var(--neu-edge)',
-    boxShadow:  'var(--neu-shadow-chip)',
-    fontWeight: 'var(--weight-semibold)' as string,
-  },
-};
+const ACTION_VARIANTS = {
+  primary: 'primary', secondary: 'secondary', success: 'success', accent: 'control',
+  'danger-outline': 'danger', 'ghost-danger': 'ghost-danger', revive: 'warning',
+} as const;
 
 function ActionButton({
   icon,
@@ -488,34 +449,16 @@ function ActionButton({
   /** Fill the grid cell (equal-width mobile stage-action row) */
   fluid?: boolean;
 }) {
-  const base = VARIANT_STYLES[variant];
+
   return (
-    <button
+    <Button
       type="button"
+      variant={ACTION_VARIANTS[variant]}
+      active={variant === 'accent'}
       disabled={disabled}
       onClick={onClick}
-      className={className ? `serene-pressable ${className}` : 'serene-pressable'}
-      style={{
-        display:        'inline-flex',
-        alignItems:     'center',
-        justifyContent: 'center',
-        gap:            'var(--space-2)',
-        height:         '2.25rem',
-        paddingLeft:    'var(--space-4)',
-        paddingRight:   'var(--space-4)',
-        // Grid cell already sizes the button; fill it and allow the label to
-        // ellipsize on very narrow viewports rather than overflow the cell.
-        ...(fluid ? { width: '100%', minWidth: 0, overflow: 'hidden' } : null),
-        borderRadius:   'var(--radius-sm)',
-        fontSize:       'var(--text-sm)',
-        fontWeight:     'var(--weight-medium)',
-        cursor:         disabled ? 'not-allowed' : 'pointer',
-        opacity:        disabled ? 0.5 : 1,
-        transition:     'var(--transition-interactive)',
-        whiteSpace:     'nowrap',
-        fontFamily:     'var(--font-sans)',
-        ...base,
-      }}
+      className={className}
+      style={fluid ? { width: '100%', minWidth: 0, overflow: 'hidden' } : undefined}
     >
       <span style={{ display: 'inline-flex', flexShrink: 0 }}>{icon}</span>
       <span
@@ -528,7 +471,7 @@ function ActionButton({
       >
         {label}
       </span>
-    </button>
+    </Button>
   );
 }
 
@@ -708,7 +651,7 @@ function ReasonModal({
         {/* Reason picker — inline rows, no portal, no overflow clipping */}
         <div style={{ opacity: isPending ? 0.6 : 1, pointerEvents: isPending ? 'none' : 'auto' }}>
           <span style={microLabelStyle}>
-            Reason <span style={{ color: 'var(--color-danger)' }}>*</span>
+            Reason <span style={{ color: "var(--color-danger-text)" }}>*</span>
           </span>
           <div
             style={{
@@ -720,28 +663,21 @@ function ReasonModal({
             {reasonItems.map((item) => {
               const active = item.id === selectedId;
               return (
-                <button
+                <SelectionButton
+                  appearance="option"
+                  selected={selected.includes(item.id)}
                   key={item.id}
                   type="button"
                   onClick={() => setSelected([item.id])}
                   style={{
-                    display:      'flex',
-                    alignItems:   'center',
-                    gap:          'var(--space-3)',
-                    width:        '100%',
-                    padding:      'var(--space-2) var(--space-3)',
-                    background:   active ? 'color-mix(in srgb, var(--theme-accent) 12%, var(--neu-surface))' : 'var(--neu-surface)',
-                    border:       '1px solid var(--neu-edge)',
-                    boxShadow:    active ? 'var(--neu-shadow-chip)' : 'none',
-                    borderRadius: 'var(--radius-sm)',
-                    cursor:       'pointer',
-                    transition:   'var(--transition-hover)',
-                    textAlign:    'left',
-                    fontFamily:   'var(--font-sans)',
-                    fontSize:     'var(--text-sm)',
-                    fontWeight:   'var(--weight-medium)',
-                    color:        active ? 'var(--neu-accent-deep)' : 'var(--theme-text-primary)',
-                  }}
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 'var(--space-3)',
+                          width: '100%',
+                          padding: 'var(--space-2) var(--space-3)',
+                          textAlign: 'left',
+                          fontSize: 'var(--text-sm)',
+                      }}
                 >
                   {/* Radio dot */}
                   <span
@@ -768,7 +704,7 @@ function ReasonModal({
                     )}
                   </span>
                   {item.label}
-                </button>
+                </SelectionButton>
               );
             })}
           </div>
@@ -778,7 +714,7 @@ function ReasonModal({
         <div>
           <span style={microLabelStyle}>
             {isOther ? (
-              <>Note <span style={{ color: 'var(--color-danger)' }}>*</span></>
+              <>Note <span style={{ color: "var(--color-danger-text)" }}>*</span></>
             ) : (
               'Note (optional)'
             )}

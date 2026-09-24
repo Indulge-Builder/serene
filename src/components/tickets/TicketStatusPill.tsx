@@ -1,21 +1,13 @@
+import { Badge } from '@/components/ui/Badge';
 // TicketStatusPill — THE status pill for Sia tickets; PriorityDot — the priority marker.
-import { TICKET_STATUS_TONE, TICKET_STATUSES, TICKET_PRIORITIES, type TicketPriority, type TicketStatus, type TicketStatusTone } from '@/lib/constants/tickets';
-
-const TONE: Record<TicketStatusTone, { bg: string; fg: string }> = {
-  info: { bg: 'var(--color-info-light)', fg: 'var(--color-info-text)' },
-  warning: { bg: 'var(--color-warning-light)', fg: 'var(--color-warning-text)' },
-  success: { bg: 'var(--color-success-light)', fg: 'var(--color-success-text)' },
-  danger: { bg: 'var(--color-danger-light)', fg: 'var(--color-danger-text)' },
-  neutral: { bg: 'var(--color-neutral-light)', fg: 'var(--theme-text-secondary)' },
-};
+import { TICKET_STATUS_TONE, TICKET_STATUSES, TICKET_PRIORITIES, type TicketPriority, type TicketStatus } from '@/lib/constants/tickets';
 
 /** `label` = the founder's renamed status from settings (resolveTicketStatusLabels); the built-in name otherwise. */
 export function TicketStatusPill({ status, label }: { status: TicketStatus; label?: string }) {
-  const t = TONE[TICKET_STATUS_TONE[status] ?? 'neutral'];
   return (
-    <span style={{ display: 'inline-flex', padding: '3px var(--space-3)', borderRadius: 'var(--radius-full)', background: t.bg, color: t.fg, fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-medium)', whiteSpace: 'nowrap' }}>
+    <Badge tone={TICKET_STATUS_TONE[status] ?? 'neutral'}>
       {label ?? TICKET_STATUSES.labels[status] ?? status}
-    </span>
+    </Badge>
   );
 }
 

@@ -1,5 +1,8 @@
 "use client";
 
+import { usePopoverKeyboard } from '@/hooks/usePopoverKeyboard';
+import { useModalScope } from '@/hooks/useModalFocus';
+import { SelectionButton } from '@/components/ui/SelectionButton';
 import React, {
   useRef,
   useEffect,
@@ -207,7 +210,7 @@ function TimeTypeInput({
         height: 30,
         textAlign: "center",
         background: "var(--neu-input-bg)",
-        border: `1px solid ${invalid ? "var(--color-danger)" : editing ? "var(--theme-accent)" : "var(--neu-input-edge)"}`,
+        border: `1px solid ${invalid ? "var(--color-danger)" : editing ? "var(--neu-accent-deep)" : "var(--neu-input-edge)"}`,
         borderRadius: "var(--radius-sm)",
         boxShadow: "var(--neu-shadow-input)",
         fontFamily: "var(--font-mono)",
@@ -404,6 +407,15 @@ function WheelColumn({
         ref={scrollRef}
         role="listbox"
         aria-label={ariaLabel}
+        onKeyDown={(event) => {
+          if (!['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
+          event.preventDefault();
+          const index = values.indexOf(selected);
+          const next = event.key === 'Home' ? 0 : event.key === 'End' ? values.length - 1 : Math.max(0, Math.min(values.length - 1, index + (event.key === 'ArrowDown' ? 1 : -1)));
+          onSelect(values[next]);
+          scrollToIndex(next, false);
+          event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="option"]')[next]?.focus({ preventScroll: true });
+        }}
         onScroll={handleScroll}
         style={{
           height: WHEEL_HEIGHT,
@@ -434,7 +446,8 @@ function WheelColumn({
                 ref={i === 0 ? firstButtonRef : undefined}
                 type="button"
                 role="option"
-                aria-selected={isCentered}
+                aria-selected={v === selected}
+                tabIndex={v === selected ? 0 : -1}
                 onClick={() => {
                   onSelect(v);
                   scrollToIndex(i, true);
@@ -455,7 +468,7 @@ function WheelColumn({
                     : "var(--weight-medium)",
                   fontVariantNumeric: "tabular-nums",
                   color: isCentered
-                    ? "var(--theme-accent)"
+                    ? "var(--neu-accent-deep)"
                     : "var(--theme-text-secondary)",
                   cursor: "pointer",
                   opacity,
@@ -507,34 +520,23 @@ function AmpmToggle({
       {(["AM", "PM"] as const).map((m) => {
         const isActive = value === m;
         return (
-          <button
+          <SelectionButton
+            selected={isActive}
+            appearance="choice"
             key={m}
             type="button"
             aria-pressed={isActive}
             onClick={() => onChange(m)}
             style={{
-              flex: 1,
-              position: "relative",
-              padding: "var(--space-2) var(--space-3)",
-              fontSize: "var(--text-sm)",
-              fontFamily: "var(--font-sans)",
-              fontWeight: isActive
-                ? "var(--weight-semibold)"
-                : "var(--weight-medium)",
-              color: isActive
-                ? "var(--theme-text-primary)"
-                : "var(--theme-text-secondary)",
-              background: isActive ? "var(--neu-tab-active-bg)" : "transparent",
-              border: "none",
-              borderRadius: "var(--radius-sm)",
-              boxShadow: isActive ? "var(--neu-shadow-tab-active)" : "none",
-              cursor: "pointer",
-              transition: "var(--transition-hover)",
-              outline: "none",
-            }}
+                    flex: 1,
+                    position: "relative",
+                    padding: "var(--space-2) var(--space-3)",
+                    fontSize: "var(--text-sm)",
+                    outline: "none",
+                }}
           >
             {m}
-          </button>
+          </SelectionButton>
         );
       })}
     </div>
@@ -648,6 +650,7 @@ export function TimePicker({
   style,
   "aria-label": ariaLabel,
 }: TimePickerProps) {
+  const modalScope = useModalScope();
   const [open, setOpen] = useState(false);
   const [focused, setFocused] = useState(false);
   const [draft, setDraft] = useState<TimeState | null>(null);
@@ -658,6 +661,8 @@ export function TimePicker({
   const wasOpenRef = useRef(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  usePopoverKeyboard(open, panelRef, triggerRef, () => setOpen(false), false);
+
 
   const normalisedValue = useMemo(
     () => (value ? normalizeTimeHHMM(value) : null),
@@ -709,7 +714,7 @@ export function TimePicker({
       setOpen(false);
     }
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key === "Escape" && !e.defaultPrevented) { e.preventDefault(); setOpen(false); triggerRef.current?.focus({ preventScroll: true }); }
     }
     function reposition() { updatePanelPosition(); }
     window.addEventListener("mousedown", onOutside);
@@ -753,6 +758,7 @@ export function TimePicker({
       {open && (
         <motion.div
           ref={panelRef}
+          data-modal-owner={modalScope}
           key="timepicker-panel"
           role="dialog"
           aria-label="Time picker"
@@ -800,6 +806,7 @@ export function TimePicker({
     >
       <button
         ref={triggerRef}
+        className="serene-compact-field"
         type="button"
         aria-label={ariaLabel ?? "Time picker"}
         aria-haspopup="dialog"
@@ -812,13 +819,13 @@ export function TimePicker({
           display: "inline-flex",
           alignItems: "center",
           gap: "var(--space-2)",
-          height: 32,
+          height: 36,
           padding: "0 var(--space-2)",
           width: "100%",
           minWidth: 88,
-          // Fields FLOAT (soft-UI rule 3): gradient sheen + paired input shadow.
+          // Compact field uses the shared inset material.
           background: "var(--neu-input-bg)",
-          border: `1px solid ${focused || open ? "var(--theme-accent)" : "var(--neu-input-edge)"}`,
+          border: `1px solid ${focused || open ? "var(--neu-accent-deep)" : "var(--neu-input-edge)"}`,
           borderRadius: "var(--radius-md)",
           fontSize: "var(--text-sm)",
           fontFamily: "var(--font-sans)",

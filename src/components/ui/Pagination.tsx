@@ -14,6 +14,7 @@
 // over this (R-01 / R-04 — one mechanism, never a fork), so its three call
 // sites did not change.
 
+import { Button } from '@/components/ui/Button';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useTransition } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -52,27 +53,6 @@ export function Pagination({ page, pageSize, totalCount, noun = 'result' }: Pagi
   const isPrevDisabled = page <= 1;
   const isNextDisabled = page >= lastPage;
 
-  const disabledStyle: React.CSSProperties = {
-    opacity:        0.4,
-    cursor:         'not-allowed',
-    pointerEvents:  'none',
-  };
-
-  const btnBase: React.CSSProperties = {
-    display:      'inline-flex',
-    alignItems:   'center',
-    justifyContent: 'center',
-    width:        '2.25rem',
-    height:       '2.25rem',
-    border:       '1px solid var(--theme-paper-border)',
-    borderRadius: 'var(--radius-sm)',
-    background:   'transparent',
-    color:        'var(--theme-text-secondary)',
-    cursor:       'pointer',
-    transition:   'var(--transition-hover)',
-    flexShrink:   0,
-  };
-
   return (
     <div
       // Right inset so Prev/Next never scroll under the floating Elaya button.
@@ -103,21 +83,16 @@ export function Pagination({ page, pageSize, totalCount, noun = 'result' }: Pagi
       {/* Right — page controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
         {/* Previous */}
-        <button
+        <Button
+          variant="control"
+          iconOnly
           type="button"
           aria-label="Previous page"
           disabled={isPrevDisabled}
           onClick={() => goToPage(page - 1)}
-          style={{ ...btnBase, ...(isPrevDisabled ? disabledStyle : {}) }}
-          onMouseEnter={(e) => {
-            if (!isPrevDisabled) (e.currentTarget as HTMLElement).style.background = 'color-mix(in srgb, var(--theme-accent) 5%, transparent)';
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLElement).style.background = 'transparent';
-          }}
         >
           <ChevronLeft style={{ width: '1rem', height: '1rem', strokeWidth: 1.5 }} />
-        </button>
+        </Button>
 
         {/* Page indicator */}
         <span
@@ -134,21 +109,16 @@ export function Pagination({ page, pageSize, totalCount, noun = 'result' }: Pagi
         </span>
 
         {/* Next */}
-        <button
+        <Button
+          variant="control"
+          iconOnly
           type="button"
           aria-label="Next page"
           disabled={isNextDisabled}
           onClick={() => goToPage(page + 1)}
-          style={{ ...btnBase, ...(isNextDisabled ? disabledStyle : {}) }}
-          onMouseEnter={(e) => {
-            if (!isNextDisabled) (e.currentTarget as HTMLElement).style.background = 'color-mix(in srgb, var(--theme-accent) 5%, transparent)';
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLElement).style.background = 'transparent';
-          }}
         >
           <ChevronRight style={{ width: '1rem', height: '1rem', strokeWidth: 1.5 }} />
-        </button>
+        </Button>
       </div>
     </div>
   );

@@ -6,6 +6,7 @@
  * Zero hardcoded colour values — all tokens.
  */
 
+import { Button } from '@/components/ui/Button';
 import { useEffect, useRef, useState } from "react";
 import { m as motion, AnimatePresence } from "framer-motion";
 import { BASE_DURATION, EASE_OUT_EXPO, EASE_SPRING, FAST_DURATION, PALETTE_DURATION, SLOW_DURATION } from "@/lib/constants/motion";
@@ -384,33 +385,23 @@ function StandardToastItem({ toast, onDismiss, isMobile }: ToastItemProps) {
           )}
 
           {toast.action && (
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               type="button"
               onClick={toast.action.onClick}
-              style={{
-                marginTop:          "var(--space-1)",
-                fontFamily:         "var(--font-sans)",
-                fontSize:           "var(--text-xs)",
-                fontWeight:         "var(--weight-semibold)",
-                color:              "var(--theme-accent)",
-                background:         "none",
-                border:             "none",
-                padding:            0,
-                cursor:             "pointer",
-                textAlign:          "left",
-                textUnderlineOffset: "2px",
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.textDecoration = "underline"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.textDecoration = "none"; }}
+              style={{ marginTop:          "var(--space-1)", textAlign:          "left", textUnderlineOffset: "2px" }}
             >
               {toast.action.label}
-            </button>
+            </Button>
           )}
         </motion.div>
       </AnimatePresence>
 
       {/* Dismiss button */}
-      <button
+      <Button
+        variant="ghost"
+        iconOnly size="sm"
         type="button"
         aria-label="Dismiss notification"
         onClick={() => onDismiss(toast.id)}
@@ -423,25 +414,11 @@ function StandardToastItem({ toast, onDismiss, isMobile }: ToastItemProps) {
           justifyContent:  "center",
           width:           "28px",
           height:          "28px",
-          borderRadius:    "var(--radius-sm)",
-          border:          "none",
-          background:      "transparent",
-          color:           "var(--theme-text-tertiary)",
-          cursor:          "pointer",
           flexShrink:      0,
-          transition:      "background var(--duration-fast) var(--ease-in-out), color var(--duration-fast) var(--ease-in-out)",
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.background = "var(--neu-accent-wash)";
-          e.currentTarget.style.color      = "var(--theme-text-primary)";
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.background = "transparent";
-          e.currentTarget.style.color      = "var(--theme-text-tertiary)";
         }}
       >
         <X style={{ width: "14px", height: "14px", strokeWidth: 1.5 }} />
-      </button>
+      </Button>
 
       {/* Warning depletion bar — linear timing, bottom edge, warning type only */}
       {toast.type === "warning" && toast.duration > 0 && (

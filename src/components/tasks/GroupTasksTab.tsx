@@ -1,5 +1,7 @@
 'use client';
 
+import { MotionButton } from '@/components/ui/MotionButton';
+import { Button } from '@/components/ui/Button';
 import {
   memo,
   useCallback,
@@ -665,40 +667,25 @@ const GroupRow = memo(function GroupRow({
           onClick={(e) => e.stopPropagation()}
         >
           {/* Open workspace — click; row double-click also navigates */}
-          <motion.button
-            type="button"
-            onClick={(e) => {
+          <MotionButton
+          variant="ghost" size="sm"
+          type="button"
+          onClick={(e) => {
               e.stopPropagation();
               openWorkspace();
             }}
-            aria-label={`Open ${group.title}`}
-            title="Open workspace (double-click row)"
-            className="serene-icon-lift-hover"
-            whileTap={{ scale: 0.92 }}
-            transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
-            style={{
-              display:        'inline-flex',
-              alignItems:     'center',
-              gap:            5,
-              padding:        '5px 11px',
-              borderRadius:   'var(--radius-full)',
-              border:         '1px solid var(--theme-paper-border)',
-              background:     'transparent',
-              color:          'var(--theme-text-tertiary)',
-              fontFamily:     'var(--font-sans)',
-              fontSize:       11,
-              fontWeight:     'var(--weight-medium)',
-              letterSpacing:  '0.06em',
-              textTransform:  'uppercase',
-              flexShrink:     0,
-              cursor:         'pointer',
-            }}
-          >
+          aria-label={`Open ${group.title}`}
+          title="Open workspace (double-click row)"
+          className="serene-icon-lift-hover"
+          whileTap={{ scale: 0.92 }}
+          transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
+          style={{display:        'inline-flex', alignItems:     'center', gap:            5, padding:        '5px 11px', fontSize:       11, letterSpacing:  '0.06em', textTransform:  'uppercase', flexShrink:     0}}
+        >
             Open
             <span style={{ display: 'flex', alignItems: 'center' }}>
               <ArrowUpRight style={{ width: 13, height: 13, strokeWidth: 1.5 }} />
             </span>
-          </motion.button>
+          </MotionButton>
 
           {/* Member avatars */}
           {group.assignee_previews.length > 0 && (
@@ -739,7 +726,9 @@ const GroupRow = memo(function GroupRow({
           {/* ⋯ more menu — admin/founder only */}
           {(callerRole === 'admin' || callerRole === 'founder') && (
             <div ref={moreMenuRef} style={{ position: 'relative', flexShrink: 0 }}>
-              <button
+              <Button
+                variant="ghost"
+                iconOnly size="sm"
                 ref={moreButtonRef}
                 type="button"
                 onClick={(e) => {
@@ -751,24 +740,10 @@ const GroupRow = memo(function GroupRow({
                   setMoreMenuOpen((v) => !v);
                 }}
                 aria-label="More options"
-                style={{
-                  display:        'flex',
-                  alignItems:     'center',
-                  justifyContent: 'center',
-                  width:          28,
-                  height:         28,
-                  borderRadius:   'var(--radius-sm)',
-                  border:         '1px solid var(--theme-paper-border)',
-                  background:     moreMenuOpen ? 'var(--theme-paper-subtle)' : 'transparent',
-                  color:          'var(--theme-text-tertiary)',
-                  cursor:         'pointer',
-                  transition:     'var(--transition-hover)',
-                }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--theme-paper-subtle)'; }}
-                onMouseLeave={(e) => { if (!moreMenuOpen) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                style={{ display:        'flex', alignItems:     'center', justifyContent: 'center', width:          28, height:         28 }}
               >
                 <MoreHorizontal style={{ width: 14, height: 14, strokeWidth: 1.5 }} />
-              </button>
+              </Button>
 
               {/* ⋯ dropdown — portaled to body so overflow:hidden on the card doesn't clip it */}
               {typeof window !== 'undefined' && createPortal(
@@ -800,35 +775,20 @@ const GroupRow = memo(function GroupRow({
                           overflow:     'hidden',
                         }}
                       >
-                        <button
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          style={{ width:          '100%' }}
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             setMoreMenuOpen(false);
                             setConfirmDeleteOpen(true);
                           }}
-                          style={{
-                            display:        'flex',
-                            alignItems:     'center',
-                            gap:            'var(--space-2)',
-                            width:          '100%',
-                            padding:        'var(--space-2) var(--space-3)',
-                            borderRadius:   'var(--radius-sm)',
-                            border:         'none',
-                            background:     'transparent',
-                            color:          'var(--color-danger-text)',
-                            fontFamily:     'var(--font-sans)',
-                            fontSize:       'var(--text-sm)',
-                            cursor:         'pointer',
-                            textAlign:      'left',
-                            transition:     'var(--transition-hover)',
-                          }}
-                          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--color-danger-light)'; }}
-                          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
                         >
                           <Trash2 style={{ width: 14, height: 14, strokeWidth: 1.5, flexShrink: 0 }} />
                           Delete group
-                        </button>
+                        </Button>
                       </motion.div>
                     </>
                   )}
@@ -1041,7 +1001,7 @@ const GroupRow = memo(function GroupRow({
                         padding:        '4px 8px',
                         borderRadius:   'var(--radius-full)',
                         background:     'var(--theme-accent-surface)',
-                        color:          'var(--theme-accent)',
+                        color:          "var(--neu-accent-deep)",
                         flexShrink:     0,
                         cursor:         'pointer',
                       }}
@@ -1089,108 +1049,57 @@ const GroupRow = memo(function GroupRow({
                           caretColor: accent,
                         }}
                       />
-                      <button
+                      <Button
+                        variant="control"
+                        size="sm"
                         type="button"
                         onClick={(e) => { e.stopPropagation(); setShowAssigneePicker(true); }}
                         aria-label="Pick assignee"
                         title={subtaskAssignee ? subtaskAssignee.full_name : (defaultAssignee?.full_name ?? 'You (default assignee)')}
-                        style={{
-                          display:        'flex',
-                          alignItems:     'center',
-                          justifyContent: 'center',
-                          width:          28,
-                          height:         28,
-                          borderRadius:   'var(--radius-sm)',
-                          border:         '1px solid var(--theme-paper-border)',
-                          background:     subtaskAssignee ? `color-mix(in srgb, ${accent} 12%, transparent)` : 'transparent',
-                          color:          subtaskAssignee ? accent : 'var(--theme-text-tertiary)',
-                          cursor:         'pointer',
-                          flexShrink:     0,
-                        }}
+                        style={{ display:        'flex', alignItems:     'center', justifyContent: 'center', width:          28, height:         28, flexShrink:     0 }}
                       >
                         {subtaskAssignee ? (
                           <Avatar name={subtaskAssignee.full_name} size="xs" style={{ width: 14, height: 14, minWidth: 14 }} />
                         ) : (
                           <User style={{ width: 12, height: 12, strokeWidth: 1.5 }} />
                         )}
-                      </button>
-                      <button
+                      </Button>
+                      <Button
+                        variant="primary"
+                        size="sm"
                         type="button"
                         onClick={(e) => { e.stopPropagation(); handleAddSubtask(); }}
                         disabled={isSaving || !subtaskTitle.trim()}
-                        style={{
-                          padding:      '4px 14px',
-                          borderRadius: 'var(--radius-sm)',
-                          border:       'none',
-                          background:   subtaskTitle.trim() ? accent : 'var(--theme-paper-border)',
-                          color:        subtaskTitle.trim() ? 'var(--theme-accent-fg)' : 'var(--theme-text-tertiary)',
-                          fontFamily:   'var(--font-sans)',
-                          fontSize:     12,
-                          fontWeight:   'var(--weight-semibold)',
-                          cursor:       subtaskTitle.trim() ? 'pointer' : 'not-allowed',
-                          flexShrink:   0,
-                          transition:   'background 0.15s, color 0.15s',
-                        }}
                       >
                         {isSaving ? 'Adding…' : 'Add'}
-                      </button>
-                      <button
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         type="button"
                         onClick={(e) => { e.stopPropagation(); setShowAddSubtask(false); setSubtaskTitle(''); }}
-                        style={{
-                          fontFamily: 'var(--font-sans)',
-                          fontSize:   12,
-                          color:      'var(--theme-text-tertiary)',
-                          background: 'transparent',
-                          border:     'none',
-                          cursor:     'pointer',
-                          flexShrink: 0,
-                        }}
                         onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--theme-text-secondary)'; }}
                         onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--theme-text-tertiary)'; }}
                       >
                         Cancel
-                      </button>
+                      </Button>
                     </div>
                   </CollapseReveal>
                 ) : (
-                  <motion.button
-                    key="add-subtask-trigger"
-                    type="button"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: FAST_DURATION }}
-                    onClick={(e) => { e.stopPropagation(); setShowAddSubtask(true); }}
-                    style={{
-                      display:    'flex',
-                      alignItems: 'center',
-                      gap:        'var(--space-2)',
-                      width:      '100%',
-                      padding:    'var(--space-2) var(--space-5)',
-                      border:     'none',
-                      borderRadius: 'var(--radius-md)',
-                      background:   'transparent',
-                      fontFamily:   'var(--font-sans)',
-                      fontSize:     12,
-                      color:        'var(--theme-text-tertiary)',
-                      cursor:       'pointer',
-                      textAlign:    'left',
-                      transition:   'color 0.14s, background 0.14s',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.color = 'var(--theme-text-secondary)';
-                      // Hover fill against the card paper (was paper-on-paper — invisible)
-                      e.currentTarget.style.background = 'var(--theme-paper-subtle)';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.color = 'var(--theme-text-tertiary)';
-                      e.currentTarget.style.background = 'transparent';
-                    }}
-                  >
+                  <MotionButton
+          variant="ghost" size="sm"
+          key="add-subtask-trigger"
+          type="button"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: FAST_DURATION }}
+          onClick={(e) => { e.stopPropagation(); setShowAddSubtask(true); }}
+          style={{display:    'flex', alignItems: 'center', gap:        'var(--space-2)', width:      '100%', padding:    'var(--space-2) var(--space-5)', fontSize:     12, textAlign:    'left'}}
+        >
                     <Plus style={{ width: 12, height: 12, strokeWidth: 1.5 }} />
                     Add subtask
-                  </motion.button>
+                  </MotionButton>
                 )}
               </AnimatePresence>
             </div>

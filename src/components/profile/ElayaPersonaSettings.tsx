@@ -6,6 +6,8 @@
 // Unlike ThemeSelector (instant-apply), this batches into one Save (the prefs only
 // take effect on the user's next Elaya message, so there's nothing live to preview).
 
+import { SelectionButton } from '@/components/ui/SelectionButton';
+import { Button } from '@/components/ui/Button';
 import { useState, useTransition } from "react";
 import { updateElayaPersonaAction } from "@/lib/actions/elaya";
 import { useToast } from "@/hooks/useToast";
@@ -143,23 +145,15 @@ export function ElayaPersonaSettings({ initialPersona }: Props) {
       </div>
 
       <div style={{ marginTop: "var(--space-5)", display: "flex", justifyContent: "flex-end" }}>
-        <button
+        <Button
+          variant="primary"
           type="button"
           onClick={handleSave}
           disabled={isPending}
           className="serene-btn-primary serene-pressable"
-          style={{
-            padding: "var(--space-2) var(--space-5)",
-            borderRadius: "var(--radius-sm)",
-            fontFamily: "var(--font-sans)",
-            fontSize: "var(--text-sm)",
-            fontWeight: "var(--weight-medium)",
-            cursor: isPending ? "wait" : "pointer",
-            opacity: isPending ? 0.7 : 1,
-          }}
         >
           {isPending ? "Saving…" : "Save preferences"}
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -192,7 +186,9 @@ function ChipField<T extends string>({
         {options.map((opt) => {
           const isActive = value === opt.id;
           return (
-            <button
+            <SelectionButton
+              appearance="choice"
+              selected={isActive}
               key={opt.id}
               type="button"
               role="radio"
@@ -201,25 +197,12 @@ function ChipField<T extends string>({
               disabled={disabled}
               className="serene-pressable"
               style={{
-                padding: "var(--space-2) var(--space-3)",
-                borderRadius: "var(--radius-full)",
-                // Selected floats on the accent wash — hairline edge + chip
-                // shadow, never a coloured border (soft-UI Rule 4).
-                border: "1px solid var(--neu-edge)",
-                background: isActive
-                  ? "color-mix(in srgb, var(--theme-accent) 12%, var(--neu-surface))"
-                  : "var(--theme-paper)",
-                boxShadow: isActive ? "var(--neu-shadow-chip)" : "none",
-                color: isActive ? "var(--neu-accent-deep)" : "var(--theme-text-secondary)",
-                fontFamily: "var(--font-sans)",
-                fontSize: "var(--text-sm)",
-                fontWeight: isActive ? "var(--weight-medium)" : "var(--weight-normal)",
-                cursor: disabled ? "not-allowed" : "pointer",
-                transition: "box-shadow var(--duration-fast) var(--ease-in-out), background var(--duration-fast) var(--ease-in-out), color var(--duration-fast) var(--ease-in-out)",
-              }}
+                      padding: "var(--space-2) var(--space-3)",
+                      fontSize: "var(--text-sm)",
+                  }}
             >
               {opt.label}
-            </button>
+            </SelectionButton>
           );
         })}
       </div>

@@ -87,6 +87,42 @@
    press = pressed inset + scale(0.98); circular knobs sink to 0.94.
    Hover lift stays gated to pointer devices. */
 
+/* Shared resting material lives in CSS so hover/press shadows can override it. */
+.neu-m-button {
+  height: 3.25rem;
+  background: var(--neu-surface);
+  color: var(--neu-text-primary);
+  border: 1px solid var(--neu-edge);
+  box-shadow: var(--neu-shadow-raised);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+.neu-m-button[data-variant="primary"] {
+  height: 3.5rem;
+  background: var(--neu-accent-gradient);
+  color: var(--neu-accent-fg);
+  border-color: var(--neu-accent-btn-edge);
+  font-size: 15px;
+  font-weight: var(--weight-semibold);
+}
+.neu-m-button[data-variant="quiet"] {
+  height: 2.75rem;
+  background: transparent;
+  color: var(--neu-text-secondary);
+  border: none;
+  box-shadow: none;
+  font-size: 13.5px;
+}
+.neu-m-icon-knob { box-shadow: var(--neu-shadow-raised-sm); }
+.neu-m-fab {
+  background: var(--neu-accent-gradient);
+  box-shadow: var(--neu-shadow-raised);
+}
+.neu-m-button:disabled, .neu-m-icon-knob:disabled, .neu-m-fab:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .neu-m-touch,
 .neu-m-touch-knob {
   transition:
@@ -119,7 +155,7 @@
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-.neu-m-touch-quiet:active {
+.neu-m-touch-quiet:active:not(:disabled) {
   transform: scale(0.98);
 }
 
@@ -140,7 +176,7 @@
   .neu-m-touch-knob:hover:not(:disabled),
   .neu-m-touch:active:not(:disabled),
   .neu-m-touch-knob:active:not(:disabled),
-  .neu-m-touch-quiet:active {
+  .neu-m-touch-quiet:active:not(:disabled) {
     transform: none;
   }
 }

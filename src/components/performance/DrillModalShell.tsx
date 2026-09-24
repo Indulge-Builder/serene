@@ -1,6 +1,9 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import { useRef as useModalPanelRef } from 'react';
+import { ModalScopeContext, useModalFocus } from '@/hooks/useModalFocus';
+import { Button } from '@/components/ui/Button';
+import React from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, m as motion } from 'framer-motion';
 import { X } from 'lucide-react';
@@ -30,18 +33,14 @@ export interface DrillModalShellProps {
 }
 
 export function DrillModalShell({ open, title, subtitle, onClose, children }: DrillModalShellProps) {
-  useEffect(() => {
-    if (!open) return;
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
-    }
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  const modalPanelRef = useModalPanelRef<HTMLDivElement>(null);
+  const modalScopeId = useModalFocus(open, modalPanelRef, onClose);
+
+
 
   if (typeof document === 'undefined') return null;
 
-  return createPortal(
+  return <ModalScopeContext.Provider value={modalScopeId}>{createPortal(
     <AnimatePresence>
       {open && (
         <>
@@ -62,9 +61,10 @@ export function DrillModalShell({ open, title, subtitle, onClose, children }: Dr
               padding: 'var(--space-4)',
             }}
           >
-            <motion.div
+            <motion.div ref={modalPanelRef} tabIndex={-1}
               key="drill-panel"
               role="dialog"
+              aria-label={title}
               aria-modal="true"
               variants={MODAL_VARIANTS}
               initial="hidden"
@@ -122,28 +122,17 @@ export function DrillModalShell({ open, title, subtitle, onClose, children }: Dr
                     </p>
                   )}
                 </div>
-                <button
+                <Button
+                  variant="ghost"
+                  iconOnly size="sm"
                   type="button"
                   onClick={onClose}
                   aria-label="Close"
                   className="serene-pressable serene-icon-rotate-hover serene-touch"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    width: '1.75rem',
-                    height: '1.75rem',
-                    border: '1px solid var(--theme-paper-border)',
-                    borderRadius: 'var(--radius-sm)',
-                    background: 'transparent',
-                    color: 'var(--theme-text-tertiary)',
-                    cursor: 'pointer',
-                    flexShrink: 0,
-                    marginLeft: 'var(--space-4)',
-                  }}
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '1.75rem', height: '1.75rem', flexShrink: 0, marginLeft: 'var(--space-4)' }}
                 >
                   <X style={{ width: 16, height: 16, strokeWidth: 1.5 }} aria-hidden="true" />
-                </button>
+                </Button>
               </div>
 
               {/* Body */}
@@ -156,5 +145,5 @@ export function DrillModalShell({ open, title, subtitle, onClose, children }: Dr
       )}
     </AnimatePresence>,
     document.body,
-  );
+  )}</ModalScopeContext.Provider>;
 }

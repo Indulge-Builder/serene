@@ -143,7 +143,7 @@ function NavLink({
   isActive,
 }: NavItem & { isActive: boolean }) {
   const reduceMotion = useReducedMotion();
-  // Hover warms the row and icon; selection keeps a persistent pastel wash.
+  // Hover deepens the icon; only the active icon receives a filled tile.
   const [hovered, setHovered] = useState(false);
   // md icon rail (md..lg) hides labels — the charcoal Tooltip (right side)
   // carries them there; full sidebar / mobile drawer show the label inline,
@@ -163,9 +163,7 @@ function NavLink({
         color: isActive
           ? "var(--theme-sidebar-active)"
           : "var(--theme-sidebar-text)",
-        background: isActive
-          ? "var(--theme-sidebar-active-bg)"
-          : hovered ? "var(--theme-sidebar-hover-bg)" : "transparent",
+        background: "transparent",
         border: "1px solid transparent",
         fontFamily: "var(--font-sans)",
         fontSize: "var(--text-sm)",
@@ -188,7 +186,7 @@ function NavLink({
         }
       }}
     >
-      {/* Pastel icon tile supports the selected row without extra elevation. */}
+      {/* Only the active icon receives a pastel tile; rows remain transparent. */}
       <span
         aria-hidden="true"
         style={{
@@ -201,7 +199,7 @@ function NavLink({
           flexShrink: 0,
           margin: "-4px 0",
           background: isActive ? "var(--neu-accent-gradient)" : "transparent",
-          boxShadow: "none",
+          boxShadow: isActive ? "var(--neu-shadow-knob)" : "none",
           // Hover fill uses the DEEP accent (the pastel --theme-accent is too
           // faint on the cream rail) + a heavier stroke — bold and unmissable.
           color: isActive
@@ -362,9 +360,10 @@ export function Sidebar({ profile }: SidebarProps) {
     <aside
       className="serene-sidebar"
       data-open={drawerOpen ? "true" : "false"}
-      // Matte clay rail; responsive dimensions live in globals.css.
+      // Layered pastel material; responsive dimensions live in globals.css.
       style={{
-        background: "var(--theme-sidebar-bg)",
+        backgroundColor: "var(--theme-sidebar-bg)",
+        backgroundImage: "var(--neu-sidebar-gradient)",
         border: "1px solid var(--neu-edge)",
         boxShadow: "var(--neu-shadow-shell)",
         display: "flex",

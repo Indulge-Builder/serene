@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { UserCircle, Check } from 'lucide-react';
 import { CardHeader } from '@/components/leads/CardHeader';
 import { SeedMandala } from '@/components/ui/SeedMandala';
+import { Input, Textarea } from '@/components/ui/Field';
+import { Alert } from '@/components/ui/Alert';
 import { Button } from '@/components/ui/Button';
 import { updatePersonalDetails, updateLeadCity } from '@/lib/actions/leads';
 import type { Lead } from '@/lib/types/database';
@@ -31,40 +33,6 @@ const JSONB_FIELD_KEYS = [...JSONB_GRID_FIELDS.map((f) => f.key), DETAILS_FIELD.
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
-/* Inputs FLOAT (neumorphic Rule 3): gradient sheen + paired input shadow. */
-const inputStyle: React.CSSProperties = {
-  width:        '100%',
-  height:       '2.25rem',
-  padding:      '0 var(--space-3)',
-  border:       '1px solid var(--neu-input-edge)',
-  borderRadius: 'var(--radius-lg)',
-  background:   'var(--neu-input-bg)',
-  boxShadow:    'var(--neu-shadow-input)',
-  fontFamily:   'var(--font-sans)',
-  fontSize:     'var(--text-sm)',
-  color:        'var(--theme-text-primary)',
-  outline:      'none',
-  boxSizing:    'border-box',
-  transition:   'box-shadow var(--duration-fast) var(--ease-in-out)',
-};
-
-const textareaStyle: React.CSSProperties = {
-  width:        '100%',
-  padding:      'var(--space-2) var(--space-3)',
-  border:       '1px solid var(--neu-input-edge)',
-  borderRadius: 'var(--radius-lg)',
-  background:   'var(--neu-input-bg)',
-  boxShadow:    'var(--neu-shadow-input)',
-  fontFamily:   'var(--font-sans)',
-  fontSize:     'var(--text-sm)',
-  color:        'var(--theme-text-primary)',
-  lineHeight:   'var(--leading-relaxed)',
-  resize:       'vertical',
-  outline:      'none',
-  boxSizing:    'border-box',
-  transition:   'box-shadow var(--duration-fast) var(--ease-in-out)',
-};
-
 const labelStyle: React.CSSProperties = {
   fontSize:      'var(--text-2xs)',
   fontWeight:    'var(--weight-semibold)',
@@ -83,12 +51,6 @@ const readValueStyle = (hasValue: boolean): React.CSSProperties => ({
   minHeight:  '1.25rem',
 });
 
-function focusAccent(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) {
-  e.currentTarget.style.boxShadow = '0 0 0 1px var(--theme-accent), var(--neu-shadow-input)';
-}
-function blurReset(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) {
-  e.currentTarget.style.boxShadow = 'var(--neu-shadow-input)';
-}
 
 export function PersonalDetailsCard({ lead, canEdit }: Props) {
   const router = useRouter();
@@ -180,11 +142,11 @@ export function PersonalDetailsCard({ lead, canEdit }: Props) {
                 size={14}
                 variant="currentColor"
                 spin={3.5}
-                style={{ color: 'var(--theme-accent)' }}
+                style={{ color: "var(--neu-accent-deep)" }}
               />
             )}
             {saveState === 'saved' && (
-              <Check style={{ width: '0.75rem', height: '0.75rem', color: 'var(--color-success)', strokeWidth: 2 }} />
+              <Check style={{ width: '0.75rem', height: '0.75rem', color: "var(--color-success-text)", strokeWidth: 2 }} />
             )}
           </span>
         }
@@ -207,15 +169,13 @@ export function PersonalDetailsCard({ lead, canEdit }: Props) {
             <div key={key}>
               <p style={labelStyle}>{label}</p>
               {active && canEdit ? (
-                <input
+                <Input
                   type="text"
+                  aria-label={label}
                   value={values[key] ?? ''}
                   onChange={(e) => handleChange(key, e.target.value)}
                   placeholder={placeholder}
                   disabled={isPending}
-                  style={{ ...inputStyle, opacity: isPending ? 0.6 : 1 }}
-                  onFocus={focusAccent}
-                  onBlur={blurReset}
                 />
               ) : (
                 <p style={readValueStyle((saved[key] ?? '').trim() !== '')}>
@@ -229,15 +189,13 @@ export function PersonalDetailsCard({ lead, canEdit }: Props) {
           <div>
             <p style={labelStyle}>City</p>
             {active && canEdit ? (
-              <input
+              <Input
                 type="text"
+                aria-label="City"
                 value={cityValue}
                 onChange={(e) => setCityValue(e.target.value)}
                 placeholder="e.g. Mumbai"
                 disabled={isPending}
-                style={{ ...inputStyle, opacity: isPending ? 0.6 : 1 }}
-                onFocus={focusAccent}
-                onBlur={blurReset}
               />
             ) : (
               <p style={readValueStyle(savedCity.trim() !== '')}>
@@ -250,15 +208,13 @@ export function PersonalDetailsCard({ lead, canEdit }: Props) {
           <div style={{ gridColumn: '1 / -1' }}>
             <p style={labelStyle}>{DETAILS_FIELD.label}</p>
             {active && canEdit ? (
-              <textarea
+              <Textarea
+                aria-label={DETAILS_FIELD.label}
                 value={values[DETAILS_FIELD.key] ?? ''}
                 onChange={(e) => handleChange(DETAILS_FIELD.key, e.target.value)}
                 placeholder={DETAILS_FIELD.placeholder}
                 disabled={isPending}
                 rows={3}
-                style={{ ...textareaStyle, opacity: isPending ? 0.6 : 1 }}
-                onFocus={focusAccent}
-                onBlur={blurReset}
               />
             ) : (
               <p style={readValueStyle((saved[DETAILS_FIELD.key] ?? '').trim() !== '')}>
@@ -268,9 +224,7 @@ export function PersonalDetailsCard({ lead, canEdit }: Props) {
           </div>
 
           {error && (
-            <p style={{ gridColumn: '1 / -1', fontSize: 'var(--text-xs)', color: 'var(--color-danger-text)', margin: 0 }}>
-              {error}
-            </p>
+            <Alert tone="danger">{error}</Alert>
           )}
         </div>
 
@@ -287,27 +241,15 @@ export function PersonalDetailsCard({ lead, canEdit }: Props) {
               background:     'var(--theme-paper-subtle)',
             }}
           >
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               type="button"
               onClick={handleCancel}
               disabled={isPending}
-              style={{
-                height:       '2rem',
-                paddingLeft:  'var(--space-4)',
-                paddingRight: 'var(--space-4)',
-                border:       '1px solid var(--theme-paper-border)',
-                borderRadius: 'var(--radius-sm)',
-                background:   'transparent',
-                fontFamily:   'var(--font-sans)',
-                fontSize:     'var(--text-sm)',
-                fontWeight:   'var(--weight-medium)',
-                color:        'var(--theme-text-secondary)',
-                cursor:       isPending ? 'not-allowed' : 'pointer',
-                opacity:      isPending ? 0.6 : 1,
-              }}
             >
               Cancel
-            </button>
+            </Button>
             <Button
               variant="primary"
               type="submit"

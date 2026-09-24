@@ -177,21 +177,16 @@ function Chip({
     >
       {label}
       {onClear && (
-        <button
+        <Button
+          variant="ghost"
+          iconOnly size="sm"
           type="button"
           onClick={onClear}
           aria-label={`Remove ${label}`}
-          style={{
-            display: 'inline-flex',
-            background: 'transparent',
-            border: 'none',
-            padding: 0,
-            cursor: 'pointer',
-            color: 'inherit',
-          }}
+          style={{ display: 'inline-flex' }}
         >
           <X style={{ width: '0.75rem', height: '0.75rem', strokeWidth: 2 }} />
-        </button>
+        </Button>
       )}
     </span>
   );

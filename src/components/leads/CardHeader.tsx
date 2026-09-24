@@ -17,7 +17,7 @@ type Props = {
 /**
  * THE dossier card-header strip (DRY extraction, 2026-06-20 audit D3).
  * Flex row: Lucide icon (0.875rem) + uppercase micro-label + optional right
- * slot on the THEMED header wash — --neu-header-wash (22% accent into the
+ * slot on the THEMED header wash — --neu-header-wash (6% accent into the
  * surface; the 12% --theme-accent-surface tint read washed-out) closed by
  * the --neu-header-edge hairline. Headers are the theme-coloured zone of a
  * card; tune the intensity in serene-neumorphic-tokens.css ONLY.

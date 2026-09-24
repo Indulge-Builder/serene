@@ -4,6 +4,7 @@ import React, {
   createContext,
   useContext,
   useState,
+  useId,
 } from 'react';
 import { m as motion, AnimatePresence } from 'framer-motion';
 import { SPRING_TAB, FAST_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
@@ -22,6 +23,7 @@ interface TabsContextValue {
   variant: TabSelectorVariant;
   /** When true, the tray spans its container and triggers split the width evenly. */
   fullWidth: boolean;
+  instanceId: string;
 }
 
 const TabsContext = createContext<TabsContextValue | null>(null);
@@ -81,6 +83,7 @@ export function Tabs({
   className,
   style,
 }: TabsProps) {
+  const instanceId = useId();
   const [uncontrolledValue, setUncontrolledValue] = useState(defaultValue ?? '');
   const activeValue = controlledValue ?? uncontrolledValue;
 
@@ -98,6 +101,7 @@ export function Tabs({
         onValueChange: handleChange,
         layoutId: indicatorLayoutId,
         animatedContent,
+        instanceId,
         variant,
         fullWidth,
       }}
@@ -189,7 +193,7 @@ export function TabsTrigger({
   className,
   style,
 }: TabsTriggerProps) {
-  const { value: activeValue, onValueChange, layoutId, variant, fullWidth } = useTabsContext();
+  const { value: activeValue, onValueChange, layoutId, variant, fullWidth, instanceId } = useTabsContext();
   const isActive = value === activeValue;
   const isConnected = variant === 'connected';
   const isAccent    = variant === 'accent';
@@ -202,7 +206,7 @@ export function TabsTrigger({
     ? 'var(--neu-text-primary)'
     : isAccent
       ? 'var(--theme-accent-fg)'
-      : (isConnected ? 'var(--theme-text-primary)' : 'var(--theme-accent)');
+      : (isConnected ? 'var(--theme-text-primary)' : 'var(--neu-accent-deep)');
 
   const buttonStyle: React.CSSProperties = {
     position: 'relative',
@@ -240,7 +244,25 @@ export function TabsTrigger({
 
   return (
     <button
+      type="button"
       role="tab"
+      id={`${instanceId}-tab-${value}`}
+      tabIndex={activeValue ? (isActive ? 0 : -1) : 0}
+      onKeyDown={(event) => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        const list = event.currentTarget.closest('[role="tablist"]');
+        if (!list) return;
+        const tabs = Array.from(list.querySelectorAll<HTMLButtonElement>('[role="tab"]:not(:disabled)'))
+          .filter((tab) => tab.closest('[role="tablist"]') === list);
+        const index = tabs.indexOf(event.currentTarget);
+        const rtl = getComputedStyle(list).direction === 'rtl';
+        const forward = (event.key === 'ArrowRight') !== rtl;
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1
+          : (index + (forward ? 1 : -1) + tabs.length) % tabs.length;
+        event.preventDefault();
+        tabs[next]?.focus();
+        tabs[next]?.click();
+      }}
       aria-selected={isActive}
       disabled={disabled}
       onClick={() => !disabled && onValueChange(value)}
@@ -350,7 +372,7 @@ export function TabsContent({
   className,
   style,
 }: TabsContentProps) {
-  const { value: activeValue, animatedContent } = useTabsContext();
+  const { value: activeValue, animatedContent, instanceId } = useTabsContext();
   const isActive = value === activeValue;
   const shouldAnimate = animated ?? animatedContent;
 
@@ -359,6 +381,7 @@ export function TabsContent({
     // The motion.div inside is rendered conditionally so AnimatePresence can animate it.
     <div
       role="tabpanel"
+      aria-labelledby={`${instanceId}-tab-${value}`}
       aria-hidden={!isActive}
       className={className}
       style={{
@@ -414,7 +437,7 @@ function _CountBadge({
         fontSize: 'var(--text-2xs)',
         fontWeight: 'var(--weight-semibold)',
         background: isActive ? 'var(--theme-accent-surface)' : 'var(--theme-paper-subtle)',
-        color: isActive ? 'var(--theme-accent)' : 'var(--theme-text-tertiary)',
+        color: isActive ? 'var(--neu-accent-deep)' : 'var(--theme-text-tertiary)',
         lineHeight: 1,
       }}
     >

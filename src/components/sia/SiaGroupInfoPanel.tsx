@@ -9,6 +9,8 @@
 // matches a Serene profile wear the Indulge badge (the agent mapping),
 // everyone else takes their side from the group's kind.
 
+import { SelectionButton } from '@/components/ui/SelectionButton';
+import { Button } from '@/components/ui/Button';
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { m as motion } from "framer-motion";
 import { ChevronDown, Crown, MessagesSquare, UserRound, Users, X } from "lucide-react";
@@ -156,15 +158,16 @@ export function SiaGroupInfoPanel({
       {/* ── Panel header ── */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-(--theme-paper-border) shrink-0">
         <span className="type-body-sm font-(--weight-medium) text-(--theme-text-primary)">Group info</span>
-        <button
+        <Button
+          variant="ghost"
+          iconOnly size="sm"
           type="button"
           onClick={onClose}
           aria-label="Close group info"
           className="serene-pressable serene-icon-rotate-hover w-7 h-7 rounded-full flex items-center justify-center border-0 bg-transparent text-(--theme-text-secondary)"
-          style={{ cursor: "pointer" }}
         >
           <X className="w-4 h-4" strokeWidth={1.5} />
-        </button>
+        </Button>
       </div>
 
       {/* ── Scroll body ── */}
@@ -198,9 +201,15 @@ export function SiaGroupInfoPanel({
                 <Link href={`${CLIENTS_PATH}/${info.member.id}`} className="type-body-sm" style={{ color: "var(--neu-accent-deep)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {info.member.full_name}
                 </Link>
-                <button type="button" onClick={() => setMember(null)} disabled={saving} className="type-caption serene-pressable" style={{ background: "none", border: 0, cursor: "pointer", color: "var(--theme-text-tertiary)" }}>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  type="button"
+                  onClick={() => setMember(null)}
+                  disabled={saving}
+                >
                   Unlink
-                </button>
+                </Button>
               </div>
             ) : (
               <>
@@ -215,18 +224,21 @@ export function SiaGroupInfoPanel({
                   <ul className="m-0 p-0 flex flex-col gap-1" style={{ listStyle: "none" }}>
                     {memberHits.map((c) => (
                       <li key={c.id}>
-                        <button
+                        <SelectionButton
+                          appearance="row"
                           type="button"
                           onClick={() => setMember({ id: c.id, full_name: c.full_name })}
                           disabled={saving}
                           className="serene-pressable type-body-sm w-full text-left"
-                          style={{ background: "none", border: "1px solid var(--theme-paper-border)", borderRadius: "var(--radius-sm)", padding: "var(--space-2) var(--space-3)", cursor: "pointer", color: "var(--theme-text-primary)" }}
+                          style={{
+                            padding: "var(--space-2) var(--space-3)",
+                          }}
                         >
                           {c.full_name}
                           <span className="type-caption" style={{ color: "var(--theme-text-tertiary)", marginLeft: "var(--space-2)" }}>
                             {c.primary_phone ?? ""}{c.queendom_name ? ` · ${c.queendom_name}` : ""}
                           </span>
-                        </button>
+                        </SelectionButton>
                       </li>
                     ))}
                   </ul>
@@ -342,11 +354,11 @@ export function SiaGroupInfoPanel({
               {/* Former members */}
               {info.formerCount > 0 && (
                 <div className="mt-3">
-                  <button
+                  <Button
+                    variant="ghost" size="sm" aria-expanded={formerOpen}
                     type="button"
                     onClick={() => setFormerOpen((v) => !v)}
                     className="serene-pressable w-full flex items-center justify-between border-0 bg-transparent py-1.5 type-caption text-(--theme-text-secondary)"
-                    style={{ cursor: "pointer" }}
                   >
                     <span>
                       {info.formerCount} former member{info.formerCount === 1 ? "" : "s"}
@@ -359,7 +371,7 @@ export function SiaGroupInfoPanel({
                         transition: "transform var(--duration-fast) var(--ease-in-out)",
                       }}
                     />
-                  </button>
+                  </Button>
                   <AnimatePresence initial={false}>
                     {formerOpen && (
                       <CollapseReveal key="sia-former-members">

@@ -74,7 +74,7 @@ export function TeamOverviewGrid({ rows }: { rows: TeamTaskOverviewRow[] }) {
                       height: 36,
                       borderRadius: "var(--radius-md)",
                       background: "var(--theme-accent-surface)",
-                      color: "var(--theme-accent)",
+                      color: "var(--neu-accent-deep)",
                     }}
                   >
                     <Glyph style={{ width: 18, height: 18, strokeWidth: 1.5 }} />

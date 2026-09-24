@@ -4,6 +4,7 @@
 // full payment history (monthly/yearly/other) or top-up history (top_up). Fetches
 // on open via getSubscriptionDetailAction (A-15 — client can't call the service).
 
+import { Button } from '@/components/ui/Button';
 import { useEffect, useState, type CSSProperties } from "react";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
@@ -129,13 +130,14 @@ export function SubscriptionHistoryModal({
                   <span style={{ fontFamily: "var(--font-mono)" }}>
                     {showPassword ? revealedPassword ?? "" : "••••••••"}
                   </span>
-                  <button
+                  <Button
+                    variant="ghost"
+                    iconOnly size="sm"
                     type="button"
                     onClick={toggleReveal}
                     disabled={revealing}
                     tabIndex={-1}
                     aria-label={showPassword ? "Hide password" : "Reveal password"}
-                    style={iconBtn}
                   >
                     {revealing ? (
                       <Loader2 style={{ width: 14, height: 14, strokeWidth: 1.5 }} className="animate-spin" />
@@ -144,7 +146,7 @@ export function SubscriptionHistoryModal({
                     ) : (
                       <Eye style={{ width: 14, height: 14, strokeWidth: 1.5 }} />
                     )}
-                  </button>
+                  </Button>
                 </span>
               </Field>
             )}
@@ -348,13 +350,4 @@ const chip: CSSProperties = {
   fontSize: "var(--text-2xs)",
   fontWeight: "var(--weight-medium)",
   whiteSpace: "nowrap",
-};
-
-const iconBtn: CSSProperties = {
-  display: "inline-flex",
-  background: "transparent",
-  border: "none",
-  cursor: "pointer",
-  color: "var(--theme-text-tertiary)",
-  padding: 0,
 };

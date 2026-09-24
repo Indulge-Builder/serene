@@ -107,3 +107,7 @@ openapi-all.zip
 # local scratch
 .impeccable/
 ok.md
+
+# local-only: generated UI previews and a reference copy of another app
+/output/
+/indulge-app-example/

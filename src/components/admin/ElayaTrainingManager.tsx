@@ -1,5 +1,7 @@
 "use client";
 
+import { SelectionButton } from '@/components/ui/SelectionButton';
+import { Button } from '@/components/ui/Button';
 import { useMemo, useState, useTransition } from "react";
 import { m as motion } from "framer-motion";
 import {
@@ -151,17 +153,20 @@ export function ElayaTrainingManager({ initialAssets }: ElayaTrainingManagerProp
       {/* Company-facts brief card(s) — pinned above the library */}
       <div className="flex flex-col gap-2 mb-4">
         {factAssets.length === 0 ? (
-          <button
+          <SelectionButton
+            appearance="row"
             type="button"
             onClick={() => openCreate("fact")}
             style={{
-              display: "flex", alignItems: "center", gap: "var(--space-4)",
-              padding: "var(--space-4) var(--space-5)", width: "100%", textAlign: "left",
-              background: "var(--theme-paper-subtle)", border: "1px dashed var(--theme-paper-border)",
-              borderRadius: "var(--radius-lg)", cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: "var(--space-4)",
+              padding: "var(--space-4) var(--space-5)",
+              width: "100%",
+              textAlign: "left",
             }}
           >
-            <BookOpen style={{ width: "1.25rem", height: "1.25rem", color: "var(--theme-accent)", strokeWidth: 1.5, flexShrink: 0 }} />
+            <BookOpen style={{ width: "1.25rem", height: "1.25rem", color: "var(--neu-accent-deep)", strokeWidth: 1.5, flexShrink: 0 }} />
             <div>
               <p style={{ fontSize: "var(--text-sm)", fontWeight: "var(--weight-semibold)", color: "var(--theme-text-primary)", margin: 0 }}>
                 Set up the company facts
@@ -170,7 +175,7 @@ export function ElayaTrainingManager({ initialAssets }: ElayaTrainingManagerProp
                 The brief Elaya draws on when she talks to a customer — the only source of company facts she may state.
               </p>
             </div>
-          </button>
+          </SelectionButton>
         ) : (
           factAssets.map((fact) => (
             <FactCard
@@ -295,7 +300,7 @@ function FactCard({ row, onEdit }: { row: TrainingAssetRow; onEdit: () => void }
           display: "flex", alignItems: "center", justifyContent: "center",
         }}
       >
-        <BookOpen style={{ width: "1.25rem", height: "1.25rem", color: "var(--theme-accent)", strokeWidth: 1.5 }} />
+        <BookOpen style={{ width: "1.25rem", height: "1.25rem", color: "var(--neu-accent-deep)", strokeWidth: 1.5 }} />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <p style={{ fontSize: "var(--text-sm)", fontWeight: "var(--weight-semibold)", color: "var(--theme-text-primary)", margin: 0 }}>
@@ -313,17 +318,16 @@ function FactCard({ row, onEdit }: { row: TrainingAssetRow; onEdit: () => void }
           </p>
         )}
       </div>
-      <button
+      <Button
+        variant="control"
+        size="sm"
         type="button"
         onClick={onEdit}
         aria-label="Edit company facts"
-        style={actionBtnStyle}
-        onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--theme-accent-muted)"; e.currentTarget.style.color = "var(--theme-text-primary)"; }}
-        onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--theme-paper-border)"; e.currentTarget.style.color = "var(--theme-text-secondary)"; }}
       >
         <Pencil style={{ width: 12, height: 12, strokeWidth: 1.5 }} />
         Edit
-      </button>
+      </Button>
     </motion.div>
   );
 }
@@ -373,7 +377,7 @@ function AssetCard({
         }}
       >
         {previewUrl && (row.kind === "image" || row.kind === "review" || row.kind === "testimonial" || row.kind === "work_example") ? (
-           
+
           <img src={previewUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
         ) : previewUrl && (row.kind === "video") ? (
           <video src={previewUrl} muted playsInline style={{ width: "100%", height: "100%", objectFit: "cover" }} />
@@ -397,7 +401,7 @@ function AssetCard({
             style={{
               fontSize: "var(--text-2xs)", textTransform: "uppercase", letterSpacing: "var(--tracking-wide)",
               padding: "1px var(--space-2)", borderRadius: "var(--radius-full)",
-              background: "var(--theme-accent-surface)", color: "var(--theme-accent)",
+              background: "var(--theme-accent-surface)", color: "var(--neu-accent-deep)",
               fontWeight: "var(--weight-medium)", flexShrink: 0,
             }}
           >
@@ -427,28 +431,26 @@ function AssetCard({
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", flexShrink: 0 }}>
-        <button
+        <Button
+          variant="control"
+          size="sm"
           type="button"
           onClick={onEdit}
           aria-label="Edit asset"
-          style={actionBtnStyle}
-          onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--theme-accent-muted)"; e.currentTarget.style.color = "var(--theme-text-primary)"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--theme-paper-border)"; e.currentTarget.style.color = "var(--theme-text-secondary)"; }}
         >
           <Pencil style={{ width: 12, height: 12, strokeWidth: 1.5 }} />
           Edit
-        </button>
-        <button
+        </Button>
+        <Button
+          variant="danger"
+          iconOnly size="sm"
           type="button"
           onClick={onDelete}
           disabled={isDeleting}
           aria-label="Delete asset"
-          style={actionBtnStyle}
-          onMouseEnter={(e) => { if (isDeleting) return; e.currentTarget.style.borderColor = "var(--color-danger)"; e.currentTarget.style.color = "var(--color-danger-text)"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--theme-paper-border)"; e.currentTarget.style.color = "var(--theme-text-secondary)"; }}
         >
           {isDeleting ? <SeedMandala size={14} variant="currentColor" spin={3.5} /> : (<><Trash2 style={{ width: 12, height: 12, strokeWidth: 1.5 }} />Delete</>)}
-        </button>
+        </Button>
       </div>
     </motion.div>
   );
@@ -462,12 +464,3 @@ function safeHost(url: string | null): string {
     return url;
   }
 }
-
-const actionBtnStyle: React.CSSProperties = {
-  display: "inline-flex", alignItems: "center", gap: "var(--space-1)",
-  padding: "var(--space-1) var(--space-3)", background: "transparent",
-  border: "1px solid var(--theme-paper-border)", borderRadius: "var(--radius-sm)",
-  fontFamily: "var(--font-sans)", fontSize: "var(--text-xs)", fontWeight: "var(--weight-medium)",
-  color: "var(--theme-text-secondary)", cursor: "pointer",
-  transition: "var(--transition-interactive)", whiteSpace: "nowrap",
-};

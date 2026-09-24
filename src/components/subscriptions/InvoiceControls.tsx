@@ -6,6 +6,7 @@
 // action; the RLS insert-own-prefix policy permits it), returns the storage PATH.
 // InvoiceLink: mints a short-lived signed URL (admin-client action) and opens it.
 
+import { Button } from '@/components/ui/Button';
 import { useRef, useState, type ChangeEvent } from "react";
 import { Paperclip, X, FileText, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -98,12 +99,13 @@ export function InvoiceField({
         disabled={disabled || uploading}
       />
       {!attached ? (
-        <button
+        <Button
+          variant="control"
+          size="sm"
           type="button"
           className="serene-pressable"
           onClick={() => inputRef.current?.click()}
           disabled={disabled || uploading}
-          style={triggerStyle}
         >
           {uploading ? (
             <Loader2 style={{ width: 14, height: 14, strokeWidth: 1.5 }} className="animate-spin" />
@@ -111,7 +113,7 @@ export function InvoiceField({
             <Paperclip style={{ width: 14, height: 14, strokeWidth: 1.5 }} />
           )}
           {uploading ? "Uploading…" : "Attach invoice"}
-        </button>
+        </Button>
       ) : (
         <span style={attachedStyle}>
           <FileText style={{ width: 14, height: 14, strokeWidth: 1.5 }} />
@@ -125,22 +127,17 @@ export function InvoiceField({
           >
             {fileName ?? "Invoice attached"}
           </span>
-          <button
+          <Button
+            variant="danger"
+            iconOnly size="sm"
             type="button"
             onClick={clear}
             disabled={disabled}
             aria-label="Remove invoice"
-            style={{
-              display: "inline-flex",
-              background: "transparent",
-              border: "none",
-              cursor: "pointer",
-              color: "var(--theme-text-tertiary)",
-              padding: 0,
-            }}
+            style={{ display: "inline-flex" }}
           >
             <X style={{ width: 13, height: 13, strokeWidth: 1.5 }} />
-          </button>
+          </Button>
         </span>
       )}
     </div>
@@ -164,22 +161,13 @@ export function InvoiceLink({ path, label = "View" }: { path: string; label?: st
   }
 
   return (
-    <button
+    <Button
+      variant="control"
+      size="sm"
       type="button"
       onClick={open}
       disabled={loading}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: "var(--space-1)",
-        background: "transparent",
-        border: "none",
-        cursor: loading ? "default" : "pointer",
-        color: "var(--theme-accent)",
-        fontFamily: "var(--font-sans)",
-        fontSize: "var(--text-xs)",
-        padding: 0,
-      }}
+      style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-1)" }}
     >
       {loading ? (
         <Loader2 style={{ width: 13, height: 13, strokeWidth: 1.5 }} className="animate-spin" />
@@ -187,24 +175,11 @@ export function InvoiceLink({ path, label = "View" }: { path: string; label?: st
         <FileText style={{ width: 13, height: 13, strokeWidth: 1.5 }} />
       )}
       {label}
-    </button>
+    </Button>
   );
 }
 
-const triggerStyle = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "var(--space-2)",
-  height: "2rem",
-  padding: "0 var(--space-3)",
-  background: "var(--theme-paper-subtle)",
-  border: "1px solid var(--theme-paper-border)",
-  borderRadius: "var(--radius-sm)",
-  color: "var(--theme-text-secondary)",
-  fontFamily: "var(--font-sans)",
-  fontSize: "var(--text-sm)",
-  cursor: "pointer",
-} as const;
+
 
 const attachedStyle = {
   display: "inline-flex",

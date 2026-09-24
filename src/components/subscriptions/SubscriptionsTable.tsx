@@ -5,6 +5,7 @@
 // archive-confirm). Row click opens history. Recording a payment / top-up lives on
 // the top-right Add Subscription → Renewal flow, not the row menu.
 
+import { Button } from '@/components/ui/Button';
 import { useState, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
@@ -267,7 +268,7 @@ function RowMenu({
 
   function item(label: string, action: ActionType | "archive", danger = false) {
     return (
-      <button
+      <Button variant={danger ? "ghost-danger" : "ghost"}
         type="button"
         role="menuitem"
         onClick={(e) => {
@@ -275,22 +276,20 @@ function RowMenu({
           anchor.close();
           onAction(action, sub);
         }}
-        style={menuItemStyle(danger)}
-        onMouseEnter={(e) => {
-          (e.currentTarget as HTMLElement).style.background = "var(--theme-paper-subtle)";
-        }}
-        onMouseLeave={(e) => {
-          (e.currentTarget as HTMLElement).style.background = "transparent";
-        }}
+        style={menuItemStyle()}
+
       >
         {label}
-      </button>
+      </Button>
     );
   }
 
   return (
     <>
-      <button
+      <Button
+        variant="ghost"
+        size="sm"
+        iconOnly
         ref={anchor.triggerRef}
         type="button"
         aria-label="Row actions"
@@ -300,10 +299,9 @@ function RowMenu({
           e.stopPropagation();
           anchor.toggle();
         }}
-        style={menuTriggerStyle}
       >
         <MoreHorizontal style={{ width: 16, height: 16, strokeWidth: 1.5 }} />
-      </button>
+      </Button>
       <FloatingPanel
         {...anchor.panelProps}
         panelKey={`sub-menu-${sub.id}`}
@@ -356,29 +354,12 @@ const cardStyle: CSSProperties = {
   cursor: "pointer",
 };
 
-const menuTriggerStyle: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  width: "2rem",
-  height: "2rem",
-  borderRadius: "var(--radius-sm)",
-  border: "none",
-  background: "transparent",
-  color: "var(--theme-text-tertiary)",
-  cursor: "pointer",
-};
-
-function menuItemStyle(danger: boolean): CSSProperties {
+function menuItemStyle(): CSSProperties {
   return {
     display: "block",
     width: "100%",
     textAlign: "left",
     padding: "var(--space-2) var(--space-3)",
-    borderRadius: "var(--radius-sm)",
-    border: "none",
-    background: "transparent",
-    color: danger ? "var(--color-danger)" : "var(--theme-text-primary)",
     fontFamily: "var(--font-sans)",
     fontSize: "var(--text-sm)",
     cursor: "pointer",

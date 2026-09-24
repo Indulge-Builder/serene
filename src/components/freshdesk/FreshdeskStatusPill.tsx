@@ -1,33 +1,14 @@
+import { Badge } from '@/components/ui/Badge';
 // FreshdeskStatusPill — THE status pill for the Freshdesk mirror (list + dossier).
 // Tone comes from constants/freshdesk.ts; colours are the semantic status tokens.
 
-import { fdStatusTone, fdStatusLabel, type FdStatusTone } from '@/lib/constants/freshdesk';
-
-const TONE_STYLE: Record<FdStatusTone, { bg: string; fg: string }> = {
-  info:    { bg: 'var(--color-info-light)',    fg: 'var(--color-info-text)' },
-  warning: { bg: 'var(--color-warning-light)', fg: 'var(--color-warning-text)' },
-  success: { bg: 'var(--color-success-light)', fg: 'var(--color-success-text)' },
-  danger:  { bg: 'var(--color-danger-light)',  fg: 'var(--color-danger-text)' },
-  neutral: { bg: 'var(--color-neutral-light)', fg: 'var(--theme-text-secondary)' },
-};
+import { fdStatusTone, fdStatusLabel } from '@/lib/constants/freshdesk';
 
 export function FreshdeskStatusPill({ status, label }: { status: number; label?: string | null }) {
-  const tone = TONE_STYLE[fdStatusTone(status)];
   return (
-    <span
-      style={{
-        display: 'inline-flex',
-        padding: '3px var(--space-3)',
-        borderRadius: 'var(--radius-full)',
-        background: tone.bg,
-        color: tone.fg,
-        fontSize: 'var(--text-xs)',
-        fontWeight: 'var(--weight-medium)',
-        whiteSpace: 'nowrap',
-      }}
-    >
+    <Badge tone={fdStatusTone(status)}>
       {label ?? fdStatusLabel(status)}
-    </span>
+    </Badge>
   );
 }
 

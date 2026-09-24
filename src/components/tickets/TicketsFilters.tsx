@@ -3,6 +3,7 @@
 // TicketsFilters — the /tickets filter strip: search, status (multi), queendom, assignee,
 // category, and "mine". Composes <FilterBar> + useUrlFilters; immediate-commit.
 
+import { Button } from '@/components/ui/Button';
 import { FilterBar } from '@/components/ui/FilterBar';
 import { FilterDropdown } from '@/components/ui/FilterDropdown';
 import { useUrlFilters, useMultiSelectUrlParam } from '@/hooks/useUrlFilters';
@@ -31,10 +32,16 @@ export function TicketsFilters({ queendoms, staff, tags = [], labels }: { queend
       activeCount={activeCount}
       onClearAll={url.clearAll}
       trailing={
-        <button type="button" onClick={() => push({ mine: mine ? null : '1' })} className="serene-pressable"
-          style={{ border: `1px solid ${mine ? 'var(--theme-accent-muted)' : 'var(--theme-paper-border)'}`, background: mine ? 'var(--theme-accent-surface)' : 'transparent', color: mine ? 'var(--neu-accent-deep)' : 'var(--theme-text-secondary)', borderRadius: 'var(--radius-full)', padding: '4px var(--space-3)', fontSize: 'var(--text-xs)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+        <Button
+          variant="control"
+          active={mine} aria-pressed={mine}
+          type="button"
+          onClick={() => push({ mine: mine ? null : '1' })}
+          className="serene-pressable"
+          style={{ whiteSpace: 'nowrap' }}
+        >
           Mine
-        </button>
+        </Button>
       }
     >
       <FilterDropdown label="Status" items={TICKET_STATUSES.options.map((o) => ({ ...o, label: labels?.[o.id] ?? o.label }))} selected={statuses} onChange={setStatuses} multi menuPortal />

@@ -1,5 +1,6 @@
 'use client';
 
+import { SelectionButton } from '@/components/ui/SelectionButton';
 import { useState } from 'react';
 import { Trophy } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
@@ -79,6 +80,7 @@ export function WonDealModal({ open, leadId: _leadId, domain, isPending, error, 
   return (
     <Modal
       open={open}
+      pending={isPending}
       onClose={onClose}
       title="Mark as Won — Deal Details"
       maxWidth="max-w-md"
@@ -140,7 +142,7 @@ export function WonDealModal({ open, leadId: _leadId, domain, isPending, error, 
                 margin:        '0 0 var(--space-2) 0',
               }}
             >
-              Product Category <span style={{ color: 'var(--color-danger)' }}>*</span>
+              Product Category <span style={{ color: "var(--color-danger-text)" }}>*</span>
             </p>
             <select
               value={category ?? ''}
@@ -184,33 +186,28 @@ export function WonDealModal({ open, leadId: _leadId, domain, isPending, error, 
                 margin:        '0 0 var(--space-3) 0',
               }}
             >
-              Duration <span style={{ color: 'var(--color-danger)' }}>*</span>
+              Duration <span style={{ color: "var(--color-danger-text)" }}>*</span>
             </p>
             <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
               {DEAL_DURATIONS.map((d) => (
-                <button
+                <SelectionButton
+                  tone={{ fill: 'var(--color-success-light)', ink: 'var(--color-success-text)' }}
+                  appearance="choice"
+                  selected={duration === d}
+                  aria-pressed={duration === d}
                   key={d}
                   type="button"
                   onClick={() => { setDuration(d); setLocalError(null); }}
                   disabled={isPending}
                   style={{
-                    flex:         1,
-                    height:       '2.5rem',
-                    border:       '1px solid var(--neu-edge)',
-                    borderRadius: 'var(--radius-sm)',
-                    background:   duration === d ? 'var(--color-success-light)' : 'var(--theme-paper)',
-                    boxShadow:    duration === d ? 'var(--neu-shadow-chip)' : 'none',
-                    fontFamily:   'var(--font-sans)',
-                    fontSize:     'var(--text-sm)',
-                    fontWeight:   duration === d ? 'var(--weight-semibold)' : 'var(--weight-normal)',
-                    color:        duration === d ? 'var(--color-success-text)' : 'var(--theme-text-primary)',
-                    cursor:       isPending ? 'not-allowed' : 'pointer',
-                    transition:   'box-shadow 0.15s ease, background 0.15s ease',
-                    whiteSpace:   'nowrap',
-                  }}
+                          flex: 1,
+                          height: '2.5rem',
+                          fontSize: 'var(--text-sm)',
+                          whiteSpace: 'nowrap',
+                      }}
                 >
                   {DEAL_DURATION_LABELS[d]}
-                </button>
+                </SelectionButton>
               ))}
             </div>
           </div>
@@ -230,7 +227,7 @@ export function WonDealModal({ open, leadId: _leadId, domain, isPending, error, 
               marginBottom:  'var(--space-2)',
             }}
           >
-            Deal Amount (₹) <span style={{ color: 'var(--color-danger)' }}>*</span>
+            Deal Amount (₹) <span style={{ color: "var(--color-danger-text)" }}>*</span>
           </label>
           <div style={{ position: 'relative' }}>
             <span

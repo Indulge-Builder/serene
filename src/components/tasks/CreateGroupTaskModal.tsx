@@ -1,5 +1,7 @@
 'use client';
 
+import { usePopoverKeyboard } from '@/hooks/usePopoverKeyboard';
+import { SelectionButton } from '@/components/ui/SelectionButton';
 import {
   useCallback,
   useEffect,
@@ -106,13 +108,20 @@ function AssigneeInlinePicker({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const dropId = useId();
+  const assigneeTriggerRef = useRef<HTMLButtonElement>(null);
+  const assigneePanelRef = useRef<HTMLDivElement>(null);
+  usePopoverKeyboard(open, assigneePanelRef, assigneeTriggerRef, () => setOpen(false));
   const filtered = users.filter((u) =>
     !query.trim() || u.full_name.toLowerCase().includes(query.toLowerCase()),
   );
 
   return (
     <div style={{ position: 'relative' }}>
-      <button
+      <Button
+        ref={assigneeTriggerRef}
+        aria-controls={open ? dropId : undefined}
+        variant="control" size="sm" active={!!value}
+        aria-label={warn ? "Choose an assignee (required)" : "Choose an assignee"}
         type="button"
         disabled={disabled}
         onClick={() => { setOpen((o) => !o); setQuery(''); }}
@@ -124,20 +133,8 @@ function AssigneeInlinePicker({
           gap:            'var(--space-2)',
           height:         30,
           padding:        '0 var(--space-2)',
-          borderRadius:   'var(--radius-sm)',
-          border:         value
-            ? '1px solid var(--theme-accent)'
-            : warn
-              ? '1px dashed var(--color-warning-text)'
-              : '1px dashed var(--theme-paper-border)',
-          background:     value ? 'var(--theme-accent-surface)' : 'transparent',
-          color:          value ? 'var(--theme-accent)' : warn ? 'var(--color-warning-text)' : 'var(--theme-text-tertiary)',
-          fontFamily:     'var(--font-sans)',
           fontSize:       'var(--text-xs)',
-          cursor:         disabled ? 'not-allowed' : 'pointer',
-          opacity:        disabled ? 0.6 : 1,
           whiteSpace:     'nowrap',
-          transition:     'var(--transition-hover)',
           maxWidth:       120,
         }}
       >
@@ -152,16 +149,7 @@ function AssigneeInlinePicker({
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {value.full_name.split(' ')[0]}
             </span>
-            <span
-              role="button"
-              tabIndex={0}
-              aria-label="Clear assignee"
-              onClick={(e) => { e.stopPropagation(); onChange(null); }}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); onChange(null); } }}
-              style={{ display: 'flex', color: 'var(--theme-accent)', flexShrink: 0 }}
-            >
-              <X style={{ width: 10, height: 10, strokeWidth: 2 }} />
-            </span>
+
           </>
         ) : (
           <>
@@ -169,13 +157,15 @@ function AssigneeInlinePicker({
             Assign
           </>
         )}
-      </button>
+      </Button>
+      {value && <Button type="button" variant="ghost" size="sm" iconOnly disabled={disabled} aria-label="Clear assignee" onClick={() => onChange(null)}><X style={{ width: 10, height: 10 }} /></Button>}
 
       <AnimatePresence>
         {open && (
           <motion.div
-            id={dropId}
-            role="listbox"
+            ref={assigneePanelRef}
+            role="group"
+            aria-label="Choose an assignee"
             initial={{ opacity: 0, y: -4, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -4, scale: 0.97 }}
@@ -206,6 +196,7 @@ function AssigneeInlinePicker({
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search…"
+                aria-label="Search assignees"
                 style={{
                   ...INPUT_BASE,
                   height:     28,
@@ -216,39 +207,39 @@ function AssigneeInlinePicker({
             </div>
 
             {/* Options */}
+            <div id={dropId} role="listbox" aria-label="Assignees">
             {filtered.length === 0 ? (
-              <div style={{ padding: 'var(--space-3)', fontFamily: 'var(--font-sans)', fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)', fontStyle: 'italic', textAlign: 'center' }}>
+              <div style={{
+                padding: 'var(--space-3)',
+                fontFamily: 'var(--font-sans)',
+                fontSize: 'var(--text-xs)',
+                color: 'var(--theme-text-tertiary)',
+                fontStyle: 'italic',
+                textAlign: 'center',
+              }}>
                 No users found
               </div>
             ) : (
               filtered.map((u) => {
                 const isSelected = value?.id === u.id;
                 return (
-                  <button
+                  <SelectionButton
+                    appearance="option"
+                    selected={isSelected}
                     key={u.id}
                     role="option"
                     aria-selected={isSelected}
                     type="button"
                     onClick={() => { onChange(u); setOpen(false); }}
                     style={{
-                      display:     'flex',
-                      alignItems:  'center',
-                      gap:         'var(--space-2)',
-                      width:       '100%',
-                      padding:     'var(--space-2) var(--space-3)',
-                      border:      'none',
-                      background:  isSelected ? 'var(--theme-accent-surface)' : 'transparent',
-                      cursor:      'pointer',
-                      textAlign:   'left',
-                      transition:  'background var(--duration-fast) var(--ease-in-out)',
-                      flexShrink:  0,
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isSelected) (e.currentTarget as HTMLElement).style.background = 'var(--theme-paper-subtle)';
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isSelected) (e.currentTarget as HTMLElement).style.background = 'transparent';
-                    }}
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 'var(--space-2)',
+                            width: '100%',
+                            padding: 'var(--space-2) var(--space-3)',
+                            textAlign: 'left',
+                            flexShrink: 0,
+                        }}
                   >
                     <Avatar
                       src={u.avatar_url}
@@ -256,13 +247,22 @@ function AssigneeInlinePicker({
                       size="xs"
                       style={{ width: 20, height: 20, minWidth: 20, borderRadius: 'var(--radius-full)' }}
                     />
-                    <span style={{ fontFamily: 'var(--font-sans)', fontSize: 'var(--text-sm)', color: 'var(--theme-text-primary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span style={{
+                      fontFamily: 'var(--font-sans)',
+                      fontSize: 'var(--text-sm)',
+                      color: 'var(--theme-text-primary)',
+                      flex: 1,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}>
                       {u.full_name}
                     </span>
-                  </button>
+                  </SelectionButton>
                 );
               })
             )}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -375,36 +375,18 @@ function SubtaskRow({
       />
 
       {/* Remove */}
-      <button
+      <Button
+        variant="ghost"
+        iconOnly
+        size="sm"
         type="button"
         onClick={onRemove}
         disabled={disabled}
         aria-label="Remove subtask"
-        style={{
-          display:        'flex',
-          alignItems:     'center',
-          justifyContent: 'center',
-          width:          24,
-          height:         24,
-          borderRadius:   'var(--radius-sm)',
-          border:         'none',
-          background:     'transparent',
-          color:          'var(--theme-text-tertiary)',
-          cursor:         disabled ? 'not-allowed' : 'pointer',
-          flexShrink:     0,
-          transition:     'color var(--duration-fast) var(--ease-in-out), background var(--duration-fast) var(--ease-in-out)',
-        }}
-        onMouseEnter={(e) => {
-          (e.currentTarget as HTMLElement).style.color      = 'var(--color-danger-text)';
-          (e.currentTarget as HTMLElement).style.background = 'var(--color-danger-light)';
-        }}
-        onMouseLeave={(e) => {
-          (e.currentTarget as HTMLElement).style.color      = 'var(--theme-text-tertiary)';
-          (e.currentTarget as HTMLElement).style.background = 'transparent';
-        }}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 24, height: 24, flexShrink: 0 }}
       >
         <Trash2 style={{ width: 12, height: 12, strokeWidth: 1.5 }} />
-      </button>
+      </Button>
     </motion.div>
   );
 }
@@ -725,7 +707,16 @@ export function CreateGroupTaskModal({
                 </select>
                 <svg
                   viewBox="0 0 12 12"
-                  style={{ position: 'absolute', right: 'var(--space-3)', top: '50%', transform: 'translateY(-50%)', width: 12, height: 12, pointerEvents: 'none', color: 'var(--theme-text-tertiary)' }}
+                  style={{
+                    position: 'absolute',
+                    right: 'var(--space-3)',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    width: 12,
+                    height: 12,
+                    pointerEvents: 'none',
+                    color: 'var(--theme-text-tertiary)',
+                  }}
                   stroke="currentColor" fill="none" strokeWidth="1.5"
                 >
                   <path d="M2 4l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
@@ -768,6 +759,7 @@ export function CreateGroupTaskModal({
                   title={c.label}
                   aria-label={c.label}
                   onClick={() => setAccentColor(c.hex)}
+                  aria-pressed={accentColor === c.hex}
                   style={{
                     width:        22,
                     height:       22,
@@ -806,37 +798,28 @@ export function CreateGroupTaskModal({
               {GROUP_TASK_ICONS.map((ic) => {
                 const IconComp = (LucideIcons as unknown as Record<string, React.ComponentType<{ style?: React.CSSProperties }>>)[ic.id];
                 if (!IconComp) return null;
-                const isActive = iconKey === ic.id;
+
                 return (
-                  <button
+                  <SelectionButton
+                    appearance="choice"
+                    selected={iconKey === ic.id}
+                    aria-pressed={iconKey === ic.id}
                     key={ic.id}
                     type="button"
                     title={ic.label}
                     aria-label={ic.label}
                     onClick={() => setIconKey(ic.id)}
                     style={{
-                      display:        'flex',
-                      alignItems:     'center',
-                      justifyContent: 'center',
-                      width:          26,
-                      height:         26,
-                      borderRadius:   'var(--radius-xs)',
-                      border:         isActive ? `1.5px solid ${accentColor}` : '1.5px solid transparent',
-                      background:     isActive ? `color-mix(in srgb, ${accentColor} 16%, transparent)` : 'transparent',
-                      color:          isActive ? accentColor : 'var(--theme-text-secondary)',
-                      cursor:         'pointer',
-                      flexShrink:     0,
-                      transition:     'background 0.12s, border 0.12s, color 0.12s',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isActive) (e.currentTarget as HTMLElement).style.background = 'var(--theme-paper-subtle)';
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isActive) (e.currentTarget as HTMLElement).style.background = 'transparent';
-                    }}
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: 26,
+                            height: 26,
+                            flexShrink: 0,
+                        }}
                   >
                     <IconComp style={{ width: 13, height: 13, strokeWidth: 1.5 } as React.CSSProperties} />
-                  </button>
+                  </SelectionButton>
                 );
               })}
             </div>
@@ -902,40 +885,17 @@ export function CreateGroupTaskModal({
           </AnimatePresence>
 
           {/* Add subtask trigger */}
-          <button
+          <Button
+            variant="control"
+            size="sm"
             type="button"
             onClick={addDraft}
             disabled={isPending || (!isManagerLocked && !domain)}
-            style={{
-              display:      'flex',
-              alignItems:   'center',
-              gap:          'var(--space-2)',
-              padding:      'var(--space-2) var(--space-3)',
-              border:       '1px dashed var(--theme-paper-border)',
-              borderRadius: 'var(--radius-sm)',
-              background:   'transparent',
-              fontFamily:   'var(--font-sans)',
-              fontSize:     'var(--text-sm)',
-              color:        'var(--theme-text-tertiary)',
-              cursor:       (isPending || (!isManagerLocked && !domain)) ? 'not-allowed' : 'pointer',
-              opacity:      (isPending || (!isManagerLocked && !domain)) ? 0.5 : 1,
-              width:        '100%',
-              transition:   'color var(--duration-fast) var(--ease-in-out), border-color var(--duration-fast) var(--ease-in-out)',
-            }}
-            onMouseEnter={(e) => {
-              if (!isPending && (isManagerLocked || domain)) {
-                (e.currentTarget as HTMLElement).style.color        = 'var(--theme-accent)';
-                (e.currentTarget as HTMLElement).style.borderColor  = 'var(--theme-accent)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.color       = 'var(--theme-text-tertiary)';
-              (e.currentTarget as HTMLElement).style.borderColor = 'var(--theme-paper-border)';
-            }}
+            style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', width: '100%' }}
           >
             <Plus style={{ width: 14, height: 14, strokeWidth: 1.5 }} />
             {drafts.length === 0 ? 'Add a subtask' : 'Add another subtask'}
-          </button>
+          </Button>
 
           {!isManagerLocked && !domain ? (
             <p

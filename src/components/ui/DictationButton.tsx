@@ -22,6 +22,7 @@
 // own affordances conditionally on `recorder.isSupported` only if they need the
 // recording flag; most just mount this and let it hide itself.
 
+import { Button } from '@/components/ui/Button';
 import { Mic, Square, X } from 'lucide-react';
 import { SeedMandala } from '@/components/ui/SeedMandala';
 import { transcribeAudioAction } from '@/lib/actions/transcription';
@@ -142,33 +143,23 @@ export function DictationButton({
           size={16}
           variant="currentColor"
           spin={3.5}
-          style={{ color: 'var(--theme-accent)' }}
+          style={{ color: "var(--neu-accent-deep)" }}
         />
       )}
 
       {recorder.isRecording && (
-        <button
+        <Button
+          variant="ghost"
+          iconOnly size="sm"
           type="button"
           onClick={recorder.cancel}
           aria-label="Discard recording"
           title="Discard recording"
           className="serene-pressable"
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: sq,
-            height: sq,
-            borderRadius: isComposer ? 'var(--radius-sm)' : 'var(--radius-md)',
-            border: isComposer ? 'none' : '1px solid var(--theme-paper-border)',
-            background: 'transparent',
-            color: 'var(--theme-text-tertiary)',
-            cursor: 'pointer',
-            flexShrink: 0,
-          }}
+          style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: sq, height: sq, flexShrink: 0 }}
         >
           <X style={{ width: '0.85rem', height: '0.85rem', strokeWidth: 1.5 }} />
-        </button>
+        </Button>
       )}
 
       <button

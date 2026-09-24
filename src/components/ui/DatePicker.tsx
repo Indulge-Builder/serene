@@ -1,5 +1,7 @@
 'use client';
 
+import { usePopoverKeyboard } from '@/hooks/usePopoverKeyboard';
+import { useModalScope } from '@/hooks/useModalFocus';
 import React, { useRef, useEffect, useLayoutEffect, useMemo, useCallback, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Calendar as CalendarIcon } from 'lucide-react';
@@ -70,6 +72,7 @@ export function DatePicker({
   style,
   'aria-label': ariaLabel,
 }: DatePickerProps) {
+  const modalScope = useModalScope();
   const [open, setOpen] = useState(false);
   const [focused, setFocused] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -77,6 +80,7 @@ export function DatePicker({
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef   = useRef<HTMLButtonElement>(null);
   const panelRef     = useRef<HTMLDivElement>(null);
+  usePopoverKeyboard(open, panelRef, triggerRef, () => setOpen(false), false, '[data-calendar-day][tabindex="0"]');
 
   // Below --bp-md the side-by-side calendar+time row (448px) cannot fit —
   // stack the time wheel below the calendar instead.
@@ -143,7 +147,7 @@ export function DatePicker({
       setOpen(false);
     }
     function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setOpen(false);
+      if (e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); setOpen(false); triggerRef.current?.focus({ preventScroll: true }); }
     }
     function reposition() { updatePanelPosition(); }
     window.addEventListener('mousedown', handleOutside);
@@ -218,6 +222,7 @@ export function DatePicker({
       {open && (
         <motion.div
           ref={panelRef}
+          data-modal-owner={modalScope}
           key="datepicker-popover"
           role="dialog"
           aria-label="Calendar"
@@ -299,6 +304,7 @@ export function DatePicker({
       {/* Trigger */}
       <button
         ref={triggerRef}
+        className="serene-compact-field"
         type="button"
         aria-label={ariaLabel ?? 'Date picker'}
         aria-haspopup="dialog"
@@ -316,10 +322,10 @@ export function DatePicker({
           flex:        '1 1 auto',
           height:      '2.25rem',
           padding:     'var(--space-2) var(--space-3)',
-          // Fields FLOAT (soft-UI rule 3): gradient sheen + paired input shadow.
+          // Compact field uses the shared inset material.
           background:  'var(--neu-input-bg)',
           border:      `1px solid ${focused || open ? 'var(--theme-accent)' : 'var(--neu-input-edge)'}`,
-          borderRadius:'var(--radius-lg)',
+          borderRadius:'var(--neu-radius-control)',
           fontSize:    'var(--text-sm)',
           fontFamily:  'var(--font-sans)',
           color:       value ? 'var(--theme-text-primary)' : 'var(--theme-text-tertiary)',
@@ -344,4 +350,3 @@ export function DatePicker({
     </div>
   );
 }
-

@@ -1,8 +1,9 @@
 "use client";
 
+import { MotionButton } from '@/components/ui/MotionButton';
 import React from "react";
 import { Search, X } from "lucide-react";
-import { m as motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence } from "framer-motion";
 import { FAST_DURATION, EASE_OUT_EXPO } from "@/lib/constants/motion";
 
 export type SearchBarSize = "sm" | "md" | "lg";
@@ -64,7 +65,6 @@ export function SearchBar({
 }: SearchBarProps) {
   const { height, fontSize, iconSize, pl } = SIZE_STYLES[size];
   const [focused, setFocused] = React.useState(false);
-  const [clearHovered, setClearHovered] = React.useState(false);
 
   const borderColor = suppressFocusAccent
     ? variant === "soft"
@@ -108,14 +108,14 @@ export function SearchBar({
       <input
         type="text"
         className={
-          suppressFocusAccent ? "serene-input serene-input--no-focus-ring" : "serene-input"
+          suppressFocusAccent ? "serene-input serene-compact-field serene-input--no-focus-ring" : "serene-input serene-compact-field"
         }
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         disabled={disabled}
         autoFocus={autoFocus}
-        aria-label={ariaLabel}
+        aria-label={ariaLabel ?? placeholder}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         style={{
@@ -125,11 +125,10 @@ export function SearchBar({
           paddingRight: value
             ? `calc(var(--space-3) + ${iconSize}px + var(--space-3))`
             : "var(--space-3)",
-          // Neumorphic Rule 3: search fields FLOAT — gradient sheen + inner
-          // top highlight, pill radius (specimen SearchBar).
+          // Compact field: the same control radius as adjacent filters.
           background: variant === "soft" ? "transparent" : "var(--neu-input-bg)",
           border: `1px solid ${borderColor}`,
-          borderRadius: "var(--radius-full)",
+          borderRadius: "var(--neu-radius-control)",
           fontSize,
           color: "var(--theme-text-primary)",
           fontFamily: "var(--font-sans)",
@@ -162,36 +161,18 @@ export function SearchBar({
               pointerEvents: "none",
             }}
           >
-            <motion.button
-              type="button"
-              onClick={() => onChange("")}
-              onMouseEnter={() => setClearHovered(true)}
-              onMouseLeave={() => setClearHovered(false)}
-              aria-label="Clear search"
-              initial={{ opacity: 0, scale: 0.7 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.7 }}
-              whileTap={{ scale: 0.8 }}
-              transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: iconSize + 8,
-                height: iconSize + 8,
-                background: "transparent",
-                border: "none",
-                borderRadius: "var(--radius-full)",
-                cursor: "pointer",
-                color: clearHovered
-                  ? "var(--theme-text-primary)"
-                  : "var(--theme-text-tertiary)",
-                transition: "color var(--transition-hover)",
-                padding: 0,
-                pointerEvents: "auto",
-                willChange: "transform",
-              }}
-            >
+            <MotionButton
+          variant="ghost" size="sm" iconOnly
+          type="button"
+          onClick={() => onChange("")}
+          aria-label="Clear search"
+          initial={{ opacity: 0, scale: 0.7 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.7 }}
+          whileTap={{ scale: 0.8 }}
+          transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
+          style={{display: "flex", alignItems: "center", justifyContent: "center", width: iconSize + 8, height: iconSize + 8, padding: 0, pointerEvents: "auto", willChange: "transform"}}
+        >
               <X
                 style={{
                   width: iconSize,
@@ -202,7 +183,7 @@ export function SearchBar({
                 }}
                 aria-hidden="true"
               />
-            </motion.button>
+            </MotionButton>
           </div>
         )}
       </AnimatePresence>

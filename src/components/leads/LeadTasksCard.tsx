@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from '@/components/ui/Button';
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
@@ -57,41 +58,17 @@ export function LeadTasksCard({ leadId, initialTasks }: LeadTasksCardProps) {
           title="Gia Tasks"
           bodyPadding={false}
           headerRight={
-            <button
+            <Button
+              variant="control"
+              iconOnly size="sm"
               type="button"
               onClick={() => setModalOpen(true)}
               aria-label="Add follow-up task"
               className="serene-pressable serene-icon-rotate-hover"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: 28,
-                height: 28,
-                borderRadius: "var(--radius-sm)",
-                border: "1px solid var(--theme-paper-border)",
-                background: "transparent",
-                color: "var(--theme-text-secondary)",
-                cursor: "pointer",
-                padding: 0,
-                transition:
-                  "color var(--duration-fast) var(--ease-in-out), border-color var(--duration-fast) var(--ease-in-out)",
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.color =
-                  "var(--theme-accent)";
-                (e.currentTarget as HTMLButtonElement).style.borderColor =
-                  "var(--theme-accent-muted)";
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.color =
-                  "var(--theme-text-secondary)";
-                (e.currentTarget as HTMLButtonElement).style.borderColor =
-                  "var(--theme-paper-border)";
-              }}
+              style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 28, height: 28 }}
             >
               <Plus style={{ width: 14, height: 14, strokeWidth: 1.5 }} />
-            </button>
+            </Button>
           }
         >
           <div

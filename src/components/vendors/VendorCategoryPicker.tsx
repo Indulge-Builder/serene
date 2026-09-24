@@ -19,9 +19,10 @@
 // error, because a category that silently failed to save is worse than one
 // that never changed.
 
+import { MotionSelectionButton } from '@/components/ui/MotionButton';
+import { Button } from '@/components/ui/Button';
 import { useState, useTransition } from 'react';
 import { Check, ChevronDown, Loader2, Plus } from 'lucide-react';
-import { m as motion } from 'framer-motion';
 import { usePortalAnchor } from '@/hooks/usePortalAnchor';
 import { FloatingPanel } from '@/components/ui/FloatingPanel';
 import { toast } from '@/lib/toast';
@@ -79,28 +80,15 @@ export function VendorCategoryPicker({
 
   return (
     <>
-      <button
+      <Button
+        variant="control"
+        size="sm"
+        aria-expanded={anchor.open}
         ref={anchor.triggerRef}
         type="button"
         onClick={anchor.toggle}
         disabled={pending}
         title="Change what kind of supplier this is"
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 'var(--space-1)',
-          padding: '3px var(--space-3)',
-          borderRadius: 'var(--radius-full)',
-          border: 'none',
-          background: 'var(--theme-accent-surface)',
-          color: 'var(--neu-accent-deep)',
-          fontSize: 'var(--text-xs)',
-          fontWeight: 'var(--weight-medium)',
-          fontFamily: 'inherit',
-          cursor: pending ? 'progress' : 'pointer',
-          opacity: pending ? 0.6 : 1,
-          transition: `opacity ${FAST_DURATION}s ${EASE_OUT_EXPO}`,
-        }}
       >
         {getVendorCategoryLabel(value)}
         {pending ? (
@@ -108,39 +96,25 @@ export function VendorCategoryPicker({
         ) : (
           <ChevronDown style={{ width: 12, height: 12, strokeWidth: 2 }} />
         )}
-      </button>
+      </Button>
 
       <FloatingPanel {...anchor.panelProps} panelKey={`vendor-category-${vendorId}`}>
         <div style={{ padding: 'var(--space-2)', minWidth: 200, maxHeight: 320, overflowY: 'auto' }}>
           {options.map((opt) => {
             const selected = opt.id === value;
             return (
-              <motion.button
-                key={opt.id}
-                type="button"
-                onClick={() => choose(opt.id)}
-                whileHover={{ x: 2 }}
-                transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 'var(--space-3)',
-                  width: '100%',
-                  padding: 'var(--space-2) var(--space-3)',
-                  borderRadius: 'var(--neu-radius-chip)',
-                  border: 'none',
-                  background: selected ? 'var(--theme-accent-surface)' : 'transparent',
-                  color: selected ? 'var(--neu-accent-deep)' : 'var(--theme-text-primary)',
-                  fontSize: 'var(--text-sm)',
-                  fontFamily: 'inherit',
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                }}
-              >
+              <MotionSelectionButton
+          appearance="option" selected={selected} aria-pressed={selected}
+          key={opt.id}
+          type="button"
+          onClick={() => choose(opt.id)}
+          whileHover={{ x: 2 }}
+          transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
+          style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', width: '100%', padding: 'var(--space-2) var(--space-3)', fontSize: 'var(--text-sm)', textAlign: 'left'}}
+        >
                 {opt.label}
                 {selected && <Check style={{ width: 14, height: 14, strokeWidth: 2, flexShrink: 0 }} />}
-              </motion.button>
+              </MotionSelectionButton>
             );
           })}
 
@@ -173,28 +147,16 @@ export function VendorCategoryPicker({
                 }}
               />
             ) : (
-              <button
+              <Button
+                variant="control"
+                size="sm"
+                style={{ width: '100%' }}
                 type="button"
                 onClick={() => setAdding(true)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--space-2)',
-                  width: '100%',
-                  padding: 'var(--space-2) var(--space-3)',
-                  borderRadius: 'var(--neu-radius-chip)',
-                  border: 'none',
-                  background: 'transparent',
-                  color: 'var(--theme-text-secondary)',
-                  fontSize: 'var(--text-sm)',
-                  fontFamily: 'inherit',
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                }}
               >
                 <Plus style={{ width: 14, height: 14, strokeWidth: 2 }} />
                 Add a category
-              </button>
+              </Button>
             )}
           </div>
         </div>

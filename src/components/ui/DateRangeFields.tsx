@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@/components/ui/Button';
 import { X } from 'lucide-react';
 import { DatePicker } from '@/components/ui/DatePicker';
 import { dateFromUrlParam, dateToUrlParam } from '@/lib/utils/filter-params';
@@ -102,35 +103,23 @@ export function DateRangeFields({
       </div>
 
       {rangeActive && (
-        <button
+        <Button
+          variant="ghost"
+          iconOnly size="sm" aria-label="Clear dates"
           type="button"
           onClick={onClear}
-          style={{
-            display:        'inline-flex',
-            alignItems:     'center',
-            justifyContent: 'center',
-            gap:            'var(--space-1)',
-            height:         '2.25rem',
-            border:         'none',
-            background:     'transparent',
-            color:          'var(--theme-text-tertiary)',
-            cursor:         'pointer',
-            padding:        isMobile ? '0 var(--space-2)' : 0,
-            borderRadius:   'var(--radius-sm)',
-            flexShrink:     0,
-            ...(isMobile
+          title="Clear dates"
+          style={{ display:        'inline-flex', alignItems:     'center', justifyContent: 'center', gap:            'var(--space-1)', height:         '2.25rem', flexShrink:     0, ...(isMobile
               ? {
                   alignSelf:  'flex-end' as const,
                   fontSize:   'var(--text-xs)',
                   fontFamily: 'var(--font-sans)',
                 }
-              : { width: '2.25rem' }),
-          }}
-          title="Clear dates"
+              : { width: '2.25rem' }) }}
         >
           <X style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5, display: 'block' }} />
           {isMobile && <span>Clear</span>}
-        </button>
+        </Button>
       )}
     </div>
   );

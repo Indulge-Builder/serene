@@ -7,6 +7,7 @@
 // starter-prompt prefill shares the composer state. The grid flex-fills the
 // page main (no fixed dvh math) so the chat takes the full remaining height.
 
+import { Button } from '@/components/ui/Button';
 import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { ElayaGlyphDisc } from '@/components/ui/elaya-glyph';
@@ -239,14 +240,16 @@ export function ElayaChatShell({
                 marginLeft: onClose ? undefined : 'auto',
                 fontSize: 'var(--text-2xs)',
                 whiteSpace: 'nowrap',
-                color: 'var(--color-warning)',
+                color: "var(--color-warning-text)",
               }}
             >
               Daily limit reached
             </span>
           )}
           {onClose && (
-            <button
+            <Button
+              variant="ghost"
+              iconOnly size="sm"
               type="button"
               onClick={onClose}
               aria-label="Close Elaya"
@@ -258,18 +261,11 @@ export function ElayaChatShell({
                 justifyContent: 'center',
                 width: '1.75rem',
                 height: '1.75rem',
-                borderRadius: 'var(--radius-sm)',
-                border: '1px solid var(--theme-paper-border)',
-                background: 'transparent',
-                color: 'var(--theme-text-tertiary)',
-                cursor: 'pointer',
                 flexShrink: 0,
-                transition:
-                  'var(--transition-hover), transform var(--duration-instant) var(--ease-spring)',
               }}
             >
               <X style={{ width: 16, height: 16, strokeWidth: 1.5 }} aria-hidden="true" />
-            </button>
+            </Button>
           )}
         </div>
 

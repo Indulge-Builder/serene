@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from '@/components/ui/Button';
 import { MessageSquarePlus } from "lucide-react";
 import { EmbeddedElayaChat } from "@/components/elaya/EmbeddedElayaChat";
 import { useSuggestionFeedback } from "@/components/suggestions/SuggestionFeedbackProvider";
@@ -39,7 +40,9 @@ export function ElayaPresenceCard(_props: WidgetProps) {
       }}
     >
       {isMobile && (
-        <button
+        <Button
+          variant="ghost"
+          iconOnly size="sm"
           type="button"
           aria-label="Send feedback"
           title="Send feedback"
@@ -55,15 +58,10 @@ export function ElayaPresenceCard(_props: WidgetProps) {
             justifyContent: "center",
             width: "32px",
             height: "32px",
-            borderRadius: "var(--radius-full)",
-            border: "1px solid var(--theme-paper-border)",
-            background: "var(--theme-paper-subtle)",
-            color: "var(--theme-text-secondary)",
-            cursor: "pointer",
           }}
         >
           <MessageSquarePlus style={{ width: "16px", height: "16px", strokeWidth: 1.5 }} />
-        </button>
+        </Button>
       )}
 
       <EmbeddedElayaChat />

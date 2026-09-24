@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@/components/ui/Button';
 import { useState } from 'react';
 import dynamic from 'next/dynamic';
 import { m as motion } from 'framer-motion';
@@ -127,20 +128,14 @@ function EmptyAdTile({ canUpload, onAdd }: { canUpload: boolean; onAdd: () => vo
   }
 
   return (
-    <button
+    <Button
+      variant="control"
+      iconOnly size="sm"
       type="button"
       onClick={onAdd}
       aria-label="Add a video for this campaign"
       className="serene-pressable serene-icon-rotate-hover"
-      style={{ ...sharedTileStyle, cursor: 'pointer' }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = 'var(--theme-accent-muted)';
-        e.currentTarget.style.color = 'var(--theme-text-secondary)';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = 'var(--neu-edge-strong)';
-        e.currentTarget.style.color = 'var(--theme-text-tertiary)';
-      }}
+      style={{ ...sharedTileStyle }}
     >
       <span
         style={{
@@ -166,6 +161,6 @@ function EmptyAdTile({ canUpload, onAdd }: { canUpload: boolean; onAdd: () => vo
       >
         Add a video
       </span>
-    </button>
+    </Button>
   );
 }

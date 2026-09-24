@@ -1,5 +1,6 @@
 'use client';
 
+import { MobileButton } from '@/components/mobile/buttons';
 import { useState } from 'react';
 import { Calendar, Check, MessageCircle, Plane, Trash2 } from 'lucide-react';
 import { DetailAppBar } from '../app-bars';
@@ -190,15 +191,12 @@ export function RequestDetailScreen({ reference }: { reference: string }) {
         style={{ bottom: 'max(16px, env(safe-area-inset-bottom))' }}
       >
         <div className="mx-auto max-w-[390px]">
-          <button
+          <MobileButton
+            variant="primary"
             className="neu-m-touch w-full h-[54px] rounded-full border border-(--neu-accent-btn-edge) text-sm font-semibold text-(--neu-accent-fg)"
-            style={{
-              background: 'var(--neu-accent-gradient)',
-              boxShadow: 'var(--neu-shadow-raised)',
-            }}
           >
             Message Sara
-          </button>
+          </MobileButton>
         </div>
       </div>
 

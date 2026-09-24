@@ -92,7 +92,7 @@ export function EmbeddedElayaChat({ seed: externalSeed, onClose, glyphSize = 28 
       className="flex flex-1 flex-col items-center justify-center"
       style={{ gap: 'var(--space-3)', padding: 'var(--space-5)', minHeight: 0 }}
     >
-      <span style={{ color: 'var(--theme-accent)', display: 'flex' }}>
+      <span style={{ color: "var(--neu-accent-deep)", display: 'flex' }}>
         <ElayaGlyph size={glyphSize} />
       </span>
       <span

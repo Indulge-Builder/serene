@@ -20,33 +20,12 @@ export function MobileButton({
   style,
   ...rest
 }: MobileButtonProps) {
-  if (variant === 'quiet') {
-    return (
-      <button
-        {...rest}
-        className={`neu-m-touch-quiet h-11 rounded-full bg-transparent border-none text-[13.5px] font-medium text-(--neu-text-secondary) ${className}`}
-        style={style}
-      >
-        {children}
-      </button>
-    );
-  }
-  const isPrimary = variant === 'primary';
   return (
     <button
       {...rest}
-      className={`neu-m-touch rounded-full flex items-center justify-center ${
-        isPrimary
-          ? 'h-14 border border-(--neu-accent-btn-edge) text-[15px] font-semibold text-(--neu-accent-fg)'
-          : 'h-13 bg-(--neu-surface) border border-(--neu-edge) text-sm font-medium text-(--neu-text-primary)'
-      } ${className}`}
-      style={{
-        ...(isPrimary
-          ? { background: 'var(--neu-accent-gradient)' }
-          : {}),
-        boxShadow: 'var(--neu-shadow-raised)',
-        ...style,
-      }}
+      data-variant={variant}
+      className={`${variant === 'quiet' ? 'neu-m-touch-quiet' : 'neu-m-touch'} neu-m-button rounded-full flex items-center justify-center ${className}`}
+      style={style}
     >
       {children}
     </button>
@@ -59,6 +38,7 @@ export function IconKnob({
   children,
   className = '',
   accent = false,
+  style,
   ...rest
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   size?: number;
@@ -68,10 +48,10 @@ export function IconKnob({
   return (
     <button
       {...rest}
-      className={`neu-m-touch-knob shrink-0 rounded-full bg-(--neu-surface) border border-(--neu-edge) flex items-center justify-center ${
+      className={`neu-m-touch-knob neu-m-icon-knob shrink-0 rounded-full bg-(--neu-surface) border border-(--neu-edge) flex items-center justify-center ${
         accent ? 'text-(--neu-accent-deep)' : 'text-(--neu-text-secondary)'
       } ${className}`}
-      style={{ width: size, height: size, boxShadow: 'var(--neu-shadow-raised-sm)' }}
+      style={{ width: size, height: size, ...style }}
     >
       {children}
     </button>
@@ -82,16 +62,14 @@ export function IconKnob({
 export function Fab({
   children,
   className = '',
+  style,
   ...rest
 }: ButtonHTMLAttributes<HTMLButtonElement> & { children: ReactNode }) {
   return (
     <button
       {...rest}
-      className={`neu-m-touch-knob shrink-0 w-15 h-15 rounded-full border border-(--neu-accent-btn-edge) flex items-center justify-center text-(--neu-accent-fg) ${className}`}
-      style={{
-        background: 'var(--neu-accent-gradient)',
-        boxShadow: '4px 4px 10px rgb(var(--neu-dark) / 0.32), -3px -3px 8px rgb(var(--neu-light) / 0.72)',
-      }}
+      className={`neu-m-touch-knob neu-m-fab shrink-0 w-15 h-15 rounded-full border border-(--neu-accent-btn-edge) flex items-center justify-center text-(--neu-accent-fg) ${className}`}
+      style={style}
     >
       {children}
     </button>
@@ -112,20 +90,21 @@ export function StickyButtonPair({
 }) {
   return (
     <div className="flex gap-3">
-      <button
+      <MobileButton
+        variant="secondary"
         onClick={onQuiet}
-        className="neu-m-touch flex-1 h-13 rounded-full bg-(--neu-surface) border border-(--neu-edge) text-sm font-medium text-(--neu-text-secondary)"
-        style={{ boxShadow: 'var(--neu-shadow-raised)' }}
+        className="flex-1"
       >
         {quietLabel}
-      </button>
-      <button
+      </MobileButton>
+      <MobileButton
+        variant="primary"
         onClick={onPrimary}
-        className="neu-m-touch flex-[1.6] h-13 rounded-full border border-(--neu-accent-btn-edge) text-sm font-semibold text-(--neu-accent-fg)"
-        style={{ background: 'var(--neu-accent-gradient)', boxShadow: 'var(--neu-shadow-raised)' }}
+        className="flex-[1.6]"
+        style={{ height: '3.25rem', fontSize: 'var(--text-sm)' }}
       >
         {primaryLabel}
-      </button>
+      </MobileButton>
     </div>
   );
 }

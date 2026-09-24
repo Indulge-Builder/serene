@@ -8,6 +8,7 @@
 // intent (next/dynamic); the payment/top-up target stays mounted while it animates
 // out (mirrors SubscriptionsTable's modal orchestration).
 
+import { SelectionButton } from '@/components/ui/SelectionButton';
 import { useState } from "react";
 import dynamic from "next/dynamic";
 import { Plus, ChevronDown, type LucideIcon } from "lucide-react";
@@ -120,30 +121,20 @@ function MenuItem({
   onClick: () => void;
 }) {
   return (
-    <button
+    <SelectionButton
+      appearance="option"
       type="button"
       role="menuitem"
       onClick={onClick}
       className="serene-pressable"
       style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "0.125rem",
-        width: "100%",
-        textAlign: "left",
-        padding: "var(--space-2) var(--space-3)",
-        borderRadius: "var(--radius-sm)",
-        border: "none",
-        background: "transparent",
-        cursor: "pointer",
-        transition: "background var(--duration-fast) var(--ease-in-out)",
-      }}
-      onMouseEnter={(e) => {
-        (e.currentTarget as HTMLElement).style.background = "var(--theme-paper-subtle)";
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLElement).style.background = "transparent";
-      }}
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.125rem",
+              width: "100%",
+              textAlign: "left",
+              padding: "var(--space-2) var(--space-3)",
+          }}
     >
       <span
         style={{
@@ -157,6 +148,6 @@ function MenuItem({
       <span style={{ fontSize: "var(--text-xs)", color: "var(--theme-text-tertiary)", lineHeight: 1.4 }}>
         {hint}
       </span>
-    </button>
+    </SelectionButton>
   );
 }

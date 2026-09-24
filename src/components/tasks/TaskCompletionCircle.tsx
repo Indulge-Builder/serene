@@ -85,7 +85,7 @@ export function TaskCompletionCircle({
             width:       16,
             height:      16,
             strokeWidth: 1.5,
-            color:       'var(--theme-accent)',
+            color:       "var(--neu-accent-deep)",
           }}
         />
       ) : !canInteract ? (

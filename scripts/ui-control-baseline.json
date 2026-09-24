@@ -1,0 +1,117 @@
+{
+  "src/components/dashboard/DashboardCanvas.tsx": {
+    "native": 1,
+    "animated": 0,
+    "reason": "Grid drag handle: layout coordinates, touch-action, and native keyboard movement."
+  },
+  "src/components/dashboard/DashboardDateFilter.tsx": {
+    "native": 1,
+    "animated": 0,
+    "reason": "Shared filter-trigger recipe; local dimensions and layout only around shared tokens."
+  },
+  "src/components/dashboard/widgets/AgentActivityWidget.tsx": {
+    "native": 1,
+    "animated": 0,
+    "reason": "Segmented activity scope with sliding indicator and roving keyboard focus."
+  },
+  "src/components/layout/Sidebar.tsx": {
+    "native": 2,
+    "animated": 0,
+    "reason": "Navigation family; icon-only active and hover treatment intentionally distinct from actions."
+  },
+  "src/components/leads/LeadColumnPicker.tsx": {
+    "native": 0,
+    "animated": 1,
+    "reason": "Animated checkbox primitive; column label actions use Button; drag has keyboard sensor."
+  },
+  "src/components/mobile/DomainSwiper.tsx": {
+    "native": 1,
+    "animated": 0,
+    "reason": "Domain pagination indicators; current state exposed and accessible names retained."
+  },
+  "src/components/mobile/controls.tsx": {
+    "native": 1,
+    "animated": 0,
+    "reason": "Mobile switch track/thumb anatomy shares the existing well and accent material."
+  },
+  "src/components/notifications/NotificationBell.tsx": {
+    "native": 0,
+    "animated": 1,
+    "reason": "Sidebar/topbar icon slot with unread dot and motion; semantic navigation ink."
+  },
+  "src/components/profile/ProfileAvatarSection.tsx": {
+    "native": 1,
+    "animated": 0,
+    "reason": "Avatar-shaped upload target with upload state and accessible name."
+  },
+  "src/components/sia/SiaMessageBubble.tsx": {
+    "native": 1,
+    "animated": 0,
+    "reason": "Quoted-message inset surface with jump target behavior."
+  },
+  "src/components/tasks/CreateGroupTaskModal.tsx": {
+    "native": 1,
+    "animated": 0,
+    "reason": "Named color swatches with pressed state; actual swatch pigment is data."
+  },
+  "src/components/tasks/TaskCompletionCircle.tsx": {
+    "native": 1,
+    "animated": 0,
+    "reason": "Completion primitive with checked/hover geometry and semantic state."
+  },
+  "src/components/ui/Button.tsx": {
+    "native": 1,
+    "animated": 0,
+    "reason": "Canonical action primitive implementation."
+  },
+  "src/components/ui/Calendar.tsx": {
+    "native": 1,
+    "animated": 0,
+    "reason": "Date cells with range/today/selected tokens and date-aware keyboard navigation."
+  },
+  "src/components/ui/Carousel.tsx": {
+    "native": 1,
+    "animated": 0,
+    "reason": "Pagination indicators; action arrows use shared Button."
+  },
+  "src/components/ui/CheckTile.tsx": {
+    "native": 1,
+    "animated": 0,
+    "reason": "Canonical completion tile primitive."
+  },
+  "src/components/ui/DatePicker.tsx": {
+    "native": 1,
+    "animated": 0,
+    "reason": "Inset field trigger; focus enters calendar and returns on dismissal."
+  },
+  "src/components/ui/DictationButton.tsx": {
+    "native": 1,
+    "animated": 0,
+    "reason": "Recording/processing control; semantic recording state and progress animation."
+  },
+  "src/components/ui/SelectionButton.tsx": {
+    "native": 1,
+    "animated": 0,
+    "reason": "Canonical selection material custom properties, not page-local chrome."
+  },
+  "src/components/ui/TaskFormFields.tsx": {
+    "native": 1,
+    "animated": 0,
+    "reason": "Priority-dot primitive; semantic pigment and pressed state."
+  },
+  "src/components/ui/TimePicker.tsx": {
+    "native": 2,
+    "animated": 0,
+    "reason": "Inset trigger and scroll wheel; numeric selection and keyboard stepping."
+  },
+  "src/components/ui/Toggle.tsx": {
+    "native": 1,
+    "animated": 0,
+    "reason": "Canonical switch track/thumb primitive."
+  },
+  "src/components/ui/toast-item.tsx": {
+    "native": 1,
+    "animated": 0,
+    "reason": "Undo action uses a contrasting dark toast material, separate from light-surface actions."
+  }
+}

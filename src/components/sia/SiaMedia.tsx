@@ -8,6 +8,7 @@
 // (voice/images) or is explicitly asked for (video/document). A module-level
 // cache keeps a session's already-fetched files so reopening a chat is instant.
 
+import { Button } from '@/components/ui/Button';
 import { useEffect, useRef, useState } from "react";
 import { useInView } from "framer-motion";
 import { Download, FileText, Pause, Play, Video as VideoIcon } from "lucide-react";
@@ -269,20 +270,12 @@ function VoiceNotePlayer({ chatJid, waMessageId, senderJid, media }: MediaProps)
 
   return (
     <div ref={ref} className="flex items-center gap-3" style={{ minWidth: "200px", maxWidth: "260px" }}>
-      <button
+      <Button
+        variant="primary" size="sm" iconOnly
         type="button"
         onClick={toggle}
         disabled={!payload}
         aria-label={playing ? "Pause voice note" : "Play voice note"}
-        className="serene-pressable shrink-0 rounded-full flex items-center justify-center border-0"
-        style={{
-          width: "34px",
-          height: "34px",
-          background: "var(--theme-accent)",
-          color: "var(--theme-accent-fg)",
-          cursor: payload ? "pointer" : "default",
-          opacity: payload ? 1 : 0.55,
-        }}
       >
         {!payload && inView ? (
           <SeedMandala size={14} variant="currentColor" spin={3.5} />
@@ -291,12 +284,21 @@ function VoiceNotePlayer({ chatJid, waMessageId, senderJid, media }: MediaProps)
         ) : (
           <Play className="w-4 h-4 ml-0.5" strokeWidth={2} fill="currentColor" />
         )}
-      </button>
+      </Button>
 
       <div className="flex-1 min-w-0">
         <div
           role="slider"
-          aria-label="Seek"
+          aria-label="Seek voice note"
+          tabIndex={payload ? 0 : -1}
+          aria-disabled={!payload}
+          onKeyDown={(event) => {
+            const audio = audioRef.current;
+            if (!audio || !Number.isFinite(audio.duration) || audio.duration <= 0) return;
+            if (!['ArrowLeft', 'ArrowRight', 'ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+            event.preventDefault();
+            audio.currentTime = event.key === 'Home' ? 0 : event.key === 'End' ? audio.duration : Math.max(0, Math.min(audio.duration, audio.currentTime + (['ArrowRight', 'ArrowUp'].includes(event.key) ? 5 : -5)));
+          }}
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={Math.round(progress * 100)}
@@ -394,21 +396,14 @@ function ClickToLoadVideo({ chatJid, waMessageId, senderJid, media }: MediaProps
       spinning={loading}
       action={
         !loading ? (
-          <button
+          <Button
+            variant="control" size="sm" iconOnly
             type="button"
             onClick={load}
             aria-label="Load video"
-            className="serene-pressable shrink-0 rounded-full flex items-center justify-center border-0"
-            style={{
-              width: "30px",
-              height: "30px",
-              background: "var(--theme-accent-surface)",
-              color: "var(--neu-accent-deep)",
-              cursor: "pointer",
-            }}
           >
             <VideoIcon className="w-4 h-4" strokeWidth={1.5} />
-          </button>
+          </Button>
         ) : undefined
       }
     />
@@ -468,21 +463,14 @@ function DocumentChip({ chatJid, waMessageId, senderJid, media }: MediaProps) {
       spinning={busy}
       action={
         !busy ? (
-          <button
+          <Button
+            variant="control" size="sm" iconOnly
             type="button"
             onClick={download}
             aria-label="Download document"
-            className="serene-pressable shrink-0 rounded-full flex items-center justify-center border-0"
-            style={{
-              width: "30px",
-              height: "30px",
-              background: "var(--theme-accent-surface)",
-              color: "var(--neu-accent-deep)",
-              cursor: "pointer",
-            }}
           >
             <Download className="w-4 h-4" strokeWidth={1.5} />
-          </button>
+          </Button>
         ) : undefined
       }
     />

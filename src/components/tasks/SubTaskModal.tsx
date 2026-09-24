@@ -21,6 +21,11 @@
  * - Checklist toggles are always interactive (not read-only), even outside edit mode.
  */
 
+import { MotionButton } from '@/components/ui/MotionButton';
+import { useRef as useModalPanelRef } from 'react';
+import { ModalScopeContext, useModalFocus } from '@/hooks/useModalFocus';
+import { SelectionButton } from '@/components/ui/SelectionButton';
+import { Button } from '@/components/ui/Button';
 import {
   useEffect,
   useId,
@@ -121,56 +126,6 @@ export interface SubTaskModalProps {
 
 type IconButtonVariant = "edit" | "danger" | "close";
 
-function iconButtonStyles(
-  variant: IconButtonVariant,
-  active?: boolean,
-  danger?: boolean,
-): React.CSSProperties {
-  const base: React.CSSProperties = {
-    display:        "flex",
-    alignItems:     "center",
-    justifyContent: "center",
-    width:          "30px",
-    height:         "30px",
-    borderRadius:   "var(--radius-sm)",
-    cursor:         "pointer",
-    transition:     "var(--transition-hover), transform var(--duration-instant) var(--ease-spring)",
-    flexShrink:     0,
-  };
-
-  switch (variant) {
-    case "edit":
-      return {
-        ...base,
-        border: active
-          ? "1px solid var(--theme-accent)"
-          : "1px solid color-mix(in srgb, var(--theme-accent) 32%, transparent)",
-        background: active
-          ? "color-mix(in srgb, var(--theme-accent) 18%, transparent)"
-          : "color-mix(in srgb, var(--theme-accent) 10%, var(--theme-paper))",
-        color: active ? "var(--theme-accent-hover)" : "var(--theme-accent)",
-      };
-    case "danger":
-      return {
-        ...base,
-        border: danger
-          ? "1px solid color-mix(in srgb, var(--color-danger) 45%, transparent)"
-          : "1px solid color-mix(in srgb, var(--color-danger) 22%, transparent)",
-        background: danger
-          ? "color-mix(in srgb, var(--color-danger) 12%, transparent)"
-          : "var(--color-danger-light)",
-        color: "var(--color-danger-text)",
-      };
-    case "close":
-      return {
-        ...base,
-        border:     "1px solid var(--theme-paper-border)",
-        background: "var(--theme-paper-subtle)",
-        color:      "var(--theme-text-tertiary)",
-      };
-  }
-}
-
 function IconButton({
   onClick,
   label,
@@ -187,16 +142,21 @@ function IconButton({
   children: React.ReactNode;
 }) {
   return (
-    <button
+    <Button
+      variant={variant === 'danger' ? 'danger' : variant === 'close' ? 'ghost' : 'control'}
+      size="sm"
+      iconOnly
+      active={active}
+      aria-pressed={variant === 'edit' ? !!active : undefined}
+      aria-expanded={variant === 'danger' ? !!danger : undefined}
       type="button"
       onClick={onClick}
       aria-label={label}
       title={label}
       className={variant === "close" ? "serene-pressable serene-icon-rotate-hover serene-touch" : "serene-pressable serene-touch"}
-      style={iconButtonStyles(variant, active, danger)}
     >
       {children}
-    </button>
+    </Button>
   );
 }
 
@@ -207,24 +167,6 @@ const ALL_STATUSES: TaskStatus[] = [
 ];
 
 const ALL_PRIORITIES: TaskPriority[] = ["urgent", "high", "normal"];
-
-const META_PILL_TRIGGER: React.CSSProperties = {
-  display:        "inline-flex",
-  alignItems:     "center",
-  justifyContent: "center",
-  gap:            "var(--space-1)",
-  minHeight:      28,
-  padding:        "0 var(--space-3)",
-  borderRadius:   "var(--radius-full)",
-  fontFamily:     "var(--font-sans)",
-  fontSize:       "var(--text-xs)",
-  fontWeight:     "var(--weight-semibold)",
-  whiteSpace:     "nowrap",
-  cursor:         "pointer",
-  transition:     "var(--transition-hover)",
-  flexShrink:     0,
-  lineHeight:     1,
-};
 
 // ─── Add action item row (always visible when caller can edit) ────────────────
 
@@ -313,39 +255,24 @@ function ActionItemAddRow({
       />
       <AnimatePresence initial={false}>
         {value.trim().length > 0 && !disabled && (
-          <motion.button
-            key="add-action-submit"
-            type="button"
-            initial={{ opacity: 0, scale: 0.85 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.85 }}
-            transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
-            onClick={(e) => {
+          <MotionButton
+          variant="primary" size="sm"
+          key="add-action-submit"
+          type="button"
+          initial={{ opacity: 0, scale: 0.85 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.85 }}
+          transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
+          onClick={(e) => {
               e.stopPropagation();
               onSubmit();
             }}
-            whileTap={{ scale: 0.92 }}
-            aria-label="Add action item"
-            style={{
-              display:        "flex",
-              alignItems:     "center",
-              justifyContent: "center",
-              flexShrink:     0,
-              padding:        "2px var(--space-2)",
-              borderRadius:   "var(--radius-full)",
-              border:         "none",
-              background:     "var(--theme-accent)",
-              color:          "var(--theme-accent-fg)",
-              fontFamily:     "var(--font-sans)",
-              fontSize:       "var(--text-2xs)",
-              fontWeight:     "var(--weight-semibold)",
-              letterSpacing:  "var(--tracking-wide)",
-              cursor:         "pointer",
-              willChange:     "transform",
-            }}
-          >
+          whileTap={{ scale: 0.92 }}
+          aria-label="Add action item"
+          style={{display:        "flex", alignItems:     "center", justifyContent: "center", flexShrink:     0, padding:        "2px var(--space-2)", fontSize:       "var(--text-2xs)", letterSpacing:  "var(--tracking-wide)", willChange:     "transform"}}
+        >
             Add
-          </motion.button>
+          </MotionButton>
         )}
       </AnimatePresence>
     </motion.div>
@@ -447,33 +374,17 @@ function SortableChecklistItem({
       )}
 
       {editMode && (
-        <button
+        <Button
+          variant="ghost"
+          iconOnly
+          size="sm"
           type="button"
           onClick={() => onDelete(item.id)}
           aria-label="Remove item"
-          style={{
-            display:        "flex",
-            alignItems:     "center",
-            justifyContent: "center",
-            width:          "20px",
-            height:         "20px",
-            borderRadius:   "var(--radius-xs)",
-            border:         "none",
-            background:     "transparent",
-            color:          "var(--theme-text-tertiary)",
-            cursor:         "pointer",
-            flexShrink:     0,
-            transition:     "var(--transition-hover)",
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.color = "var(--color-danger-text)";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.color = "var(--theme-text-tertiary)";
-          }}
+          style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "20px", height: "20px", flexShrink: 0 }}
         >
           <X style={{ width: 12, height: 12, strokeWidth: 2 }} />
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -508,6 +419,9 @@ export function SubTaskModal({
   onTaskDeleted,
   onDeferDelete,
 }: SubTaskModalProps) {
+  const modalPanelRef = useModalPanelRef<HTMLDivElement>(null);
+  const modalScopeId = useModalFocus(open, modalPanelRef, onClose);
+
   const isGroupSubtask = task.task_category === "group_subtask";
 
   // ── Local state ───────────────────────────────────────────────────────────
@@ -550,17 +464,7 @@ export function SubTaskModal({
   }, [task]);
 
   // ── Escape key ───────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!open) return;
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        e.stopPropagation();
-        onClose();
-      }
-    }
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [open, onClose]);
+
 
   // ── Click-outside for dropdowns ───────────────────────────────────────────
   useEffect(() => {
@@ -815,7 +719,7 @@ export function SubTaskModal({
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  return (
+  return <ModalScopeContext.Provider value={modalScopeId}>{(
     <>
       {/* Backdrop */}
       <motion.div
@@ -837,7 +741,7 @@ export function SubTaskModal({
       />
 
       {/* Panel */}
-      <motion.div
+      <motion.div ref={modalPanelRef} tabIndex={-1}
         key="subtask-modal-panel"
         role="dialog"
         aria-modal="true"
@@ -1020,23 +924,21 @@ export function SubTaskModal({
 
                 {/* Status selector */}
               <div ref={statusMenuRef} style={{ position: "relative" }}>
-                <button
+                <Button
+                  variant="control"
+                  size="sm"
+                  aria-expanded={showStatusMenu}
                   type="button"
                   onClick={() => {
-                    setShowStatusMenu((v) => !v);
-                    setShowPriorityMenu(false);
-                  }}
-                  style={{
-                    ...META_PILL_TRIGGER,
-                    background: statusCfg.pillBg,
-                    color:      statusCfg.pillText,
-                    border:     `1px solid color-mix(in srgb, ${statusCfg.color} 20%, transparent)`,
-                  }}
+                          setShowStatusMenu((v) => !v);
+                          setShowPriorityMenu(false);
+                      }}
+                  style={{ '--control-fill': statusCfg.pillBg, '--control-ink': statusCfg.pillText } as React.CSSProperties}
                 >
                   <TaskStatusIcon status={status} size={11} />
                   {statusCfg.label}
                   <ChevronRight style={{ width: 10, height: 10, strokeWidth: 2, opacity: 0.5, transform: "rotate(90deg)", flexShrink: 0 }} />
-                </button>
+                </Button>
 
                 <AnimatePresence>
                   {showStatusMenu && (
@@ -1063,36 +965,26 @@ export function SubTaskModal({
                         const cfg    = TASK_STATUS[s];
                         const active = s === status;
                         return (
-                          <button
+                          <SelectionButton
+                            selected={active}
+                            appearance="option"
                             key={s}
                             type="button"
                             onClick={() => handleStatusChange(s)}
+                            aria-pressed={active}
                             style={{
-                              display:      "flex",
-                              alignItems:   "center",
-                              gap:          "var(--space-2)",
-                              width:        "100%",
-                              padding:      "var(--space-2) var(--space-3)",
-                              border:       "none",
-                              borderRadius: "var(--radius-sm)",
-                              background:   active ? cfg.remarkBg : "transparent",
-                              color:        active ? cfg.remarkColor : "var(--theme-text-secondary)",
-                              fontFamily:   "var(--font-sans)",
-                              fontSize:     "var(--text-sm)",
-                              cursor:       "pointer",
-                              textAlign:    "left",
-                              transition:   "background 0.1s",
-                            }}
-                            onMouseEnter={(e) => {
-                              if (!active) (e.currentTarget as HTMLButtonElement).style.background = "var(--theme-paper-subtle)";
-                            }}
-                            onMouseLeave={(e) => {
-                              if (!active) (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-                            }}
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "var(--space-2)",
+                                    width: "100%",
+                                    padding: "var(--space-2) var(--space-3)",
+                                    fontSize: "var(--text-sm)",
+                                    textAlign: "left",
+                                }}
                           >
                             <span style={{ display: "block", width: 7, height: 7, borderRadius: "var(--radius-full)", background: cfg.color, flexShrink: 0 }} />
                             {cfg.label}
-                          </button>
+                          </SelectionButton>
                         );
                       })}
                     </motion.div>
@@ -1102,18 +994,15 @@ export function SubTaskModal({
 
               {/* Priority selector */}
               <div ref={priorityMenuRef} style={{ position: "relative" }}>
-                <button
+                <Button
+                  variant="control"
+                  size="sm"
+                  aria-expanded={showPriorityMenu}
                   type="button"
                   onClick={() => {
-                    setShowPriorityMenu((v) => !v);
-                    setShowStatusMenu(false);
-                  }}
-                  style={{
-                    ...META_PILL_TRIGGER,
-                    background: "var(--theme-paper)",
-                    border:     `1px solid color-mix(in srgb, ${priorityCfg.color} 24%, var(--theme-paper-border))`,
-                    color:      priorityCfg.color,
-                  }}
+                          setShowPriorityMenu((v) => !v);
+                          setShowStatusMenu(false);
+                      }}
                 >
                   <span
                     style={{
@@ -1127,7 +1016,7 @@ export function SubTaskModal({
                   />
                   {priorityCfg.label}
                   <ChevronRight style={{ width: 10, height: 10, strokeWidth: 2, opacity: 0.5, transform: "rotate(90deg)", flexShrink: 0 }} />
-                </button>
+                </Button>
 
                 <AnimatePresence>
                   {showPriorityMenu && (
@@ -1154,37 +1043,26 @@ export function SubTaskModal({
                         const cfg    = TASK_PRIORITY[p];
                         const active = p === priority;
                         return (
-                          <button
+                          <SelectionButton
+                            selected={active}
+                            appearance="option"
                             key={p}
                             type="button"
                             onClick={() => handlePriorityChange(p)}
+                            aria-pressed={active}
                             style={{
-                              display:      "flex",
-                              alignItems:   "center",
-                              gap:          "var(--space-2)",
-                              width:        "100%",
-                              padding:      "var(--space-2) var(--space-3)",
-                              border:       "none",
-                              borderRadius: "var(--radius-sm)",
-                              background:   active ? "var(--theme-paper-subtle)" : "transparent",
-                              color:        active ? cfg.color : "var(--theme-text-secondary)",
-                              fontFamily:   "var(--font-sans)",
-                              fontSize:     "var(--text-sm)",
-                              fontWeight:   active ? "var(--weight-semibold)" : "var(--weight-normal)",
-                              cursor:       "pointer",
-                              textAlign:    "left",
-                              transition:   "background 0.1s",
-                            }}
-                            onMouseEnter={(e) => {
-                              if (!active) (e.currentTarget as HTMLButtonElement).style.background = "var(--theme-paper-subtle)";
-                            }}
-                            onMouseLeave={(e) => {
-                              if (!active) (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-                            }}
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "var(--space-2)",
+                                    width: "100%",
+                                    padding: "var(--space-2) var(--space-3)",
+                                    fontSize: "var(--text-sm)",
+                                    textAlign: "left",
+                                }}
                           >
                             <span style={{ display: "block", width: 6, height: 6, borderRadius: "var(--radius-full)", background: cfg.color, flexShrink: 0 }} />
                             {cfg.label}
-                          </button>
+                          </SelectionButton>
                         );
                       })}
                     </motion.div>
@@ -1260,39 +1138,22 @@ export function SubTaskModal({
                       This task will be permanently deleted. Are you sure?
                     </span>
                     <div style={{ display: "flex", gap: "var(--space-2)", flexShrink: 0 }}>
-                      <button
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         type="button"
                         onClick={() => setShowDeleteConfirm(false)}
-                        style={{
-                          padding:      "var(--space-1) var(--space-3)",
-                          borderRadius: "var(--radius-sm)",
-                          border:       "1px solid var(--theme-paper-border)",
-                          background:   "var(--theme-paper)",
-                          color:        "var(--theme-text-secondary)",
-                          fontFamily:   "var(--font-sans)",
-                          fontSize:     "var(--text-sm)",
-                          cursor:       "pointer",
-                        }}
                       >
                         Cancel
-                      </button>
-                      <button
+                      </Button>
+                      <Button
+                        variant="danger"
+                        size="sm"
                         type="button"
                         onClick={handleDeleteTask}
-                        style={{
-                          padding:      "var(--space-1) var(--space-3)",
-                          borderRadius: "var(--radius-sm)",
-                          border:       "none",
-                          background:   "var(--color-danger)",
-                          color:        "var(--color-danger-fg)",
-                          fontFamily:   "var(--font-sans)",
-                          fontSize:     "var(--text-sm)",
-                          fontWeight:   "var(--weight-semibold)",
-                          cursor:       "pointer",
-                        }}
                       >
                         Delete
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 </CollapseReveal>
@@ -1456,23 +1317,14 @@ export function SubTaskModal({
                             ))}
                           </AnimatePresence>
                           {!checklistExpanded && hiddenCount > 0 && (
-                            <button
+                            <Button
+                              variant="ghost"
+                              size="sm"
                               type="button"
                               onClick={() => setChecklistExpanded(true)}
-                              style={{
-                                display:    "block",
-                                margin:     "var(--space-1) 0 var(--space-2)",
-                                fontFamily: "var(--font-sans)",
-                                fontSize:   "var(--text-xs)",
-                                color:      "var(--theme-accent)",
-                                background: "transparent",
-                                border:     "none",
-                                cursor:     "pointer",
-                                padding:    0,
-                              }}
                             >
                               Show {hiddenCount} more…
-                            </button>
+                            </Button>
                           )}
                         </>
                       )}
@@ -1606,41 +1458,20 @@ export function SubTaskModal({
                       flexShrink:     0,
                     }}
                   >
-                    <button
+                    <Button
+                      variant="ghost"
                       type="button"
                       onClick={() => setEditMode(false)}
-                      style={{
-                        padding:      "var(--space-2) var(--space-4)",
-                        borderRadius: "var(--radius-sm)",
-                        border:       "1px solid var(--theme-paper-border)",
-                        background:   "var(--theme-paper)",
-                        color:        "var(--theme-text-secondary)",
-                        fontFamily:   "var(--font-sans)",
-                        fontSize:     "var(--text-sm)",
-                        cursor:       "pointer",
-                        transition:   "var(--transition-hover)",
-                      }}
                     >
                       Cancel
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                      variant="primary"
                       type="button"
                       onClick={handleSaveBrief}
-                      style={{
-                        padding:      "var(--space-2) var(--space-4)",
-                        borderRadius: "var(--radius-sm)",
-                        border:       "none",
-                        background:   "var(--theme-accent)",
-                        color:        "var(--theme-accent-fg)",
-                        fontFamily:   "var(--font-sans)",
-                        fontSize:     "var(--text-sm)",
-                        fontWeight:   "var(--weight-semibold)",
-                        cursor:       "pointer",
-                        transition:   "var(--transition-interactive)",
-                      }}
                     >
                       Save
-                    </button>
+                    </Button>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -1678,7 +1509,7 @@ export function SubTaskModal({
         </div>
       </motion.div>
     </>
-  );
+  )}</ModalScopeContext.Provider>;
 }
 
 SubTaskModal.displayName = "SubTaskModal";

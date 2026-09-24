@@ -206,7 +206,7 @@ function MetricCard({
             style={{
               width: "14px",
               height: "14px",
-              color: "var(--theme-accent)",
+              color: "var(--neu-accent-deep)",
               strokeWidth: 1.5,
             }}
           />

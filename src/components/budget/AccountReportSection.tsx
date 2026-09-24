@@ -11,6 +11,7 @@
 //   * Unattributed renders visibly (accent-free, neutral) so the post-ship
 //     campaign-rename pass is self-auditing.
 
+import { SelectionButton } from '@/components/ui/SelectionButton';
 import { useState } from "react";
 import { AnimatePresence } from "framer-motion";
 import { ChevronDown } from "lucide-react";
@@ -52,7 +53,8 @@ export function AccountReportSection({ report }: { report: AccountReport }) {
               }}
             >
               {/* Block header — clickable to expand campaigns */}
-              <button
+              <SelectionButton
+                appearance="option" aria-expanded={isOpen}
                 type="button"
                 onClick={() => hasCampaigns && setExpanded(isOpen ? null : block.key)}
                 disabled={!hasCampaigns}
@@ -62,9 +64,6 @@ export function AccountReportSection({ report }: { report: AccountReport }) {
                   alignItems:     "center",
                   gap:            "var(--space-4)",
                   padding:        "var(--space-3) var(--space-5)",
-                  background:     "transparent",
-                  border:         "none",
-                  cursor:         hasCampaigns ? "pointer" : "default",
                   textAlign:      "left",
                 }}
               >
@@ -149,7 +148,7 @@ export function AccountReportSection({ report }: { report: AccountReport }) {
                     }}
                   />
                 )}
-              </button>
+              </SelectionButton>
 
               {/* Non-INR line — recorded, excluded from balance */}
               {block.nonInr.length > 0 && (

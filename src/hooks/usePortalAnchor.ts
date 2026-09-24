@@ -124,6 +124,35 @@ export function usePortalAnchor<TTrigger extends HTMLElement = HTMLButtonElement
     return () => cancelAnimationFrame(frame);
   }, [open, updatePosition]);
 
+  useEffect(() => {
+    if (!open) return;
+    const frame = requestAnimationFrame(() => {
+      const panel = panelRef.current;
+      if (panel && !panel.contains(document.activeElement)) {
+        panel.querySelector<HTMLElement>('input:not(:disabled),[aria-selected="true"],[aria-checked="true"],button:not(:disabled),[tabindex="0"]')?.focus({ preventScroll: true });
+      }
+    });
+    const onKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      const panel = panelRef.current;
+      if (!panel || !(panel.contains(event.target as Node) || triggerRef.current?.contains(event.target as Node))) return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        setOpen(false);
+        triggerRef.current?.focus({ preventScroll: true });
+      } else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) && !(event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement)) {
+        const options = Array.from(panel.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')).filter(el => el.getClientRects().length > 0);
+        const index = options.indexOf(document.activeElement as HTMLButtonElement);
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? options.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length;
+        event.preventDefault();
+        options[next]?.focus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => { cancelAnimationFrame(frame); document.removeEventListener('keydown', onKey); };
+  }, [open]);
+
   const toggle = useCallback(() => setOpen((o) => !o), []);
   const close = useCallback(() => setOpen(false), []);
 

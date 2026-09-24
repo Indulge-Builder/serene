@@ -7,6 +7,7 @@
 // picks the member and fills the brief. Everything is editable before saving. Priority is a
 // suggestion until a bishop approves it on the ticket page; the SLA starts then.
 
+import { SelectionButton } from '@/components/ui/SelectionButton';
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Sparkles } from 'lucide-react';
@@ -150,10 +151,20 @@ export function NewTicketForm({ initialMember, callerQueendomId, initialProposal
               {hits.length > 0 && (
                 <ul style={{ margin: 'var(--space-2) 0 0', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 2 }}>
                   {hits.map((h) => (
-                    <li key={h.id}><button type="button" onClick={() => { setMember({ id: h.id, full_name: h.full_name, queendom_id: null }); setHits([]); setMemberQuery(''); }} className="serene-pressable"
-                      style={{ width: '100%', textAlign: 'left', background: 'none', border: '1px solid var(--theme-paper-border)', borderRadius: 'var(--radius-sm)', padding: 'var(--space-2) var(--space-3)', cursor: 'pointer', fontSize: 'var(--text-sm)', color: 'var(--theme-text-primary)' }}>
+                    <li key={h.id}><SelectionButton
+                      appearance="row"
+                      type="button"
+                      onClick={() => { setMember({ id: h.id, full_name: h.full_name, queendom_id: null }); setHits([]); setMemberQuery(''); }}
+                      className="serene-pressable"
+                      style={{
+                              width: '100%',
+                              textAlign: 'left',
+                              padding: 'var(--space-2) var(--space-3)',
+                              fontSize: 'var(--text-sm)',
+                          }}
+                    >
                       {h.full_name}<span style={{ fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)', marginLeft: 'var(--space-2)' }}>{h.primary_phone ?? ''}{h.queendom_name ? ` · ${h.queendom_name}` : ''}</span>
-                    </button></li>
+                    </SelectionButton></li>
                   ))}
                 </ul>
               )}

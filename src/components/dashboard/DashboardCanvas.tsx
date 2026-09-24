@@ -1,5 +1,6 @@
 'use client';
 
+import { Button } from '@/components/ui/Button';
 import { Suspense, useState, useCallback, useMemo } from 'react';
 import { Await } from '@/components/ui/Await';
 import { DashboardGridSkeleton } from './DashboardGridSkeleton';
@@ -149,7 +150,7 @@ export function DashboardCanvas({
         <h1 className="type-page-title m-0 min-w-0">
           {greeting},{' '}
           <span className="max-md:block">
-            <span style={{ color: 'var(--theme-accent)' }}>{firstName}</span>
+            <span style={{ color: "var(--neu-accent-deep)" }}>{firstName}</span>
             <span className="page-title-dot">.</span>
           </span>
         </h1>
@@ -178,54 +179,30 @@ export function DashboardCanvas({
           )}
 
           {editMode && (
-            <button
+            <Button
+              variant="ghost"
+              size="sm"
               type="button"
               onClick={resetToDefaults}
-              style={{
-                display:    'flex',
-                alignItems: 'center',
-                gap:        'var(--space-1)',
-                fontSize:   'var(--text-xs)',
-                color:      'var(--theme-text-tertiary)',
-                background: 'transparent',
-                border:     'none',
-                cursor:     'pointer',
-                padding:    'var(--space-1) var(--space-2)',
-              }}
             >
               <RotateCcw size={12} strokeWidth={1.5} />
               Reset layout
-            </button>
+            </Button>
           )}
           {/* Edit mode is disabled below 768px — the phone layout is derived +
               read-only, so the toggle is hidden entirely there. */}
           {!isMobile && (
-            <button
+            <Button
+              variant="control"
+              active={editMode}
               type="button"
               onClick={() => setEditMode((v) => !v)}
               aria-pressed={editMode}
               aria-label={editMode ? 'Done editing layout' : 'Edit layout'}
-              className="serene-pressable serene-icon-rotate-hover serene-touch"
-              style={{
-                display:        'flex',
-                alignItems:     'center',
-                justifyContent: 'center',
-                gap:            'var(--space-1)',
-                fontSize:       'var(--text-xs)',
-                fontWeight:     'var(--weight-medium)',
-                color:        editMode ? 'var(--theme-accent-fg)' : 'var(--theme-text-secondary)',
-                background:   editMode ? 'var(--theme-accent)' : 'var(--theme-paper-subtle)',
-                border:       '1px solid var(--theme-paper-border)',
-                borderRadius: 'var(--radius-sm)',
-                cursor:       'pointer',
-                padding:      '0 var(--space-3)',
-                flexShrink:   0,
-                height:       '32px',
-              }}
             >
               <LayoutDashboard size={12} strokeWidth={1.5} />
               {editMode ? 'Done' : 'Edit layout'}
-            </button>
+            </Button>
           )}
         </div>
       </div>
@@ -275,8 +252,19 @@ export function DashboardCanvas({
                 dragHandle={
                   editMode ? (
                     <button
+                      type="button"
                       className="serene-widget-drag"
-                      aria-label="Drag to move"
+                      aria-label="Move widget; use arrow keys or drag"
+                      aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight"
+                      onKeyDown={(event) => {
+                        if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+                        event.preventDefault();
+                        applyLayout(layout.map(item => item.widgetId !== placement.widgetId ? item : {
+                          ...item,
+                          x: Math.max(0, Math.min(GRID_COLS - item.w, item.x + (event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0))),
+                          y: Math.max(0, item.y + (event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0)),
+                        }));
+                      }}
                       style={{
                         cursor:         'grab',
                         width:          '24px',

@@ -78,7 +78,15 @@ function PolicyCard({ initial, queendoms, onDone }: { initial: Draft; queendoms:
   const subs = d.category ? TICKET_SUB_CATEGORIES[d.category as TicketCategory] ?? [] : [];
 
   return (
-    <div style={{ border: '1px solid var(--theme-paper-border)', borderRadius: 'var(--radius-md)', padding: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', background: d.is_active ? 'var(--theme-paper)' : 'var(--theme-paper-subtle)' }}>
+    <div style={{
+      border: '1px solid var(--theme-paper-border)',
+      borderRadius: 'var(--radius-md)',
+      padding: 'var(--space-4)',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 'var(--space-4)',
+      background: d.is_active ? 'var(--theme-paper)' : 'var(--theme-paper-subtle)',
+    }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
         <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)' }}>{scopeLine(d, queendoms)}</span>
         <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 'var(--space-3)' }}>
@@ -120,7 +128,13 @@ function PolicyCard({ initial, queendoms, onDone }: { initial: Draft; queendoms:
             <select style={SELECT} value={s.to} onChange={(e) => set('escalation', d.escalation.map((x, j) => (j === i ? { ...x, to: e.target.value as Step['to'] } : x)))}>
               <option value="bishop">the bishop</option><option value="queen">the queen</option><option value="founder">the founder</option>
             </select>
-            <button type="button" onClick={() => set('escalation', d.escalation.filter((_, j) => j !== i))} aria-label="Remove step" style={{ background: 'none', border: 0, cursor: 'pointer', color: 'var(--theme-text-tertiary)' }}><Trash2 style={{ width: 12, height: 12 }} /></button>
+            <Button
+              variant="ghost"
+              iconOnly size="sm"
+              type="button"
+              onClick={() => set('escalation', d.escalation.filter((_, j) => j !== i))}
+              aria-label="Remove step"
+            ><Trash2 style={{ width: 12, height: 12 }} /></Button>
           </div>
         ))}
         {d.escalation.length < 5 && <Button variant="ghost" size="xs" onClick={() => set('escalation', [...d.escalation, { after_min: 60, to: 'queen' }])}><Plus style={{ width: '0.75rem', height: '0.75rem' }} /> Step</Button>}

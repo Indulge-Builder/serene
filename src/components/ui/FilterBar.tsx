@@ -1,5 +1,8 @@
 'use client';
 
+import { Button } from '@/components/ui/Button';
+import { filterTriggerStyle } from './material-styles';
+
 import { X, SlidersHorizontal, ChevronDown } from 'lucide-react';
 import { SearchBar } from '@/components/ui/SearchBar';
 import { FloatingPanel } from '@/components/ui/FloatingPanel';
@@ -105,22 +108,10 @@ function dateTriggerStyle(
     gap:          'var(--space-2)',
     height:       '2.25rem',
     padding:      'var(--space-1) var(--space-3)',
-    // Raised trigger; applied dates FLOAT on an accent wash + chip shadow —
-    // never marked by a coloured border. Open = 1px accent ring layer.
-    background:   active
-      ? 'color-mix(in srgb, var(--theme-accent) 12%, var(--neu-surface))'
-      : 'var(--neu-surface)',
-    border:       '1px solid var(--theme-paper-border)',
-    boxShadow:    accented
-      ? '0 0 0 1px var(--theme-accent), var(--neu-shadow-raised-sm)'
-      : active
-      ? 'var(--neu-shadow-chip)'
-      : 'var(--neu-shadow-raised-sm)',
-    borderRadius: 'var(--radius-md)',
+    ...filterTriggerStyle(active, accented),
     fontSize:     'var(--text-sm)',
     fontFamily:   'var(--font-sans)',
     fontWeight:   'var(--weight-medium)',
-    color:        active ? 'var(--neu-accent-deep)' : 'var(--theme-text-secondary)',
     cursor:       'pointer',
     whiteSpace:   'nowrap',
     outline:      'none',
@@ -266,6 +257,7 @@ export function FilterBar({
       {dateRange?.onPresetSelect && (
         <div style={{ flexShrink: 0 }}>
           <button
+            className="serene-filter-trigger"
             ref={presets.triggerRef}
             type="button"
             onClick={presets.toggle}
@@ -312,6 +304,7 @@ export function FilterBar({
             onClick={range.toggle}
             aria-haspopup="dialog"
             aria-expanded={range.open}
+            className="serene-filter-trigger"
             style={dateTriggerStyle(rangeActive, rangeAccented, rangeVariant === 'chevron')}
           >
             Dates
@@ -363,30 +356,16 @@ export function FilterBar({
 
       {/* Clear all — visibility driven by activeCount (committed state) */}
       {activeCount > 0 && (
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           type="button"
           onClick={onClearAll}
-          style={{
-            display:    'inline-flex',
-            alignItems: 'center',
-            gap:        'var(--space-1)',
-            height:     '2.25rem',
-            padding:    '0 var(--space-2)',
-            border:     'none',
-            background: 'transparent',
-            color:      'var(--theme-text-tertiary)',
-            fontSize:   'var(--text-sm)',
-            fontFamily: 'var(--font-sans)',
-            cursor:     'pointer',
-            transition: 'color var(--duration-fast) var(--ease-in-out)',
-            flexShrink: 0,
-          }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--theme-text-primary)'; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'var(--theme-text-tertiary)'; }}
+          style={{ display:    'inline-flex', alignItems: 'center', gap:        'var(--space-1)', height:     '2.25rem', flexShrink: 0 }}
         >
           <X style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5 }} />
           <span>{clearLabel}</span>
-        </button>
+        </Button>
       )}
 
       {trailing}

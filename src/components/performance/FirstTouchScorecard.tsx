@@ -10,6 +10,7 @@
 // (getAgentFirstTouchScorecard, business-minute aware); this renders the result.
 // Mirrors PipelineSection's segmented-bar + chip-legend language in the same panel.
 
+import { SelectionButton } from '@/components/ui/SelectionButton';
 import { m as motion } from 'framer-motion';
 import { FIRST_TOUCH_BUCKETS, type FirstTouchBucketId } from '@/lib/constants/performance';
 import { ENTER_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
@@ -169,16 +170,25 @@ export function FirstTouchScorecard({
           );
 
           return interactive ? (
-            <button
-              key={b.id}
-              type="button"
-              className="serene-pressable serene-touch"
-              onClick={() => onBucketClick!(b.id)}
-              aria-label={`Show ${count} lead${count === 1 ? '' : 's'} with a ${b.label} first touch`}
-              style={rowStyle}
-            >
+            <SelectionButton appearance="option"
+      key={b.id}
+      type="button"
+      className="serene-pressable serene-touch"
+      onClick={() => onBucketClick!(b.id)}
+      aria-label={`Show ${count} lead${count === 1 ? '' : 's'} with a ${b.label} first touch`}
+      style={{
+        display:             'grid',
+        gridTemplateColumns: '54px 1fr auto',
+        alignItems:          'center',
+        gap:                 'var(--space-3)',
+        width:               '100%',
+        textAlign:           'left',
+        padding:             0,
+        font:                'inherit',
+      }}
+    >
               {rowContent}
-            </button>
+            </SelectionButton>
           ) : (
             <div key={b.id} style={rowStyle}>
               {rowContent}

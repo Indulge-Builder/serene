@@ -1,5 +1,7 @@
 'use client';
 
+import { SelectionButton } from '@/components/ui/SelectionButton';
+import { Button } from '@/components/ui/Button';
 import React from 'react';
 import { ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
 import { m as motion, AnimatePresence } from 'framer-motion';
@@ -106,26 +108,17 @@ function YearMonthPicker({ year, month, onPick, onClose }: PickerProps) {
         }}>
           Jump to
         </span>
-        <button
+        <Button
+          variant="ghost"
+          iconOnly
+          size="sm"
           type="button"
           onClick={onClose}
           aria-label="Close picker"
-          style={{
-            display:        'flex',
-            alignItems:     'center',
-            justifyContent: 'center',
-            width:          26,
-            height:         26,
-            border:         'none',
-            background:     'var(--theme-paper-subtle)',
-            borderRadius:   'var(--radius-sm)',
-            color:          'var(--theme-text-tertiary)',
-            cursor:         'pointer',
-            transition:     'var(--transition-hover)',
-          }}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26 }}
         >
           <ChevronDown style={{ width: 13, height: 13, strokeWidth: 1.5 }} />
-        </button>
+        </Button>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto', padding: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
@@ -151,30 +144,22 @@ function YearMonthPicker({ year, month, onPick, onClose }: PickerProps) {
             {years.map((y) => {
               const active = y === year;
               return (
-                <button
+                <SelectionButton
+                  appearance="choice"
+                  selected={active}
+                  aria-pressed={active}
                   key={y}
                   type="button"
                   onClick={() => onPick(y, month)}
                   style={{
-                    padding:      'var(--space-2) 0',
-                    borderRadius: 'var(--radius-sm)',
-                    border:       active ? '1px solid var(--neu-edge)' : '1px solid transparent',
-                    background:   active
-                      ? 'color-mix(in srgb, var(--theme-accent) 12%, var(--neu-surface))'
-                      : 'var(--theme-paper-subtle)',
-                    boxShadow:    active ? 'var(--neu-shadow-chip)' : 'none',
-                    color:        active ? 'var(--neu-accent-deep)' : 'var(--theme-text-secondary)',
-                    fontFamily:   'var(--font-sans)',
-                    fontSize:     'var(--text-xs)',
-                    fontWeight:   active ? 'var(--weight-semibold)' : 'var(--weight-normal)',
-                    cursor:       'pointer',
-                    textAlign:    'center',
-                    transition:   'var(--transition-hover)',
-                    letterSpacing: active ? 'var(--tracking-wide)' : '0',
-                  }}
+                          padding: 'var(--space-2) 0',
+                          fontSize: 'var(--text-xs)',
+                          textAlign: 'center',
+                          letterSpacing: active ? 'var(--tracking-wide)' : '0',
+                      }}
                 >
                   {y}
-                </button>
+                </SelectionButton>
               );
             })}
           </div>
@@ -204,28 +189,22 @@ function YearMonthPicker({ year, month, onPick, onClose }: PickerProps) {
             {MONTHS_SHORT.map((label, idx) => {
               const active = idx === month;
               return (
-                <button
+                <SelectionButton
+                  appearance="choice"
+                  selected={active}
+                  aria-pressed={active}
                   key={label}
                   type="button"
                   onClick={() => { onPick(year, idx); onClose(); }}
                   style={{
-                    padding:      'var(--space-2) 0',
-                    borderRadius: 'var(--radius-sm)',
-                    border:       '1px solid transparent',
-                    background:   active ? 'var(--neu-accent-gradient)' : 'var(--theme-paper-subtle)',
-                    boxShadow:    active ? 'var(--neu-shadow-chip)' : 'none',
-                    color:        active ? 'var(--theme-accent-fg)' : 'var(--theme-text-secondary)',
-                    fontFamily:   'var(--font-sans)',
-                    fontSize:     'var(--text-xs)',
-                    fontWeight:   active ? 'var(--weight-semibold)' : 'var(--weight-normal)',
-                    cursor:       'pointer',
-                    textAlign:    'center',
-                    transition:   'var(--transition-hover)',
-                    letterSpacing: 'var(--tracking-wide)',
-                  }}
+                          padding: 'var(--space-2) 0',
+                          fontSize: 'var(--text-xs)',
+                          textAlign: 'center',
+                          letterSpacing: 'var(--tracking-wide)',
+                      }}
                 >
                   {label}
-                </button>
+                </SelectionButton>
               );
             })}
           </div>
@@ -250,6 +229,35 @@ export function Calendar({
   className,
   style,
 }: CalendarProps) {
+  const calendarRef = React.useRef<HTMLDivElement>(null);
+  const pendingFocus = React.useRef<string | null>(null);
+  const [focusedDay, setFocusedDay] = React.useState(() => localDateKey(value ?? new Date()));
+  function restoreDayFocus() {
+    if (!pendingFocus.current) return;
+    const target = calendarRef.current?.querySelector<HTMLButtonElement>(`[data-calendar-day="${pendingFocus.current}"]`);
+    if (target) { target.focus({ preventScroll: true }); pendingFocus.current = null; }
+  }
+  function handleDayKey(event: React.KeyboardEvent<HTMLButtonElement>, date: Date) {
+    if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) return;
+    event.preventDefault();
+    const next = new Date(date);
+    const rtl = getComputedStyle(event.currentTarget).direction === 'rtl';
+    if (event.key === 'PageUp' || event.key === 'PageDown') {
+      const targetMonth = new Date(date.getFullYear(), date.getMonth() + (event.key === 'PageDown' ? 1 : -1), 1);
+      next.setFullYear(targetMonth.getFullYear(), targetMonth.getMonth(), Math.min(date.getDate(), new Date(targetMonth.getFullYear(), targetMonth.getMonth() + 1, 0).getDate()));
+    } else {
+      const delta = event.key === 'ArrowUp' ? -7 : event.key === 'ArrowDown' ? 7 : event.key === 'Home' ? -date.getDay() : event.key === 'End' ? 6 - date.getDay() : ((event.key === 'ArrowRight') !== rtl ? 1 : -1);
+      next.setDate(next.getDate() + delta);
+    }
+    if ((minDate && next < minDate) || (maxDate && next > maxDate)) return;
+    pendingFocus.current = localDateKey(next);
+    setFocusedDay(pendingFocus.current);
+    if (next.getMonth() !== current.getMonth() || next.getFullYear() !== current.getFullYear()) {
+      setDirection(next > date ? 1 : -1);
+      setCurrent(new Date(next.getFullYear(), next.getMonth(), 1));
+      onMonthChange?.(next.getFullYear(), next.getMonth());
+    } else restoreDayFocus();
+  }
   const hasTaskDots = taskDots !== undefined;
   const today = new Date();
 
@@ -292,8 +300,11 @@ export function Calendar({
   for (let i = 0; i < firstDay; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(year, month, d));
 
+  const tabDay = cells.find(date => date && localDateKey(date) === focusedDay) ?? cells.find(date => date && !(minDate && date < minDate) && !(maxDate && date > maxDate));
+
   return (
     <div
+      ref={calendarRef}
       className={className}
       style={{
         background:   'var(--theme-paper)',
@@ -312,45 +323,28 @@ export function Calendar({
         justifyContent: 'space-between',
         marginBottom:   'var(--space-3)',
       }}>
-        <button
+        <Button
+          variant="ghost"
+          iconOnly
+          size="sm"
           type="button"
           onClick={() => navigate(-1)}
           aria-label="Previous month"
           className="serene-touch"
-          style={{
-            display:        'flex',
-            alignItems:     'center',
-            justifyContent: 'center',
-            width:          28,
-            height:         28,
-            border:         'none',
-            background:     'transparent',
-            borderRadius:   'var(--radius-sm)',
-            cursor:         'pointer',
-            color:          'var(--theme-text-tertiary)',
-            transition:     'var(--transition-hover)',
-          }}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28 }}
         >
           <ChevronLeft style={{ width: 13, height: 13, strokeWidth: 1.5 }} />
-        </button>
+        </Button>
 
         {/* Month + Year — clickable */}
-        <button
+        <Button
+          variant="control"
+          size="sm"
           type="button"
           onClick={() => setPickerOpen((v) => !v)}
           aria-label="Pick month and year"
           aria-expanded={pickerOpen}
-          style={{
-            display:       'flex',
-            alignItems:    'center',
-            gap:           'var(--space-1)',
-            border:        'none',
-            background:    'transparent',
-            padding:       'var(--space-1) var(--space-2)',
-            borderRadius:  'var(--radius-sm)',
-            cursor:        'pointer',
-            transition:    'var(--transition-hover)',
-          }}
+          style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-1)' }}
         >
           <span style={{
             fontFamily:    'var(--font-sans)',
@@ -376,29 +370,20 @@ export function Calendar({
           >
             <ChevronDown style={{ width: 11, height: 11, strokeWidth: 2 }} />
           </motion.span>
-        </button>
+        </Button>
 
-        <button
+        <Button
+          variant="ghost"
+          iconOnly
+          size="sm"
           type="button"
           onClick={() => navigate(1)}
           aria-label="Next month"
           className="serene-touch"
-          style={{
-            display:        'flex',
-            alignItems:     'center',
-            justifyContent: 'center',
-            width:          28,
-            height:         28,
-            border:         'none',
-            background:     'transparent',
-            borderRadius:   'var(--radius-sm)',
-            cursor:         'pointer',
-            color:          'var(--theme-text-tertiary)',
-            transition:     'var(--transition-hover)',
-          }}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28 }}
         >
           <ChevronRight style={{ width: 13, height: 13, strokeWidth: 1.5 }} />
-        </button>
+        </Button>
       </div>
 
       {/* ── Weekday labels ───────────────────────────────────────────── */}
@@ -431,6 +416,7 @@ export function Calendar({
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={`${year}-${month}`}
+          onAnimationComplete={restoreDayFocus}
           initial={{ opacity: 0, x: direction * 14 }}
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: direction * -14 }}
@@ -457,6 +443,11 @@ export function Calendar({
             return (
               <button
                 key={date.toISOString()}
+                data-calendar-day={localDateKey(date)}
+                tabIndex={tabDay && localDateKey(tabDay) === localDateKey(date) ? 0 : -1}
+                onFocus={() => setFocusedDay(localDateKey(date))}
+                onKeyDown={(event) => handleDayKey(event, date)}
+                aria-current={isToday ? "date" : undefined}
                 type="button"
                 onClick={() => !isDisabled && onSelect(date)}
                 disabled={!!isDisabled}

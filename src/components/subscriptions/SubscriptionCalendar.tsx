@@ -4,6 +4,8 @@
 // a weekly summary, and a grouped list of what's due (click → history). Anchored to
 // the current IST month; top-up subscriptions (no due date) never appear here.
 
+import { SelectionButton } from '@/components/ui/SelectionButton';
+import { Button } from '@/components/ui/Button';
 import { useCallback, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { Calendar, type TaskDotMeta } from "@/components/ui/Calendar";
@@ -206,9 +208,14 @@ export function SubscriptionCalendar({
                   )}`}
           </h2>
           {selectedDay && (
-            <button type="button" onClick={() => setSelectedDay(null)} style={resetBtn}>
+            <Button
+              variant="control"
+              size="sm"
+              type="button"
+              onClick={() => setSelectedDay(null)}
+            >
               Show whole month
-            </button>
+            </Button>
           )}
         </div>
 
@@ -226,7 +233,19 @@ export function SubscriptionCalendar({
                 </p>
                 <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
                   {items.map(({ sub: s, status, daysOverdue }) => (
-                    <button key={s.id} type="button" onClick={() => openHistory(s)} style={dueRow}>
+                    <SelectionButton appearance="option"
+      key={s.id}
+      type="button"
+      onClick={() => openHistory(s)}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: "var(--space-3)",
+        width: "100%",
+        padding: "var(--space-3) var(--space-4)",
+      }}
+    >
                       <span style={{ display: "flex", flexDirection: "column", gap: 2, textAlign: "left" }}>
                         <span style={{ fontWeight: "var(--weight-medium)", color: "var(--theme-text-primary)" }}>
                           {s.name}
@@ -238,7 +257,7 @@ export function SubscriptionCalendar({
                       {/* Real per-cycle status: settled → Paid, past-unpaid → Overdue,
                           today → Due today, future → Upcoming. */}
                       <SubscriptionStatusPill status={status} daysOverdue={daysOverdue} />
-                    </button>
+                    </SelectionButton>
                   ))}
                 </div>
               </div>
@@ -265,28 +284,4 @@ const cardStyle = {
   borderRadius: "var(--radius-lg)",
   boxShadow: "var(--shadow-1)",
   padding: "var(--space-5)",
-} as const;
-
-const dueRow = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "var(--space-3)",
-  width: "100%",
-  padding: "var(--space-3) var(--space-4)",
-  background: "var(--theme-paper)",
-  border: "1px solid var(--theme-paper-border)",
-  borderRadius: "var(--radius-md)",
-  boxShadow: "var(--shadow-1)",
-  cursor: "pointer",
-  fontFamily: "var(--font-sans)",
-} as const;
-
-const resetBtn = {
-  background: "transparent",
-  border: "none",
-  color: "var(--theme-accent)",
-  fontFamily: "var(--font-sans)",
-  fontSize: "var(--text-sm)",
-  cursor: "pointer",
 } as const;

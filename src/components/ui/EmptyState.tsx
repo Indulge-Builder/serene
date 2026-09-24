@@ -186,7 +186,7 @@ export function EmptyState({
               width:       '28px',
               height:      '28px',
               strokeWidth: 1.5,
-              color:       'var(--theme-accent)',
+              color:       "var(--neu-accent-deep)",
             }}
           />
         </div>

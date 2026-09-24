@@ -96,7 +96,7 @@ function OversightRail({
       <div className="flex items-center gap-2 mb-4">
         <Activity
           aria-hidden="true"
-          style={{ width: 15, height: 15, strokeWidth: 1.5, color: "var(--theme-accent)" }}
+          style={{ width: 15, height: 15, strokeWidth: 1.5, color: "var(--neu-accent-deep)" }}
         />
         <span className="label-micro" style={{ color: "var(--theme-text-secondary)" }}>
           Live activity

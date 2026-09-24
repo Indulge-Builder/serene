@@ -26,6 +26,7 @@
 //   them untrue. The SQL takes the count again under a row lock, so the page's view
 //   cannot cause a delete.
 
+import { SelectionButton } from '@/components/ui/SelectionButton';
 import { useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { GitMerge, Trash2, Undo2, Search } from 'lucide-react';
@@ -52,20 +53,6 @@ type Props = {
    * in the Merge dialog before anyone types, so the common case is one click.
    */
   suggested?: VendorRow[];
-};
-
-const ROW: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 'var(--space-3)',
-  width: '100%',
-  padding: 'var(--space-3)',
-  border: '1px solid var(--theme-paper-border)',
-  borderRadius: 'var(--radius-sm)',
-  background: 'transparent',
-  cursor: 'pointer',
-  textAlign: 'left',
-  transition: 'var(--transition-hover)',
 };
 
 export function VendorAdminActions({ vendor, history, suggested = [] }: Props) {
@@ -253,17 +240,21 @@ export function VendorAdminActions({ vendor, history, suggested = [] }: Props) {
                   const isPicked = picked?.id === v.id;
                   return (
                     <li key={v.id} style={{ listStyle: 'none' }}>
-                      <button
+                      <SelectionButton
+                        selected={isPicked}
+                        appearance="row"
                         type="button"
                         onClick={() => setPicked(isPicked ? null : v)}
                         disabled={pending}
+                        aria-pressed={isPicked}
                         style={{
-                          ...ROW,
-                          borderColor: isPicked ? 'var(--theme-accent)' : 'var(--theme-paper-border)',
-                          background: isPicked
-                            ? 'color-mix(in srgb, var(--theme-accent) 8%, transparent)'
-                            : 'transparent',
-                        }}
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 'var(--space-3)',
+                                width: '100%',
+                                textAlign: 'left',
+                                padding: 'var(--space-3)',
+                            }}
                       >
                         <span style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
                           <span
@@ -279,7 +270,7 @@ export function VendorAdminActions({ vendor, history, suggested = [] }: Props) {
                             {[v.category, v.home_city, v.primary_phone].filter(Boolean).join(' · ') || 'No details'}
                           </span>
                         </span>
-                      </button>
+                      </SelectionButton>
                     </li>
                   );
                 })}
@@ -301,17 +292,21 @@ export function VendorAdminActions({ vendor, history, suggested = [] }: Props) {
                 const isPicked = picked?.id === v.id;
                 return (
                   <li key={v.id} style={{ listStyle: 'none' }}>
-                    <button
+                    <SelectionButton
+                      selected={isPicked}
+                      appearance="row"
                       type="button"
                       onClick={() => setPicked(isPicked ? null : v)}
                       disabled={pending}
+                      aria-pressed={isPicked}
                       style={{
-                        ...ROW,
-                        borderColor: isPicked ? 'var(--theme-accent)' : 'var(--theme-paper-border)',
-                        background: isPicked
-                          ? 'color-mix(in srgb, var(--theme-accent) 8%, transparent)'
-                          : 'transparent',
-                      }}
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 'var(--space-3)',
+                              width: '100%',
+                              textAlign: 'left',
+                              padding: 'var(--space-3)',
+                          }}
                     >
                       <span style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
                         <span
@@ -327,7 +322,7 @@ export function VendorAdminActions({ vendor, history, suggested = [] }: Props) {
                           {[v.category, v.home_city, v.primary_phone].filter(Boolean).join(' · ') || 'No details'}
                         </span>
                       </span>
-                    </button>
+                    </SelectionButton>
                   </li>
                 );
               })}
@@ -361,11 +356,11 @@ export function VendorAdminActions({ vendor, history, suggested = [] }: Props) {
             <Button
               variant="secondary"
               onClick={() => {
-                setMergeOpen(false);
-                setPicked(null);
-                setQuery('');
-                setResults(null);
-              }}
+                      setMergeOpen(false);
+                      setPicked(null);
+                      setQuery('');
+                      setResults(null);
+                  }}
               disabled={pending}
             >
               Cancel

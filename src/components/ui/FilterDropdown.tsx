@@ -1,6 +1,11 @@
 'use client';
 
-import React, { useRef, useEffect, useLayoutEffect, useCallback, useState } from 'react';
+import { useModalScope } from '@/hooks/useModalFocus';
+import { SelectionButton } from '@/components/ui/SelectionButton';
+import { Button } from '@/components/ui/Button';
+import { filterTriggerStyle } from './material-styles';
+
+import React, { useRef, useEffect, useLayoutEffect, useCallback, useState, useId } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Check } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -15,6 +20,11 @@ export interface FilterDropdownItem {
 
 export interface FilterDropdownProps {
   label: string;
+  disabled?: boolean;
+  clearable?: boolean;
+  ariaLabel?: string;
+  ariaDescribedBy?: string;
+  invalid?: boolean;
   icon?: LucideIcon;
   items: FilterDropdownItem[];
   selected: string[];
@@ -62,8 +72,17 @@ export function FilterDropdown({
   hideCountBadge = false,
   accentBorderOnOpen = true,
   iconOnly = false,
+  disabled = false,
+  clearable = true,
+  ariaLabel,
+  ariaDescribedBy,
+  invalid = false,
 }: FilterDropdownProps) {
-  const [open, setOpen] = React.useState(false);
+  const modalScope = useModalScope();
+  const menuId = useId();
+  const [requestedOpen, setOpen] = React.useState(false);
+  const open = requestedOpen && !disabled;
+  useEffect(() => { if (disabled) setOpen(false); }, [disabled]);
   const [mounted, setMounted] = useState(false);
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0, minWidth: 180 });
   const containerRef = useRef<HTMLDivElement>(null);
@@ -74,7 +93,23 @@ export function FilterDropdown({
     setMounted(true);
   }, []);
 
-  const clearFooterHeight = selected.length > 0 ? CLEAR_FOOTER_HEIGHT : 0;
+  // Focus the selected option (or first option) on open. Keep keyboard focus
+  // attached to the trigger after selection/Escape, including portaled menus.
+  useEffect(() => {
+    if (!open) return;
+    const frame = requestAnimationFrame(() => {
+      const selectedOption = menuRef.current?.querySelector<HTMLButtonElement>('[role="option"][aria-selected="true"]');
+      (selectedOption ?? menuRef.current?.querySelector<HTMLButtonElement>('[role="option"]'))?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [open]);
+
+  function closeMenu() {
+    setOpen(false);
+    triggerRef.current?.focus({ preventScroll: true });
+  }
+
+  const clearFooterHeight = clearable && selected.length > 0 ? CLEAR_FOOTER_HEIGHT : 0;
   const scrollRegionHeight = Math.min(
     items.length * MENU_ITEM_HEIGHT,
     MAX_MENU_SCROLL_HEIGHT,
@@ -119,7 +154,11 @@ export function FilterDropdown({
       setOpen(false);
     }
     function handleKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') setOpen(false);
+      if (e.key === 'Escape' && !e.defaultPrevented) {
+        e.preventDefault();
+        setOpen(false);
+        triggerRef.current?.focus({ preventScroll: true });
+      }
     }
     function reposition() { updateMenuPosition(); }
 
@@ -151,10 +190,10 @@ export function FilterDropdown({
     if (multi) {
       onChange(selected.includes(id) ? selected.filter((s) => s !== id) : [...selected, id]);
     } else if (selected.includes(id)) {
-      setOpen(false);
+      closeMenu();
     } else {
       onChange([id]);
-      setOpen(false);
+      closeMenu();
     }
   }
 
@@ -197,45 +236,25 @@ export function FilterDropdown({
         const isSelected = selected.includes(item.id);
         const ItemIcon = item.icon;
         return (
-          <button
+          <SelectionButton
+            appearance="option"
+            selected={isSelected}
             key={item.id}
             type="button"
             role="option"
+            tabIndex={-1}
             aria-selected={isSelected}
             onClick={() => toggleItem(item.id)}
-            // Selected options FLOAT on an accent wash with a small raised
-            // pair — never inset (neumorphic Rule 4).
             style={{
-              display:     'flex',
-              alignItems:  'center',
-              gap:         'var(--space-2)',
-              width:       'calc(100% - var(--space-2))',
-              margin:      '0 var(--space-1)',
-              padding:     'var(--space-2) var(--space-2)',
-              background:  isSelected
-                ? 'color-mix(in srgb, var(--theme-accent) 12%, var(--neu-surface))'
-                : 'transparent',
-              border:      'none',
-              borderRadius:'var(--radius-sm)',
-              boxShadow:   isSelected ? 'var(--neu-shadow-chip)' : 'none',
-              fontSize:    'var(--text-sm)',
-              fontFamily:  'var(--font-sans)',
-              color:       isSelected ? 'var(--neu-accent-deep)' : 'var(--theme-text-primary)',
-              cursor:      'pointer',
-              textAlign:   'left',
-              transition:  'var(--transition-hover)',
-            }}
-            onMouseEnter={(e) => {
-              if (!isSelected) {
-                (e.currentTarget as HTMLButtonElement).style.background =
-                  'color-mix(in srgb, var(--theme-accent) 6%, transparent)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!isSelected) {
-                (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
-              }
-            }}
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--space-2)',
+                    width: 'calc(100% - var(--space-2))',
+                    margin: '0 var(--space-1)',
+                    padding: 'var(--space-2) var(--space-2)',
+                    fontSize: 'var(--text-sm)',
+                    textAlign: 'left',
+                }}
           >
             {multi ? (
               <span
@@ -268,11 +287,11 @@ export function FilterDropdown({
             {!multi && isSelected && (
               <Check style={{ width: 14, height: 14, strokeWidth: 2, flexShrink: 0 }} aria-hidden="true" />
             )}
-          </button>
+          </SelectionButton>
         );
   });
 
-  const clearFooter = activeCount > 0 ? (
+  const clearFooter = clearable && activeCount > 0 ? (
     <>
       <div
         role="separator"
@@ -290,31 +309,18 @@ export function FilterDropdown({
           flexShrink:     0,
         }}
       >
-        <button
+        <Button
+          variant="ghost"
+          size="sm"
           type="button"
           onClick={() => {
-            onChange([]);
-            if (!multi) setOpen(false);
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.color = 'var(--theme-accent)';
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.color = 'var(--theme-text-tertiary)';
-          }}
-          style={{
-            background: 'none',
-            border:     'none',
-            padding:    0,
-            fontSize:   'var(--text-xs)',
-            fontFamily: 'var(--font-sans)',
-            color:      'var(--theme-text-tertiary)',
-            cursor:     'pointer',
-            transition: 'var(--transition-hover)',
-          }}
+                  onChange([]);
+                  if (!multi)
+                      closeMenu();
+              }}
         >
           Clear
-        </button>
+        </Button>
       </div>
     </>
   ) : null;
@@ -322,6 +328,11 @@ export function FilterDropdown({
   const menuBody = (
     <>
       <div
+        role="listbox"
+        aria-invalid={invalid || undefined}
+        id={menuId}
+        aria-label={label}
+        aria-multiselectable={multi}
         style={{
           overflowY:  'auto',
           maxHeight:  MAX_MENU_SCROLL_HEIGHT,
@@ -330,7 +341,7 @@ export function FilterDropdown({
           minHeight:  0,
         }}
       >
-        {menuItems}
+        {menuItems.length ? menuItems : <p className="serene-field-hint" style={{ padding: 'var(--space-3)' }}>No options available.</p>}
       </div>
       {clearFooter}
     </>
@@ -341,9 +352,27 @@ export function FilterDropdown({
       {open && (
         <motion.div
           ref={menuRef}
+          data-modal-owner={modalScope}
           key="filter-menu"
-          role="listbox"
-          aria-multiselectable={multi}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              event.stopPropagation();
+              closeMenu();
+              return;
+            }
+            if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+            const options = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="option"]'));
+            const index = options.indexOf(document.activeElement as HTMLButtonElement);
+            const next = event.key === 'Home' ? 0 : event.key === 'End' ? options.length - 1
+              : (index + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length;
+            event.preventDefault();
+            options[next]?.focus();
+          }}
+          onBlur={(event) => {
+            const next = event.relatedTarget as Node | null;
+            if (!event.currentTarget.contains(next) && !triggerRef.current?.contains(next)) setOpen(false);
+          }}
           variants={DROPDOWN_VARIANTS}
           initial="hidden"
           animate="visible"
@@ -374,11 +403,22 @@ export function FilterDropdown({
     >
       <button
         ref={triggerRef}
+        disabled={disabled}
+        data-invalid={invalid || undefined}
+        aria-describedby={ariaDescribedBy}
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-label={iconOnly ? label : undefined}
+        aria-controls={open ? menuId : undefined}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
+        className="serene-filter-trigger"
+        aria-label={ariaLabel ?? (iconOnly ? label : undefined)}
         title={iconOnly ? label : undefined}
         style={{
           position:       iconOnly ? 'relative' : undefined,
@@ -388,19 +428,12 @@ export function FilterDropdown({
           height:         '2.25rem',
           width:          iconOnly ? '2.25rem' : (fullWidth ? '100%' : undefined),
           padding:        iconOnly ? 0 : 'var(--space-1) var(--space-3)',
-          // Applied filter = accent wash + float; at rest a raised soft chip
-          // (neumorphic Rule 4 — selection never sinks).
-          background:     activeCount > 0
-            ? 'color-mix(in srgb, var(--theme-accent) 12%, var(--neu-surface))'
-            : 'var(--neu-surface)',
-          border:         `1px solid ${triggerAccentBorder ? 'var(--theme-accent)' : 'var(--neu-edge)'}`,
-          borderRadius:   'var(--radius-md)',
-          boxShadow:      'var(--neu-shadow-chip)',
+          ...filterTriggerStyle(activeCount > 0, open || triggerAccentBorder),
           fontSize:       'var(--text-sm)',
           fontFamily:     'var(--font-sans)',
           fontWeight:     'var(--weight-medium)',
-          color:          activeCount > 0 ? 'var(--neu-accent-deep)' : 'var(--theme-text-secondary)',
-          cursor:         'pointer',
+          cursor:         disabled ? 'not-allowed' : 'pointer',
+          opacity:        disabled ? 0.6 : 1,
           transition:     'var(--transition-hover), border-color var(--duration-fast) var(--ease-in-out)',
           whiteSpace:     'nowrap',
           outline:        'none',
