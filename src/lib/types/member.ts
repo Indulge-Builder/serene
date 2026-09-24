@@ -126,3 +126,20 @@ export type MemberDetail = {
 };
 
 export type MemberPickerHit = { id: string; full_name: string; primary_phone: string | null; queendom_name: string | null };
+
+// ─── The vault (0236) ────────────────────────────────────────────────────────
+
+export type MemberVaultKind = "card" | "aadhaar" | "passport" | "pan" | "driving_licence" | "other_id" | "other";
+
+/** One vault item as the card shows it: never the secret. */
+export type MemberVaultItem = {
+  id: string;
+  member_id: string;
+  kind: MemberVaultKind;
+  label: string;
+  hint: string | null;
+  expires_on: string | null;
+  source: "manual" | "freshdesk_note";
+  created_by: string | null;
+  created_at: string;
+};

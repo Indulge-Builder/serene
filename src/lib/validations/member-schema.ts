@@ -3,7 +3,7 @@ import { sanitizeText } from "@/lib/utils/sanitize";
 import { normalizeToE164 } from "@/lib/utils/phone";
 import { formErrors } from "./form-errors";
 import { uuidField, emailField } from "./fields";
-import { CLIENT_FACETS, CLIENT_TIERS, CLIENT_STATUSES, FACT_POLARITIES } from "@/lib/constants/member-facets";
+import { MEMBER_VAULT_KINDS, CLIENT_FACETS, CLIENT_TIERS, CLIENT_STATUSES, FACT_POLARITIES } from "@/lib/constants/member-facets";
 
 // ─────────────────────────────────────────────
 // Members — Zod schemas (migration 0194). Every action in actions/members.ts
@@ -132,3 +132,21 @@ export type AddMemberFactInput = z.infer<typeof AddMemberFactSchema>;
 export type AddMemberObservationInput = z.infer<typeof AddMemberObservationSchema>;
 export type AddMemberPersonInput = z.infer<typeof AddMemberPersonSchema>;
 export type UpdateMemberPersonInput = z.infer<typeof UpdateMemberPersonSchema>;
+
+// ─── The vault (0236) ────────────────────────────────────────────────────────
+
+export const AddMemberVaultItemSchema = z.object({
+  member_id: uuidField(formErrors.generic),
+  kind: z.enum(MEMBER_VAULT_KINDS.zodEnum),
+  label: shortText(120).pipe(z.string().min(2, formErrors.required)),
+  /** The number and everything around it, as typed. Encrypted before it is stored; never sanitised into something else. */
+  secret: z.string().trim().min(2, formErrors.required).max(4000),
+  /** A card's expiry as YYYY-MM; stored as the first of that month. */
+  expires: z.string().trim().regex(/^\d{4}-(0[1-9]|1[0-2])$/).nullish().transform((v) => (v ? `${v}-01` : null)),
+});
+export const RevealMemberVaultItemSchema = z.object({
+  member_id: uuidField(formErrors.generic),
+  item_id: uuidField(formErrors.generic),
+  reason: shortText(300).pipe(z.string().min(3, "Say why you need it; the reason is kept.")),
+});
+export const DeleteMemberVaultItemSchema = RevealMemberVaultItemSchema;

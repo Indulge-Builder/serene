@@ -118,7 +118,9 @@ export async function readMemberObservation(original: string): Promise<Observati
     const [depth, llm] = await Promise.all([getPiiMaskingDepth(), resolveLlmForJob("routing")]);
     const result = await llm.adapter.complete({
       model: llm.model,
-      maxTokens: Math.min(llm.maxTokens, 900),
+      // 900 cut the JSON short on a long note (a bio, a page of preferences): 257 of 1,059 Freshdesk
+      // notes came back unparseable on 2026-09-24. The routing tier does not think, so this is cheap.
+      maxTokens: Math.min(llm.maxTokens, 2400),
       system: SYSTEM_PROMPT,
       messages: [{ role: "user", content: maskPii(input, depth) }],
       cachePrefix: true,

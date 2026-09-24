@@ -13,6 +13,8 @@ import { MemberPeopleCard } from '@/components/members/MemberPeopleCard';
 import { MemberObservationCard } from '@/components/members/MemberObservationCard';
 import { MemberActivityCard } from '@/components/members/MemberActivityCard';
 import { MemberAppCard, MemberMoneyCard, MemberRelationsCard, MemberAnticipationsCard, MemberNarrativeCard } from '@/components/members/MemberSidebarCards';
+import { MemberVaultCard } from '@/components/members/MemberVaultCard';
+import { listVaultItems } from '@/lib/services/member-vault';
 import { CLIENTS_PATH } from '@/lib/constants/sia-roles';
 import { ESSENTIAL_FACETS, PREFERENCE_FACETS } from '@/lib/constants/member-facets';
 
@@ -30,6 +32,8 @@ export default async function MemberPage({ params, searchParams }: Props) {
   // RLS decides: a member outside the caller's queendom reads as missing.
   const [detail, queendoms] = await Promise.all([getMemberDetail(id), getQueendoms()]);
   if (!detail) notFound();
+  // The vault list is read only once RLS has let the member through: it uses the admin client.
+  const vault = await listVaultItems(detail.member.id);
   await logMemberAccess(id, profile.id, 'members_page');
 
   const privileged = profile.role === 'admin' || profile.role === 'founder';
@@ -67,6 +71,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 'var(--space-6)' }}>
         <MemberPeopleCard clientId={detail.member.id} people={detail.people} />
+        <MemberVaultCard memberId={detail.member.id} items={vault} canDelete={privileged} />
         <MemberAppCard detail={detail} />
         <MemberMoneyCard detail={detail} />
         <MemberRelationsCard detail={detail} />

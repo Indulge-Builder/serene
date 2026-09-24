@@ -12,6 +12,59 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-24 -- The member vault (migration 0236), and the Freshdesk contact notes imported
+
+**Why.** The concierge team books on members' behalf with the member's own card, passport, Aadhaar
+or PAN. In Freshdesk those live as plain-text notes on the contact (114 such notes in the
+2026-09-24 export, some with the CVV). Serene is replacing Freshdesk, so the same ability had to
+exist here, and it had to be safer than where it is now. The founder's decision: store them in
+Serene, encrypted, and import everything. Two more decisions: Expired members' notes too, and the
+contacts that match no member are parked (docs/data-imports/freshdesk-contact-notes.md is the
+place to come back to).
+
+**The vault.** `member.member_vault` holds one encrypted item per card or document.
+
+- Encrypted in the app (AES-256-GCM, `src/lib/utils/vault-crypto.ts`) with a key that lives only
+  in the app's environment (`MEMBER_VAULT_KEY`, set on Vercel and locally). The database, its
+  backups and its dumps hold ciphertext; the service role alone cannot read a number. The row's
+  member id is bound into the encryption, so a ciphertext moved to another member's row does not
+  open. Key rotation is a version number and a previous-key variable.
+- No row level security policy for signed-in users at all: a session client, Elaya's read door
+  and every export see nothing. Only the service role reads, behind the gated actions.
+- Every open, add, remove and import is an append-only `member_vault_access` row with who and why.
+  Opening asks for the reason first and shows the secret for 60 seconds.
+- In the clear, only what staff need to pick the right card: a label, the last four digits, an
+  expiry month. The number and the CVV exist only inside the ciphertext.
+- Never part of any member read, tool result or model prompt. The profiler, intake and the
+  Observation reader never see it.
+- `src/lib/services/member-vault.ts` (list, add, reveal, delete, the trail),
+  `components/members/MemberVaultCard.tsx` ("Cards & documents" on the member page; removing is
+  admin and founder behind a ConfirmDialog), the three actions in `actions/members.ts`.
+- Tested: round trip, refusal when moved to another member, refusal when tampered, a fresh nonce
+  every time.
+
+**A caution, on record.** Card network rules forbid a merchant from keeping the CVV after a
+payment. Indulge holds these as the member's agent, which is a different position, but written
+member consent for card-on-file is not recorded anywhere in Serene. The founder chose to store
+them; this entry is where that choice is written down.
+
+**The import** (`scripts/members/import-freshdesk-notes.ts`), three lanes decided per note:
+sensitive by title or by the number's shape → the vault (321 items: 124 passports, 72 Aadhaar,
+76 cards, 26 PAN, 15 licences, 8 other); a title with "address" → an address fact keyed by the
+title (376); everything else → THE Observation reader, the same one the member page's box uses
+(1,059 notes: 2,948 facts, 787 relations, every note kept in the Notes list). 304 empty or
+image-only notes skipped; 848 notes on 369 contacts that match no member parked. 317 members
+touched. Checked after the run: zero facts carry a card, Aadhaar or PAN number. Idempotent on the
+note id. Source `freshdesk_note` was added to `member_facts` for it, and `addFactCore` gained a
+provenance option so a machine can file a fact with its own source, confidence and evidence.
+
+**Found on the way.** The Observation reader capped its answer at 900 tokens; a long note (a bio,
+a page of preferences) came back cut and unparseable, and 257 of the 1,059 notes went in as
+note-only. The cap is 2,400 now (the routing tier does not think, so it is cheap) and those notes
+were re-read with `--reread`.
+
+---
+
 ## 2026-09-24 — The deep read: fast on a repeat, and refuses rather than guesses
 
 - Why: the first production deep read took 48 seconds from question to answer, and the founders asked

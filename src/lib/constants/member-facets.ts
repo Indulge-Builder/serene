@@ -146,3 +146,16 @@ export function computeHealthScore(
   }
   return Math.round(Math.min(HEALTH_MAX, Math.max(HEALTH_MIN, HEALTH_BASELINE + sum)));
 }
+
+/** The vault (0236): what kind of secret a member has left with us. Mirrors the SQL CHECK. */
+export const MEMBER_VAULT_KINDS = defineEnum([
+  { id: "card",            label: "Card" },
+  { id: "aadhaar",         label: "Aadhaar" },
+  { id: "passport",        label: "Passport" },
+  { id: "pan",             label: "PAN" },
+  { id: "driving_licence", label: "Driving licence" },
+  { id: "other_id",        label: "Other ID" },
+  { id: "other",           label: "Other" },
+] as const);
+/** A reveal shows the secret for this long, then hides it again. */
+export const VAULT_REVEAL_SECONDS = 60;

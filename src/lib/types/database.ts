@@ -7,6 +7,11 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.5"
+  }
   freshdesk: {
     Tables: {
       agents: {
@@ -4144,6 +4149,110 @@ export type Database = {
           },
         ]
       }
+      member_vault: {
+        Row: {
+          ciphertext: string
+          created_at: string
+          created_by: string | null
+          expires_on: string | null
+          hint: string | null
+          id: string
+          key_version: number
+          kind: string
+          label: string
+          member_id: string
+          nonce: string
+          source: string
+          source_ref: string | null
+          updated_at: string
+        }
+        Insert: {
+          ciphertext: string
+          created_at?: string
+          created_by?: string | null
+          expires_on?: string | null
+          hint?: string | null
+          id?: string
+          key_version?: number
+          kind: string
+          label: string
+          member_id: string
+          nonce: string
+          source?: string
+          source_ref?: string | null
+          updated_at?: string
+        }
+        Update: {
+          ciphertext?: string
+          created_at?: string
+          created_by?: string | null
+          expires_on?: string | null
+          hint?: string | null
+          id?: string
+          key_version?: number
+          kind?: string
+          label?: string
+          member_id?: string
+          nonce?: string
+          source?: string
+          source_ref?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_vault_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_vault_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      member_vault_access: {
+        Row: {
+          action: string
+          actor_id: string | null
+          created_at: string
+          id: number
+          item_id: string
+          member_id: string
+          reason: string | null
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          created_at?: string
+          id?: number
+          item_id: string
+          member_id: string
+          reason?: string | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          created_at?: string
+          id?: number
+          item_id?: string
+          member_id?: string
+          reason?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "member_vault_access_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       members: {
         Row: {
           alt_phones: string[]
@@ -4361,6 +4470,51 @@ export type Database = {
           },
         ]
       }
+      elaya_alerts: {
+        Row: {
+          body: string
+          conversation_id: string | null
+          dedupe_key: string
+          delivered: Json
+          fired_at: string
+          group_jid: string | null
+          id: string
+          kind: string
+          member_id: string | null
+          severity: number
+          ticket_id: number | null
+          title: string
+        }
+        Insert: {
+          body: string
+          conversation_id?: string | null
+          dedupe_key: string
+          delivered?: Json
+          fired_at?: string
+          group_jid?: string | null
+          id?: string
+          kind: string
+          member_id?: string | null
+          severity?: number
+          ticket_id?: number | null
+          title: string
+        }
+        Update: {
+          body?: string
+          conversation_id?: string | null
+          dedupe_key?: string
+          delivered?: Json
+          fired_at?: string
+          group_jid?: string | null
+          id?: string
+          kind?: string
+          member_id?: string | null
+          severity?: number
+          ticket_id?: number | null
+          title?: string
+        }
+        Relationships: []
+      }
       elaya_conversations: {
         Row: {
           archived_at: string | null
@@ -4398,6 +4552,119 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      elaya_jobs: {
+        Row: {
+          answer: string | null
+          channel: string
+          conversation_id: string | null
+          created_at: string
+          error: string | null
+          finished_at: string | null
+          id: string
+          kind: string
+          plan: Json
+          progress: Json
+          question: string
+          requested_by: string
+          result: Json | null
+          started_at: string | null
+          status: string
+        }
+        Insert: {
+          answer?: string | null
+          channel?: string
+          conversation_id?: string | null
+          created_at?: string
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          kind: string
+          plan?: Json
+          progress?: Json
+          question: string
+          requested_by: string
+          result?: Json | null
+          started_at?: string | null
+          status?: string
+        }
+        Update: {
+          answer?: string | null
+          channel?: string
+          conversation_id?: string | null
+          created_at?: string
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          kind?: string
+          plan?: Json
+          progress?: Json
+          question?: string
+          requested_by?: string
+          result?: Json | null
+          started_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "elaya_jobs_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "elaya_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "elaya_jobs_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      elaya_labels: {
+        Row: {
+          confidence: number | null
+          created_at: string
+          evidence: string | null
+          id: string
+          job_id: string | null
+          label: string
+          label_set: string
+          subject_id: string
+          subject_kind: string
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string
+          evidence?: string | null
+          id?: string
+          job_id?: string | null
+          label: string
+          label_set: string
+          subject_id: string
+          subject_kind: string
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string
+          evidence?: string | null
+          id?: string
+          job_id?: string | null
+          label?: string
+          label_set?: string
+          subject_id?: string
+          subject_kind?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "elaya_labels_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "elaya_jobs"
             referencedColumns: ["id"]
           },
         ]
@@ -4481,6 +4748,107 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "elaya_notes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      elaya_playbooks: {
+        Row: {
+          active: boolean
+          created_at: string
+          created_by: string | null
+          example_questions: string[]
+          id: string
+          instructions: string
+          title: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          example_questions: string[]
+          id?: string
+          instructions: string
+          title: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          created_by?: string | null
+          example_questions?: string[]
+          id?: string
+          instructions?: string
+          title?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "elaya_playbooks_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "elaya_playbooks_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      elaya_query_log: {
+        Row: {
+          channel: string
+          created_at: string
+          duration_ms: number | null
+          error: string | null
+          id: string
+          ok: boolean
+          purpose: string | null
+          row_count: number | null
+          sql: string
+          truncated: boolean | null
+          user_id: string
+        }
+        Insert: {
+          channel: string
+          created_at?: string
+          duration_ms?: number | null
+          error?: string | null
+          id?: string
+          ok: boolean
+          purpose?: string | null
+          row_count?: number | null
+          sql: string
+          truncated?: boolean | null
+          user_id: string
+        }
+        Update: {
+          channel?: string
+          created_at?: string
+          duration_ms?: number | null
+          error?: string | null
+          id?: string
+          ok?: boolean
+          purpose?: string | null
+          row_count?: number | null
+          sql?: string
+          truncated?: boolean | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "elaya_query_log_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
@@ -4583,6 +4951,47 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      mcp_tool_calls: {
+        Row: {
+          client_id: string | null
+          created_at: string
+          duration_ms: number | null
+          error: string | null
+          id: string
+          ok: boolean
+          tool: string
+          user_id: string
+        }
+        Insert: {
+          client_id?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          error?: string | null
+          id?: string
+          ok: boolean
+          tool: string
+          user_id: string
+        }
+        Update: {
+          client_id?: string | null
+          created_at?: string
+          duration_ms?: number | null
+          error?: string | null
+          id?: string
+          ok?: boolean
+          tool?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mcp_tool_calls_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       notification_preferences: {
         Row: {
@@ -5380,10 +5789,10 @@ export type Database = {
           due_at?: string | null
           group_id?: string | null
           id?: string
+          module?: Database["public"]["Enums"]["task_module"]
           nudge_count?: number
           nudge_every_minutes?: number | null
           nudge_until?: string | null
-          module?: Database["public"]["Enums"]["task_module"]
           overdue_at?: string | null
           priority?: string
           status?: string
@@ -5403,10 +5812,10 @@ export type Database = {
           due_at?: string | null
           group_id?: string | null
           id?: string
+          module?: Database["public"]["Enums"]["task_module"]
           nudge_count?: number
           nudge_every_minutes?: number | null
           nudge_until?: string | null
-          module?: Database["public"]["Enums"]["task_module"]
           overdue_at?: string | null
           priority?: string
           status?: string
@@ -5804,6 +6213,47 @@ export type Database = {
           },
         ]
       }
+      vendor_removals: {
+        Row: {
+          created_at: string
+          history: Json
+          id: string
+          mode: string
+          removed_by: string | null
+          vendor_id: string
+          vendor_name: string
+          vendor_row: Json
+        }
+        Insert: {
+          created_at?: string
+          history?: Json
+          id?: string
+          mode: string
+          removed_by?: string | null
+          vendor_id: string
+          vendor_name: string
+          vendor_row: Json
+        }
+        Update: {
+          created_at?: string
+          history?: Json
+          id?: string
+          mode?: string
+          removed_by?: string | null
+          vendor_id?: string
+          vendor_name?: string
+          vendor_row?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendor_removals_removed_by_fkey"
+            columns: ["removed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       vendor_reviews: {
         Row: {
           comment: string | null
@@ -6041,6 +6491,9 @@ export type Database = {
           group_id: string | null
           id: string
           module: Database["public"]["Enums"]["task_module"]
+          nudge_count: number
+          nudge_every_minutes: number | null
+          nudge_until: string | null
           overdue_at: string | null
           priority: string
           status: string
@@ -6060,6 +6513,10 @@ export type Database = {
       decrypt_subscription_password: {
         Args: { p_ciphertext: string }
         Returns: string
+      }
+      elaya_run_query: {
+        Args: { p_max_rows?: number; p_sql: string }
+        Returns: Json
       }
       encrypt_subscription_password: {
         Args: { p_plaintext: string }
@@ -6630,6 +7087,10 @@ export type Database = {
       member_visible: { Args: { p_member_id: string }; Returns: boolean }
       merge_vendors: {
         Args: { p_actor?: string; p_keep: string; p_merge: string }
+        Returns: Json
+      }
+      remove_vendor: {
+        Args: { p_actor?: string; p_vendor: string }
         Returns: Json
       }
       search_vendors: {
@@ -9366,6 +9827,18 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      groups_waiting_for_reply: {
+        Args: { p_max_hours?: number; p_min_minutes?: number }
+        Returns: {
+          group_jid: string
+          last_message_at: string
+          last_sender_name: string
+          last_text: string
+          member_id: string
+          subject: string
+          waiting_minutes: number
+        }[]
+      }
       intake_due_groups: {
         Args: { p_limit?: number; p_since?: string; p_statuses?: string[] }
         Returns: {
@@ -9439,12 +9912,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -9468,11 +9941,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -9493,11 +9966,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -9518,11 +9991,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -9535,11 +10008,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

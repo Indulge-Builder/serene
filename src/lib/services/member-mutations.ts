@@ -10,6 +10,7 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { memberDb } from "@/lib/supabase/schemas";
+import type { Json } from "@/lib/types/database";
 import { updateSiaGroupMapping } from "@/lib/services/sia-service";
 import type { MutationActor } from "@/lib/services/lead-mutations";
 import { upsertMemberRelation } from "@/lib/services/member-relations";
@@ -90,7 +91,13 @@ export async function updateMemberCore(input: UpdateMemberInput, actor: Mutation
 
 // ─── Facts (append only) ─────────────────────────────────────────────────────
 
-export async function addFactCore(input: AddMemberFactInput, actor: MutationActor): Promise<MemberMutationResult<MemberFactRow>> {
+/**
+ * Where a fact came from when a MACHINE filed it (an import, a reader). Absent = a person typed
+ * it in the Facts card: source agent_note, confidence 1, evidence = who.
+ */
+export type FactProvenance = { source: MemberFactRow["source"]; confidence: number; evidence: Record<string, unknown>; observed_at?: string };
+
+export async function addFactCore(input: AddMemberFactInput, actor: MutationActor, provenance?: FactProvenance): Promise<MemberMutationResult<MemberFactRow>> {
   const admin = createAdminClient();
   const { data, error } = await memberDb(admin)
     .from("member_facts")
@@ -100,11 +107,11 @@ export async function addFactCore(input: AddMemberFactInput, actor: MutationActo
       key: input.key,
       value: input.value,
       polarity: input.polarity,
-      source: "agent_note",
-      confidence: 1,
-      evidence: { by: actor.userId, name: actor.fullName },
-      observed_at: new Date().toISOString(),
-      created_by: actor.userId,
+      source: provenance?.source ?? "agent_note",
+      confidence: provenance?.confidence ?? 1,
+      evidence: (provenance?.evidence ?? { by: actor.userId, name: actor.fullName }) as unknown as Json,
+      observed_at: provenance?.observed_at ?? new Date().toISOString(),
+      created_by: actor.userId || null,
     })
     .select("*")
     .single();
