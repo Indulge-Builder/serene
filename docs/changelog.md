@@ -12,6 +12,32 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-24 — The deep read: Elaya reads thousands of rows in the background and keeps what she learned (0235)
+
+- Why: "how many tickets are health and wellness, and the share" cannot be answered by any query,
+  because no column holds it: every one of 51,000 subjects has to be read and judged. A chat turn has a
+  minute; the read takes a few minutes and hundreds of model calls. Done by hand on 23 Sep it took a
+  scratch script and three dollars, and the result died with the session.
+- Migration `20260924000235_elaya_jobs_labels_alerts.sql`: `elaya_jobs` (a queued background read, its
+  plan, progress, result and answer; the requester sees their own, admin/founder all), `elaya_labels`
+  (what a read decided, one label per subject per question, a re-read replaces; readable through the new
+  view `elaya_read.labels` so query_database can count them), `elaya_alerts` (the live sweep's ledger,
+  next entry), and the `elaya_alerts_enabled` / `elaya_alerts_state` settings rows (OFF). Applied to
+  production the same day.
+- `start_deep_read` (write tool, founder/admin, executes inline: queuing is the whole act) creates the
+  job and fires `src/trigger/elaya-deep-read.ts`. `src/lib/services/elaya-deep-read.ts` runs it: the
+  reasoning tier plans (which rows, which labels, the rubric; the fetch query is probed before anything is
+  paid for), the rows come through the read-only door in keyset pages (up to 60,000), the routing tier
+  judges 100 rows a call eight calls side by side under maskPii, the labels are written back, the counts
+  and breakdowns are built in code, the reasoning tier writes the answer, and it lands where the question
+  was asked: as an assistant message in the conversation, on WhatsApp in parts, and in the in-app inbox.
+  One `sia.extraction_runs` row per job with tokens and the cost estimate. A failed job says so on the
+  same channel and stays on record. `src/lib/services/elaya-jobs-service.ts` is the table access;
+  numbers in `src/lib/constants/elaya-jobs.ts`.
+- The `analyst` focus now hands a text-judgement question to the deep read instead of presenting a
+  keyword count as the answer. Python: `start_deep_read` in `WRITE_TOOL_NAMES` and the analyst and
+  general hot sets.
+
 ## 2026-09-24 — Production builds repaired: the sidebar shell token that never reached HEAD
 
 - Why: every Vercel production build since Monday evening failed in one second at the design-token

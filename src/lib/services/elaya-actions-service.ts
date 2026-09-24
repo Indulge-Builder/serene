@@ -43,7 +43,9 @@ export type ElayaActionType =
   // Ticket writes (Sia, 0200) — ticket-shaped target {ticketId, ticketNo}. add_ticket_note
   // executes inline; move_ticket_status is state-changing (propose → confirm → execute).
   | "add_ticket_note"
-  | "move_ticket_status";
+  | "move_ticket_status"
+  // The deep read (0235): queues a background job; executes inline (queuing is the whole act).
+  | "start_deep_read";
 
 /**
  * A write targets either a LEAD (slug + id) or a TASK/GROUP.
@@ -55,7 +57,9 @@ export type ElayaLeadTarget = { slug: string | null; leadId: string };
 export type ElayaTaskTarget = { taskId?: string; groupId?: string | null };
 /** A ticket-shaped target (Sia, 0200): the id never drifts; the number is for the line the user reads. */
 export type ElayaTicketTarget = { ticketId: string; ticketNo: string };
-export type ElayaActionTarget = ElayaLeadTarget | ElayaTaskTarget | ElayaTicketTarget;
+/** A job-shaped target (0235): the elaya_jobs row a deep read runs under. */
+export type ElayaJobTarget = { jobId: string };
+export type ElayaActionTarget = ElayaLeadTarget | ElayaTaskTarget | ElayaTicketTarget | ElayaJobTarget;
 
 /** Audit payload shape — targeted before/after snapshots (see migration 0118).
  * The jsonb column is unchanged — this is a TS-only contract widening (no migration). */

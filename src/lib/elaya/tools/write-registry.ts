@@ -35,6 +35,8 @@ import type { StaffPrincipal } from "@/lib/elaya/principal";
 // after via canAccessLead(principal, …) (the per-resource trust boundary, Q-13),
 // so the broad admin read is safe — exactly the get_lead_details pattern.
 import { getLeadByRefForElaya } from "@/lib/services/leads-service";
+import { createElayaJob, advanceElayaJob } from "@/lib/services/elaya-jobs-service";
+import { startDeepReadJob } from "@/trigger/elaya-deep-read";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
   addLeadNoteCore,
@@ -113,7 +115,8 @@ export type ElayaWriteToolName =
   | "delete_task"
   // Ticket writes (Sia, 0200): a note executes inline; a move is a proposal.
   | "add_ticket_note"
-  | "move_ticket_status";
+  | "move_ticket_status"
+  | "start_deep_read";
 
 // THE STATE-CHANGING (propose-only) TIER — update_lead_status, reassign_lead,
 // log_deal, delete_task. The tier is enforced STRUCTURALLY, not by a lookup:
@@ -151,6 +154,8 @@ export type ElayaWriteTool = {
 };
 
 const STAFF_ALL: readonly UserRole[] = ["agent", "manager", "admin", "founder"];
+/** The deep read (0235) reads across every queendom, so it is the founders' and admins' tool, like query_database. */
+const FOUNDER_UP: readonly UserRole[] = ["admin", "founder"];
 const MANAGER_UP: readonly UserRole[] = ["manager", "admin", "founder"];
 
 // ─────────────────────────────────────────────
@@ -1370,6 +1375,62 @@ const moveTicketStatus: ElayaWriteTool = {
   },
 };
 
+
+// ── start_deep_read — INLINE (0235). Queuing the job IS the act; the answer arrives later. ──
+const startDeepRead: ElayaWriteTool = {
+  name: "start_deep_read",
+  roles: FOUNDER_UP,
+  description:
+    "Start a DEEP READ: a background job that reads and judges the free text of many rows (hundreds " +
+    "to tens of thousands) and answers in a few minutes on this same chat. Use it ONLY when the answer is " +
+    "not in any column and no query can compute it: classify tickets by a theme no category holds ('how " +
+    "many tickets are health and wellness, and the share'), who sounded unhappy across all member groups " +
+    "this month, which requests are about X in spirit rather than by keyword, what kinds of things members " +
+    "ask for at night. Do NOT use it for counts, filters, rankings or trends that query_database can do, " +
+    "nor for one member or one ticket (get_member_360 / get_freshdesk_ticket). Pass the user's question in " +
+    "their own words, complete (the window, the scope, what counts). It returns at once with a job id: tell " +
+    "the user in one line that this needs a full read of the data, it is running now, and the answer will " +
+    "land in this chat in a few minutes; do not attempt the answer yourself and do not call it twice for " +
+    "the same question. The labels it decides are saved, so a follow-up ('split that by queendom') is a " +
+    "quick query_database over the labels view afterwards.",
+  schema: z.object({
+    question: z.string().trim().min(10).max(1200),
+  }),
+  jsonSchema: {
+    type: "object",
+    properties: {
+      question: { type: "string", description: "The founder's question, complete and in their words (window, scope, what counts)" },
+    },
+    required: ["question"],
+    additionalProperties: false,
+  },
+  run: async (principal, input, ctx) => {
+    const { question } = input as { question: string };
+    const clean = sanitizeText(question);
+    if (clean.length < 10) return { error: "The question was empty after cleaning." };
+    const job = await createElayaJob({ kind: "deep_read", requestedBy: principal.userId, conversationId: ctx.conversationId, channel: ctx.channel, question: clean });
+    if (!job) return { error: "The read could not be queued just now. Say it did not start and offer to try again." };
+    try {
+      await startDeepReadJob(job.id);
+    } catch (e) {
+      console.error("[write-registry] start_deep_read trigger failed:", e instanceof Error ? e.message : e);
+      await advanceElayaJob(job.id, "failed", { error: "could not start the runner" });
+      return { error: "The read was recorded but its runner could not be started. Say it did not start and that the tech team should look." };
+    }
+    await insertExecutedAction({
+      conversationId: ctx.conversationId,
+      userId: principal.userId,
+      actionType: "start_deep_read",
+      payload: { target: { jobId: job.id }, args: { question: clean }, channel: ctx.channel, before: null, after: { status: "queued" } },
+    });
+    return {
+      queued: true,
+      job_id: job.id,
+      note: "Tell the user: this needs a full read of the data, it is running now, and the answer will arrive in this chat in a few minutes (on WhatsApp as a new message). Do not answer the question yourself now.",
+    };
+  },
+};
+
 const ALL_WRITE_TOOLS = [
   logCall,
   // Lead writes (E3)
@@ -1388,6 +1449,8 @@ const ALL_WRITE_TOOLS = [
   // Ticket writes (Sia)
   addTicketNote,
   moveTicketStatus,
+  // The deep read (0235)
+  startDeepRead,
 ] as const;
 
 export const WRITE_TOOL_REGISTRY = new Map<string, ElayaWriteTool>(

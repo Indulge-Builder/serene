@@ -174,8 +174,11 @@ SPECIALISTS: dict[str, Specialist] = {
                "error, fix it and retry. Check that a filter value exists before trusting a zero (status "
                "names, capitalisation). Give the answer first, then ONE line on how you worked it out "
                "(what was counted, the dates, the filter) so it can be sanity-checked, and say when a list "
-               "was cut at the row cap. A number you did not get from a tool is never stated."),
-        toolset=["get_live_pulse", "describe_database", "query_database", "get_books_overview",
+               "was cut at the row cap. A number you did not get from a tool is never stated. When the answer needs the "
+               "TEXT of thousands of rows read and judged (a theme no column holds, a mood across all groups), start a "
+               "deep read with start_deep_read and tell the founder it will land in this chat in a few minutes; a keyword "
+               "match presented as the count is not acceptable there."),
+        toolset=["get_live_pulse", "describe_database", "query_database", "start_deep_read", "get_books_overview",
                  "get_freshdesk_overview", "search_freshdesk_tickets", "get_member_360", "get_member_overview",
                  "search_sia_messages", "get_sia_group_messages", "list_sia_groups", "get_activity_feed", "find_teammate"],
         job="heavy",  # the deepest tier: planning and writing queries is the hardest work she does
@@ -276,6 +279,7 @@ SPECIALISTS: dict[str, Specialist] = {
             "get_live_pulse",
             "describe_database",
             "query_database",
+            "start_deep_read",
             "add_lead_note",
             "log_call",
             "create_personal_task",

@@ -1066,6 +1066,8 @@ WRITE_TOOL_NAMES: frozenset[str] = frozenset(
         # both run through the Node bridge, exactly like the lead and task writes.
         "add_ticket_note",
         "move_ticket_status",
+        # The deep read (0235): queues a background job; founder/admin, gated in Node.
+        "start_deep_read",
     }
 )
 
