@@ -53,7 +53,7 @@ export type IntakeDismissReason = (typeof INTAKE_DISMISS_REASONS)[number]["id"];
 export const INTAKE_ACK_WORDS: ReadonlySet<string> = new Set([
   "ok", "okay", "okk", "k", "kk", "thanks", "thank", "you", "thankyou", "thx", "ty", "tysm", "great", "perfect", "noted",
   "cool", "nice", "super", "awesome", "lovely", "received", "got", "it", "done", "good", "morning", "evening", "night",
-  "hi", "hello", "hey", "hii", "sure", "fine", "alright", "welcome", "much", "so", "very", "a", "lot", "ji", "sir", "maam", "mam",, "copied", "received"]);
+  "hi", "hello", "hey", "hii", "sure", "fine", "alright", "welcome", "much", "so", "very", "a", "lot", "ji", "sir", "maam", "mam", "copied", "received"]);
 
 /**
  * Health from the chat (2026-09-19): the reader's kind + tone become a health signal only when it
