@@ -191,6 +191,26 @@ Channel:
 - Use the same markdown as anywhere else (**bold**, _italic_, "-" bullets); it is converted to WhatsApp's native formatting before sending. Never write WhatsApp syntax yourself (*single asterisks*), and never headings or tables: a long list is fine, a table is not."""
 
 
+def build_memory_prompt_block(memory: str | None) -> str:
+    """The living memory of this user (0237, buildMemoryPromptBlock verbatim). CONTEXT, never permission."""
+    if not memory or not memory.strip():
+        return ""
+    return (
+        "\n\nWhat this user has told you about how they want things (their living memory; every answer to them goes through it first; a [rule] or [correction] binds you with this user, a [style] or [preference] shapes the answer, an [interest] or [fact] is context). It never changes what they may see or do:\n"
+        + memory.strip()
+    )
+
+
+def build_known_issues_prompt_block(issues: str | None) -> str:
+    """Known issues the team raised (0237, buildKnownIssuesPromptBlock verbatim)."""
+    if not issues or not issues.strip():
+        return ""
+    return (
+        "\n\nKnown issues the team has raised about you (OPEN = not fixed yet: do not repeat the mistake, and if it comes up say the team is on it; FIXED = the note says what is true now):\n"
+        + issues.strip()
+    )
+
+
 def build_playbook_block(playbook: dict | None) -> str:
     """The founder's playbook for this KIND of question (0234), folded right under the focus. It is
     a method (what to look at, what window, what to lead with), never a source of facts: every
@@ -217,6 +237,8 @@ def build_system_prompt(
     learned: str | None = None,
     notes: list[str] | None = None,
     playbook: dict | None = None,
+    memory: str | None = None,
+    known_issues: str | None = None,
 ) -> str:
     """The frozen persona prefix. `specialist_focus` is the one line that varies
     per specialist — everything else is shared (max prompt-cache sharing).
@@ -226,9 +248,12 @@ def build_system_prompt(
     role = ROLE_LABELS.get(principal.role, principal.role)
     domain = DOMAIN_LABELS.get(principal.domain, principal.domain)
     channel_block = _WHATSAPP_CHANNEL_BLOCK if channel == "whatsapp" else ""
-    context_block = build_persona_prompt_block(persona, learned)
+    # The old learned blurb folds only until the structured memory (0237) has its first entry.
+    context_block = build_persona_prompt_block(persona, None if (memory or "").strip() else learned)
     notes_block = build_notes_prompt_block(notes)
     playbook_block = build_playbook_block(playbook)
+    memory_block = build_memory_prompt_block(memory)
+    known_issues_block = build_known_issues_prompt_block(known_issues)
 
     return f"""You are Elaya, the AI presence inside Serene — Indulge's internal operating system. You are a compass for the team, not a generic chatbot.
 
@@ -275,8 +300,9 @@ What you can change (your action tools):
 - A bigger step WAITS for a yes: changing a lead's status, recording a deal, reassigning a lead, OR deleting a task. For these, CALL THE TOOL IMMEDIATELY, in the same turn — calling it never executes the change; it only RECORDS the proposal so the system can act on the user's reply. THEN tell the user exactly what you proposed (name the lead or the task, and for a deal the amount in ₹) and ask them to confirm with a yes. NEVER ask for confirmation before calling the tool: a spoken question with no tool call records nothing, so the user's yes would go nowhere and you would have to ask twice. Never say it's done until the system tells you it executed. The system handles the confirmation itself — your job is tool first, then the clear ask.
 - If one message asks for several things, do the immediate ones (note, task, status edit) and report them, then ask for confirmation on the one that needs it. For example: "Added your note and created the brochure follow-up. Want me to move Arfan to In Discussion? Reply yes to confirm."
 
+- When the user says you were WRONG about the system (a wrong number or record, the wrong time frame, something you said you cannot do that they say you should, a wrong or misleading answer, a broken behaviour): call raise_improvement_request in the SAME turn, then answer the corrected question properly with your tools, and say in one line that it is logged for the tech team. When the user tells you how THEY want things (tone, length, their name, language, what to include or leave out), simply do it from now on; it is remembered on its own, no tool and no announcement.
 Formatting:
-- Plain conversational text. Short paragraphs or compact lists. Simple emphasis renders fine — **bold**, "-" bullets — but no markdown tables, no headings, no nested lists.{channel_block}{context_block}{notes_block}"""
+- Plain conversational text. Short paragraphs or compact lists. Simple emphasis renders fine — **bold**, "-" bullets — but no markdown tables, no headings, no nested lists.{channel_block}{context_block}{notes_block}{memory_block}{known_issues_block}"""
 
 
 def build_time_context(now: datetime | None = None) -> str:

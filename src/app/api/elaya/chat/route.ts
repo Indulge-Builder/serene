@@ -16,7 +16,7 @@ import { NextResponse } from 'next/server';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
 import { resolveStaffPrincipal } from '@/lib/elaya/principal';
 import { runElayaTurn } from '@/lib/elaya/brain';
-import { maybeUpdateLearnedMemory } from '@/lib/elaya/memory';
+import { learnFromTurn } from '@/lib/elaya/memory';
 import {
   countUserMessagesToday,
   getOrCreateActiveConversation,
@@ -174,11 +174,7 @@ export async function POST(request: Request) {
         // + fire-and-forget + non-fatal (never throws). sentToday+1 = this message's
         // count. Awaited so the lambda isn't frozen mid-summary; it adds no perceived
         // latency (the user has the full reply and the done frame already).
-        await maybeUpdateLearnedMemory({
-          principal,
-          conversationId,
-          userMessagesToday: sentToday + 1,
-        });
+        await learnFromTurn({ principal, conversationId });
       } catch (e) {
         // D-05: log the failure, never the prompt/message contents.
         console.error('[elaya-chat] turn failed:', e instanceof Error ? e.message : e);
@@ -243,13 +239,11 @@ async function respondViaPythonBrain(
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       let metaConversationId: string | null = null;
-      let metaMessagesToday = 0;
       let sawError = false;
       try {
         await readElayaSseStream(opened.stream, (event) => {
           if (event.type === 'meta') {
             metaConversationId = event.conversationId;
-            if (typeof event.messagesToday === 'number') metaMessagesToday = event.messagesToday;
           } else if (event.type === 'error') {
             sawError = true;
             // D-05: log the brain's diagnostic, ship only safe copy.
@@ -264,11 +258,7 @@ async function respondViaPythonBrain(
         // after the reply + done frame shipped, inside the open stream's
         // lambda-alive window. Throttled + non-fatal (never throws).
         if (!sawError && metaConversationId) {
-          await maybeUpdateLearnedMemory({
-            principal,
-            conversationId: metaConversationId,
-            userMessagesToday: metaMessagesToday,
-          });
+          await learnFromTurn({ principal, conversationId: metaConversationId });
         }
       } catch (e) {
         // D-05: log the failure, never the prompt/message contents.

@@ -36,6 +36,12 @@ import type { StaffPrincipal } from "@/lib/elaya/principal";
 // so the broad admin read is safe — exactly the get_lead_details pattern.
 import { getLeadByRefForElaya } from "@/lib/services/leads-service";
 import { createElayaJob, advanceElayaJob } from "@/lib/services/elaya-jobs-service";
+import { createImprovementRequestCore } from "@/lib/services/elaya-memory-service";
+import { getModelContextMessages } from "@/lib/services/elaya-service";
+import { sendSiaAlertNotification } from "@/lib/services/whatsapp-api";
+import { createNotification } from "@/lib/services/notifications-service";
+import { SIA_ALERT_TIER1_PROFILE_IDS } from "@/lib/constants/sia-alerts";
+import { ELAYA_REQUEST_KIND_ENUM, ELAYA_REQUESTS_PATH } from "@/lib/constants/elaya-memory";
 import { startDeepReadJob } from "@/trigger/elaya-deep-read";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -116,7 +122,8 @@ export type ElayaWriteToolName =
   // Ticket writes (Sia, 0200): a note executes inline; a move is a proposal.
   | "add_ticket_note"
   | "move_ticket_status"
-  | "start_deep_read";
+  | "start_deep_read"
+  | "raise_improvement_request";
 
 // THE STATE-CHANGING (propose-only) TIER — update_lead_status, reassign_lead,
 // log_deal, delete_task. The tier is enforced STRUCTURALLY, not by a lookup:
@@ -1438,6 +1445,66 @@ const startDeepRead: ElayaWriteTool = {
   },
 };
 
+// ── raise_improvement_request — INLINE (0237). The user said Elaya was wrong about the SYSTEM. ──
+const raiseImprovementRequest: ElayaWriteTool = {
+  name: "raise_improvement_request",
+  roles: STAFF_ALL,
+  description:
+    "Log that the user has just told you that you were WRONG about the system, not about their taste: a wrong " +
+    "number or record, the wrong time frame, something you said you cannot do that they say you should, a wrong or " +
+    "misleading answer, or a behaviour they say is broken. Call it in the SAME turn, then answer the corrected " +
+    "question properly, and say in ONE line that you have logged it for the tech team. The team reviews these and " +
+    "decides what to build or fix; open ones are shown to you as known issues so you do not repeat them. Do NOT " +
+    "use it for how the user likes things (tone, length, name, language): that is remembered on its own.",
+  schema: z.object({
+    kind: z.enum(ELAYA_REQUEST_KIND_ENUM),
+    correction: z.string().trim().min(3).max(2000),
+    diagnosis: z.string().trim().max(600).optional(),
+  }),
+  jsonSchema: {
+    type: "object",
+    properties: {
+      kind: { type: "string", enum: [...ELAYA_REQUEST_KIND_ENUM], description: "wrong_data | time_frame | missing_tool | wrong_answer | behaviour | other" },
+      correction: { type: "string", description: "What the user said was wrong, in their words, and what they expected" },
+      diagnosis: { type: "string", description: "Your own one-line guess at the cause (which tool, which number, what you assumed)" },
+    },
+    required: ["kind", "correction"],
+    additionalProperties: false,
+  },
+  run: async (principal, input, ctx) => {
+    const { kind, correction, diagnosis } = input as { kind: (typeof ELAYA_REQUEST_KIND_ENUM)[number]; correction: string; diagnosis?: string };
+    const clean = sanitizeText(correction);
+    if (clean.length < 3) return { error: "The correction was empty after cleaning." };
+    // The question and the answer the correction is about: the last user and assistant rows before this one.
+    const history = await getModelContextMessages(ctx.conversationId, 6);
+    const turns = history.filter((m) => m.content.trim().length > 0);
+    const lastUser = [...turns].reverse().find((m) => m.role === "user");
+    const lastAssistant = [...turns].reverse().find((m) => m.role === "assistant");
+    const priorUser = [...turns].reverse().filter((m) => m.role === "user")[1] ?? null;
+    const res = await createImprovementRequestCore({
+      userId: principal.userId, conversationId: ctx.conversationId, channel: ctx.channel, kind, correction: clean,
+      question: priorUser?.content ?? lastUser?.content ?? null, answer: lastAssistant?.content ?? null, diagnosis: diagnosis ? sanitizeText(diagnosis) : null,
+    });
+    if (res.error || !res.data) return { error: "I could not log that just now; say so in one line and still answer the corrected question." };
+    // The tech responders hear it the way they hear a silent turn: the Sia alert template + in-app.
+    const title = `Elaya correction from ${principal.displayName}`;
+    const body = `${kind}: ${clean.slice(0, 300)}`;
+    try {
+      await sendSiaAlertNotification(title, body, "tier1");
+      for (const id of SIA_ALERT_TIER1_PROFILE_IDS) await createNotification({ recipient_id: id, type: "system", action_url: ELAYA_REQUESTS_PATH, title, body: body.slice(0, 240) });
+    } catch (e) {
+      console.warn("[write-registry] request ping failed (non-fatal):", e instanceof Error ? e.message : e);
+    }
+    await insertExecutedAction({
+      conversationId: ctx.conversationId,
+      userId: principal.userId,
+      actionType: "raise_improvement_request",
+      payload: { target: { requestId: res.data.id }, args: { kind, correction: clean }, channel: ctx.channel, before: null, after: { status: "open" } },
+    });
+    return { logged: true, request_id: res.data.id, note: "Say in ONE line that it is logged for the tech team, then answer the corrected question now with your tools." };
+  },
+};
+
 const ALL_WRITE_TOOLS = [
   logCall,
   // Lead writes (E3)
@@ -1458,6 +1525,8 @@ const ALL_WRITE_TOOLS = [
   moveTicketStatus,
   // The deep read (0235)
   startDeepRead,
+  // The system correction (0237)
+  raiseImprovementRequest,
 ] as const;
 
 export const WRITE_TOOL_REGISTRY = new Map<string, ElayaWriteTool>(

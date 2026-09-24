@@ -1,10 +1,12 @@
-// TeachElayaHub — the three doors to teaching Elaya (2026-09-22): Training (what she can show
-// and say to customers), Playbooks (how she answers the team), Exam (how well she does).
+// TeachElayaHub — the doors to teaching Elaya (2026-09-22; Requests added 2026-09-25): Training (what
+// she can show and say to customers), Playbooks (how she answers the team), Requests (what the team
+// told her she got wrong), Exam (how well she does).
 // Display-only (A-06): a server component of links and copy; every door's page owns its own
 // data and its own gate. Tokens only.
 import Link from "next/link";
-import { GraduationCap, BookOpen, ClipboardCheck, ChevronRight, type LucideIcon } from "lucide-react";
+import { GraduationCap, BookOpen, ClipboardCheck, MessageSquareWarning, ChevronRight, type LucideIcon } from "lucide-react";
 import { ELAYA_PLAYBOOKS_PATH, ELAYA_TRAINING_PATH } from "@/lib/constants/elaya";
+import { ELAYA_REQUESTS_PATH } from "@/lib/constants/elaya-memory";
 
 type Door = {
   icon: LucideIcon;
@@ -42,6 +44,18 @@ const DOORS: Door[] = [
     href: ELAYA_PLAYBOOKS_PATH,
   },
   {
+    icon: MessageSquareWarning,
+    title: "Requests",
+    oneLine: "What the team told Elaya she got wrong.",
+    does: [
+      "When someone corrects her about the system (a wrong number, the wrong time frame, something she says she cannot do), she still answers the corrected question and logs the request here with the question, her answer and her own guess at the cause.",
+      "Decide each one: fixed, declined, or turned into a playbook, with a note. Open ones are shown to her as known issues so she stops repeating them; your note is what she reads once it is fixed.",
+      "How each person likes things (tone, length, name, language) is not here: that is remembered per person, on their profile.",
+    ],
+    who: "Admin and founder.",
+    href: ELAYA_REQUESTS_PATH,
+  },
+  {
     icon: ClipboardCheck,
     title: "Exam",
     oneLine: "How well Elaya does, before a change ships.",
@@ -64,7 +78,17 @@ export function TeachElayaHub() {
         const body = (
           <>
             <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
-              <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 40, height: 40, borderRadius: "var(--radius-md)", background: "var(--theme-accent-surface)", color: "var(--theme-accent)", flexShrink: 0 }}>
+              <span style={{
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: 40,
+                height: 40,
+                borderRadius: "var(--radius-md)",
+                background: "var(--theme-accent-surface)",
+                color: "var(--neu-accent-deep)",
+                flexShrink: 0,
+              }}>
                 <Icon className="w-5 h-5" strokeWidth={1.5} />
               </span>
               <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
@@ -72,16 +96,33 @@ export function TeachElayaHub() {
                 <span style={{ fontSize: "var(--text-sm)", color: "var(--theme-text-secondary)" }}>{d.oneLine}</span>
               </span>
               {d.soon && (
-                <span style={{ marginLeft: "auto", fontSize: "var(--text-2xs)", padding: "2px var(--space-2)", borderRadius: "var(--radius-full)", border: "1px solid var(--theme-paper-border)", color: "var(--theme-text-tertiary)", whiteSpace: "nowrap" }}>{d.soon}</span>
+                <span style={{
+                  marginLeft: "auto",
+                  fontSize: "var(--text-2xs)",
+                  padding: "2px var(--space-2)",
+                  borderRadius: "var(--radius-full)",
+                  border: "1px solid var(--theme-paper-border)",
+                  color: "var(--theme-text-tertiary)",
+                  whiteSpace: "nowrap",
+                }}>{d.soon}</span>
               )}
             </div>
-            <ul style={{ margin: 0, paddingLeft: "1.1rem", display: "flex", flexDirection: "column", gap: "var(--space-2)", fontSize: "var(--text-sm)", color: "var(--theme-text-primary)", lineHeight: "var(--leading-normal)" }}>
+            <ul style={{
+              margin: 0,
+              paddingLeft: "1.1rem",
+              display: "flex",
+              flexDirection: "column",
+              gap: "var(--space-2)",
+              fontSize: "var(--text-sm)",
+              color: "var(--theme-text-primary)",
+              lineHeight: "var(--leading-normal)",
+            }}>
               {d.does.map((line) => <li key={line}>{line}</li>)}
             </ul>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-3)", marginTop: "auto" }}>
               <span style={{ fontSize: "var(--text-xs)", color: "var(--theme-text-tertiary)" }}>{d.who}</span>
               {d.href && (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: "var(--text-sm)", color: "var(--theme-accent)", whiteSpace: "nowrap" }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: "var(--text-sm)", color: "var(--neu-accent-deep)", whiteSpace: "nowrap" }}>
                   Open <ChevronRight className="w-4 h-4" strokeWidth={1.5} />
                 </span>
               )}

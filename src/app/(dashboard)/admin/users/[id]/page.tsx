@@ -11,6 +11,8 @@ import { Avatar } from "@/components/ui/Avatar";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { StaffWhatsAppCard } from "@/components/admin/StaffWhatsAppCard";
 import { getStaffWhatsAppLinks } from "@/lib/services/sia-staff-link";
+import { listUserMemoryForPage } from "@/lib/services/elaya-memory-service";
+import { ElayaMemoryCard } from "@/components/profile/ElayaMemoryCard";
 import { BackButton } from "@/components/ui/BackButton";
 import { ROLE_LABELS } from "@/lib/constants/roles";
 import { DOMAIN_LABELS } from "@/lib/constants/domains";
@@ -36,7 +38,7 @@ export default async function UserDetailPage({ params }: Props) {
   const isPrivileged     = ["admin", "founder"].includes(caller.role);
   const canToggleRouting = ["manager", "admin", "founder"].includes(caller.role);
 
-  const waLinks = await getStaffWhatsAppLinks(user.id);
+  const [waLinks, elayaMemory] = await Promise.all([getStaffWhatsAppLinks(user.id), listUserMemoryForPage(user.id)]);
   const [routingConfig, queendoms] = await Promise.all([
     user.role === "agent" && canToggleRouting ? getAgentRoutingConfig(user.id) : Promise.resolve(null),
     isPrivileged ? getQueendoms() : Promise.resolve([]),
@@ -89,6 +91,15 @@ export default async function UserDetailPage({ params }: Props) {
           )}
 
           <StaffWhatsAppCard profileId={user.id} phone={user.phone} links={waLinks} canLink={isPrivileged} />
+
+          {isPrivileged && (
+            <SectionCard
+              title="What Elaya has learned about them"
+              description="Her living memory of how this person wants things. It grows from their chats with her; every answer to them goes through it first."
+            >
+              <ElayaMemoryCard entries={elayaMemory} userId={user.id} own={caller.id === user.id} />
+            </SectionCard>
+          )}
         </div>
 
         {/* Right column — identity sidebar, sticky on scroll */}

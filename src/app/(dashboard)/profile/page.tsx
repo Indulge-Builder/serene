@@ -14,6 +14,8 @@ import { PushNotificationSettings } from "@/components/profile/PushNotificationS
 import { NotificationPreferences } from "@/components/profile/NotificationPreferences";
 import { ElayaPersonaSettings } from "@/components/profile/ElayaPersonaSettings";
 import { ConnectedApps } from "@/components/profile/ConnectedApps";
+import { ElayaMemoryCard } from "@/components/profile/ElayaMemoryCard";
+import { listUserMemoryForPage } from "@/lib/services/elaya-memory-service";
 import { listConnectedApps } from "@/lib/services/oauth-server-service";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { Button } from "@/components/ui/Button";
@@ -31,10 +33,11 @@ export default async function ProfilePage() {
   // Seed the per-user notification matrix (migration 0133) — owner-scoped read.
   // + the per-user Elaya persona prefs (Jarvis Phase 2) — owner-scoped read.
   // + the AI apps connected through the MCP connector (owner-scoped, the OAuth server's own list).
-  const [notificationPrefs, elayaPersona, connectedApps] = await Promise.all([
+  const [notificationPrefs, elayaPersona, connectedApps, elayaMemory] = await Promise.all([
     getMyNotificationPrefs(),
     getMyElayaPersona(profile.id),
     listConnectedApps(),
+    listUserMemoryForPage(profile.id),
   ]);
 
   const memberSince = formatDate(profile.created_at, "MMM yyyy");
@@ -136,6 +139,13 @@ export default async function ProfilePage() {
             description="Personalise how Elaya talks to you."
           >
             <ElayaPersonaSettings initialPersona={elayaPersona} />
+          </SectionCard>
+
+          <SectionCard
+            title="What Elaya has learned about you"
+            description="Her living memory of how you want things. It grows from what you tell her in the chat; every answer to you goes through it first. Remove anything that is wrong, or add a rule here."
+          >
+            <ElayaMemoryCard entries={elayaMemory} userId={profile.id} own />
           </SectionCard>
 
           <SectionCard

@@ -35,6 +35,8 @@ export type PythonBrainTurnInput = {
   channel: ElayaChannel;
   /** WhatsApp only — the Gupshup message id (the brain's dedup key). */
   waMessageId?: string;
+  /** WhatsApp only — the message was a voice note, transcribed (stored in the row's meta). */
+  voice?: boolean;
   /** Continue a specific owned conversation; omitted → the active 24h session. */
   conversationId?: string;
 };
@@ -137,6 +139,7 @@ export async function openPythonBrainStream(
         channel: input.channel,
         conversation_id: input.conversationId ?? null,
         wa_message_id: input.waMessageId ?? null,
+        voice: input.voice ?? false,
       }),
       cache: 'no-store',
       signal: controller.signal,

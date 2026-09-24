@@ -39,7 +39,7 @@ import { sendElayaWhatsAppReply } from '@/lib/services/whatsapp-api';
 import { transcribeAudio } from '@/lib/services/transcription-service';
 import { resolveStaffPrincipal, type StaffPrincipal } from '@/lib/elaya/principal';
 import { runElayaTurn } from '@/lib/elaya/brain';
-import { maybeUpdateLearnedMemory } from '@/lib/elaya/memory';
+import { learnFromTurn } from '@/lib/elaya/memory';
 import { isPythonBrainConfigured, runPythonBrainTurn } from '@/lib/elaya/python-brain';
 import {
   countUserMessagesToday,
@@ -172,6 +172,7 @@ async function handleStaffMessage(
     }
   }
 
+  const isVoice = message.type === 'audio';
   const content = sanitizeText(rawText).slice(0, MAX_INBOUND_CHARS);
   if (content.trim().length === 0) {
     await sendElayaWhatsAppReply(normalizedPhone, REPLY_TEXT_ONLY, profile.id);
@@ -186,15 +187,15 @@ async function handleStaffMessage(
   let outcome: StaffTurnOutcome;
   if (brain === 'python') {
     if (isPythonBrainConfigured()) {
-      outcome = await turnViaPythonBrain(profile, content, message.id, normalizedPhone);
+      outcome = await turnViaPythonBrain(profile, content, message.id, normalizedPhone, isVoice);
     } else {
       console.warn(
         '[elaya-whatsapp] brain_whatsapp=python but the Python transport is not configured — answered by the Node brain',
       );
-      outcome = await turnViaNodeBrain(profile, content, message.id);
+      outcome = await turnViaNodeBrain(profile, content, message.id, isVoice);
     }
   } else {
-    outcome = await turnViaNodeBrain(profile, content, message.id);
+    outcome = await turnViaNodeBrain(profile, content, message.id, isVoice);
   }
 
   if (outcome.kind === 'silent') return;
@@ -221,11 +222,7 @@ async function handleStaffMessage(
   // (never throws). messagesToday = this message's ordinal today (shared
   // cross-channel cap); both brains report it, so the throttle cadence is identical.
   if (outcome.conversationId) {
-    await maybeUpdateLearnedMemory({
-      principal: outcome.principal,
-      conversationId: outcome.conversationId,
-      userMessagesToday: outcome.messagesToday,
-    });
+    await learnFromTurn({ principal: outcome.principal, conversationId: outcome.conversationId });
   }
 }
 
@@ -256,6 +253,7 @@ async function turnViaNodeBrain(
   profile: Profile,
   content: string,
   waMessageId: string,
+  isVoice = false,
 ): Promise<StaffTurnOutcome> {
   // Daily cap — shared across channels (one count per user), enforced before
   // the model and before persisting, exactly like the in-app route.
@@ -280,7 +278,8 @@ async function turnViaNodeBrain(
     senderId: profile.id,
     content,
     channel: 'whatsapp',
-    meta: { wa_message_id: waMessageId },
+    // `voice` marks a transcribed voice note (the audio itself is never kept).
+    meta: { wa_message_id: waMessageId, ...(isVoice ? { voice: true } : {}) },
   });
   // Structural dedup backstop (M7): a concurrent redelivery already inserted this
   // exact wa_message_id (23505 on the partial UNIQUE index). The earlier
@@ -329,6 +328,7 @@ async function turnViaPythonBrain(
   content: string,
   waMessageId: string,
   phone: string,
+  isVoice = false,
 ): Promise<StaffTurnOutcome> {
   const principal = resolveStaffPrincipal(profile);
   // The holding line: if the brain is still thinking after ACK_AFTER_MS, say so once, then
@@ -338,6 +338,7 @@ async function turnViaPythonBrain(
     message: content,
     channel: 'whatsapp',
     waMessageId,
+    voice: isVoice,
   });
   let ackTimer: ReturnType<typeof setTimeout> | undefined;
   const ack = new Promise<'ack'>((resolve) => { ackTimer = setTimeout(() => resolve('ack'), ACK_AFTER_MS); });

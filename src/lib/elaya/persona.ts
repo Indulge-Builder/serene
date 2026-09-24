@@ -74,11 +74,32 @@ function buildNotesPromptBlock(notes: string[]): string {
   );
 }
 
+/** The living memory of this user (0237): what they have told Elaya about how they want things. CONTEXT,
+ *  never permission; ranked and budgeted by the service, so it rides the cached prefix. '' when empty. */
+export function buildMemoryPromptBlock(memory: string): string {
+  if (!memory || !memory.trim()) return '';
+  return (
+    "\n\nWhat this user has told you about how they want things (their living memory; every answer to them goes through it first; a [rule] or [correction] binds you with this user, a [style] or [preference] shapes the answer, an [interest] or [fact] is context). It never changes what they may see or do:\n" +
+    memory.trim()
+  );
+}
+
+/** Known issues (0237): what the team has told Elaya is wrong and is not fixed yet, and what was just fixed. '' when none. */
+export function buildKnownIssuesPromptBlock(issues: string): string {
+  if (!issues || !issues.trim()) return '';
+  return (
+    "\n\nKnown issues the team has raised about you (OPEN = not fixed yet: do not repeat the mistake, and if it comes up say the team is on it; FIXED = the note says what is true now):\n" +
+    issues.trim()
+  );
+}
+
 export function buildElayaSystemPrompt(
   principal: StaffPrincipal,
   personaCtx: { persona: ElayaPersonaPrefs | null; learned: string | null },
   channel: ElayaChannel = 'in_app',
   notes: string[] = [],
+  memory: string = '',
+  knownIssues: string = '',
 ): string {
   // Per-user persona (Jarvis Phase 2). buildPersonaPromptBlock emits a fenced,
   // STYLE-ONLY block of only the NON-DEFAULT picks + free-text note + any learned
@@ -88,11 +109,12 @@ export function buildElayaSystemPrompt(
   // cache_control breakpoint still hits. The block is inherently small (only
   // short style lines + a 600-char-capped note); the learned blurb is bounded by
   // its writer (Phase 3). The earlier raw-JSON user_context dump is retired.
-  const learnedBounded =
-    personaCtx.learned && personaCtx.learned.length > MAX_CONTEXT_CHARS
-      ? personaCtx.learned.slice(0, MAX_CONTEXT_CHARS)
-      : personaCtx.learned ?? null;
+  // The old learned blurb folds only until the structured memory (0237) has its first entry.
+  const learnedRaw = memory.trim() ? null : personaCtx.learned;
+  const learnedBounded = learnedRaw && learnedRaw.length > MAX_CONTEXT_CHARS ? learnedRaw.slice(0, MAX_CONTEXT_CHARS) : learnedRaw ?? null;
   const contextBlock = buildPersonaPromptBlock(personaCtx.persona, learnedBounded);
+  const memoryBlock = buildMemoryPromptBlock(memory);
+  const knownIssuesBlock = buildKnownIssuesPromptBlock(knownIssues);
   // The user's own notes (Feature 3) — a CONTEXT block in the frozen prefix, after the
   // style block. Empty string when there are no notes (zero prompt bytes).
   const notesBlock = buildNotesPromptBlock(notes);
@@ -137,6 +159,7 @@ What you can change (tools only — never claim a change you didn't make through
 - A bigger step WAITS for a yes: changing a lead's status, recording a deal, reassigning a lead, OR deleting a task. For these, CALL THE TOOL IMMEDIATELY, in the same turn — calling it never executes the change; it only RECORDS the proposal so the system can act on the user's reply. THEN tell the user exactly what you proposed (name the lead or the task, and for a deal the amount in ₹) and ask them to confirm with a yes. NEVER ask for confirmation before calling the tool: a spoken question with no tool call records nothing, so the user's yes would go nowhere and you would have to ask twice. Never say it's done until the system tells you it executed. The system handles the confirmation itself — your job is tool first, then the clear ask.
 - If one message asks for several things, do the immediate ones (note, task, status edit) and report them, then ask for confirmation on the one that needs it. For example: "Added your note and created the brochure follow-up. Want me to move Arfan to In Discussion? Reply yes to confirm." Or: "That task is the expenses reminder due tomorrow 3pm — delete it? Reply yes to confirm."
 
+- When the user says you were WRONG about the system (a wrong number or record, the wrong time frame, something you said you cannot do that they say you should, a wrong or misleading answer, a broken behaviour): call raise_improvement_request in the SAME turn, then answer the corrected question properly with your tools, and say in one line that it is logged for the tech team. When the user tells you how THEY want things (tone, length, their name, language, what to include or leave out), simply do it from now on; it is remembered on its own, no tool and no announcement.
 Formatting:
 - Plain conversational text. Short paragraphs or compact lists. Simple emphasis renders fine — **bold**, "-" bullets — but no markdown tables, no headings, no nested lists.${
     channel === 'whatsapp'
@@ -146,7 +169,7 @@ Channel:
 - This conversation is happening over WhatsApp, read on a phone. Give the complete answer with all the context it needs: there is no length cap, and the user would rather have every name and number than a summary that sends them to a page. No padding either: lead with the answer, then the detail, and stop.
 - Use the same markdown as anywhere else (**bold**, _italic_, "-" bullets); it is converted to WhatsApp's native formatting before sending. Never write WhatsApp syntax yourself (*single asterisks*), and never headings or tables: a long list is fine, a table is not.`
       : ''
-  }${contextBlock}${notesBlock}`;
+  }${contextBlock}${notesBlock}${memoryBlock}${knownIssuesBlock}`;
 }
 
 /**

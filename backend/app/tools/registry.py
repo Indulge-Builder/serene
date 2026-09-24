@@ -1068,6 +1068,8 @@ WRITE_TOOL_NAMES: frozenset[str] = frozenset(
         "move_ticket_status",
         # The deep read (0235): queues a background job; founder/admin, gated in Node.
         "start_deep_read",
+        # The system correction (0237): the user said Elaya was wrong about the system; logs a request, all staff.
+        "raise_improvement_request",
     }
 )
 

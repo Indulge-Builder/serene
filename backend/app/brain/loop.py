@@ -94,11 +94,14 @@ async def run_turn(
     # the per-user persona (style prefs + learned blurb) and the user's notes —
     # the last two are admin-member + code-scoped so they fold identically on
     # both channels, and '' for a user who has set nothing.
-    llm, depth, (persona, learned), notes = await asyncio.gather(
+    llm, depth, (persona, learned), notes, memory, known_issues = await asyncio.gather(
         registry.resolve(specialist.job),
         supa.get_pii_masking_depth(),
         elaya_store.get_user_persona(principal.user_id),
         elaya_store.get_notes_for_elaya(principal.user_id),
+        # The living memory of this user + the team's known issues (0237): context, never permission.
+        elaya_store.get_memory_block(principal.user_id),
+        elaya_store.get_known_issues_block(),
     )
 
     # The catalog = every tool the ROLE allows (the hard gate). The specialist's own
@@ -160,7 +163,8 @@ async def run_turn(
     # the volatile time anchor rides as the uncached system tail — the Node
     # brain's exact cache shape, and the year-bug protection.
     system = build_system_prompt(
-        principal, specialist.focus, channel, persona=persona, learned=learned, notes=notes, playbook=playbook
+        principal, specialist.focus, channel, persona=persona, learned=learned, notes=notes, playbook=playbook,
+        memory=memory, known_issues=known_issues,
     )
     time_tail = build_time_context()
 

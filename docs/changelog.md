@@ -12,6 +12,44 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-25 — Elaya's living memory of each person, and the requests the team raises when she is wrong (0237)
+
+- Why: the founder wants Elaya to learn and evolve with each user, without a cap: "a living memory of
+  each user, a consolidated map of everything she learns about how that person wants things, and every
+  answer goes through it first". And when a founder tells her she was wrong about the system (the
+  overdue count, the time frame, a tool she lacks), she should still answer the corrected question,
+  and the correction should land with the admins, who decide what to build. Until now a user had
+  three style dropdowns, a 600-character note and a hidden 900-character blurb rewritten every fourth
+  message, which could not tell a preference from a bug and forgot as it grew.
+- Migration 0237: `elaya_user_memory` (one row per thing learned about one person: kind rule /
+  correction / style / preference / interest / fact, the statement, the user's words as evidence,
+  source chat / self / admin; retired, never deleted) and `elaya_improvement_requests` (who, the
+  question, her answer, what they said was wrong, her own guess at the cause, kind, status open /
+  fixed / declined / playbook, the admin's note). RLS: owner and admin/founder read; every write is
+  the service role's behind the gated actions.
+- The after-turn reader (`lib/elaya/memory.ts`, `learnFromTurn`) runs every turn on both channels and
+  both brains: a cheap word gate, then one routing-tier call with the entries on record and the last
+  six messages, answering "did the user just say how they want things"; it adds and retires entries,
+  merging, never appending blindly. A complaint that an answer was wrong is never memory. Every prompt
+  for that user now carries the memory block (ranked rules → corrections → style → preference →
+  interest → fact, 6,000 characters) in both persona builders, byte-identical; the old blurb folds only
+  until the first entry exists. The three dropdowns and the note stay as manual overrides.
+- `raise_improvement_request`, a new all-staff write tool in both brains: when the user says she was
+  wrong about the system she calls it in the same turn, answers the corrected question with her tools,
+  and says in one line that it is logged. The tech responders are pinged the way a silent turn pings
+  them. Open requests (30 days) and fixed ones with a note (14 days) are folded into every prompt as
+  known issues, so she stops repeating a mistake and can say the team is on it.
+- Pages: "What Elaya has learned about you" on /profile (remove, add a rule) and on /admin/users/[id]
+  for an admin; /settings/elaya-requests (a fourth door on Teach Elaya) where each request is decided
+  with a note she reads on the next message.
+- WhatsApp voice notes now carry `meta.voice = true` on the stored message (the transcript was always
+  stored; the audio never is).
+- Bench on production: the reader turned "call me Ethan, never send me long messages, number first
+  then the why" into a preference and a style entry in 2.8 seconds; the memory block, retire, the
+  request ledger and the known-issues fold all round-trip.
+
+---
+
 ## 2026-09-25 — The brief, fixed on the founder's reading of it: queendom blocks, time frames in words, internal groups out of the gaps
 
 - Why: the founder read the first brief and found four things wrong. "Indulge Global" named as the top

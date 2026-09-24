@@ -68,7 +68,7 @@ export default async function SettingsPage() {
                 href="/settings/teach-elaya"
                 icon="book"
                 title="Teach Elaya"
-                description="Three doors: what she can show customers (Training), how she answers the team (Playbooks), and how well she does (Exam)."
+                description="What she can show customers (Training), how she answers the team (Playbooks), what the team told her she got wrong (Requests), and how well she does (Exam)."
               />
               <SettingsLinkCard
                 href="/settings/lead-revival"

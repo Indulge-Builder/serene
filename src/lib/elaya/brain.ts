@@ -18,6 +18,7 @@ import {
 } from '@/lib/services/elaya-actions-service';
 import { getModelContextMessages, getUserPersona } from '@/lib/services/elaya-service';
 import { getNotesForElaya } from '@/lib/services/elaya-notes-service';
+import { getMemoryBlock, getKnownIssuesBlock } from '@/lib/services/elaya-memory-service';
 import { getPiiMaskingDepth } from '@/lib/services/llm-providers-service';
 import type { ElayaChannel, ElayaMessageRow, ElayaToolCallRecord } from '@/lib/types/elaya';
 
@@ -77,7 +78,7 @@ export async function runElayaTurn(args: {
 }): Promise<ElayaTurnResult> {
   const { principal, conversationId, emit, channel = 'in_app' } = args;
 
-  const [llm, maskingDepth, persona, notes, history] = await Promise.all([
+  const [llm, maskingDepth, persona, notes, history, memory, knownIssues] = await Promise.all([
     resolveLlmForJob('reasoning'),
     getPiiMaskingDepth(),
     // Per-user persona (style prefs + Elaya-learned facts) — folded into the prompt
@@ -89,9 +90,12 @@ export async function runElayaTurn(args: {
     // channels; budget-trimmed; [] for a user with no notes (zero prompt bytes).
     getNotesForElaya(principal.userId),
     getModelContextMessages(conversationId),
+    // The living memory of this user + the team's known issues (0237): context, never permission.
+    getMemoryBlock(principal.userId),
+    getKnownIssuesBlock(),
   ]);
 
-  const system = buildElayaSystemPrompt(principal, persona, channel, notes);
+  const system = buildElayaSystemPrompt(principal, persona, channel, notes, memory, knownIssues);
   const tools = getToolDefinitionsForPrincipal(principal);
 
   let fullText = '';

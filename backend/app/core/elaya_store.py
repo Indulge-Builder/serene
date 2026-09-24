@@ -284,3 +284,71 @@ async def mark_action_dismissed(action_id: str, resolved_by: str) -> None:
         )
     except Exception as e:
         print(f"[elaya-store] dismiss failed: {e}")
+
+
+# ── The living memory + known issues (0237, 2026-09-25) ────────────────────────
+# The twins of elaya-memory-service.ts formatMemoryBlock / getKnownIssuesBlock: the same ranking,
+# the same budget, the same line shape, so a user's prompt is byte-identical on both brains.
+_MEMORY_KIND_RANK = {"rule": 0, "correction": 1, "style": 2, "preference": 3, "interest": 4, "fact": 5}
+_MEMORY_PROMPT_BUDGET_CHARS = 6000
+_KNOWN_ISSUES_OPEN_DAYS = 30
+_KNOWN_ISSUES_FIXED_DAYS = 14
+_KNOWN_ISSUES_MAX = 12
+
+
+async def get_memory_block(user_id: str) -> str:
+    """What this user has told Elaya about how they want things, ranked and budgeted. '' when none."""
+    if not user_id:
+        return ""
+    try:
+        rows = await supa.select(
+            "elaya_user_memory",
+            {"select": "kind,statement,updated_at", "user_id": f"eq.{user_id}", "retired_at": "is.null", "order": "updated_at.desc", "limit": "500"},
+        )
+    except Exception as e:
+        print(f"[elaya-store] memory read failed: {e!r}")
+        return ""
+    # Same order as the TypeScript: by kind rank, then newest first inside a kind.
+    by_kind: dict[str, list[dict]] = {}
+    for r in rows:
+        by_kind.setdefault(str(r.get("kind")), []).append(r)
+    ordered: list[dict] = []
+    for kind in sorted(by_kind, key=lambda k: _MEMORY_KIND_RANK.get(k, 9)):
+        ordered.extend(sorted(by_kind[kind], key=lambda r: str(r.get("updated_at") or ""), reverse=True))
+    lines: list[str] = []
+    used = 0
+    for r in ordered:
+        line = f"- [{r.get('kind')}] {' '.join(str(r.get('statement') or '').split())}"
+        if used + len(line) + 1 > _MEMORY_PROMPT_BUDGET_CHARS:
+            break
+        lines.append(line)
+        used += len(line) + 1
+    return "\n".join(lines)
+
+
+async def get_known_issues_block() -> str:
+    """What the team has raised as wrong and not fixed, and what was just fixed with a note. '' when none."""
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    open_since = (now - timedelta(days=_KNOWN_ISSUES_OPEN_DAYS)).isoformat()
+    fixed_since = (now - timedelta(days=_KNOWN_ISSUES_FIXED_DAYS)).isoformat()
+    try:
+        opened = await supa.select(
+            "elaya_improvement_requests",
+            {"select": "kind,correction,admin_note", "status": "eq.open", "created_at": f"gte.{open_since}", "order": "created_at.desc", "limit": str(_KNOWN_ISSUES_MAX)},
+        )
+        fixed = await supa.select(
+            "elaya_improvement_requests",
+            {"select": "kind,correction,admin_note", "status": "eq.fixed", "admin_note": "not.is.null", "resolved_at": f"gte.{fixed_since}", "order": "resolved_at.desc", "limit": "6"},
+        )
+    except Exception as e:
+        print(f"[elaya-store] known issues read failed: {e!r}")
+        return ""
+    out: list[str] = []
+    for r in opened:
+        note = f" — team: {str(r.get('admin_note'))[:160]}" if r.get("admin_note") else ""
+        out.append(f"- OPEN ({r.get('kind')}): {' '.join(str(r.get('correction') or '').split())[:220]}{note}")
+    for r in fixed:
+        out.append(f"- FIXED ({r.get('kind')}): {' '.join(str(r.get('correction') or '').split())[:160]} — now: {str(r.get('admin_note') or '')[:200]}")
+    return "\n".join(out)

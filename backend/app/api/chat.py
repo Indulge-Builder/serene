@@ -66,6 +66,8 @@ class ChatRequest(BaseModel):
     channel: Literal["in_app", "whatsapp"] = "in_app"
     # WhatsApp only: the Gupshup message id — the dedup key (meta->>wa_message_id).
     wa_message_id: str | None = Field(default=None, min_length=1, max_length=128)
+    # WhatsApp only: the message was a voice note, transcribed by the gate (kept in meta as a mark).
+    voice: bool = False
 
 
 # ── What Elaya says when her own turn fails (never an internal string) ──────────
@@ -143,7 +145,7 @@ async def chat(body: ChatRequest, authorization: str = Header(default="")) -> St
     # WhatsApp carries the Gupshup id in meta so the partial UNIQUE dedup index
     # applies; a redelivery that raced the gate's pre-check lands here as 409.
     wa_meta = (
-        {"wa_message_id": body.wa_message_id}
+        {"wa_message_id": body.wa_message_id, **({"voice": True} if body.voice else {})}
         if body.channel == "whatsapp" and body.wa_message_id
         else None
     )

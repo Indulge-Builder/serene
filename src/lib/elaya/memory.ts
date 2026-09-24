@@ -1,143 +1,130 @@
-// Elaya memory subsystem (Jarvis Phase 3). SERVER ONLY.
+// Elaya memory subsystem — THE after-turn reader of the living memory (migration 0237, 2026-09-25;
+// it replaces the 900-character learned blurb of Jarvis Phase 3). SERVER ONLY.
 //
-// One job: THE LEARNED-MEMORY WRITER — after a turn, a single bounded Haiku call
-// distills "what durable thing should Elaya remember about THIS user" from the prior
-// learned blurb + the recent conversation, and overwrites user_context.learned.
-// This is what makes Elaya "get smarter the more you use it." It reuses the Elaya
-// provider + PII layer wholesale (R-01 / D-01 — exactly the revival-gate shape):
-// resolveLlmForJob('routing') → adapter.complete() with NO tools, masked input.
-// (The former retrieval seam, retrieveMemoryContext, was removed 2026-07-02 — the
-// brain reads the learned blurb + notes directly via getUserPersona/getNotesForElaya;
-// a future embeddings retrieval layer starts from those call sites. See
-// docs/modules/elaya.md.)
+// After every turn, one bounded routing-tier call reads the last few messages beside what is already
+// on record for THIS user and answers one question: did the user just tell Elaya how they want
+// things? "Don't write long", "call me Ethan", "number first then the why", "reply in Hinglish",
+// "I don't care about leads", "when I say overdue I mean past the Freshdesk due time". If so it
+// returns entries to add and the ids of entries they replace, and the service writes them. Nothing
+// is appended blindly: the reader sees the existing entries and merges. It reuses the Elaya provider
+// + PII layer wholesale (R-01 / D-01, the revival-gate shape): no tools, masked input, fails SOFT.
 //
-// GOLDEN RULE: learned memory is CONTEXT, never permission. It is folded into the
-// prompt as facts-to-recall; what the user may see/do stays code-side (toolset+scope).
-// The summarizer is instructed to capture style/work-context facts ONLY — never
-// identity, role, or anything that reads as an access grant.
+// What is NOT memory: a correction about the SYSTEM (wrong data, wrong time frame, a tool she lacks)
+// is raised in the turn itself through the raise_improvement_request tool, where the model has the
+// whole context; the reader leaves those alone.
+//
+// GOLDEN RULE, unchanged: memory is CONTEXT, never permission. Entries capture style, rules and work
+// context only, never identity, role, or anything that reads as an access grant.
 
 import 'server-only';
 import { resolveLlmForJob } from '@/lib/elaya/registry';
 import { maskPii } from '@/lib/elaya/pii';
 import { getPiiMaskingDepth } from '@/lib/services/llm-providers-service';
-import {
-  getUserPersona,
-  getModelContextMessages,
-  writeLearnedMemory,
-} from '@/lib/services/elaya-service';
+import { getModelContextMessages, getUserPersona } from '@/lib/services/elaya-service';
+import { applyMemoryReading, listUserMemory, type ElayaMemoryRow, type MemoryEntryInput } from '@/lib/services/elaya-memory-service';
+import { ELAYA_MEMORY_KINDS, ELAYA_MEMORY_READER_MESSAGES, ELAYA_MEMORY_STATEMENT_MAX, type ElayaMemoryKind } from '@/lib/constants/elaya-memory';
 import type { StaffPrincipal } from '@/lib/elaya/principal';
 
-// ── Bounds ──
-// learned rides the CACHED prompt prefix every turn, so it must stay small (a big
-// blurb re-bills the prefix and grows per user forever). ~900 chars ≈ a tight
-// paragraph of durable facts — generous for "remember how they work" without bloat.
-const LEARNED_MAX_CHARS = 900;
-// How many recent messages the summarizer reads (the same window the brain replays).
-const SUMMARY_CONTEXT_MESSAGES = 10;
-// Throttle: run the summarizer only every Nth user message in the conversation, not
-// every turn — the durable picture changes slowly and each run is a paid Haiku call.
-const MEMORY_SUMMARY_EVERY_N = 4;
+const LOG = '[elaya-memory]';
 
-const SUMMARY_SYSTEM_PROMPT = `You maintain a tiny, durable memory note about ONE user of an internal sales CRM assistant (Elaya). You are given the EXISTING note plus the most recent snippet of their conversation. Return an UPDATED note.
+const READER_SYSTEM = `You maintain the living memory Elaya (an internal assistant) keeps about ONE user: how that person wants things. You are given the entries already on record and the last few messages of their conversation. Decide what, if anything, the user just told Elaya about how they want things, and return ONLY a JSON object:
+{"add": [{"kind": "rule|correction|style|preference|interest|fact", "statement": "one plain sentence, ${ELAYA_MEMORY_STATEMENT_MAX} characters max", "evidence": "the user's own words, short", "replaces": "<id of an existing entry this supersedes, or null>"}], "retire": ["<ids of existing entries the user has clearly withdrawn>"]}
 
-Capture only DURABLE, useful facts about this user and how they work — things worth remembering across sessions:
-- What they're working on / accounts or domains they own / recurring focuses ("owns the GMR account", "chases cold leads on Mondays").
-- Stable preferences in how they want help ("prefers bullet points", "wants the number first, then context", "likes a quick morning pipeline summary").
-- Names/handles they go by, recurring people or deals they mention.
-
-Do NOT capture:
-- One-off task details, transient state, or anything already obvious from a single message.
-- Their role, permissions, domain-access, or ANYTHING that reads like "this user is allowed to…". This note is about style and working context — never access. Never write a sentence that asserts a permission.
-- Sensitive personal data, full phone numbers, or secrets.
+Kinds:
+- rule: something they always or never want ("never put leads in my brief", "always state the time window").
+- correction: they corrected how Elaya should behave WITH THEM ("when I say overdue I mean past the Freshdesk due time", "don't ask me to confirm twice").
+- style: how they like answers shaped ("number first, then the why", "short, no lists", "one line per fact").
+- preference: how to address them, language, channel habits ("call me Ethan", "reply in Hinglish", "morning brief on WhatsApp").
+- interest: what they keep coming back to ("tracks renewals and Nadal uptake", "watches Anishqa's backlog").
+- fact: durable work context ("runs the Onboarding domain", "her assistant is Sangita").
 
 Rules:
-- Keep it SHORT — at most ~6 terse bullet-style facts, plain sentences, ${LEARNED_MAX_CHARS} characters HARD MAX.
-- MERGE: keep still-true facts from the existing note, drop anything contradicted or stale, add what's genuinely new. Do not just append.
-- If there is nothing durable worth remembering, return the existing note UNCHANGED (or empty if it was empty).
-- Output ONLY the note text — no preamble, no JSON, no markdown headings, no quotes around it.`;
+- Add ONLY what the user said or clearly showed. Never infer a preference from one question. Never record a one-off task, a transient state, or anything already on record in the same words (then add nothing).
+- A complaint that an ANSWER was wrong (a wrong number, the wrong time frame, a tool she lacks, a wrong or misleading answer) is NOT memory, even when it could be rephrased as a rule ("you mean today only"): leave it out entirely; it is logged elsewhere in the same turn.
+- Never record identity, role, permissions, access, phone numbers, secrets, or anything that reads as "this user is allowed to".
+- Prefer updating: when a new statement changes an existing entry, put the existing id in "replaces" and the merged statement in "statement".
+- When nothing durable was said, return {"add": [], "retire": []}. Most turns are like that.
+- Output the JSON object only.`;
 
-/**
- * THE summarizer core: existing learned + recent transcript → updated learned blurb.
- * Pure of DB I/O (caller supplies inputs + masking depth) so it can be evaluated on
- * arbitrary input. Returns the trimmed, bounded note, or null when it should NOT be
- * written (model failure, or the model returned effectively-empty/unchanged). Fails
- * SOFT to null — a glitch never corrupts or clears existing memory.
- */
-async function summarizeLearnedMemory(
-  existingLearned: string,
-  recentTranscript: string,
+function extractJson(text: string): Record<string, unknown> | null {
+  const a = text.indexOf('{');
+  const b = text.lastIndexOf('}');
+  if (a < 0 || b <= a) return null;
+  try { return JSON.parse(text.slice(a, b + 1)) as Record<string, unknown>; } catch { return null; }
+}
+
+/** The reader core: existing entries + the recent transcript → what to add and what to retire. Pure of
+ *  DB I/O so it can be exercised on arbitrary input. null on any failure (a glitch never touches memory). */
+export async function readMemoryFromTurn(
+  existing: ElayaMemoryRow[],
+  transcript: string,
   maskingDepth: Parameters<typeof maskPii>[1],
-): Promise<string | null> {
+  legacyLearned: string | null = null,
+): Promise<{ add: MemoryEntryInput[]; retire: string[] } | null> {
   try {
-    const maskedTranscript = maskPii(recentTranscript, maskingDepth);
     const llm = await resolveLlmForJob('routing');
-    const result = await llm.adapter.complete({
+    const onRecord = existing.length
+      ? existing.map((e) => `${e.id} [${e.kind}] ${e.statement}`).join('\n')
+      : legacyLearned
+        ? `(nothing structured yet; an older free-text note reads: ${legacyLearned.slice(0, 900)})`
+        : '(nothing yet)';
+    const r = await llm.adapter.complete({
       model: llm.model,
-      maxTokens: Math.min(llm.maxTokens, 400),
-      system: SUMMARY_SYSTEM_PROMPT,
-      messages: [
-        {
-          role: 'user',
-          content:
-            `EXISTING NOTE (may be empty):\n${existingLearned || '(empty)'}\n\n` +
-            `RECENT CONVERSATION (newest last):\n${maskedTranscript}\n\n` +
-            `Return the updated note text only.`,
-        },
-      ],
-      // NO tools — single-shot summarization.
+      maxTokens: 800,
+      effort: 'low',
+      timeoutMs: 30_000,
+      cachePrefix: true,
+      system: READER_SYSTEM,
+      messages: [{ role: 'user', content: `ENTRIES ON RECORD (id [kind] statement):\n${onRecord}\n\nRECENT CONVERSATION (oldest first; the last user message is the one to judge):\n${maskPii(transcript, maskingDepth)}` }],
     });
-
-    const next = result.text.trim().slice(0, LEARNED_MAX_CHARS).trim();
-    if (next.length === 0) return null;
-    // No meaningful change → don't bother writing (idempotent convergence).
-    if (next === existingLearned.trim()) return null;
-    return next;
+    const j = extractJson(r.text);
+    if (!j) return null;
+    const ids = new Set(existing.map((e) => e.id));
+    const add: MemoryEntryInput[] = [];
+    const retire = new Set<string>();
+    for (const raw of Array.isArray(j.add) ? (j.add as Record<string, unknown>[]) : []) {
+      const kind = String(raw.kind ?? '').toLowerCase();
+      const statement = String(raw.statement ?? '').replace(/\s+/g, ' ').trim();
+      if (!(ELAYA_MEMORY_KINDS as readonly string[]).includes(kind) || statement.length < 3) continue;
+      if (existing.some((e) => e.statement.toLowerCase() === statement.toLowerCase())) continue;
+      add.push({ kind: kind as ElayaMemoryKind, statement: statement.slice(0, ELAYA_MEMORY_STATEMENT_MAX), evidence: typeof raw.evidence === 'string' ? raw.evidence.slice(0, 600) : null, source: 'chat' });
+      if (typeof raw.replaces === 'string' && ids.has(raw.replaces)) retire.add(raw.replaces);
+    }
+    for (const id of Array.isArray(j.retire) ? (j.retire as unknown[]) : []) if (typeof id === 'string' && ids.has(id)) retire.add(id);
+    return { add: add.slice(0, 6), retire: [...retire] };
   } catch (e) {
-    console.error('[elaya-memory] summarize failed (soft-skip):', e instanceof Error ? e.message : e);
+    console.error(`${LOG} reader failed (soft-skip):`, e instanceof Error ? e.message : e);
     return null;
   }
 }
 
 /**
- * Post-turn memory update — called by the brain's CALLERS (SSE route + WhatsApp gate)
- * AFTER the reply is persisted, inside their lambda-alive window (the after()/stream
- * lifetime). Fire-and-forget + non-fatal: a failure NEVER affects the reply the user
- * already got.
- *
- * Throttled: `userMessagesToday` (already counted by the caller for the cap) gates the
- * run to every MEMORY_SUMMARY_EVERY_N-th user message — the durable picture changes
- * slowly and each run is a paid call. Pass the count AFTER the current message is
- * included (so the very first message of a fresh user, count 1, doesn't fire).
+ * The after-turn learning — called by the brain's CALLERS (the SSE route + the WhatsApp gate) AFTER the
+ * reply is persisted, inside their lambda-alive window. Every turn, both brains; non-fatal: a failure
+ * never touches the reply the user already got, and never throws into the caller.
  */
-export async function maybeUpdateLearnedMemory(args: {
-  principal: StaffPrincipal;
-  conversationId: string;
-  userMessagesToday: number;
-}): Promise<void> {
-  const { principal, conversationId, userMessagesToday } = args;
+export async function learnFromTurn(args: { principal: StaffPrincipal; conversationId: string }): Promise<void> {
+  const { principal, conversationId } = args;
   try {
-    // Throttle. count % N === 0 → run on the 4th, 8th, … message of the day.
-    if (userMessagesToday <= 0 || userMessagesToday % MEMORY_SUMMARY_EVERY_N !== 0) return;
-
-    const [{ learned }, history, maskingDepth] = await Promise.all([
-      getUserPersona(principal.userId),
-      getModelContextMessages(conversationId, SUMMARY_CONTEXT_MESSAGES),
+    const [existing, history, maskingDepth, { learned }] = await Promise.all([
+      listUserMemory(principal.userId),
+      getModelContextMessages(conversationId, ELAYA_MEMORY_READER_MESSAGES),
       getPiiMaskingDepth(),
+      getUserPersona(principal.userId),
     ]);
-
-    // Build a plain transcript of the recent window (role-prefixed, oldest→newest).
-    const transcript = history
-      .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content.trim().length > 0)
-      .map((m) => `${m.role === 'user' ? 'User' : 'Elaya'}: ${m.content}`)
-      .join('\n');
-    if (transcript.trim().length === 0) return;
-
-    const next = await summarizeLearnedMemory(learned ?? '', transcript, maskingDepth);
-    if (next === null) return; // soft-skip — no change / failure
-
-    await writeLearnedMemory(principal.userId, next);
+    const turns = history.filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content.trim().length > 0);
+    const last = [...turns].reverse().find((m) => m.role === 'user');
+    if (!last) return;
+    // Cheap gate before the paid read: a bare question or a sign-off carries no instruction about
+    // how the person wants things. A message with "I", "me", "my", "don't", "always", "never",
+    // "call me", "prefer", "want", "stop", or a correction word is worth a read.
+    if (!/\b(i|me|my|mine|don'?t|do not|never|always|stop|prefer|want|like|call me|from now|next time|instead|wrong|not what|actually|should|shouldn'?t|rather)\b/i.test(last.content)) return;
+    const transcript = turns.map((m) => `${m.role === 'user' ? 'User' : 'Elaya'}: ${m.content.slice(0, 1500)}`).join('\n');
+    const reading = await readMemoryFromTurn(existing, transcript, maskingDepth, existing.length ? null : learned);
+    if (!reading || (!reading.add.length && !reading.retire.length)) return;
+    const done = await applyMemoryReading(principal.userId, reading);
+    console.log(LOG, 'learned', JSON.stringify({ user: principal.userId.slice(0, 8), ...done }));
   } catch (e) {
-    // Never throws into the caller — the reply already shipped.
-    console.error('[elaya-memory] post-turn update failed (non-fatal):', e instanceof Error ? e.message : e);
+    console.error(`${LOG} learnFromTurn failed (non-fatal):`, e instanceof Error ? e.message : e);
   }
 }
