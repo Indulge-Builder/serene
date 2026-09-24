@@ -123,6 +123,12 @@ export function formatIstNow(now: Date): string {
   return `${IST_WEEKDAYS[ist.dayOfWeek]}, ${ist.day} ${IST_MONTHS[ist.month]} ${ist.year}, ${hh}:${mm} IST`;
 }
 
+/** The IST wall-clock of an instant as "HH:MM" (an alert or brief line: "since 10:56 IST"). */
+export function formatIstClock(d: Date): string {
+  const ist = toIst(d);
+  return `${String(ist.hour).padStart(2, '0')}:${String(ist.minute).padStart(2, '0')}`;
+}
+
 /** UTC Date for a specific IST wall-clock moment. */
 export function istToUtc(year: number, month: number, day: number, hour: number, minute: number): Date {
   // Construct as if UTC, then subtract IST offset to get real UTC

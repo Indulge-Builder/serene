@@ -12,6 +12,39 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-24 — The brief on the founder's four headings, and the live alert sweep
+
+- Why: Advita asked three times for "what is going well, where is a resolution gap, anticipated falls
+  that can be saved, where can our service be better", on a schedule, and was told "no scheduler on my
+  side". The old brief was a snapshot of counters with leads in it; the founders asked for no Gia data
+  and for the record of a fixed window instead.
+- `src/lib/services/elaya-briefing.ts` rewritten. 10:00 IST covers yesterday 6 pm to 10 am, 18:00 IST
+  covers 10 am to 6 pm (`briefingWindow`; the Trigger crons moved from 9 and 19). `gatherBriefingData`
+  reads the window's raw record through the read-only door: Freshdesk created and resolved per queendom
+  with the notable tickets (escalated, urgent, reopened, from the movement ledger), every message in the
+  member and team groups with who waited how long for a staff reply (capped per group and at 110,000
+  characters), who is waiting now, the profiler's tone reads and the intake's feedback cards, occasions
+  and trips due, renewals in 7 days, staff load and Freshdesk resolutions per agent, Sia tickets, and
+  Zoho (received and invoiced in the window, receivables, the uncategorised bank feed). The reasoning
+  tier writes it under her four headings first, then requests, members, team, money, today. Delivered
+  per founder to their Elaya conversation, on WhatsApp as free text inside their 24-hour window or as a
+  one-line template ping (`sendElayaTemplatePing`, new in whatsapp-api.ts, over the Sia alert template)
+  when it is closed, and in-app. Fails open to `plainBriefing`. A dry run against production read 1,612
+  messages in 149 groups and wrote the brief in 37 seconds.
+- `src/lib/services/elaya-alerts.ts` + `src/trigger/elaya-alerts.ts`: every five minutes, OFF until
+  `elaya_alerts_enabled` is true. A member whose last word has stood unanswered for an hour (active hours
+  8 to 23 IST); a Freshdesk ticket escalated, urgent or reopened since the last sweep; a member group with
+  new member messages read by the routing tier for anger, a complaint, a visible mistake by us, an urgent
+  same-day matter (severity 2 or 3 fires, six-hour cooldown per group and kind); and Elaya's own silent
+  turns (a message with no reply after three minutes) to the TECH responders through the Sia alert
+  template and in-app, never to founders. Each alert is an `elaya_alerts` row first (the dedupe key
+  refuses a repeat), then delivered to founders on WhatsApp and in-app. Email to tech@indulge.global
+  waits on an email provider, which the repo does not have.
+- `getWaitingGroups(minMinutes, maxHours)` in pulse-service is now THE waiting read the pulse, the
+  brief and the sweep share; `waFreeTextWindowOpen` moved into elaya-service for the two callers;
+  `formatIstClock` added to the canonical IST helper. "copied" and "received" join the acknowledgement
+  words, so a member signing off is not counted as waiting.
+
 ## 2026-09-24 — The deep read: Elaya reads thousands of rows in the background and keeps what she learned (0235)
 
 - Why: "how many tickets are health and wellness, and the share" cannot be answered by any query,

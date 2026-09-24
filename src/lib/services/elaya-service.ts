@@ -241,6 +241,20 @@ export async function hasProcessedWaMessage(waMessageId: string): Promise<boolea
   return Boolean(data);
 }
 
+/**
+ * May free text be sent to this person on WhatsApp right now? Meta allows it only inside 24
+ * hours of THEIR last message to us. The brief and the alert sweep ask this before choosing
+ * between a free-text reply and a template ping (2026-09-24; moved here from elaya-briefing.ts
+ * because two callers needed it). Admin client: the callers run from Trigger.dev.
+ */
+export async function waFreeTextWindowOpen(userId: string, windowMs = 24 * 60 * 60_000): Promise<boolean> {
+  const { data } = await createAdminClient().from('elaya_messages').select('created_at')
+    .eq('sender_id', userId).eq('channel', 'whatsapp').eq('role', 'user')
+    .order('created_at', { ascending: false }).limit(1).maybeSingle();
+  const at = (data as { created_at: string } | null)?.created_at;
+  return Boolean(at && Date.now() - new Date(at).getTime() < windowMs);
+}
+
 // ─────────────────────────────────────────────
 // Daily cap (server-enforced — the route rejects before any model call)
 // ─────────────────────────────────────────────

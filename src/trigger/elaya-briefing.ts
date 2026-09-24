@@ -1,8 +1,10 @@
 /**
  * elaya-briefing.ts — Elaya's daily briefing to the founders (services/elaya-briefing.ts).
  *
- * 09:00 and 19:00 India time: the live pulse, put into a few lines, sent on WhatsApp (when the
- * founder's 24 hour window is open) and as an in-app notification. Gated by the
+ * 10:00 IST: the record from yesterday 6 pm to 10 am. 18:00 IST: from 10 am to 6 pm. Each brief is
+ * written from that window's raw record (services/elaya-briefing.ts, rewritten 2026-09-24) and
+ * delivered to every active founder: their Elaya conversation, WhatsApp (free text inside the 24
+ * hour window, otherwise a template ping) and the in-app inbox. Gated by the
  * `daily_briefing_enabled` row in elaya_settings: flipping it is the on/off, no deploy.
  */
 import { schedules } from "@trigger.dev/sdk/v3";
@@ -18,14 +20,14 @@ async function run(slot: "morning" | "evening") {
 
 export const elayaMorningBriefingTask = schedules.task({
   id: "elaya-briefing-morning",
-  cron: { pattern: "0 9 * * *", timezone: "Asia/Calcutta" },
-  maxDuration: 120,
+  cron: { pattern: "0 10 * * *", timezone: "Asia/Calcutta" },
+  maxDuration: 300,
   run: () => run("morning"),
 });
 
 export const elayaEveningBriefingTask = schedules.task({
   id: "elaya-briefing-evening",
-  cron: { pattern: "0 19 * * *", timezone: "Asia/Calcutta" },
-  maxDuration: 120,
+  cron: { pattern: "0 18 * * *", timezone: "Asia/Calcutta" },
+  maxDuration: 300,
   run: () => run("evening"),
 });

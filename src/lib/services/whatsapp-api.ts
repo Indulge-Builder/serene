@@ -978,6 +978,37 @@ export async function sendTaskAssignedNotification(
 // Params: {{1}} first name, {{2}} alert title, {{3}} detail line.
 // ─────────────────────────────────────────────
 
+/**
+ * One founder, one template message, when their 24-hour free-text window is closed (they have not
+ * written to Elaya today). Rides the Sia alert template (params: first name, title, body), which is
+ * Meta-approved; the body must be ONE line (Meta rejects newlines in a template parameter). The
+ * brief and the alert sweep use it; a free-text reply is used whenever the window is open instead.
+ */
+export async function sendElayaTemplatePing(
+  to: string,
+  recipientId: string,
+  firstName: string,
+  title: string,
+  body: string,
+): Promise<boolean> {
+  if (!SIA_ALERT_TEMPLATE_CONFIGURED) return false;
+  const oneLine = (t: string) => t.replace(/\s+/g, ' ').trim();
+  try {
+    await sendGupshupTemplate({
+      templateId:     GUPSHUP_SIA_ALERT_TEMPLATE_ID,
+      destination:    to,
+      templateParams: [oneLine(firstName) || 'there', oneLine(title).slice(0, 120), oneLine(body).slice(0, 900)],
+      label:          'Elaya template ping',
+      logRecipient:   `founder ${recipientId}`,
+      log: { type: 'sia_alert', recipientId, agentName: firstName },
+    });
+    return true;
+  } catch (err) {
+    console.error('[whatsapp-api] Elaya template ping failed:', err);
+    return false;
+  }
+}
+
 export async function sendSiaAlertNotification(
   title: string,
   body: string,

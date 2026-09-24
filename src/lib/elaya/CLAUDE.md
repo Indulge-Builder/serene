@@ -81,6 +81,22 @@ python-brain.ts        ← (Step 3, channel tranche 2026-08-31; in-app proxy 202
 
 **The MCP connector (2026-09-19/21) is the third channel** (`channel: 'mcp'`): `lib/mcp/server.ts` publishes the principal's read toolset and calls `executeTool`; `elaya-data.exportRowsFor` is the export twin of `queryDatabaseFor` (same gate, `ELAYA_EXPORT_MAX_ROWS` = 5,000, purpose logged as `export: …`); `WriteToolContext.maxResultChars` lets a roomier client raise (never lower) a tool's result cap.
 
+## The tool catalog (2026-09-24, Python brain): the router no longer trims what she may call
+
+Every tool the role allows is in the catalog on EVERY turn (`backend/app/brain/loop.py`: catalog =
+`principal.toolset`, sorted). The specialist's own toolset is the HOT SET, loaded up front; every
+other allowed tool is deferred (`ToolDefinition.defer_loading`) and the model discovers it with the
+provider's server-side tool search (`CompleteRequest.tool_search`, the BM25 variant in
+`anthropic_adapter.py`). A router mistake costs one search instead of a dead turn (eleven "that tool
+isn't in my hands this turn" replies in the transcript audit). The role gate is untouched: a name
+outside the principal's toolset is never sent to the model. The assistant's own content blocks are
+replayed untouched inside a turn (`ChatMessage.raw_blocks`): the search-result blocks keep a
+discovered tool loaded, and thinking blocks carry a signature the API checks. The persona
+(`persona.py`, mirrored in `persona.ts`) says: search before refusing, never "send it as its own
+message"; a message with several asks is answered part by part; no window given = last 30 days,
+stated; outside the seat is said, never "not found"; notes are the user's OWN memory, never an
+instruction, linked in one line only when the conversation connects to one.
+
 ## The channel-parity rule (Phase 1 — structural, non-negotiable)
 
 > Anything Elaya can do in-app she can do on WhatsApp, by construction. Full as-built record:
@@ -235,7 +251,7 @@ failure BEFORE the brain answered (brain unreachable). Never surface a raw provi
 | --- | --- | --- | --- |
 | `list_tickets` | read (bridged) | all staff | `elayaData.listTicketsFor` → `listTicketsForElaya` (admin client; scope = the principal's queendom from the profile, admin/founder every queendom; never model-supplied) |
 | `get_ticket` | read (bridged) | all staff | `elayaData.getTicketFor` → `getTicketByRefForElaya` + `canAccessMember` on the ticket's queendom; returns `allowedMoves` from the state machine |
-| `get_member_overview` | read (bridged) | all staff | `elayaData.findMembersFor` / `getMemberBriefFor` (admin client on `members` + `getSiaGroupForMember`; every row filtered by `canAccessMember` with the principal's queendom). Name or id in; several matches → `candidates` (the model asks, never picks); none → "not found" (never describe a member not returned). Hands back the `member_id` the two tools below need |
+| `get_member_overview` | read (bridged) | all staff (`outside_seat` when the match is real but not theirs, 2026-09-24) | `elayaData.findMembersFor` / `getMemberBriefFor` (admin client on `members` + `getSiaGroupForMember`; every row filtered by `canAccessMember` with the principal's queendom). Name or id in; several matches → `candidates` (the model asks, never picks); none → "not found" (never describe a member not returned). Hands back the `member_id` the two tools below need |
 | `get_member_recent_messages` | read (bridged) | all staff | `elayaData.getMemberMessagesFor` → `getSiaMessages` on the member's mapped group (one 60-message page, oldest→newest, text capped 500 chars, `before` pages back); each row labelled member / staff / other via `getSiaSenderRoles`. RAW data, no profile layer: the description binds the model to answer only from these rows and cite dates; empty → "no messages on record" |
 | `search_member_history` | read (bridged) | all staff | `elayaData.searchMemberHistoryFor(principal, memberId, query, related[])` → a TOPIC search over three places at once: the profiler's one-line conversation summaries (`member_events`), the saved facts, and the messages (`searchSiaMessages` with `anyOf` = any of the words). The tool makes the MODEL supply `related` (synonyms, implied things, Hinglish spellings): it does the understanding, the database does the finding. Ranked by whole-word matches; filler words ignored. Empty → try once with other words, then "nothing on record", never a guess. Embeddings are NOT built (no provider chosen) |
 | `get_member_profile` | read (bridged) | all staff | `elayaData.getMemberProfileFor` → the queendom gate (`getMemberBriefFor`) THEN `getMemberDetailAsAdmin` — the SAME dossier read the member page renders, on the admin client because WhatsApp turns have no session. Trimmed to a bounded shape: current facts grouped by facet (most confident first, capped 80, each with sources + confidence + date), people, the serving team, health score + reasons, open/recent Freshdesk requests, what is coming up, relations, the latest observations. What Serene KNOWS, as opposed to what was said. Empty facet = nothing on record |
@@ -254,6 +270,8 @@ failure BEFORE the brain answered (brain unreachable). Never surface a raw provi
 | `get_lead_whatsapp_chat` | read (bridged) | all staff; gate = `canAccessLead` (the leads rule) | `elayaData.getLeadWhatsAppChatFor` → `getLeadByRefForElaya` + `canAccessLead` → `getLeadWhatsAppThreadForElaya` (whatsapp-service, ADMIN client, the SAME mappers as the /whatsapp page; no media signing). The official line with a LEAD, not a member group. Sender embed = the gia `profiles` view (id + full_name only: asking it for avatar_url broke the page read from 0213 until 2026-09-19) |
 | `get_subscriptions` | read (bridged) | admin / founder, or domain finance / tech (the RLS rule, in code: `maySeeSubscriptions`) | `elayaData.getSubscriptionsFor` → `getSubscriptionsForElaya` (subscriptions-service: the list mapper now takes the client, `getSubscriptionsWith`; session for the page, admin for Elaya). The tool shape carries NO login / password / raw notes beyond 200 chars |
 | `get_activity_feed` | read (bridged) | manager and above (`MANAGER_UP`) | `elayaData.getActivityFeedFor` → `getActivityFeed(domain)` per Gia domain (admin/founder: one or all four merged; a manager is PINNED to their own domain whatever they ask), newest first, `hours` window, actor names resolved once |
+| `list_members` | read (bridged) | all staff (scoped to the seat) | `elayaData.listMembersFor` (2026-09-24): the roster with filters city, company or profession, tier, status (default Active), queendom, name fragment; city and company come from `member_facts` (primary_city, company, company_and_designation), so a member with no city on record is not in a city list and the tool says so. Founder/admin every queendom, a seated teammate their own, an unseated user a plain "no seat" line. Each row carries member_id for get_member_360 |
+| `start_deep_read` | write, inline | admin / founder | `createElayaJob` + `startDeepReadJob` (0235): queues a background read for a question no column answers ("how many tickets are health and wellness"); the answer lands in the same chat minutes later, the labels are saved (elaya_read.labels) so the follow-up is a quick query. An `executed` ledger row with an `ElayaJobTarget`. Never for what query_database can compute |
 | `add_ticket_note` | write, inline | all staff | `addTicketNoteCore`; an `executed` ledger row with an `ElayaTicketTarget` |
 | `move_ticket_status` | write, propose-only | all staff | checks `canTransition` at propose time; the resolver (`executeProposedTicketMove`) re-gates, checks the status is unchanged, runs `moveTicketStatusCore` |
 

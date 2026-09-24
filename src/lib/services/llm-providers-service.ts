@@ -133,3 +133,8 @@ export async function getMcpAudience(): Promise<readonly UserRole[]> {
 export async function getDailyBriefingEnabled(): Promise<boolean> {
   try { return (await getSettingValue('daily_briefing_enabled')) === true; } catch { return false; }
 }
+
+/** The live alert sweep's switch (0235, seeded false): ON only when the row says exactly true. */
+export async function getElayaAlertsEnabled(): Promise<boolean> {
+  try { return (await getSettingValue('elaya_alerts_enabled')) === true; } catch { return false; }
+}

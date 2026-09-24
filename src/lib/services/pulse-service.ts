@@ -70,32 +70,35 @@ async function counters(todayStart: string) {
   return r.rows[0] ?? null;
 }
 
-async function waitingGroups(): Promise<{ count: number; shown: PulseWaiting[] } | null> {
+export type WaitingGroup = { group_jid: string; subject: string | null; member_id: string | null; member: string | null; last_message_at: string; last_text: string | null; waiting_minutes: number };
+
+/**
+ * THE "who is waiting on us" read (0224 + the acknowledgement rule), with the window as parameters:
+ * the pulse, the brief and the alert sweep all call this one. Oldest first. null = the RPC failed.
+ */
+export async function getWaitingGroups(minMinutes: number, maxHours: number, shown = 500): Promise<WaitingGroup[] | null> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 0224 is not in the generated types until the next regen
   const sia = createAdminClient().schema("sia") as unknown as { rpc: (f: string, a: Record<string, unknown>) => any };
-  const { data, error } = await sia.rpc("groups_waiting_for_reply", { p_min_minutes: PULSE_WAITING_MIN_MINUTES, p_max_hours: PULSE_WAITING_MAX_HOURS });
+  const { data, error } = await sia.rpc("groups_waiting_for_reply", { p_min_minutes: minMinutes, p_max_hours: maxHours });
   if (error) {
     console.error("[pulse-service] waiting groups failed:", error.message);
     return null;
   }
-  type Row = { subject: string | null; member_id: string | null; last_text: string | null; waiting_minutes: number };
-  // "Ok", "Noted", "Thanks", an emoji: the member closed the chat, nobody is waiting. Intake's own rule (R-01).
-  const rows = mapRows<Row, Row>(data, (x) => x).filter((x) => !isOnlyAcknowledgement([x.last_text ?? ""]));
+  type Row = { group_jid: string; subject: string | null; member_id: string | null; last_message_at: string; last_text: string | null; waiting_minutes: number };
+  const rows = mapRows<Row, Row>(data, (x) => x).filter((x) => !isOnlyAcknowledgement([x.last_text ?? ""])).slice(0, shown);
   const ids = [...new Set(rows.map((x) => x.member_id).filter((x): x is string => Boolean(x)))];
   const names = new Map<string, string>();
   if (ids.length) {
     const { data: ms } = await memberDb(createAdminClient()).from("members").select("id, full_name").in("id", ids);
     mapRows<{ id: string; full_name: string }, void>(ms, (m) => { names.set(m.id, m.full_name); });
   }
-  return {
-    count: rows.length,
-    shown: rows.slice(0, PULSE_WAITING_SHOWN).map((x) => ({
-      member: x.member_id ? (names.get(x.member_id) ?? null) : null,
-      group: x.subject,
-      waiting_minutes: n(x.waiting_minutes),
-      last_text: x.last_text,
-    })),
-  };
+  return rows.map((x) => ({ ...x, member: x.member_id ? (names.get(x.member_id) ?? null) : null, waiting_minutes: n(x.waiting_minutes) }));
+}
+
+async function waitingGroups(): Promise<{ count: number; shown: PulseWaiting[] } | null> {
+  const all = await getWaitingGroups(PULSE_WAITING_MIN_MINUTES, PULSE_WAITING_MAX_HOURS);
+  if (!all) return null;
+  return { count: all.length, shown: all.slice(0, PULSE_WAITING_SHOWN).map((x) => ({ member: x.member, group: x.subject, waiting_minutes: x.waiting_minutes, last_text: x.last_text })) };
 }
 
 export async function getLivePulse(): Promise<LivePulse> {
