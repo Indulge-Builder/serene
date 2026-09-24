@@ -104,3 +104,14 @@ that started passing — move it to a normal case and celebrate).
 
 Multi-turn (confirmation flows): add more `send` steps — the case keeps its
 conversation, so proposals resolve exactly like production.
+
+## The founders' set (`golden/founders.yaml`, 2026-09-24)
+
+Twenty-five questions the founders and the tech admin actually asked on WhatsApp and in the app
+between June and September 2026, with the expectations a right answer met: which tool it reached,
+what it must never say ("send it as its own message", "not in my hands this turn", "none of that
+was real"), and what it must mention. Every case carries `tags: [founder]` because most of them need
+the analyst's tools (query_database, the live pulse, the deep read), which the eval manager account
+cannot reach. Run them with a founder or admin eval login in `.env.eval` and
+`python3 run.py --golden golden/founders.yaml --include-tags founder`. Three cases mutate (they create
+real tasks); add `--allow-writes` only against a test teammate.
