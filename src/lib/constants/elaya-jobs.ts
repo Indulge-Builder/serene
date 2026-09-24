@@ -12,28 +12,52 @@ export type ElayaJobStatus = (typeof ELAYA_JOB_STATUSES)[number];
 export const ELAYA_LABEL_SUBJECTS = ['freshdesk_ticket', 'member', 'whatsapp_group', 'lead', 'sia_ticket', 'whatsapp_message', 'vendor'] as const;
 export type ElayaLabelSubject = (typeof ELAYA_LABEL_SUBJECTS)[number];
 
+/** A job either answers a question (the default) or tops up a saved label set with the rows it has not judged yet. */
+export const DEEP_READ_MODES = ['answer', 'refresh'] as const;
+export type DeepReadMode = (typeof DEEP_READ_MODES)[number];
+
 /** The run ledger kind (sia.extraction_runs) and the prompt versions, for the audit trail. */
 export const DEEP_READ_RUN_KIND = 'deep_read';
-export const DEEP_READ_PLAN_PROMPT_VERSION = 'deep-read-plan-v1';
-export const DEEP_READ_LABEL_PROMPT_VERSION = 'deep-read-label-v1';
-export const DEEP_READ_ANSWER_PROMPT_VERSION = 'deep-read-answer-v1';
+export const DEEP_READ_PLAN_PROMPT_VERSION = 'deep-read-plan-v2';
+export const DEEP_READ_LABEL_PROMPT_VERSION = 'deep-read-label-v2';
+export const DEEP_READ_ANSWER_PROMPT_VERSION = 'deep-read-answer-v2';
 
-/** Rows a deep read will fetch at most: 12 pages of the query door's export cap. */
+/** Rows a deep read will fetch at most: 12 pages of the query door's export cap. A question that
+ *  matches more is REFUSED before anything is paid for, never quietly cut at the cap. */
 export const DEEP_READ_MAX_ROWS = 60_000;
 export const DEEP_READ_PAGE_ROWS = 5_000;
-/** Rows judged per model call, and calls in flight side by side. */
+/** Rows judged per model call, and calls in flight side by side (the rate gate below slows this
+ *  down the moment the provider says so; it never fails the job on a rate limit). */
 export const DEEP_READ_BATCH_ROWS = 100;
-export const DEEP_READ_PARALLEL_CALLS = 8;
+export const DEEP_READ_PARALLEL_CALLS = 12;
 /** Characters of a row's text the judge sees. */
 export const DEEP_READ_ROW_TEXT_CAP = 240;
 /** A batch that fails after these retries is counted, never re-run forever. */
 export const DEEP_READ_BATCH_RETRIES = 3;
+/** The rate gate: on a 429 / overloaded reply every worker pauses this long (or the provider's
+ *  retry-after when longer), doubling per hit up to the max; a batch gives up after this many hits. */
+export const DEEP_READ_RATE_PAUSE_MS = 8_000;
+export const DEEP_READ_RATE_PAUSE_MAX_MS = 60_000;
+export const DEEP_READ_RATE_RETRIES = 8;
+/** Trust floors. Rows read must cover this share of the rows the count said exist, and no more than
+ *  this share may end unjudged; below either the job FAILS and says so, it never delivers a number. */
+export const DEEP_READ_COVERAGE_MIN_PCT = 99;
+export const DEEP_READ_MAX_UNJUDGED_PCT = 5;
 /** Sample rows handed to the answer writer as evidence, per label. */
 export const DEEP_READ_ANSWER_SAMPLES_PER_LABEL = 6;
 /** The whole job's wall-clock budget (Trigger.dev maxDuration is set from this). */
 export const DEEP_READ_MAX_MINUTES = 25;
 /** Labels a plan may define, at most (a rubric with more is a taxonomy, not a question). */
 export const DEEP_READ_MAX_LABELS = 12;
+
+// ── The nightly label top-up ─────────────────────────────────────────────────
+/** Row `elaya_labels_refresh_enabled`: ON unless the row says exactly false (a top-up reads only
+ *  the rows a set has not judged, so it costs cents; the off switch is one row, no deploy). */
+export const LABELS_REFRESH_SETTING_KEY = 'elaya_labels_refresh_enabled';
+/** Only label sets a person asked about inside this many days are kept current. */
+export const LABELS_REFRESH_DAYS = 30;
+/** Sets topped up per night, at most. */
+export const LABELS_REFRESH_MAX_SETS = 20;
 
 // ── The live alert sweep ─────────────────────────────────────────────────────
 export const ALERTS_SETTING_KEY = 'elaya_alerts_enabled';

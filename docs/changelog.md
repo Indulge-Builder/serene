@@ -12,6 +12,41 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-24 — The deep read: fast on a repeat, and refuses rather than guesses
+
+- Why: the first production deep read took 48 seconds from question to answer, and the founders asked
+  for it faster without trading away trust. They also asked for proof that a big question is never
+  answered from "page 1" of the data.
+- Count first (`elaya-deep-read.ts`): before any model call the job counts the rows and distinct subjects
+  its query matches. Above `DEEP_READ_MAX_ROWS` (60,000) it stops and asks for a narrower scope instead
+  of reading the first 60,000 and calling that the answer. Zero rows is said plainly.
+- Coverage proof: rows are read in keyset pages, de-duplicated on the subject id, and must cover 99% of
+  the count or the job fails with the reason and no number. More than 5% of rows left unjudged also fails
+  the job. The answer names any share not read or not judged when it is above 0% / 1%.
+- Reuse: the planner now sees the label sets on record and reuses the same name, labels, rule and query
+  when the question is the same one (a different label list under a known name becomes `_v2`, so verdicts
+  from two different rules are never counted together). A row whose text still matches its saved evidence
+  keeps its verdict; only new or changed rows are judged. Windows are written relative to `now()`.
+- Faster judging: 12 calls side by side (was 8) behind a shared rate gate: a 429 or "overloaded" reply
+  pauses every worker for the provider's retry-after or a doubling pause instead of failing the batch, so
+  the founders' live chats on the same account are not starved. The judge answers by letter at low effort
+  and a row the reply skipped is asked again on its own.
+- Nightly top-up: `src/trigger/elaya-labels-refresh.ts` at 05:30 IST queues one `refresh` job per label set
+  asked about in the last 30 days (`planLabelRefresh`); it judges only rows it has not seen and sends
+  nothing. ON unless `elaya_labels_refresh_enabled` is `false`.
+- `describe_database` now lists the saved label sets with their coverage, so "how many this week" is a
+  query over the labels view when the window is covered, and a deep read only when it is not.
+- Real per-stage timings in the job's progress and the run ledger. `countElayaLabels` counts in SQL
+  (a plain select stopped at PostgREST's 1,000-row cap). `updateElayaJobProgress` for mid-run pings, so
+  `started_at` is stamped once.
+- The count is bounded: it stops scanning one row past the cap, so a question over every WhatsApp
+  message is refused in 3 seconds instead of timing out; a count that times out is also told as "too big".
+- Measured on production: the health-and-wellness question asked fresh took 21 seconds end to end (was 48
+  from the chat), reused 4,618 verdicts, judged 36 new tickets, 100% coverage. A nightly top-up read the last
+  3 days (570 tickets, all already judged) in under 3 seconds.
+
+---
+
 ## 2026-09-24 — The brief on the founder's four headings, and the live alert sweep
 
 - Why: Advita asked three times for "what is going well, where is a resolution gap, anticipated falls

@@ -138,3 +138,13 @@ export async function getDailyBriefingEnabled(): Promise<boolean> {
 export async function getElayaAlertsEnabled(): Promise<boolean> {
   try { return (await getSettingValue('elaya_alerts_enabled')) === true; } catch { return false; }
 }
+
+/**
+ * The nightly label top-up's switch (row `elaya_labels_refresh_enabled`, no seed row): the one
+ * switch that is ON by default. A top-up judges only the rows a saved label set has not seen, sends
+ * nothing to anyone, and costs cents; it is OFF only when the row says exactly `false`. A failed
+ * read means ON as well (a stale label is a smaller harm than a silent stop).
+ */
+export async function getElayaLabelsRefreshEnabled(): Promise<boolean> {
+  try { return (await getSettingValue('elaya_labels_refresh_enabled')) !== false; } catch { return true; }
+}

@@ -1568,7 +1568,15 @@ const describeDatabase: ElayaTool = {
     // query each that has been run. Copy or adapt these before writing a metric from scratch.
     return want
       ? { view_count: picked.length, catalog }
-      : { view_count: picked.length, catalog, verified_metrics: verifiedMetricsBlock(), note: 'verified_metrics are the business definitions the founders use (waiting on us, response time, active members, renewals with usage, frustrated members, Freshdesk per queendom). Reuse or adapt their SQL before inventing a definition, and name the metric you used.' };
+      : {
+          view_count: picked.length,
+          catalog,
+          verified_metrics: verifiedMetricsBlock(),
+          label_sets: r.label_sets,
+          note:
+            'verified_metrics are the business definitions the founders use (waiting on us, response time, active members, renewals with usage, frustrated members, Freshdesk per queendom). Reuse or adapt their SQL before inventing a definition, and name the metric you used. ' +
+            'label_sets are judgements saved by earlier deep reads (the `labels` view: label_set, label, subject_kind, subject_id as text; freshdesk_ticket joins subject_id::bigint = freshdesk_tickets.ticket_id, member joins subject_id::uuid = members.member_id). They cover ONLY the rows listed under rows_covered, topped up nightly with new rows: count them with a query for a window inside that coverage, and start_deep_read for a window outside it (it reuses every saved verdict and judges only the rest).',
+        };
   },
 };
 

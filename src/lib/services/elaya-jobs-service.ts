@@ -9,9 +9,10 @@
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { mapRows } from '@/lib/utils/rows';
+import { runElayaQuery, ELAYA_EXPORT_MAX_ROWS } from '@/lib/services/elaya-query-service';
 import type { Json } from '@/lib/types/database';
 import type { ElayaChannel } from '@/lib/types/elaya';
-import type { ElayaJobKind, ElayaJobStatus, ElayaLabelSubject } from '@/lib/constants/elaya-jobs';
+import { ELAYA_LABEL_SUBJECTS, type ElayaJobKind, type ElayaJobStatus, type ElayaLabelSubject } from '@/lib/constants/elaya-jobs';
 
 export type ElayaJobRow = {
   id: string;
@@ -70,7 +71,9 @@ export async function getElayaJob(jobId: string): Promise<ElayaJobRow | null> {
   return (data as ElayaJobRow | null) ?? null;
 }
 
-/** Move a job forward. `patch` carries whichever of plan / progress / result / answer / error apply. */
+/** Move a job forward. `patch` carries whichever of plan / progress / result / answer / error apply.
+ *  Call it ONCE per status: `running` stamps started_at, `done` / `failed` stamp finished_at. A
+ *  progress ping in the middle goes through updateElayaJobProgress, which stamps nothing. */
 export async function advanceElayaJob(
   jobId: string,
   status: ElayaJobStatus,
@@ -84,12 +87,30 @@ export async function advanceElayaJob(
   if (error) console.error('[elaya-jobs] advance failed:', error.message);
 }
 
+/** A running job's progress (rows read, batches done, stage timings). Touches no timestamp and no status. */
+export async function updateElayaJobProgress(jobId: string, progress: Record<string, unknown>, plan?: Record<string, unknown>): Promise<void> {
+  const row: Record<string, unknown> = { progress };
+  if (plan) row.plan = plan;
+  const { error } = await admin().from('elaya_jobs').update(row).eq('id', jobId);
+  if (error) console.error('[elaya-jobs] progress update failed:', error.message);
+}
+
 /** The jobs a person asked for lately (their own; admin/founder pass no filter to see all). */
 export async function listRecentElayaJobs(requestedBy: string | null, limit = 10): Promise<ElayaJobRow[]> {
   let q = admin().from('elaya_jobs').select('*').order('created_at', { ascending: false }).limit(limit);
   if (requestedBy) q = q.eq('requested_by', requestedBy);
   const { data } = await q;
   return mapRows<ElayaJobRow, ElayaJobRow>(data, (r) => r);
+}
+
+/** The label sets with a job queued or running right now (the nightly top-up steps around them). */
+export async function getActiveLabelSets(): Promise<Set<string>> {
+  const { data } = await admin().from('elaya_jobs').select('plan').in('status', ['queued', 'running']).limit(200);
+  const out = new Set<string>();
+  mapRows<{ plan: Record<string, unknown> }, void>(data, (r) => {
+    if (typeof r.plan?.label_set === 'string') out.add(r.plan.label_set as string);
+  });
+  return out;
 }
 
 export type ElayaLabelInput = {
@@ -126,11 +147,110 @@ export async function upsertElayaLabels(jobId: string, labels: ElayaLabelInput[]
   return { written, failed };
 }
 
-/** How a label set is distributed (the one-second answer the next time the question is asked). */
+const sqlLit = (s: string) => `'${s.replace(/'/g, "''")}'`;
+
+/** How a label set is distributed (the one-second answer the next time the question is asked).
+ *  Counted in SQL through the read-only door: a plain select would stop at PostgREST's 1,000-row
+ *  response cap and call that the total. */
 export async function countElayaLabels(labelSet: string): Promise<{ label: string; count: number }[]> {
-  const { data, error } = await admin().from('elaya_labels').select('label').eq('label_set', labelSet).limit(100_000);
-  if (error) return [];
-  const tally = new Map<string, number>();
-  mapRows<{ label: string }, void>(data, (r) => { tally.set(r.label, (tally.get(r.label) ?? 0) + 1); });
-  return [...tally.entries()].map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count);
+  const r = await runElayaQuery(`select label, count(*)::int as n from labels where label_set = ${sqlLit(labelSet)} group by label order by n desc`, 100);
+  if (!r.ok) return [];
+  return r.rows.map((row) => ({ label: String(row.label), count: Number(row.n) }));
+}
+
+export type ExistingLabel = { label: string; evidence: string | null };
+
+/** Every saved verdict of one set, keyed by subject id, read in keyset pages through the door (the
+ *  door caps a page at ELAYA_EXPORT_MAX_ROWS; a single select would be cut there and say nothing).
+ *  The deep read compares each row's text with the saved evidence and re-judges what changed. */
+export async function getExistingLabels(subjectKind: ElayaLabelSubject, labelSet: string): Promise<Map<string, ExistingLabel>> {
+  const out = new Map<string, ExistingLabel>();
+  let last: string | null = null;
+  for (;;) {
+    const after = last ? ` and label_id > ${sqlLit(last)}` : '';
+    const r = await runElayaQuery(
+      `select label_id, subject_id, label, evidence from labels where subject_kind = ${sqlLit(subjectKind)} and label_set = ${sqlLit(labelSet)}${after} order by label_id limit ${ELAYA_EXPORT_MAX_ROWS}`,
+      ELAYA_EXPORT_MAX_ROWS,
+      ELAYA_EXPORT_MAX_ROWS,
+    );
+    if (!r.ok) throw new Error(`Reading the saved labels failed: ${r.error}`);
+    for (const row of r.rows) out.set(String(row.subject_id), { label: String(row.label), evidence: (row.evidence as string | null) ?? null });
+    if (r.rows.length < ELAYA_EXPORT_MAX_ROWS) break;
+    last = String(r.rows[r.rows.length - 1].label_id);
+  }
+  return out;
+}
+
+export type ElayaLabelSetSummary = {
+  label_set: string;
+  subject_kind: ElayaLabelSubject;
+  rows: number;
+  first_at: string;
+  last_at: string;
+  /** From the latest finished ANSWER job that used the set (a refresh carries the same plan). */
+  summary: string | null;
+  labels: { name: string; meaning: string }[];
+  rubric: string | null;
+  fetch_sql: string | null;
+  refresh_sql: string | null;
+  text_columns: string[];
+  breakdown_columns: string[];
+  other_label: string | null;
+  last_job_id: string | null;
+  last_asked_at: string | null;
+  requested_by: string | null;
+  question: string | null;
+};
+
+/** Every label set on record, newest first, with the plan that made it: the planner reuses these
+ *  so the same question keeps the same labels, describe_database lists them, the nightly top-up
+ *  picks the ones asked about lately. */
+export async function listLabelSets(): Promise<ElayaLabelSetSummary[]> {
+  const counts = await runElayaQuery(
+    'select label_set, subject_kind, count(*)::int as rows, min(created_at) as first_at, max(created_at) as last_at from labels group by label_set, subject_kind order by max(created_at) desc limit 100',
+    100,
+  );
+  if (!counts.ok) {
+    console.error('[elaya-jobs] label sets read failed:', counts.error);
+    return [];
+  }
+  // The latest finished job per set, preferring the one a person asked (its plan carries the question).
+  const { data } = await admin().from('elaya_jobs').select('id, requested_by, question, plan, created_at').eq('status', 'done').order('created_at', { ascending: false }).limit(400);
+  type JobLite = { id: string; requested_by: string; question: string; plan: Record<string, unknown>; created_at: string };
+  const latest = new Map<string, JobLite>();
+  const latestAsked = new Map<string, JobLite>();
+  mapRows<JobLite, void>(data, (j) => {
+    const set = typeof j.plan?.label_set === 'string' ? (j.plan.label_set as string) : null;
+    if (!set) return;
+    if (!latest.has(set)) latest.set(set, j);
+    if (j.plan.mode !== 'refresh' && !latestAsked.has(set)) latestAsked.set(set, j);
+  });
+  return counts.rows.map((row) => {
+    const set = String(row.label_set);
+    const job = latestAsked.get(set) ?? latest.get(set) ?? null;
+    const plan = job?.plan ?? {};
+    const labels = Array.isArray(plan.labels)
+      ? (plan.labels as { name?: unknown; meaning?: unknown }[]).map((l) => ({ name: String(l.name ?? ''), meaning: String(l.meaning ?? '') })).filter((l) => l.name)
+      : [];
+    const kind = String(row.subject_kind);
+    return {
+      label_set: set,
+      subject_kind: ((ELAYA_LABEL_SUBJECTS as readonly string[]).includes(kind) ? kind : 'freshdesk_ticket') as ElayaLabelSubject,
+      rows: Number(row.rows),
+      first_at: String(row.first_at),
+      last_at: String(row.last_at),
+      summary: typeof plan.summary === 'string' ? plan.summary : null,
+      labels,
+      rubric: typeof plan.rubric === 'string' ? plan.rubric : null,
+      fetch_sql: typeof plan.fetch_sql === 'string' ? plan.fetch_sql : null,
+      refresh_sql: typeof plan.refresh_sql === 'string' ? plan.refresh_sql : null,
+      text_columns: Array.isArray(plan.text_columns) ? (plan.text_columns as unknown[]).map(String) : [],
+      breakdown_columns: Array.isArray(plan.breakdown_columns) ? (plan.breakdown_columns as unknown[]).map(String) : [],
+      other_label: typeof plan.other_label === 'string' ? plan.other_label : null,
+      last_job_id: job?.id ?? null,
+      last_asked_at: latestAsked.get(set)?.created_at ?? null,
+      requested_by: job?.requested_by ?? null,
+      question: latestAsked.get(set)?.question ?? null,
+    };
+  });
 }

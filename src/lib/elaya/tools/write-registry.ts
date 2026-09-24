@@ -1391,8 +1391,10 @@ const startDeepRead: ElayaWriteTool = {
     "their own words, complete (the window, the scope, what counts). It returns at once with a job id: tell " +
     "the user in one line that this needs a full read of the data, it is running now, and the answer will " +
     "land in this chat in a few minutes; do not attempt the answer yourself and do not call it twice for " +
-    "the same question. The labels it decides are saved, so a follow-up ('split that by queendom') is a " +
-    "quick query_database over the labels view afterwards.",
+    "the same question. The labels it decides are saved and topped up every night, so a follow-up ('split " +
+    "that by queendom', 'how many this week') is a quick query_database over the labels view afterwards, and " +
+    "a repeat of the same question is fast: rows judged before keep their verdict, only new rows are read. " +
+    "A question covering more than 60,000 rows is refused with a line asking for a narrower scope; pass that on.",
   schema: z.object({
     question: z.string().trim().min(10).max(1200),
   }),

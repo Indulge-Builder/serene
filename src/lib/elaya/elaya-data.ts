@@ -68,6 +68,7 @@ import { canAccessMember, canSeeMemberFinance } from '@/lib/elaya/access';
 import { getMemberDetailAsAdmin } from '@/lib/services/members-service';
 import { getMemberFinance, getBooksOverview } from '@/lib/services/zoho-service';
 import { runElayaQuery, logElayaQuery, getElayaCatalog, ELAYA_EXPORT_MAX_ROWS } from '@/lib/services/elaya-query-service';
+import { listLabelSets } from '@/lib/services/elaya-jobs-service';
 import { getLivePulse } from '@/lib/services/pulse-service';
 import { isOnlyAcknowledgement } from '@/lib/services/ticket-intake';
 import { getLeadWhatsAppThreadForElaya } from '@/lib/services/whatsapp-service';
@@ -1160,8 +1161,22 @@ const mayQueryDatabase = (principal: StaffPrincipal) => principal.role === 'foun
 
 export async function describeDatabaseFor(principal: StaffPrincipal) {
   if (!mayQueryDatabase(principal)) return { denied: true as const };
-  const views = await getElayaCatalog();
-  return views ? { views } : { unavailable: true as const };
+  const [views, sets] = await Promise.all([getElayaCatalog(), listLabelSets().catch(() => [])]);
+  if (!views) return { unavailable: true as const };
+  // The judgements deep reads have saved (0235): what each set means, how many rows carry it and
+  // since when, so the model can count them with a query instead of reading again, and can tell a
+  // window the labels cover from one they do not.
+  const label_sets = sets.slice(0, 25).map((s) => ({
+    label_set: s.label_set,
+    subject_kind: s.subject_kind,
+    rows_labelled: s.rows,
+    first_labelled: s.first_at.slice(0, 10),
+    last_labelled: s.last_at.slice(0, 10),
+    counts: s.summary ?? s.question ?? null,
+    labels: s.labels.map((l) => l.name),
+    rows_covered: s.fetch_sql ? s.fetch_sql.slice(0, 240) : null,
+  }));
+  return { views, label_sets };
 }
 
 export async function queryDatabaseFor(principal: StaffPrincipal, sql: string, purpose: string | null, channel: ElayaChannel, maxRows?: number) {
