@@ -35,6 +35,12 @@ class ChatMessage:
     content: str
     tool_calls: list[ToolCall] = field(default_factory=list)
     tool_call_id: str | None = None
+    # The provider's OWN content blocks for an assistant turn, kept verbatim so the next
+    # request in the same loop replays them unchanged (thinking blocks with their
+    # signatures, and the tool-search blocks that make a discovered tool stay loaded).
+    # Opaque to everything outside the adapter; None for persisted history, which
+    # replays as text only.
+    raw_blocks: list[dict[str, Any]] | None = None
 
 
 @dataclass
@@ -42,6 +48,10 @@ class ToolDefinition:
     name: str
     description: str
     input_schema: dict[str, Any]
+    # A deferred tool is in the catalog but not in the model's context until the model
+    # searches for it (the 2026 answer to "too many tools": the hot set stays small and
+    # sharp, the long tail stays one search away). False = loaded up front.
+    defer_loading: bool = False
 
 
 @dataclass
@@ -62,6 +72,10 @@ class CompleteRequest:
     # busting the cached prefix. None = no tail.
     system_tail: str | None = None
     on_text_delta: Callable[[str], Awaitable[None]] | None = None
+    # Give the model the provider's tool-search tool so it can discover deferred tools by
+    # describing what it needs. The adapter adds the provider-native search tool; the
+    # loop turns this on whenever any tool in `tools` is deferred.
+    tool_search: bool = False
 
 
 @dataclass
@@ -71,3 +85,6 @@ class CompleteResult:
     stop_reason: StopReason
     input_tokens: int
     output_tokens: int
+    # The assistant turn's content blocks as the provider returned them (see
+    # ChatMessage.raw_blocks). Empty when the adapter has nothing to preserve.
+    raw_content: list[dict[str, Any]] = field(default_factory=list)

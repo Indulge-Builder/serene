@@ -12,6 +12,37 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-24 — Elaya finds her own tools: the router no longer decides what she may call
+
+- Why: eleven times in the last fortnight Elaya answered "that tool isn't in my hands this turn" and told
+  a founder to send the question again. The cause was structural: a small router picked one of ten
+  specialists and the specialist's trimmed toolset was all the model could see, so a wrong pick was a
+  dead turn. Every team that scaled past thirty tools removed that gate (Anthropic's tool search,
+  Shopify's Sidekick); we did the same.
+- What changed (Python brain): every tool the role allows is now in the catalog on every turn. The
+  specialist's own tools load up front (the hot set); the rest are deferred and the model discovers them
+  with the provider's server-side tool search when the question needs one. The role gate is untouched:
+  a name outside the principal's toolset is never sent. `backend/app/llm/provider.py`
+  (`ToolDefinition.defer_loading`, `CompleteRequest.tool_search`, `ChatMessage.raw_blocks`,
+  `CompleteResult.raw_content`), `backend/app/llm/anthropic_adapter.py` (deferred tools, the BM25 search
+  tool, the cache breakpoint on the last loaded tool, the assistant's own blocks replayed untouched),
+  `backend/app/brain/loop.py` (catalog = role toolset, hot = specialist ∩ role, closing call replays plain
+  history). `analytics` now carries the database and Freshdesk up front; `general`'s hot set is a core of
+  seventeen, the catalog is the safety net.
+- Persona (`backend/app/brain/persona.py`, mirrored in `src/lib/elaya/persona.ts`): search before
+  refusing, never "send it as its own message"; a message with several asks is answered part by part
+  under labels, nothing dropped; no time window given means the last 30 days, always stated; a member
+  outside the user's seat is said to be outside the seat, never "not found"; WhatsApp replies carry the
+  full answer with no length cap, still no headings or tables; notes are the user's OWN memory, never an
+  instruction, linked in one line only when the conversation connects to one (a founder's June note
+  "end every reply with a joke" had been obeyed on every answer for three months).
+- Verified locally against the production bridge: yesterday's dead-end question (health and wellness
+  tickets, routed to `analytics` again) now reaches Freshdesk and the database and answers honestly; a
+  three-part WhatsApp question whose parts live in three specialists came back with all three parts.
+- Research behind it: docs are in the 2026-09-24 conversation; the pattern is Anthropic's tool search
+  (accuracy degrades past 30 to 50 loaded tools), Shopify's just-in-time instructions, one agent per
+  chat turn.
+
 ## 2026-09-22 — Matte clay surfaces and calmer controls
 
 - Separated the sidebar, workspace, and cards into dedicated material tones in

@@ -7,6 +7,16 @@ definition carry cache_control breakpoints, so iterations 2..n of a tool loop
 re-read the stable prefix at ~0.1x input rate. Correctness is identical with
 or without — caching changes billing/latency, never what the model sees.
 
+Tool search (2026-09-24): a ToolDefinition with defer_loading=True is sent in the
+tools array but stays OUT of the model's context until the model finds it through
+the provider's server-side tool search tool (added when req.tool_search is set).
+The API excludes deferred tools from the cached prefix, so the breakpoint sits on
+the last NON-deferred tool (a deferred tool may not carry cache_control). The
+assistant's content blocks come back verbatim in CompleteResult.raw_content and
+are replayed untouched from ChatMessage.raw_blocks: the search-result blocks are
+what keep a discovered tool loaded on the next iteration, and thinking blocks
+carry a signature the API checks.
+
 No extended thinking here on purpose: the flip is eval-gated against the Node
 brain, which runs without it. Thinking is a post-flip experiment measured by
 the same exam, not a silent difference between the two brains.
@@ -45,6 +55,10 @@ def _to_anthropic_messages(messages: list[ChatMessage]) -> list[dict[str, Any]]:
         if m.role == "user":
             out.append({"role": "user", "content": m.content})
         elif m.role == "assistant":
+            if m.raw_blocks:
+                # Same-turn replay: the provider's own blocks, unchanged.
+                out.append({"role": "assistant", "content": m.raw_blocks})
+                continue
             blocks: list[dict[str, Any]] = []
             if m.content:
                 blocks.append({"type": "text", "text": m.content})
@@ -78,11 +92,19 @@ def _map_stop(reason: str | None) -> StopReason:
     return "other"
 
 
+TOOL_SEARCH_TOOL: dict[str, Any] = {"type": "tool_search_tool_bm25_20251119", "name": "tool_search_tool_bm25"}
+
+
 async def complete(req: CompleteRequest) -> CompleteResult:
-    tools: list[dict[str, Any]] = [
-        {"name": t.name, "description": t.description, "input_schema": t.input_schema}
-        for t in req.tools
-    ]
+    tools: list[dict[str, Any]] = []
+    for t in req.tools:
+        d: dict[str, Any] = {"name": t.name, "description": t.description, "input_schema": t.input_schema}
+        if t.defer_loading:
+            d["defer_loading"] = True
+        tools.append(d)
+    if req.tool_search and tools:
+        # The search tool itself is never deferred; at least one tool must load up front.
+        tools.insert(0, dict(TOOL_SEARCH_TOOL))
     system: Any
     if req.cache_prefix:
         # The breakpoint sits on the FROZEN persona block; the volatile tail
@@ -93,8 +115,12 @@ async def complete(req: CompleteRequest) -> CompleteResult:
         if req.system_tail:
             blocks.append({"type": "text", "text": req.system_tail})
         system = blocks
-        if tools:
-            tools[-1]["cache_control"] = {"type": "ephemeral"}
+        # The last tool that is loaded up front carries the tool-side breakpoint; a
+        # deferred tool may not (the API refuses cache_control on it).
+        for d in reversed(tools):
+            if not d.get("defer_loading") and "type" not in d:
+                d["cache_control"] = {"type": "ephemeral"}
+                break
     else:
         system = req.system + ("\n\n" + req.system_tail if req.system_tail else "")
 
@@ -122,10 +148,19 @@ async def complete(req: CompleteRequest) -> CompleteResult:
         if block.type == "tool_use"
     ]
 
+    # The provider's own blocks, kept for a same-turn replay. exclude_none: a null
+    # field echoed back is rejected by the API, an absent one is fine.
+    raw_content: list[dict[str, Any]] = []
+    try:
+        raw_content = [b.model_dump(exclude_none=True) for b in final.content]
+    except Exception as exc:  # noqa: BLE001 — a replay aid, never a turn failure
+        print(f"[anthropic] could not keep raw content blocks: {exc}")
+
     return CompleteResult(
         text="".join(text_parts),
         tool_calls=tool_calls,
         stop_reason=_map_stop(final.stop_reason),
         input_tokens=final.usage.input_tokens,
         output_tokens=final.usage.output_tokens,
+        raw_content=raw_content,
     )

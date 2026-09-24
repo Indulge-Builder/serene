@@ -1,7 +1,15 @@
 """The turn loop — the port of brain.ts's tool-calling core.
 
-One turn: specialist prompt + trimmed toolset → model → (tool calls → execute
-→ PII-mask → feed back)* → final prose. Laws carried over:
+One turn: specialist prompt + the FULL role toolset → model → (tool calls →
+execute → PII-mask → feed back)* → final prose.
+
+Tool search (2026-09-24). The specialist no longer trims what the model may call;
+it decides what loads UP FRONT. Every tool the principal's role allows is in the
+catalog; the specialist's own tools load immediately (the hot set) and the rest are
+deferred, one provider-side search away. A router mistake now costs one search
+instead of a dead turn ("that tool isn't in my hands this turn", 11 times in the
+transcript). The role gate is untouched: a name outside principal.toolset is never
+sent to the model at all. Laws carried over:
 
   • ITERATION CEILING (6): a runaway tool spiral ends with a calm handoff,
     never an infinite loop.
@@ -93,21 +101,23 @@ async def run_turn(
         elaya_store.get_notes_for_elaya(principal.user_id),
     )
 
-    # The specialist's toolset ∩ the principal's role gate — both cuts apply.
-    tool_names = [n for n in specialist.toolset if n in principal.toolset]
+    # The catalog = every tool the ROLE allows (the hard gate). The specialist's own
+    # tools are the hot set, loaded up front; every other allowed tool is deferred
+    # and reachable through tool search. Sorted so the prefix is byte-stable.
+    tool_names = sorted(principal.toolset)
+    hot = {n for n in specialist.toolset if n in principal.toolset}
     write_names = [n for n in tool_names if n in WRITE_TOOL_NAMES]
-    # The vendor pair runs in Node (the one ranker); its schema comes from the
-    # bridge with the writes, and it executes there too (run_read below).
+    # The bridged reads (vendors, members, Freshdesk, groups, the database, ...) run in
+    # Node through the bridge; their schema comes from the bridge with the writes.
     bridged_read_names = [n for n in tool_names if n in BRIDGED_READ_TOOL_NAMES]
     read_names = [
         n for n in tool_names if n not in WRITE_TOOL_NAMES and n not in BRIDGED_READ_TOOL_NAMES
     ]
-    tools = [ToolDefinition(**d) for d in definitions_for(read_names)]
+    tools = [ToolDefinition(**d, defer_loading=d["name"] not in hot) for d in definitions_for(read_names)]
 
-    # Bridged-tool definitions (writes + the vendor reads) come from the Node
-    # bridge — the single source of the model-facing schema (zero drift by
-    # construction). A bridge outage degrades this turn to local reads only
-    # rather than failing it.
+    # Bridged-tool definitions come from the Node bridge — the single source of the
+    # model-facing schema (zero drift by construction). A bridge outage degrades this
+    # turn to local reads only rather than failing it.
     if write_names or bridged_read_names:
         try:
             bridge_defs = await write_bridge.fetch_write_definitions(
@@ -120,12 +130,15 @@ async def run_turn(
                     description=d["description"],
                     # Node's LlmToolDefinition field is camelCase `inputSchema`.
                     input_schema=d["inputSchema"],
+                    defer_loading=d["name"] not in hot,
                 )
                 for d in bridge_defs
                 if d.get("name") in wanted
             ]
         except Exception as e:
             print(f"[loop] bridge definitions unavailable (local reads only this turn): {e}")
+    tools.sort(key=lambda t: (t.defer_loading, t.name))
+    use_search = any(t.defer_loading for t in tools)
 
     async def run_read(call: Any) -> str:
         """One READ → its serialized, masked tool-result string. The vendor
@@ -176,6 +189,7 @@ async def run_turn(
                 messages=messages,
                 tools=tools,
                 cache_prefix=True,
+                tool_search=use_search,
                 on_text_delta=on_delta,
             )
         )
@@ -186,8 +200,13 @@ async def run_turn(
         if result.stop_reason != "tool_use" or not result.tool_calls:
             break
 
+        # The provider's own blocks ride along (raw_blocks) so the next iteration
+        # replays the search results and thinking untouched.
         messages.append(
-            ChatMessage(role="assistant", content=result.text, tool_calls=result.tool_calls)
+            ChatMessage(
+                role="assistant", content=result.text, tool_calls=result.tool_calls,
+                raw_blocks=result.raw_content or None,
+            )
         )
         for call in result.tool_calls:
             tools_used.append(call.name)
@@ -236,7 +255,13 @@ async def run_turn(
     # from what was gathered; if even that is empty, say so rather than send a blank bubble.
     if not result_text.strip():
         try:
-            messages.append(ChatMessage(
+            # The closing call carries no tools, so the history goes back in the plain
+            # text + tool_use shape (no search blocks to replay without the search tool).
+            closing_messages = [
+                ChatMessage(role=m.role, content=m.content, tool_calls=m.tool_calls, tool_call_id=m.tool_call_id)
+                for m in messages
+            ]
+            closing_messages.append(ChatMessage(
                 role="user",
                 content="You have finished gathering. Answer now, in short lines, from what the tool results above hold. Do not call any more tools.",
             ))
@@ -246,7 +271,7 @@ async def run_turn(
                     max_tokens=llm.max_tokens,
                     system=system,
                     system_tail=time_tail,
-                    messages=messages,
+                    messages=closing_messages,
                     tools=[],
                     cache_prefix=True,
                     on_text_delta=on_delta,

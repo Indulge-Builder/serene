@@ -117,7 +117,12 @@ SPECIALISTS: dict[str, Specialist] = {
             "get_books_overview",
             "get_activity_feed",
             "get_subscriptions",
-                 "get_member_360", "search_sia_messages", "get_sia_group_messages" ],
+            # The analyst's door and Freshdesk load here too (2026-09-24): "how many tickets
+            # by category", "response time per queendom" routed here and died with no tool.
+            "describe_database", "query_database",
+            "get_freshdesk_overview", "search_freshdesk_tickets",
+            "get_member_360", "search_sia_messages", "get_sia_group_messages",
+        ],
         job="heavy",  # the Opus tier — deep reasoning turns (DB-switchable)
     ),
     "vendors": Specialist(
@@ -254,51 +259,27 @@ SPECIALISTS: dict[str, Specialist] = {
         description="greetings, small talk, questions about Elaya/Serene itself, anything that fits nowhere else",
         focus=("Focus for this conversation: general — greetings, questions about Serene "
                "itself, and the user's day."),
-        # The safety-net specialist: a mis-routed action message must still find
-        # its tool, so general carries the full write surface + the resolvers.
+        # The hot set is the core a mis-routed message most often needs; since 2026-09-24
+        # every other tool the role allows is in the searchable catalog, so the safety net
+        # is the catalog, not a 40-tool prompt.
         toolset=[
             "get_my_tasks",
             "find_teammate",
-            "get_helpdesk_content",
             "search_leads",
             "get_member_360",
-            "get_member_overview",
-            "get_member_profile",
-            "get_member_finance",
-            "get_member_recent_messages",
-            "search_member_history",
+            "search_sia_messages",
+            "get_sia_group_messages",
+            "get_freshdesk_overview",
+            "get_live_pulse",
+            "describe_database",
+            "query_database",
             "add_lead_note",
             "log_call",
-            "create_lead_task",
-            "update_lead_status",
-            "reassign_lead",
-            "log_deal",
             "create_personal_task",
             "create_group_task",
             "create_subtask",
             "update_task_status",
-            "update_task",
-            "delete_task",
-            "find_vendors",
-            "get_vendor_details",
-            "list_tickets",
-            "get_ticket",
-            "add_ticket_note",
-            "move_ticket_status",
-            "get_freshdesk_overview",
-            "search_freshdesk_tickets",
-            "get_freshdesk_ticket",
-            "list_sia_groups",
-            "get_sia_group_messages",
-            "search_sia_messages",
-            # A follow-up ("break that down by queendom") is routed on its own words and can land
-            # here: the analyst's tools come along (the role gate cuts them for everyone else).
-            "get_live_pulse",
-            "describe_database",
-            "query_database",
-            "get_lead_whatsapp_chat",
-            "get_subscriptions",
-            "get_activity_feed",
+            "update_lead_status",
         ],
     ),
 }
