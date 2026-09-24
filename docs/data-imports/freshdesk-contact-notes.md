@@ -28,9 +28,11 @@ plus 1,058 notes. Zero facts carry a card, Aadhaar or PAN number (checked after 
   can hold a spouse's documents under the member. Nothing in Serene can hold them today.
 - **304 empty notes** are photos that the export did not carry (most "Passport" notes). If those
   matter, they need Freshdesk's API (attachments on contact notes) or a hand download.
-- **257 long notes read as note-only on the first pass** (bios and long preference lists; the
-  reader's answer was cut at 900 tokens). The cap was raised and those notes re-read the same day;
-  see the changelog entry for the numbers.
+- **Re-read done.** 257 long notes came back note-only on the first pass (the reader's answer was
+  cut at 900 tokens). The cap was raised to 2,400 and 285 note-only notes were re-read the same
+  day: 145 gave 532 more facts and 295 relations; 140 still gave nothing (names, one-liners) and
+  stay as notes. Final: 5,367 rows from the notes (1,058 of them the notes themselves) on 317
+  members, zero with a card, Aadhaar or PAN number.
 - **Card details.** 76 card items are in the vault, some with the CVV, as the founder decided.
   Written member consent for card-on-file is not on record anywhere in Serene.
 - **The Freshdesk API** could pull contact notes live (the mirror does not fetch them today). Only
