@@ -64,6 +64,7 @@
   --neu-light:  255 255 255;
   --neu-edge:   rgba(255, 255, 255, 0.55); /* 1px hairline on raised */
   --neu-edge-strong: rgba(255, 255, 255, 0.7);
+  --neu-shadow-shell: inset 0 1px 0 rgb(var(--neu-light) / 0.45);
 
   /* Raised (out) — FINAL: Whisper (2/10) */
   --neu-shadow-raised-sm:
@@ -342,6 +343,7 @@
   --neu-dark:   0 0 0;
   --neu-light:  255 240 214;                /* warm candle highlight */
   --neu-edge:   rgba(255, 240, 214, 0.06);
+  --neu-shadow-shell: inset 0 1px 0 rgb(var(--neu-light) / 0.04);
   --neu-edge-strong: rgba(255, 240, 214, 0.09);
 
   --neu-shadow-raised-sm:

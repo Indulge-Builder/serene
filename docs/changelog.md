@@ -12,6 +12,19 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-24 — Production builds repaired: the sidebar shell token that never reached HEAD
+
+- Why: every Vercel production build since Monday evening failed in one second at the design-token
+  check: `Sidebar.tsx` referenced `--neu-shadow-shell`, which no committed token sheet defined. The
+  reference arrived in the Teach Elaya commit on 22 Sep, which staged the whole sidebar file while a
+  design session's redesign was in progress in the same working tree (the two-sessions-one-folder
+  trap); the token itself lived only in that session's uncommitted sheet, so the check passed locally
+  and failed on Vercel. Nothing pushed after 21 Sep 19:37 IST had gone live.
+- What changed: the token's two definitions (light and dark), exactly as the design sheet defines
+  them, are committed to `src/styles/serene-neumorphic-tokens.css` after the `--neu-edge` line in each
+  block. Index-only, so the design session's working copy is untouched. The design decision itself is
+  theirs to record in the Decision Log with the rest of the sidebar work.
+
 ## 2026-09-24 — Elaya reads the room better: members by city, the whole waiting list, no WhatsApp cut, a verified layer for SQL
 
 - Why: the transcript audit (289 real turns) found the misses that were not routing. A concierge manager
