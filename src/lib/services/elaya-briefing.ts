@@ -31,6 +31,7 @@ import {
   BRIEFING_CHARS_BUDGET, BRIEFING_EVENING_HOUR, BRIEFING_INTERNAL_GROUP_LINES, BRIEFING_MAX_TOKENS, BRIEFING_MEMBER_GROUP_LINES,
   BRIEFING_MESSAGE_ROWS, BRIEFING_MORNING_HOUR, BRIEFING_NOTABLE_TICKETS, BRIEFING_OVERNIGHT_START_HOUR, BRIEFING_PING_CHARS,
   BRIEFING_PROMPT_VERSION, BRIEFING_RUN_KIND, BRIEFING_TICKET_ROWS, BRIEFING_TIMEOUT_MS, BRIEFING_TONE_ROWS, BRIEFING_WAITING_SHOWN,
+  staffShortName,
 } from '@/lib/constants/elaya-briefing';
 
 const LOG = '[elaya-briefing]';
@@ -72,6 +73,8 @@ export type BriefingData = {
   money: Record<string, unknown> | null;
   /** One block per queendom: the founder's view of who is carrying what and where it hurts. */
   by_queendom: Q[];
+  /** The internal team groups active in the window, busiest first (their lines are in the transcript). */
+  internal_groups: Q[];
   /** What each number's time frame is, in words, so the writer never presents an all-time total as the window's. */
   meaning: Record<string, string>;
 };
@@ -79,18 +82,20 @@ export type BriefingData = {
 function transcriptFor(groups: Q[], lines: Q[], waits: Map<string, Q>): string {
   const byGroup = new Map<string, Q[]>();
   for (const l of lines) { const k = String(l.group_id); (byGroup.get(k) ?? byGroup.set(k, []).get(k)!).push(l); }
-  const ordered = [...groups].sort((a, b) => n(b.member_msgs) - n(a.member_msgs));
+  // Member groups by the member's own volume, then the internal groups by theirs: the busiest of
+  // each kind is read first and neither kind is squeezed out by the other.
+  const ordered = [...groups].sort((a, b) => (Number(b.kind === 'member') - Number(a.kind === 'member')) || (n(b.member_msgs) + n(b.staff_msgs)) - (n(a.member_msgs) + n(a.staff_msgs)));
   const out: string[] = [];
   let used = 0;
   for (const g of ordered) {
     const ls = byGroup.get(String(g.group_id)) ?? [];
     if (!ls.length) continue;
-    const cap = g.kind === 'member' ? BRIEFING_MEMBER_GROUP_LINES : BRIEFING_INTERNAL_GROUP_LINES;
+    const cap = g.kind === 'internal' ? BRIEFING_INTERNAL_GROUP_LINES : BRIEFING_MEMBER_GROUP_LINES;
     const w = waits.get(String(g.group_id));
-    const internal = g.kind !== 'member';
-    const head = `## ${g.group_name} [${internal ? 'internal team group, context only: no waits or gaps are judged here' : 'member'}]${g.member ? ` member: ${g.member}` : ''}${g.queendom ? ` (${g.queendom})` : ''} · member ${n(g.member_msgs)} / staff ${n(g.staff_msgs)} msgs${!internal && w && n(w.max_wait_min) >= 30 ? ` · longest wait for a staff reply ${Math.round(n(w.max_wait_min))} min` : ''}`;
+    const internal = g.kind === 'internal';
+    const head = `## ${g.group_name} [${internal ? 'internal team group' : g.kind === 'member' ? 'member' : 'member group not yet mapped to a member'}]${g.member ? ` member: ${g.member}` : ''}${g.queendom ? ` (${g.queendom})` : ''} · member ${n(g.member_msgs)} / staff ${n(g.staff_msgs)} msgs${!internal && w && n(w.max_wait_min) >= 30 ? ` · longest wait for a staff reply ${Math.round(n(w.max_wait_min))} min` : ''}`;
     const body = (ls.length > cap ? [...ls.slice(0, Math.ceil(cap / 2)), { at: '…', text: `(${ls.length - cap} messages skipped)` }, ...ls.slice(-Math.floor(cap / 2))] : ls)
-      .map((l) => `${l.at} ${l.is_staff ? 'S' : 'M'} ${l.sender_name ?? '?'}: ${l.text ?? (l.type ? `[${l.type}]` : '')}`)
+      .map((l) => `${l.at} ${l.is_staff ? 'S' : 'M'} ${l.is_staff ? staffShortName(l.sender_name as string, l.sender_id as string) : (l.sender_name ?? '?')}: ${l.text ?? (l.type ? `[${l.type}]` : '')}`)
       .join('\n');
     const block = head + '\n' + body + '\n';
     if (used + block.length > BRIEFING_CHARS_BUDGET) { out.push(`(${ordered.length - out.length} more groups not shown for space)`); break; }
@@ -110,13 +115,13 @@ export async function gatherBriefingData(slot: BriefingSlot, now = new Date()): 
     q(`${WIN} select q.name as queendom, t.requester_name as requester, left(t.subject, 90) as subject, t.priority, t.status_label as status from w cross join freshdesk_tickets t join queendoms q on q.freshdesk_group_id = t.group_id where t.created_at >= w.f and t.created_at < w.t order by t.created_at desc limit ${BRIEFING_TICKET_ROWS}`, BRIEFING_TICKET_ROWS),
     q(`${WIN}, msgs as (select m.group_id, m.sent_at, m.is_staff from whatsapp_messages m, w where m.sent_at >= w.f and m.sent_at < w.t and not m.deleted and m.type not in ('system','reaction','protocol')) select g.group_id, g.name as group_name, g.kind, mem.full_name as member, q.name as queendom, count(*) filter (where not msgs.is_staff) as member_msgs, count(*) filter (where msgs.is_staff) as staff_msgs from msgs join whatsapp_groups g on g.group_id = msgs.group_id left join members mem on mem.member_id = g.member_id left join queendoms q on q.queendom_id = mem.queendom_id group by 1,2,3,4,5 order by 6 desc limit 400`, 400),
     q(`${WIN}, msgs as (select m.group_id, m.sent_at, m.is_staff from whatsapp_messages m join whatsapp_groups g on g.group_id = m.group_id, w where g.kind = 'member' and m.sent_at >= w.f and m.sent_at < w.t and not m.deleted and m.type = 'text'), seq as (select group_id, sent_at, is_staff, lead(sent_at) over (partition by group_id order by sent_at) as next_at, lead(is_staff) over (partition by group_id order by sent_at) as next_is_staff from msgs) select group_id, round(max(extract(epoch from (next_at - sent_at))/60) filter (where next_is_staff)) as max_wait_min from seq where not is_staff group by 1`, 400),
-    q(`${WIN} select m.group_id, to_char(m.sent_at at time zone 'Asia/Kolkata', 'DD HH24:MI') as at, m.is_staff, m.sender_name, m.type, left(m.text, 220) as text from whatsapp_messages m, w where m.sent_at >= w.f and m.sent_at < w.t and not m.deleted and m.type not in ('system','reaction','protocol') order by m.group_id, m.sent_at limit ${BRIEFING_MESSAGE_ROWS}`, BRIEFING_MESSAGE_ROWS),
+    q(`${WIN} select m.group_id, to_char(m.sent_at at time zone 'Asia/Kolkata', 'DD HH24:MI') as at, m.is_staff, m.sender_id, m.sender_name, m.type, left(m.text, 220) as text from whatsapp_messages m, w where m.sent_at >= w.f and m.sent_at < w.t and not m.deleted and m.type not in ('system','reaction','protocol') order by m.group_id, m.sent_at limit ${BRIEFING_MESSAGE_ROWS}`, BRIEFING_MESSAGE_ROWS),
     q(`${WIN} select e.tone, count(*) as events from member_timeline e, w where e.occurred_at >= w.f and e.occurred_at < w.t and e.source = 'whatsapp_group' group by 1`, 10),
     q(`${WIN} select mem.full_name as member, q.name as queendom, e.tone, left(e.summary, 200) as summary, to_char(e.occurred_at at time zone 'Asia/Kolkata', 'DD HH24:MI') as at from member_timeline e join members mem on mem.member_id = e.member_id left join queendoms q on q.queendom_id = mem.queendom_id, w where e.occurred_at >= w.f and e.occurred_at < w.t and e.source = 'whatsapp_group' order by (e.tone <> 'neutral') desc, e.occurred_at desc limit ${BRIEFING_TONE_ROWS}`, BRIEFING_TONE_ROWS),
     q(`${WIN} select mem.full_name as member, q.name as queendom, s.kind, s.tone, left(s.summary, 160) as summary, s.status from ticket_suggestions s join members mem on mem.member_id = s.member_id left join queendoms q on q.queendom_id = mem.queendom_id, w where s.created_at >= w.f and s.created_at < w.t and s.tone in ('happy','frustrated','angry') order by s.created_at desc limit 40`, 40),
     q(`select mem.full_name as member, c.kind, left(c.title, 120) as title, to_char(c.due_at at time zone 'Asia/Kolkata', 'DD Mon') as due from member_coming_up c join members mem on mem.member_id = c.member_id where c.status in ('pending','surfaced') and c.kind in ('occasion','trip') and c.due_at >= ${D} and c.due_at < ${D} + interval '2 days' order by c.due_at limit 60`, 60),
     q(`select full_name as member, membership_end, membership_amount_inr from members where membership_status = 'Active' and membership_end between current_date and current_date + 7 order by 2`, 40),
-    q(`${WIN} select m.sender_name as staff, bool_and(m.from_me) as shared_number, bool_and(m.sender_role = 'unknown') as unlinked, count(*) as msgs, count(distinct m.group_id) as member_groups, string_agg(distinct q.name, ', ') as queendoms from whatsapp_messages m join whatsapp_groups g on g.group_id = m.group_id left join members mem on mem.member_id = g.member_id left join queendoms q on q.queendom_id = mem.queendom_id, w where g.kind = 'member' and m.is_staff and m.sent_at >= w.f and m.sent_at < w.t and not m.deleted group by m.sender_name order by 4 desc limit 12`, 12),
+    q(`${WIN} select m.sender_id, m.sender_name, count(*) as msgs, count(distinct m.group_id) as member_groups, string_agg(distinct q.name, ', ') as queendoms from whatsapp_messages m join whatsapp_groups g on g.group_id = m.group_id left join members mem on mem.member_id = g.member_id left join queendoms q on q.queendom_id = mem.queendom_id, w where g.kind = 'member' and m.is_staff and m.sent_at >= w.f and m.sent_at < w.t and not m.deleted group by 1, 2 order by 3 desc limit 30`, 30),
     q(`${WIN} select a.name as agent, count(*) as resolved from freshdesk_tickets t join freshdesk_agents a on a.agent_id = t.agent_id, w where t.resolved_at >= w.f and t.resolved_at < w.t group by 1 order by 2 desc limit 8`, 8),
     q(`${WIN} select coalesce(q.name, 'unassigned') as queendom, count(*) filter (where s.created_at >= w.f and s.created_at < w.t) as created, count(*) filter (where s.closed_at >= w.f and s.closed_at < w.t) as closed from sia_tickets s left join queendoms q on q.queendom_id = s.queendom_id, w where s.created_at >= w.f or s.closed_at >= w.f group by 1`, 10),
     getWaitingGroups(PULSE_WAITING_MIN_MINUTES, 24 * 30, BRIEFING_WAITING_SHOWN),
@@ -143,9 +148,17 @@ export async function gatherBriefingData(slot: BriefingSlot, now = new Date()): 
     console.warn(`${LOG} Zoho unavailable for the brief:`, e instanceof Error ? e.message : e);
   }
 
-  // A staff name is a WhatsApp display name. The company's own number and a phone not linked to a
-  // Serene account are said so, never counted as one person's load.
-  const staff: Q[] = staffMsgs.map((r) => { const { shared_number, unlinked, ...rest } = r; return { ...rest, staff: shared_number ? `${r.staff} (the shared Indulge number, not one person)` : unlinked ? `${r.staff} (WhatsApp name; not linked to a Serene account)` : r.staff }; });
+  // Staff are named as the team says it (staffShortName); a person with two WhatsApp ids is one row.
+  const staffBy = new Map<string, { staff: string; msgs: number; member_groups: number; queendoms: Set<string> }>();
+  for (const r of staffMsgs) {
+    const name = staffShortName(r.sender_name as string, r.sender_id as string);
+    const cur = staffBy.get(name) ?? { staff: name, msgs: 0, member_groups: 0, queendoms: new Set<string>() };
+    cur.msgs += n(r.msgs); cur.member_groups += n(r.member_groups);
+    for (const qn of String(r.queendoms ?? '').split(', ').filter(Boolean)) cur.queendoms.add(qn);
+    staffBy.set(name, cur);
+  }
+  const staff: Q[] = [...staffBy.values()].sort((a, b) => b.msgs - a.msgs).slice(0, 12).map((x) => ({ staff: x.staff, msgs: x.msgs, member_groups: x.member_groups, queendoms: [...x.queendoms].join(', ') }));
+  const internalGroups: Q[] = groups.filter((g) => g.kind === 'internal').map((g) => ({ group: g.group_name, messages: n(g.member_msgs) + n(g.staff_msgs) })).sort((a, b) => n(b.messages) - n(a.messages));
   const waitMap = new Map<string, Q>(waits.map((x) => [String(x.group_id), x]));
   const qOf = new Map<string, string>(memberQueendoms.map((x) => [String(x.member_id), String(x.queendom)]));
   const names = new Set<string>([...fdByQ.map((r) => String(r.queendom)), ...groups.map((g) => g.queendom).filter(Boolean).map(String), ...qOf.values()]);
@@ -175,13 +188,14 @@ export async function gatherBriefingData(slot: BriefingSlot, now = new Date()): 
     resolved_in_window: 'resolved_in_window counts tickets closed in the window whenever they were created, so it can exceed created_in_window.',
     members_waiting_now: 'members_waiting_now = member groups where the member had the last word, as of this moment, up to 30 days back (a sign-off like ok or thanks is not waiting).',
     slowest_replies_in_window: 'the longest gap between a member message and the next staff reply, inside the window, member groups only.',
-    internal_groups: 'Internal team groups (Queen\'s Council, Revenue groups, Concierge team, Tech) are context only: people speak there only when something happens; a quiet spell or a slow reply there means nothing and must never be reported as a gap.',
+    internal_groups: 'Internal team groups (Queen\'s Council, the Revenue groups, Concierge team, Onboarding, Tech) are where the staff talk to each other: what was decided, planned, asked, flagged. People speak there only when something happens, so a quiet spell or a slow reply there is never a gap; report what was SAID there, under Internal team.',
     occasions: 'occasions and trips: due today or tomorrow.',
     renewals: 'renewals: memberships ending in the next 7 days.',
     money: 'money: received and invoiced in the window; receivables, overdue and cash are as of now.',
   };
   return {
     by_queendom,
+    internal_groups: internalGroups,
     meaning,
     window: { from: w.from.toISOString(), to: w.to.toISOString(), label: w.label },
     freshdesk: fdByQ.length ? { by_queendom: fdByQ, notable: fdNotable, created: fdCreated } : null,
@@ -225,11 +239,12 @@ Format: line 1 "{greeting} {name}." then one sentence naming the window. Then th
 **Requests** — the notable tickets of the window (escalated, high priority, reopened) by requester and queendom. Totals are already in By queendom; do not repeat them.
 **Members** — from the group chats: happy and praise (name + one line), frustrated or angry (name, group, what happened in one line). "None recorded" when empty.
 **Team** — one person per line: "- Name: N messages in N member groups, N tickets resolved". Then one line on where replies were slow, member groups only.
+**Internal team** — what the staff said to each other in the internal groups this window, consolidated: decisions taken, plans made, problems or mistakes flagged, money or vendor matters raised, who asked whom for what, as "-" lines naming the group and the people. This is how the founder learns what the company is doing without reading every group. "Quiet" when nothing was said.
 **Money** — when money data is present: received, invoices raised, receivables and overdue, the uncategorised bank feed count. Skip otherwise.
 **Today** — occasions, trips starting, renewals due, one per line with the date. Skip when empty.
 Last line: one short invitation to ask a follow-up.
 
-Rules: every fact comes from the record given; never invent, estimate, or guess a mood the messages do not show; when you name a problem, name the group and quote or paraphrase the message that shows it; numbers exact; every number that is not of the window carries its time frame in words ("right now", "all time", "next 7 days", "today and tomorrow"); internal team groups (Queen's Council, the Revenue groups, Concierge team, Tech, Hiring) are NEVER reported for a gap, a wait or a slow reply, they are quiet by nature; mention an internal group only when a message in it reports something that happened to a member or to money; a staff name marked "not linked to a Serene account" or "shared number" is reported with that note, never as one person's load; use the names as given; a sign-off like "ok", "thanks", an emoji is not waiting; plain words, short sentences, no emojis, no exclamation marks, no headings other than the bold labels, no tables.`;
+Rules: every fact comes from the record given; never invent, estimate, or guess a mood the messages do not show; when you name a problem, name the group and quote or paraphrase the message that shows it; numbers exact; every number that is not of the window carries its time frame in words ("right now", "all time", "next 7 days", "today and tomorrow"); internal team groups are NEVER reported for a gap, a wait or a slow reply (people speak there only when something happens); what is said there goes under Internal team; staff are named as given (first names are fine, that is how the team says it); use the members' names as given; a sign-off like "ok", "thanks", an emoji is not waiting; plain words, short sentences, no emojis, no exclamation marks, no headings other than the bold labels, no tables.`;
 
 async function words(d: BriefingData, slot: BriefingSlot, tokens: { in: number; out: number }): Promise<string | null> {
   try {

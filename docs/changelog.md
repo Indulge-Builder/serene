@@ -31,8 +31,17 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
   told to obey it, to write a **By queendom** section with the one thing each queen should fix today,
   one fact per line, one person per line in Team, and never to report a gap in an internal group.
   The greeting carries the founder's name even when the writer drops the placeholder.
-- Dry run on production: per-queendom blocks with "right now, all time" on the backlog, Gunjan flagged
-  as an unlinked WhatsApp name, no internal group in the gaps, 36 seconds.
+- Names and the internal groups, on the founder's second reading: staff are named as the team says it
+  (`staffShortName`: "Ajith at Indulge" is Ajith, "Lilian (Joker) @Indulge" is Lilian); a display name
+  that is only the company's ("Indulge Global", three different phones) resolves by sender id through
+  `STAFF_SENDER_NAMES` (Charlotte, Shera, Kaniisha from the connector's own phone pairing, to be
+  confirmed by the founder); a person with two WhatsApp ids is one Team row. The internal groups are
+  not dropped but reported: a new **Internal team** section consolidates what the staff said to each
+  other (decisions, plans, flags, money and vendor matters), never a gap; the watcher number joins the
+  remaining internal groups next, so Elaya learns how the company runs. Unmapped member groups read as
+  member groups, not internal ones.
+- Dry run on production: per-queendom blocks with "right now, all time" on the backlog, Team one person
+  per line by first name, Internal team from Jokers, Revenue, Queen's Council, Onboarding, 41 seconds.
 
 ---
 
