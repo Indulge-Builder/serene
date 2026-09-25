@@ -62,6 +62,7 @@ export const MEMBER_TABLES = [
   "member_people",
   "member_relations",
   "member_snapshot",
+  "members_list",
 ] as const;
 
 /** The member schema view of a client. Works for the session client and the admin client. */

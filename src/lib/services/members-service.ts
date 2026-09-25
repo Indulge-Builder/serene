@@ -11,11 +11,11 @@ import { memberDb } from "@/lib/supabase/schemas";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { mapRows } from "@/lib/utils/rows";
+import type { AssessmentRisk } from "@/lib/constants/member-assessment";
 import { computeHealthScore, CLIENT_FACETS, type MemberFacet, type MemberTier } from "@/lib/constants/member-facets";
 import { CLIENTS_LIST_PAGE_SIZE } from "@/lib/constants/sia-roles";
 import { getFreshdeskTicketsForMember } from "@/lib/services/freshdesk-service";
 import { getSiaGroupForMember } from "@/lib/services/sia-service";
-import { freshdeskDb } from "@/lib/services/freshdesk-sync";
 import type {
   MemberDetail,
   MemberFactView,
@@ -94,7 +94,7 @@ async function healthScoresFor(memberIds: string[]): Promise<Map<string, number>
 
 // ─── The list ────────────────────────────────────────────────────────────────
 
-const LIST_COLUMNS = "id, full_name, primary_phone, queendom_id, tier, membership_status, membership_end, freshdesk_contact_id, zoho_customer_id, app_member_id, wa_group_jid, updated_at";
+const LIST_VIEW_COLUMNS = "id, full_name, primary_phone, queendom_id, tier, membership_status, membership_end, freshdesk_contact_id, zoho_customer_id, app_member_id, wa_group_jid, updated_at, activity_score, last_contact_at, open_tickets, assessment_score, assessment_risk, assessment_verdict, assessed_at";
 
 function searchToken(q: string): string {
   return q.replace(/[,()"'\\%]/g, " ").trim();
@@ -106,7 +106,8 @@ export async function listMembers(filters: MemberListFilters): Promise<{ members
   const from = (page - 1) * CLIENTS_LIST_PAGE_SIZE;
   const to = from + CLIENTS_LIST_PAGE_SIZE - 1;
 
-  let q = memberDb(supabase).from("members").select(LIST_COLUMNS, { count: "exact" });
+  // The list reads the members_list VIEW (0241): members + the snapshot's pulse and judgement as columns, so it can sort on them. security_invoker: the members RLS applies.
+  let q = memberDb(supabase).from("members_list").select(LIST_VIEW_COLUMNS, { count: "exact" });
   if (filters.queendom) q = q.eq("queendom_id", filters.queendom);
   if (filters.tier) q = q.eq("tier", filters.tier);
   if (filters.status) q = q.eq("membership_status", filters.status);
@@ -123,31 +124,22 @@ export async function listMembers(filters: MemberListFilters): Promise<{ members
     const token = searchToken(filters.search);
     if (token) q = q.or(`full_name.ilike.%${token}%,primary_phone.ilike.%${token.replace(/\s+/g, "")}%`);
   }
-  q = q.order("full_name", { ascending: true }).range(from, to);
+  if (filters.sort === "name") q = q.order("full_name", { ascending: true });
+  else if (filters.sort === "score") q = q.order("assessment_score", { ascending: false, nullsFirst: false }).order("is_active", { ascending: false, nullsFirst: false }).order("full_name", { ascending: true });
+  else q = q.order("is_active", { ascending: false, nullsFirst: false }).order("activity_score", { ascending: false, nullsFirst: false }).order("full_name", { ascending: true });
+  q = q.range(from, to);
 
   const [{ data, error, count }, queendoms] = await Promise.all([q, getQueendoms()]);
   if (error) {
     console.error("[members-service] list failed", error.message);
     return { members: [], totalCount: 0 };
   }
-  type Row = Pick<MemberRow, "id" | "full_name" | "primary_phone" | "queendom_id" | "tier" | "membership_status" | "membership_end" | "freshdesk_contact_id" | "zoho_customer_id" | "app_member_id" | "wa_group_jid" | "updated_at">;
+  type Row = Pick<MemberRow, "id" | "full_name" | "primary_phone" | "queendom_id" | "tier" | "membership_status" | "membership_end" | "freshdesk_contact_id" | "zoho_customer_id" | "app_member_id" | "wa_group_jid" | "updated_at">
+    & { activity_score: number | null; last_contact_at: string | null; open_tickets: number | null; assessment_score: number | null; assessment_risk: AssessmentRisk | null; assessment_verdict: string | null; assessed_at: string | null };
   const rows = mapRows<Row, Row>(data, (r) => r);
   const ids = rows.map((r) => r.id);
   const qd = new Map(queendoms.map((x) => [x.id, x]));
-
-  // Open ticket counts and last contact from the mirror, one query for the page (service role,
-  // keyed by ids the caller already passed RLS for).
-  const openCounts = new Map<string, number>();
-  const lastContact = new Map<string, string>();
-  if (ids.length) {
-    const fd = freshdeskDb();
-    const { data: t } = await fd.from("tickets").select("member_id, status, fd_updated_at").in("member_id", ids).eq("deleted", false).limit(5000);
-    mapRows<{ member_id: string; status: number; fd_updated_at: string }, void>(t, (r) => {
-      if (r.status !== 4 && r.status !== 5) openCounts.set(r.member_id, (openCounts.get(r.member_id) ?? 0) + 1);
-      const prev = lastContact.get(r.member_id);
-      if (!prev || r.fd_updated_at > prev) lastContact.set(r.member_id, r.fd_updated_at);
-    });
-  }
+  // Open tickets and last contact come from the pulse (0241): WhatsApp AND both ticket systems, hourly. (The old per-page Freshdesk-only read is gone.)
   const health = await healthScoresFor(ids);
 
   let members: MemberListItem[] = rows.map((r) => ({
@@ -159,8 +151,10 @@ export async function listMembers(filters: MemberListFilters): Promise<{ members
     membership_status: r.membership_status,
     membership_end: r.membership_end,
     health_score: Number.isNaN(health.get(r.id)) ? null : (health.get(r.id) ?? null),
-    open_tickets: openCounts.get(r.id) ?? 0,
-    last_contact_at: lastContact.get(r.id) ?? null,
+    open_tickets: Number(r.open_tickets ?? 0),
+    last_contact_at: r.last_contact_at,
+    activity_score: r.activity_score == null ? null : Number(r.activity_score),
+    assessment: r.assessment_score != null && r.assessment_risk && r.assessment_verdict && r.assessed_at ? { score: Number(r.assessment_score), risk: r.assessment_risk, verdict: r.assessment_verdict, assessed_at: r.assessed_at } : null,
     linked: {
       whatsapp: Boolean(r.wa_group_jid),
       freshdesk: Boolean(r.freshdesk_contact_id),

@@ -89,7 +89,7 @@ export const FACT_KEY_LABELS: Record<string, string> = {
 export const CLIENT_EVENT_KINDS = [
   "message_in", "message_out", "ticket_created", "ticket_status", "ticket_resolved", "note_added",
   "app_view", "app_save", "app_wish", "app_taste", "location", "payment", "invoice", "renewal",
-  "call", "fact_added", "health_signal",
+  "call", "fact_added", "health_signal", "assessment",
 ] as const;
 export type MemberEventKind = (typeof CLIENT_EVENT_KINDS)[number];
 

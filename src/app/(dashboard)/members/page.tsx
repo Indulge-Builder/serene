@@ -25,7 +25,9 @@ function parseFilters(sp: Awaited<SearchParams>): MemberListFilters {
   };
   const health = getString('health');
   const unlinked = getString('unlinked');
+  const sort = getString('sort');
   return {
+    sort: sort === 'name' || sort === 'score' ? sort : 'active',
     search: getString('search'),
     queendom: getString('queendom'),
     tier: (getString('tier') as MemberTier | null) ?? null,

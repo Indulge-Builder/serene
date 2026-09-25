@@ -14,6 +14,8 @@ import { MemberObservationCard } from '@/components/members/MemberObservationCar
 import { MemberActivityCard } from '@/components/members/MemberActivityCard';
 import { MemberAppCard, MemberMoneyCard, MemberRelationsCard, MemberAnticipationsCard, MemberNarrativeCard } from '@/components/members/MemberSidebarCards';
 import { MemberVaultCard } from '@/components/members/MemberVaultCard';
+import { MemberAssessmentCard } from '@/components/members/MemberAssessmentCard';
+import type { MemberAssessment, MemberPulse } from '@/lib/types/member';
 import { listVaultItems } from '@/lib/services/member-vault';
 import { CLIENTS_PATH } from '@/lib/constants/sia-roles';
 import { ESSENTIAL_FACETS, PREFERENCE_FACETS } from '@/lib/constants/member-facets';
@@ -53,6 +55,10 @@ export default async function MemberPage({ params, searchParams }: Props) {
           <MemberHealthCard clientId={detail.member.id} health={detail.health} />
           <MemberWhatsAppCard clientId={detail.member.id} group={detail.group} canLink={privileged} />
         </div>
+      </div>
+
+      <div style={{ marginBottom: 'var(--space-6)' }}>
+        <MemberAssessmentCard memberId={detail.member.id} assessment={((detail.snapshot?.data ?? {}) as { assessment?: MemberAssessment }).assessment ?? null} pulse={((detail.snapshot?.data ?? {}) as { pulse?: MemberPulse }).pulse ?? null} />
       </div>
 
       <div style={{ marginBottom: 'var(--space-6)' }}>

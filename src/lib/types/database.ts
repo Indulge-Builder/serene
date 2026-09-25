@@ -1877,6 +1877,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "member_anticipations_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members_list"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "member_anticipations_resolved_by_fkey"
             columns: ["resolved_by"]
             isOneToOne: false
@@ -1943,6 +1950,13 @@ export type Database = {
             referencedRelation: "members"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "member_chunks_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members_list"
+            referencedColumns: ["id"]
+          },
         ]
       }
       member_documents: {
@@ -1991,6 +2005,13 @@ export type Database = {
             columns: ["member_id"]
             isOneToOne: false
             referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_documents_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members_list"
             referencedColumns: ["id"]
           },
         ]
@@ -3911,6 +3932,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "member_facts_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members_list"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "member_facts_superseded_by_fkey"
             columns: ["superseded_by"]
             isOneToOne: false
@@ -3972,6 +4000,13 @@ export type Database = {
             columns: ["member_id"]
             isOneToOne: false
             referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_health_events_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members_list"
             referencedColumns: ["id"]
           },
           {
@@ -4062,6 +4097,13 @@ export type Database = {
             referencedRelation: "members"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "member_people_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members_list"
+            referencedColumns: ["id"]
+          },
         ]
       }
       member_relations: {
@@ -4115,6 +4157,13 @@ export type Database = {
             referencedRelation: "members"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "member_relations_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members_list"
+            referencedColumns: ["id"]
+          },
         ]
       }
       member_snapshot: {
@@ -4145,6 +4194,13 @@ export type Database = {
             columns: ["member_id"]
             isOneToOne: true
             referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_snapshot_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: true
+            referencedRelation: "members_list"
             referencedColumns: ["id"]
           },
         ]
@@ -4211,6 +4267,13 @@ export type Database = {
             columns: ["member_id"]
             isOneToOne: false
             referencedRelation: "members"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "member_vault_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "members_list"
             referencedColumns: ["id"]
           },
         ]
@@ -4330,6 +4393,31 @@ export type Database = {
       }
     }
     Views: {
+      members_list: {
+        Row: {
+          activity_score: number | null
+          app_member_id: string | null
+          assessed_at: string | null
+          assessment_risk: string | null
+          assessment_score: number | null
+          assessment_verdict: string | null
+          freshdesk_contact_id: string | null
+          full_name: string | null
+          id: string | null
+          is_active: boolean | null
+          last_contact_at: string | null
+          membership_end: string | null
+          membership_status: string | null
+          open_tickets: number | null
+          primary_phone: string | null
+          queendom_id: string | null
+          tier: string | null
+          updated_at: string | null
+          wa_group_jid: string | null
+          zoho_customer_id: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           full_name: string | null
@@ -4347,7 +4435,7 @@ export type Database = {
       }
     }
     Functions: {
-      [_ in never]: never
+      compute_member_pulse: { Args: never; Returns: number }
     }
     Enums: {
       [_ in never]: never

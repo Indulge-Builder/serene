@@ -12,6 +12,61 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-26 — Members: the list orders by who is active, and every member gets Serene's judgement (0241)
+
+The founder's ask: order the Members list by the members we are actually serving, most active on
+top, and then judge each member the way a very good head of member relations at a luxury
+concierge would, fairly, from the group chat, the Freshdesk history, the facts and the health
+signals, with a score and the reasons behind it.
+
+- **The pulse (`member.compute_member_pulse()`, one SQL statement, 614 members in 7.5 s):** for
+  every member, the last message from the member side (a staff contact never counts as the
+  member), messages both ways in 30 days, requests in 90 days across Freshdesk AND Serene's
+  tickets, open ones, escalations, the last contact (message or ticket, whichever is later) and
+  `activity_score` 0..100 (recency 50, messages 30, requests 20). Written into
+  `member_snapshot.data->pulse` (0194's empty "fast snapshot" table finally has a job), merged
+  so the profiler's `narrative` and the judgement are never clobbered. Hourly on Trigger.dev
+  (`member-pulse`). 464 of 614 members show some activity.
+- **The list (`member.members_list` view, security_invoker):** /members reads the view, so it can
+  sort on the pulse. Default order is Active members first, then the pulse, then the name; a
+  Sort dropdown offers "Most active", "Serene's score" and "Name". "Last contact" and "Open"
+  now come from the pulse (WhatsApp and both ticket systems) instead of the old per-page
+  Freshdesk-only read, which called a member who talks daily in their group but never raises a
+  ticket "silent". A new "Serene" column shows the judgement's score (the verdict in its
+  tooltip) or the pulse while there is no judgement yet.
+- **The judgement (`assessMember`, `lib/services/member-assessment.ts`):** one reasoning-tier read
+  per member over the masked 180-day record: profile facts, every request with how fast it was
+  answered and resolved, whether it escalated or reopened, the profiler's conversation summaries
+  with their tone, the health signals, what is coming up, the pulse and the membership. It
+  answers SCORE / ENGAGEMENT / SATISFACTION / VALUE (0..100), RISK (settled / watch / at risk), a
+  one-line VERDICT, strengths, concerns and the next actions, each with its evidence, and a
+  confidence. The prompt is explicit: judge from the record only, quiet is not unhappy, a
+  complaint resolved well is a strength of the service, tier matters for value only. Plain-text
+  reply by field, never JSON. Stored under `member_snapshot.data->assessment` and as an
+  `assessment` event on the timeline (the history of what Serene thought).
+- **Names never reach the model.** The profiler's vault (the same code names) masks the record
+  when the member has a linked group, a local masker otherwise, and every ACTIVE STAFF name and
+  first name becomes STAFF as well, because Freshdesk subjects and the profiler's summaries name
+  colleagues who are not in that member's group. The first live run named a genie in a concern;
+  that is what added the staff pass. A leak check refuses the reading, in and out.
+- **When it runs:** every Sunday 04:00 IST for Active members not judged in the last 7 days
+  (ON unless `member_assessment_enabled` is false), or from "Assess now" on the member page
+  (`member-assess-one`). About ₹2 to ₹3 a member (6,000 to 9,000 tokens in, 600 out), so a
+  full weekly pass over 350 Active members is under ₹1,000.
+- **The card:** "Serene's judgement" sits under the identity row on the member page: the score
+  pill, the risk chip, the verdict, the three readings, Going well / Concerns / Do next, when it
+  was judged on how much record, and the pulse line underneath.
+- **Verified live:** two real members judged (74 and 62, both "watch"); the verdicts and
+  concerns cited real events (specific requests, resolution times, an open trip) with no names.
+  Typecheck and lint clean.
+
+Files: `supabase/migrations/20260926000241_member_pulse_and_list.sql`, `src/lib/services/member-assessment.ts`,
+`src/lib/constants/member-assessment.ts`, `src/trigger/member-assessment.ts`, `src/components/members/MemberAssessmentCard.tsx`,
+`src/components/members/MembersTable.tsx`, `src/components/members/MembersFilters.tsx`, `src/lib/services/members-service.ts`,
+`src/lib/actions/members.ts`, `src/lib/validations/member-schema.ts`, `src/lib/types/member.ts`, `src/lib/supabase/schemas.ts`,
+`src/lib/constants/member-facets.ts`, `src/lib/services/llm-providers-service.ts`, `src/app/(dashboard)/members/page.tsx`,
+`src/app/(dashboard)/members/[id]/page.tsx`, `src/lib/types/database.ts`.
+
 ## 2026-09-26 — New ticket: the messages behind a suggestion, as a mini WhatsApp view
 
 The founder opened a suggested ticket and the right-hand card listed the burst as flat text

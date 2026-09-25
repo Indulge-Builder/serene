@@ -154,6 +154,11 @@ export async function getElayaLabelsRefreshEnabled(): Promise<boolean> {
  * says exactly `false`. It only writes DRAFTS a founder must approve, and only when there are
  * enough new verdicts, so the default is on.
  */
+/** The member judgement's switch (row `member_assessment_enabled`, 0241): ON unless exactly false. About ₹2 a member, weekly, reaches no member. */
+export async function getMemberAssessmentEnabled(): Promise<boolean> {
+  try { return (await getSettingValue('member_assessment_enabled')) !== false; } catch { return true; }
+}
+
 export async function getIntakeLessonsEnabled(): Promise<boolean> {
   try { return (await getSettingValue('intake_lessons_enabled')) !== false; } catch { return true; }
 }

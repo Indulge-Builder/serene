@@ -9,6 +9,7 @@ import { FilterBar } from '@/components/ui/FilterBar';
 import { FilterDropdown } from '@/components/ui/FilterDropdown';
 import { useUrlFilters } from '@/hooks/useUrlFilters';
 import { CLIENT_TIERS, CLIENT_STATUSES } from '@/lib/constants/member-facets';
+import { MEMBER_SORTS, MEMBER_SORT_LABELS } from '@/lib/constants/member-assessment';
 import type { QueendomSummary } from '@/lib/types/member';
 
 const HEALTH_ITEMS = [
@@ -32,6 +33,7 @@ export function MembersFilters({ queendoms }: { queendoms: QueendomSummary[] }) 
   const status = params.get('status');
   const health = params.get('health');
   const unlinked = params.get('unlinked');
+  const sort = params.get('sort') ?? 'active';
   const activeCount = [params.get('search'), queendom, tier, status, health, unlinked].filter(Boolean).length;
 
   return (
@@ -58,6 +60,7 @@ export function MembersFilters({ queendoms }: { queendoms: QueendomSummary[] }) 
       <FilterDropdown label="Status" items={CLIENT_STATUSES.options} selected={status ? [status] : []} onChange={(n) => push({ status: n[0] ?? null })} multi={false} menuPortal />
       <FilterDropdown label="Health" items={HEALTH_ITEMS} selected={health ? [health] : []} onChange={(n) => push({ health: n[0] ?? null })} multi={false} menuPortal />
       <FilterDropdown label="Not linked" items={UNLINKED_ITEMS} selected={unlinked ? [unlinked] : []} onChange={(n) => push({ unlinked: n[0] ?? null })} multi={false} menuPortal />
+      <FilterDropdown label={`Sort: ${MEMBER_SORT_LABELS[(MEMBER_SORTS as readonly string[]).includes(sort) ? (sort as keyof typeof MEMBER_SORT_LABELS) : 'active']}`} items={MEMBER_SORTS.map((s) => ({ id: s, label: MEMBER_SORT_LABELS[s] }))} selected={[sort]} onChange={(n) => push({ sort: n[0] && n[0] !== 'active' ? n[0] : null })} multi={false} menuPortal />
     </FilterBar>
   );
 }

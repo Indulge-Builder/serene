@@ -14,6 +14,8 @@ import { canAccessMember } from "@/lib/elaya/access";
 import { CLIENTS_PATH } from "@/lib/constants/sia-roles";
 import { searchMembersForPicker, memberQueendom } from "@/lib/services/members-service";
 import { addVaultItemCore, revealVaultItemCore, deleteVaultItemCore } from "@/lib/services/member-vault";
+import { startMemberAssessment } from "@/trigger/member-assessment";
+import { AssessMemberSchema } from "@/lib/validations/member-schema";
 import {
   addFactCore, addHealthAdjustCore, addObservationCore, addPersonCore, createMemberCore, deletePersonCore,
   linkGroupCore, updateMemberCore, updatePersonCore,
@@ -202,4 +204,14 @@ export async function deleteMemberVaultItemAction(input: unknown): Promise<Actio
   if (res.error !== null) return { data: null, error: res.error };
   revalidatePath(`${CLIENTS_PATH}/${parsed.data.member_id}`);
   return { data: res.data, error: null };
+}
+
+/** Queue Serene's judgement of one member (0241; Trigger.dev, about a minute). The caller must see the member. */
+export async function assessMemberNowAction(input: unknown): Promise<ActionResult<{ queued: true }>> {
+  const parsed = parseActionInput(AssessMemberSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
+  const g = await gate(parsed.data.member_id);
+  if (!g.ok) return g.result;
+  try { await startMemberAssessment(parsed.data.member_id); } catch (e) { console.error("[members-action] assessment could not be queued:", e instanceof Error ? e.message : e); return { data: null, error: "Could not start the judgement. Try again in a minute." }; }
+  return { data: { queued: true }, error: null };
 }

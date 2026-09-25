@@ -150,3 +150,6 @@ export const RevealMemberVaultItemSchema = z.object({
   reason: shortText(300).pipe(z.string().min(3, "Say why you need it; the reason is kept.")),
 });
 export const DeleteMemberVaultItemSchema = RevealMemberVaultItemSchema;
+
+/** "Assess now" on the member page (0241). */
+export const AssessMemberSchema = z.object({ member_id: uuidField(formErrors.generic) });

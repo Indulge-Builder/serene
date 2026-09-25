@@ -12,6 +12,7 @@ import { formatDate, formatRelativeTime } from '@/lib/utils/dates';
 import { CLIENT_TIERS } from '@/lib/constants/member-facets';
 import { CLIENTS_PATH } from '@/lib/constants/sia-roles';
 import { HealthPill } from './HealthPill';
+import { ASSESSMENT_RISK_LABELS } from '@/lib/constants/member-assessment';
 import type { MemberListItem } from '@/lib/types/member';
 
 const HEAD: React.CSSProperties = {
@@ -45,6 +46,7 @@ export function MembersTable({ members, hasFilters }: { members: MemberListItem[
               <th className="label-micro" style={HEAD}>Tier</th>
               <th className="label-micro" style={HEAD}>Status</th>
               <th className="label-micro" style={{ ...HEAD, textAlign: 'center' }}>Health</th>
+              <th className="label-micro" style={{ ...HEAD, textAlign: 'center' }}>Serene</th>
               <th className="label-micro" style={{ ...HEAD, textAlign: 'right' }}>Open</th>
               <th className="label-micro" style={HEAD}>Last contact</th>
               <th className="label-micro" style={HEAD}>Renews</th>
@@ -92,6 +94,11 @@ const MemberRow = memo(function MemberRow({ c }: { c: MemberListItem }) {
         }}>{c.membership_status ?? '—'}</span>
       </td>
       <td style={{ ...CELL, ...rowCell, textAlign: 'center' }}><HealthPill score={c.health_score} /></td>
+      <td style={{ ...CELL, ...rowCell, textAlign: 'center' }}>
+        {c.assessment ? (
+          <span title={`${ASSESSMENT_RISK_LABELS[c.assessment.risk]}: ${c.assessment.verdict}`} style={{ display: 'inline-flex' }}><HealthPill score={c.assessment.score} /></span>
+        ) : <span style={{ color: 'var(--theme-text-tertiary)', fontSize: 'var(--text-xs)' }}>{c.activity_score != null ? `pulse ${c.activity_score}` : '—'}</span>}
+      </td>
       <td style={{ ...CELL, ...rowCell, textAlign: 'right', fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: c.open_tickets ? 'var(--theme-text-primary)' : 'var(--theme-text-tertiary)' }}>{c.open_tickets}</td>
       <td style={{ ...CELL, ...rowCell, color: 'var(--theme-text-tertiary)', whiteSpace: 'nowrap', fontSize: 'var(--text-xs)' }}>{c.last_contact_at ? formatRelativeTime(c.last_contact_at) : '—'}</td>
       <td style={{ ...CELL, ...rowCell, color: 'var(--theme-text-tertiary)', whiteSpace: 'nowrap', fontSize: 'var(--text-xs)' }}>{c.membership_end ? formatDate(c.membership_end, 'd MMM yyyy') : '—'}</td>

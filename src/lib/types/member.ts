@@ -2,6 +2,7 @@
 // shapes are composed here. Vocabulary: constants/member-facets.ts + constants/sia-roles.ts.
 
 import type { Database } from "@/lib/types/database";
+import type { AssessmentRisk, MemberSort } from "@/lib/constants/member-assessment";
 import type { MemberFacet, FactPolarity, FactSource, MemberTier } from "@/lib/constants/member-facets";
 import type { SiaRole } from "@/lib/constants/sia-roles";
 
@@ -25,6 +26,8 @@ export type MemberListFilters = {
   status: string | null;          // membership_status
   health: "low" | "mid" | "high" | null;
   unlinked: "whatsapp" | "freshdesk" | "zoho" | "app" | "queendom" | null;
+  /** The order (0241): active = Active first then the pulse (default); score = Serene's judgement; name. */
+  sort: MemberSort;
   page: number;
 };
 
@@ -39,7 +42,44 @@ export type MemberListItem = {
   health_score: number | null;
   open_tickets: number;
   last_contact_at: string | null;
+  /** The pulse (0241): 0..100 from recency, messages and requests; null until the hourly job has run. */
+  activity_score: number | null;
+  /** Serene's judgement (0241), when one exists. */
+  assessment: { score: number; risk: AssessmentRisk; verdict: string; assessed_at: string } | null;
   linked: { whatsapp: boolean; freshdesk: boolean; zoho: boolean; app: boolean };
+};
+
+/** The pulse as member.compute_member_pulse writes it into member_snapshot.data->pulse (0241). */
+export type MemberPulse = {
+  activity_score: number;
+  last_contact_at: string | null;
+  last_member_message_at: string | null;
+  last_ticket_at: string | null;
+  member_messages_30d: number;
+  staff_messages_30d: number;
+  tickets_90d: number;
+  tickets_all: number;
+  open_tickets: number;
+  escalated_90d: number;
+  computed_at: string;
+};
+
+/** Serene's judgement of a member (0241), in member_snapshot.data->assessment. */
+export type MemberAssessment = {
+  score: number;
+  engagement: number;
+  satisfaction: number;
+  value: number;
+  risk: AssessmentRisk;
+  verdict: string;
+  strengths: string[];
+  concerns: string[];
+  actions: string[];
+  confidence: number;
+  assessed_at: string;
+  run_id: string | null;
+  prompt_version: string;
+  inputs: { facts: number; events: number; tickets: number; health: number; window_days: number };
 };
 
 export type MemberHealth = {
