@@ -724,6 +724,9 @@ export async function searchMemberHistoryFor(
 // trimmed to a bounded shape: a model gets the newest and the most confident, never a dump.
 
 const PROFILE_FACTS_MAX = 80;
+/** Notes shown on a plain profile read (newest first by the note's own date). 15 since 2026-09-25: the
+ *  Freshdesk notes import gave nine members more than the old 8, and the oldest imported notes fell off. */
+const PROFILE_NOTES_MAX = 15;
 const PROFILE_TEXT_CAP = 240;
 const clip = (v: string | null | undefined, n = PROFILE_TEXT_CAP) => (v && v.length > n ? v.slice(0, n) + '…' : (v ?? null));
 
@@ -757,7 +760,7 @@ export async function getMemberProfileFor(principal: StaffPrincipal, memberId: s
     facts,
     facts_shown: shown.length,
     facts_total: d.facts.length,
-    observations: d.notes.slice(0, 8).map((n) => ({ at: n.observed_at, by: n.created_by_name, text: clip(n.value, 400) })),
+    observations: d.notes.slice(0, PROFILE_NOTES_MAX).map((n) => ({ at: n.observed_at, by: n.created_by_name, text: clip(n.value, 400) })),
     people: d.people.slice(0, 20).map((x) => ({ name: x.name, relation: x.relation, can_request: x.can_request, note: clip(x.note) })),
     health: { score: d.health.score, trend_30d: d.health.trend30d, reasons: d.health.reasons.slice(0, 5) },
     requests: { total: d.tickets.total, open: d.tickets.open.slice(0, 8).map(ticket), recent: d.tickets.recent.slice(0, 8).map(ticket) },

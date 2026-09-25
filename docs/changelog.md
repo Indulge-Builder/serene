@@ -337,6 +337,8 @@ other-role/domain, and responsive verification remain outside these fixtures.
 - Pages: "What Elaya has learned about you" on /profile (remove, add a rule) and on /admin/users/[id]
   for an admin; /settings/elaya-requests (a fourth door on Teach Elaya) where each request is decided
   with a note she reads on the next message.
+- A member profile read shows up to 15 notes (was 8): the Freshdesk notes import gave nine members more
+  than 8, and the oldest imported notes fell off a plain `get_member_profile` read.
 - WhatsApp voice notes now carry `meta.voice = true` on the stored message (the transcript was always
   stored; the audio never is).
 - Bench on production: the reader turned "call me Ethan, never send me long messages, number first
