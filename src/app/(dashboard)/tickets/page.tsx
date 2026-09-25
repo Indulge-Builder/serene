@@ -7,7 +7,7 @@ import { getCurrentProfile } from '@/lib/services/profiles-service';
 import { getQueendoms } from '@/lib/services/members-service';
 import { listTickets, listQueendomStaff, getTicketSettings } from '@/lib/services/tickets-service';
 import { listOpenIntakeProposals, getIntakeStats } from '@/lib/services/intake-service';
-import { IntakeProposals } from '@/components/tickets/IntakeProposals';
+import { IntakeProposals, IntakeStatsLine } from '@/components/tickets/IntakeProposals';
 import { TicketsFilters } from '@/components/tickets/TicketsFilters';
 import { TicketsTable } from '@/components/tickets/TicketsTable';
 import { TicketsTableSkeleton } from '@/components/tickets/TicketsTableSkeleton';
@@ -40,10 +40,9 @@ async function TicketsAsync({ filters, callerId }: { filters: TicketListFilters;
   );
 }
 
-/** The intake cards (0219). RLS scopes them to the caller's queendom; the training numbers are for admin and founder. */
-async function IntakeAsync({ withStats }: { withStats: boolean }) {
-  const [proposals, stats] = await Promise.all([listOpenIntakeProposals(), withStats ? getIntakeStats(7) : Promise.resolve(null)]);
-  return <IntakeProposals proposals={proposals} stats={stats} />;
+/** The training numbers (admin and founder): counted in SQL (0238) and streamed into a row the strip already holds open. */
+async function IntakeStatsAsync() {
+  return <IntakeStatsLine stats={await getIntakeStats(7)} />;
 }
 
 export default async function TicketsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
@@ -52,7 +51,8 @@ export default async function TicketsPage({ searchParams }: { searchParams: Prom
   if (!canAccessRoute(profile, TICKETS_PATH)) redirect('/dashboard');
   const filters = parseFilters(await searchParams);
   const privileged = profile.role === 'admin' || profile.role === 'founder';
-  const [queendoms, staff, settings] = await Promise.all([getQueendoms(), listQueendomStaff(privileged ? null : (profile.queendom_id ?? null)), getTicketSettings()]);
+  // The cards load WITH the page (0219 cards are one indexed read): the strip is there on first paint and nothing below it moves.
+  const [queendoms, staff, settings, intake] = await Promise.all([getQueendoms(), listQueendomStaff(privileged ? null : (profile.queendom_id ?? null)), getTicketSettings(), listOpenIntakeProposals()]);
   return (
     <main className="flex-1 p-4 sm:p-6 lg:p-8">
       <div className="flex items-center justify-between gap-4 mb-6">
@@ -66,7 +66,7 @@ export default async function TicketsPage({ searchParams }: { searchParams: Prom
         </Link>
         </div>
       </div>
-      <Suspense fallback={null}><IntakeAsync withStats={privileged} /></Suspense>
+      <IntakeProposals proposals={intake.proposals} total={intake.total} statsSlot={privileged ? <Suspense fallback={<IntakeStatsLine stats={null} />}><IntakeStatsAsync /></Suspense> : null} />
       <div className="mb-4"><TicketsFilters queendoms={privileged ? queendoms : queendoms.filter((q) => q.id === profile.queendom_id)} staff={staff} tags={settings.tags} labels={settings.statusLabels} /></div>
       <Suspense key={JSON.stringify(filters)} fallback={<TicketsTableSkeleton />}>
         <TicketsAsync filters={filters} callerId={profile.id} />

@@ -33,6 +33,12 @@ export const INTAKE_PROPOSAL_TTL_HOURS = 24;
 export const INTAKE_MAX_ATTEMPTS = 3;
 export const INTAKE_OUTAGE_STOP = 3;
 
+/** The Freshdesk exam judges the newest N request cards (0238). */
+export const INTAKE_EXAM_CARDS = 60;
+/** How many open cards the /tickets strip loads; the header says how many wait in all. */
+export const INTAKE_STRIP_LIMIT = 40;
+/** How many cards the strip shows before "Show more". */
+export const INTAKE_STRIP_FIRST = 5;
 export const INTAKE_KINDS = ["request", "update", "question", "feedback", "chatter"] as const;
 export type IntakeKind = (typeof INTAKE_KINDS)[number];
 export const INTAKE_TONES = ["neutral", "happy", "frustrated", "angry"] as const;

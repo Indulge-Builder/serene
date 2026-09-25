@@ -4556,6 +4556,79 @@ export type Database = {
           },
         ]
       }
+      elaya_improvement_requests: {
+        Row: {
+          admin_note: string | null
+          answer: string | null
+          channel: string
+          conversation_id: string | null
+          correction: string
+          created_at: string
+          diagnosis: string | null
+          id: string
+          kind: string
+          question: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          admin_note?: string | null
+          answer?: string | null
+          channel?: string
+          conversation_id?: string | null
+          correction: string
+          created_at?: string
+          diagnosis?: string | null
+          id?: string
+          kind: string
+          question?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          admin_note?: string | null
+          answer?: string | null
+          channel?: string
+          conversation_id?: string | null
+          correction?: string
+          created_at?: string
+          diagnosis?: string | null
+          id?: string
+          kind?: string
+          question?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "elaya_improvement_requests_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "elaya_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "elaya_improvement_requests_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "elaya_improvement_requests_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       elaya_jobs: {
         Row: {
           answer: string | null
@@ -4921,6 +4994,60 @@ export type Database = {
           url?: string | null
         }
         Relationships: []
+      }
+      elaya_user_memory: {
+        Row: {
+          created_at: string
+          evidence: string | null
+          id: string
+          kind: string
+          retired_at: string | null
+          retired_by: string | null
+          source: string
+          statement: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          evidence?: string | null
+          id?: string
+          kind: string
+          retired_at?: string | null
+          retired_by?: string | null
+          source?: string
+          statement: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          evidence?: string | null
+          id?: string
+          kind?: string
+          retired_at?: string | null
+          retired_by?: string | null
+          source?: string
+          statement?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "elaya_user_memory_retired_by_fkey"
+            columns: ["retired_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "elaya_user_memory_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       llm_providers: {
         Row: {
@@ -9849,6 +9976,10 @@ export type Database = {
           newest_at: string
           queendom_id: string
         }[]
+      }
+      intake_stats: {
+        Args: { p_exam?: number; p_since: string }
+        Returns: Json
       }
       member_wa_group: { Args: { p_member_id: string }; Returns: string }
       profiler_broad_senders: {

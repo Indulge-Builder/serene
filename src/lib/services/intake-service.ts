@@ -8,9 +8,8 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { memberDb } from "@/lib/supabase/schemas";
-import { freshdeskDb } from "@/lib/services/freshdesk-sync";
 import { mapRows } from "@/lib/utils/rows";
-import { INTAKE_RUN_KIND, type IntakeDismissReason } from "@/lib/constants/ticket-intake";
+import { INTAKE_EXAM_CARDS, INTAKE_STRIP_LIMIT, type IntakeDismissReason } from "@/lib/constants/ticket-intake";
 import type { IntakeProposal, IntakeProposalMessage, IntakeStats } from "@/lib/types/intake";
 import type { TicketDraft } from "@/lib/types/ticket";
 
@@ -37,12 +36,12 @@ async function decorate(rows: Row[]): Promise<IntakeProposal[]> {
   }));
 }
 
-/** The open cards the caller may see (their queendom; admin and founder, all), newest first. */
-export async function listOpenIntakeProposals(limit = 30): Promise<IntakeProposal[]> {
+/** The open cards the caller may see (their queendom; admin and founder, all), newest first, with how many are open in all. */
+export async function listOpenIntakeProposals(limit = INTAKE_STRIP_LIMIT): Promise<{ proposals: IntakeProposal[]; total: number }> {
   const supabase = await createClient();
-  const { data, error } = await supabase.schema("sia").from("intake_proposals").select(COLS).eq("status", "open").order("created_at", { ascending: false }).limit(limit);
-  if (error) { console.error("[intake-service] list failed", error.message); return []; }
-  return decorate(mapRows<Row, Row>(data, (r) => r));
+  const { data, error, count } = await supabase.schema("sia").from("intake_proposals").select(COLS, { count: "exact" }).eq("status", "open").order("created_at", { ascending: false }).limit(limit);
+  if (error) { console.error("[intake-service] list failed", error.message); return { proposals: [], total: 0 }; }
+  return { proposals: await decorate(mapRows<Row, Row>(data, (r) => r)), total: count ?? 0 };
 }
 
 /** One card, if the caller may see it. */
@@ -62,50 +61,27 @@ export async function resolveIntakeProposal(id: string, by: string, patch: { sta
 }
 
 /**
- * How intake is doing over the last N days. The Freshdesk line is the free exam (plan 7.8b):
- * while the floor still raises tickets in Freshdesk, a request card is "agreed" when a Freshdesk
- * ticket for the same member appears within two hours of it. Admin and founder only: the caller gates.
+ * How intake is doing over the last N days (0238: ONE statement, sia.intake_stats). The Freshdesk
+ * line is the free exam (plan 7.8b): while the floor still raises tickets in Freshdesk, a request
+ * card is "agreed" when a Freshdesk ticket for the same member appears within two hours of it.
+ * Admin and founder only: the caller gates. The old read pulled every run's output jsonb into
+ * the app and stopped at PostgREST's 1,000-row cap, so "chats read" was wrong and the strip
+ * arrived two seconds after the page; counting in SQL fixes both.
  */
 export async function getIntakeStats(days = 7): Promise<IntakeStats> {
-  const admin = createAdminClient();
   const since = new Date(Date.now() - days * 86_400_000).toISOString();
-  const [{ data: runs }, { data: props }, { data: health }] = await Promise.all([
-    admin.schema("sia").from("extraction_runs").select("ok, cost_usd, tokens_in, tokens_out, output, input_ref").eq("kind", INTAKE_RUN_KIND).gte("started_at", since).limit(5000),
-    admin.schema("sia").from("intake_proposals").select("member_id, kind, status, dismiss_reason, fields_changed, first_message_at").gte("created_at", since).limit(5000),
-    memberDb(admin).from("member_health_events").select("signal").eq("evidence->>source", "intake").gte("created_at", since).limit(5000),
-  ]);
-  const health_by_signal: Record<string, number> = {};
-  for (const h of mapRows<{ signal: string }, { signal: string }>(health, (r) => r)) health_by_signal[h.signal] = (health_by_signal[h.signal] ?? 0) + 1;
-  const live = mapRows<{ ok: boolean | null; tokens_in: number | null; tokens_out: number | null; output: { verdict?: { kind?: string } } | null; input_ref: { dry_run?: boolean } | null }, { kind: string | null; tin: number; tout: number }>(
-    (runs ?? []).filter((r) => !(r as { input_ref?: { dry_run?: boolean } }).input_ref?.dry_run),
-    (r) => ({ kind: r.ok ? r.output?.verdict?.kind ?? null : null, tin: Number(r.tokens_in ?? 0), tout: Number(r.tokens_out ?? 0) }),
-  );
-  const by_kind: Record<string, number> = {};
-  for (const r of live) if (r.kind) by_kind[r.kind] = (by_kind[r.kind] ?? 0) + 1;
-  type P = { member_id: string; kind: string; status: string; dismiss_reason: IntakeDismissReason | null; fields_changed: string[] | null; first_message_at: string };
-  const ps = mapRows<P, P>(props, (p) => p);
-  const reasons: IntakeStats["dismissed_by_reason"] = {};
-  for (const p of ps) if (p.status === "dismissed" && p.dismiss_reason) reasons[p.dismiss_reason] = (reasons[p.dismiss_reason] ?? 0) + 1;
-
-  // The free exam, on the newest 60 request cards (one small indexed read each).
-  const requests = ps.filter((p) => p.kind === "request").slice(0, 60);
-  let agreed = 0;
-  for (const p of requests) {
-    const t = new Date(p.first_message_at).getTime();
-    const { count } = await freshdeskDb().from("tickets").select("id", { count: "exact", head: true }).eq("member_id", p.member_id)
-      .gte("fd_created_at", new Date(t - 30 * 60_000).toISOString()).lte("fd_created_at", new Date(t + 120 * 60_000).toISOString());
-    if ((count ?? 0) > 0) agreed += 1;
-  }
+  const empty: IntakeStats = { days, bursts_read: 0, by_kind: {}, proposed: 0, open: 0, accepted: 0, accepted_untouched: 0, dismissed: 0, dismissed_by_reason: {}, expired: 0, freshdesk_agreed: 0, freshdesk_checked: 0, health_by_signal: {}, cost_usd: 0 };
+  const { data, error } = await createAdminClient().schema("sia").rpc("intake_stats", { p_since: since, p_exam: INTAKE_EXAM_CARDS });
+  if (error || !data || typeof data !== "object") { console.error("[intake-service] stats failed", error?.message); return empty; }
+  const j = data as Record<string, unknown>;
+  const n = (k: string) => Number(j[k] ?? 0);
+  const rec = (k: string) => (j[k] && typeof j[k] === "object" ? Object.fromEntries(Object.entries(j[k] as Record<string, unknown>).map(([a, b]) => [a, Number(b)])) : {});
   return {
-    days, bursts_read: live.length, by_kind, proposed: ps.length,
-    open: ps.filter((p) => p.status === "open").length,
-    accepted: ps.filter((p) => p.status === "accepted").length,
-    accepted_untouched: ps.filter((p) => p.status === "accepted" && (p.fields_changed ?? []).length === 0).length,
-    dismissed: ps.filter((p) => p.status === "dismissed").length, dismissed_by_reason: reasons,
-    expired: ps.filter((p) => p.status === "expired").length,
-    freshdesk_agreed: agreed, freshdesk_checked: requests.length,
-    health_by_signal,
+    days, bursts_read: n("bursts_read"), by_kind: rec("by_kind"), proposed: n("proposed"), open: n("open"),
+    accepted: n("accepted"), accepted_untouched: n("accepted_untouched"), dismissed: n("dismissed"),
+    dismissed_by_reason: rec("dismissed_by_reason") as IntakeStats["dismissed_by_reason"], expired: n("expired"),
+    freshdesk_agreed: n("freshdesk_agreed"), freshdesk_checked: n("freshdesk_checked"), health_by_signal: rec("health_by_signal"),
     // Routing tier (Haiku 4.5: $1 in, $5 out per million). The drafts are counted under ticket_creator.
-    cost_usd: live.reduce((n, r) => n + (r.tin * 1 + r.tout * 5) / 1_000_000, 0),
+    cost_usd: (n("tokens_in") * 1 + n("tokens_out") * 5) / 1_000_000,
   };
 }

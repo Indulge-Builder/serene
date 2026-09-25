@@ -12,6 +12,75 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-25 — Tickets: the suggested-tickets strip is there on first paint, and its numbers are counted in SQL (0238)
+
+The founder opened /tickets and the "Suggested by Serene" strip was not there. Two seconds
+later it landed above the filter bar and pushed the whole page down. It felt like the data
+had failed and painted late, or like an AI was drafting on every visit. Neither: no model runs
+when the page opens. The strip was streamed in after the page with nothing holding its place,
+and it was slow because the training numbers pulled every intake model run of the last 7 days
+into the app (the full output jsonb, 2.4 MB, 4,100 rows), then did sixty separate HEAD counts
+against the Freshdesk mirror for the free exam. PostgREST's 1,000-row cap also cut that run
+list silently, so "chats read" and the cost were wrong.
+
+- **Migration 0238, `sia.intake_stats(p_since, p_exam)`:** the same numbers in one statement,
+  counted where the rows are (runs by verdict, cards by status and dismiss reason, the Freshdesk
+  exam on the newest 60 request cards as one EXISTS, health signals by signal). About 0.25 s
+  warm, 1.8 s cold, against 2 s plus sixty round trips. EXECUTE revoked from `authenticated`
+  (verified: the anon key gets "permission denied"); the admin client calls it, the page gates.
+  `getIntakeStats` now maps its jsonb and prices the tokens in TypeScript (the price stays in
+  one place). `database.ts` regenerated across the five schemas with the hand-written tail
+  carried over (this also picked up the 0237 tables).
+- **The cards load with the page.** `listOpenIntakeProposals` is one indexed read (0.16 s),
+  so the page awaits it beside the queendoms and staff; the strip is in the first HTML and
+  nothing under it moves. It now also returns the total open count.
+- **The numbers row keeps its height.** `IntakeStatsLine` is exported and takes `null` while
+  counting ("Counting the week…" at the same height), and the page streams the real line into
+  it through a Suspense boundary inside the strip. The strip never grows when it lands.
+- **The strip at 129 open cards:** one group per member (a member with three bursts is one
+  thing to look at, not three, with a small "Name · 3 suggestions" header), the newest five
+  members shown, then "Show N more members"; the header says "129 waiting · 41 members". The
+  strip loads `INTAKE_STRIP_LIMIT` (40) cards and says how many older ones wait beyond them.
+  `INTAKE_STRIP_FIRST` (5) and `INTAKE_EXAM_CARDS` (60) join the constants.
+- **Numbers seen while doing this:** in the last 7 days intake read 4,090 chats, proposed 824
+  cards, and 129 are open. Not one has been accepted or dismissed yet, so the training loop
+  has no data at all. That is why this page had to be fixed before the learning work (the next
+  entry in this line: corrections captured in full, then the lesson writer).
+
+Files: `supabase/migrations/20260925000238_intake_stats_rpc.sql`, `src/lib/services/intake-service.ts`,
+`src/lib/constants/ticket-intake.ts`, `src/components/tickets/IntakeProposals.tsx`,
+`src/app/(dashboard)/tickets/page.tsx`, `src/lib/types/database.ts`.
+
+## 2026-09-25 — Design fixes: Elaya prompts, the composer focus box, member facts and Observation
+
+- **Elaya, Ask her:** long starter prompts spilled out of their pills (Button is one
+  nowrap line at a fixed 32px) and pushed the identity card into a sideways scroll. The
+  prompts now wrap inside the pill and the pill grows to fit; the card scrolls down only
+  (`overflowX: hidden`). `ElayaIdentityCard.tsx`.
+- **Square box inside the composer:** the shared control commit's global
+  `textarea:focus-visible` outline drew a second square inside every composer whose shell
+  already shows focus. One scoped rule in `serene-neumorphic-tokens.css` turns it off for
+  the bare fields (`.serene-message-bar-input`, `.serene-input-bare`, fields inside a
+  `.neu-input` shell). This covers the Elaya and WhatsApp composers. Every standalone
+  field keeps the keyboard ring.
+- **Essentials / Preferences cards:** redesigned as one section per facet with a quiet
+  label → value list; the source and date sit beside each value, the full provenance in
+  its tooltip; "avoids" is a small danger pill instead of the whole line in red. The
+  "correct" button on every value is gone: **double-click a value** to correct it in
+  place (Enter or leaving the field saves, Esc cancels, the draft stays on error; Enter
+  also opens it from the keyboard). Same core as before (`addMemberFactAction` with
+  `supersedes_id`, which also supersedes the duplicates). `MemberFactsCard.tsx`.
+- **Shared inline-edit look:** `EditableValueText`, `FieldSaveFeedback` and
+  `INLINE_EDIT_INPUT_STYLE` moved out of `LeadInfoCard` (where they were private) into
+  `src/components/ui/InlineEdit.tsx`; the lead card and the member cards both import it.
+- **Observation box:** the mic and Save now sit inside the field's foot (one `.neu-input`
+  shell with the ring on `:focus-within`); the "Spelling is fixed… ⌘↵ to save" line is
+  removed (⌘↵ still saves). The after-save hint now says "double-click it" instead of
+  "correct". `MemberObservationCard.tsx`.
+
+Checked: Serene-only TypeScript, lint on the changed files, `npm run check:ui` (tokens,
+control audit, 13 component contracts). Not yet looked at in a browser.
+
 ## 2026-09-25 — Legacy forms and recording workflow consistency
 
 Migrated fields in payments, top-ups, recharges, won/walk-in deals, subscription
