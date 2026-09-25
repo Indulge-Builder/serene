@@ -4,13 +4,15 @@
 // auto-converted: `rate` is the original-currency amount, `paid_amount_inr` the
 // manually-entered INR. Due date defaults to the current cycle; paid date to today.
 
-import { useState, useTransition, type CSSProperties } from "react";
+import { useState, useEffect, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, type LucideIcon } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { Input, Textarea } from "@/components/ui/Field";
+import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/hooks/useToast";
-import { FIELD_LABEL_STYLE, INPUT_STYLE, HELP_TEXT_STYLE, todayIso } from "./form-styles";
+import { FIELD_LABEL_STYLE, HELP_TEXT_STYLE, todayIso } from "./form-styles";
 import { InvoiceField } from "./InvoiceControls";
 import { CURRENCY_SYMBOLS } from "@/lib/constants/subscription-constants";
 import type { SubscriptionRow } from "@/lib/types/subscription";
@@ -35,62 +37,84 @@ export function RecordPaymentModal({ open, onClose, subscription, onSaved }: Pro
   const [invoicePath, setInvoicePath] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  // Seed a new recording session; failed saves keep the current draft.
+  useEffect(() => {
+    if (!open) return;
+    setRate(subscription.amount != null ? String(subscription.amount) : "");
+    setDueDate(currentDueDateISO(subscription, new Date()) ?? todayIso());
+    setPaidAt(todayIso());
+    setInr("");
+    setInvoicePath(null);
+    setNotes("");
+    setSaveError(null);
+    // A refresh of the same subscription must not overwrite an open draft.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, subscription.id]);
 
   const symbol = CURRENCY_SYMBOLS[subscription.currency];
   const canSubmit =
     rate.trim() !== "" &&
-    Number(rate) >= 0 &&
+    Number.isFinite(Number(rate)) && Number(rate) >= 0 &&
     inr.trim() !== "" &&
-    Number(inr) >= 0 &&
+    Number.isFinite(Number(inr)) && Number(inr) >= 0 &&
     dueDate !== "" &&
     paidAt !== "" &&
     !uploading &&
     !isPending;
 
   function handleClose() {
-    if (isPending) return;
+    if (isPending || uploading) return;
     onClose();
   }
 
   function handleSubmit() {
     if (!canSubmit) return;
+    setSaveError(null);
     startTransition(async () => {
-      const result = await addSubscriptionPaymentAction({
-        subscriptionId: subscription.id,
-        due_date: dueDate,
-        paid_at: paidAt,
-        rate: Number(rate),
-        paid_amount_inr: Number(inr),
-        invoice_path: invoicePath,
-        notes: notes.trim() || null,
-      });
-      if (result.error || !result.data) {
-        toast.danger("Payment not recorded", { message: result.error ?? undefined });
-        return;
+      try {
+        const result = await addSubscriptionPaymentAction({
+          subscriptionId: subscription.id,
+          due_date: dueDate,
+          paid_at: paidAt,
+          rate: Number(rate),
+          paid_amount_inr: Number(inr),
+          invoice_path: invoicePath,
+          notes: notes.trim() || null,
+        });
+        if (result.error || !result.data) {
+          setSaveError(result.error ?? "The payment could not be saved. Your entries are still here.");
+          return;
+        }
+        toast.success("Payment recorded");
+        onSaved?.();
+        onClose();
+        router.refresh();
+      } catch {
+        setSaveError("We could not confirm whether the payment was saved. Check the list before trying again.");
       }
-      toast.success("Payment recorded");
-      onSaved?.();
-      onClose();
-      router.refresh();
     });
   }
 
   return (
     <Modal
       open={open}
+      pending={isPending || uploading}
       onClose={handleClose}
       title="Record Payment"
       description={subscription.name}
       maxWidth="max-w-lg"
       footer={
         <>
-          <Button variant="ghost" onClick={handleClose} disabled={isPending}>
+          <Button variant="ghost" onClick={handleClose} disabled={isPending || uploading}>
             Cancel
           </Button>
           <Button
             variant="primary"
-            onClick={handleSubmit}
+            type="submit"
+            form="record-payment-form"
             disabled={!canSubmit}
             loading={isPending}
             iconLeft={CheckCircle2 as LucideIcon}
@@ -100,16 +124,16 @@ export function RecordPaymentModal({ open, onClose, subscription, onSaved }: Pro
         </>
       }
     >
-      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
+      <form id="record-payment-form" onSubmit={event => { event.preventDefault(); handleSubmit(); }} aria-busy={isPending || uploading} style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
         {/* Rate (original currency) + INR */}
         <div style={{ display: "flex", gap: "var(--space-3)" }}>
           <div style={{ flex: 1 }}>
-            <label className="label-micro" style={FIELD_LABEL_STYLE} htmlFor="pay-rate">
+            <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="pay-rate">
               Rate ({subscription.currency})
             </label>
             <div style={{ position: "relative" }}>
               <span style={prefixStyle}>{symbol}</span>
-              <input
+              <Input
                 id="pay-rate"
                 type="number"
                 inputMode="decimal"
@@ -119,17 +143,17 @@ export function RecordPaymentModal({ open, onClose, subscription, onSaved }: Pro
                 onChange={(e) => setRate(e.target.value)}
                 disabled={isPending}
                 placeholder="0.00"
-                style={{ ...INPUT_STYLE, paddingLeft: "var(--space-7)" }}
+                style={{ paddingLeft: "var(--space-7)" }}
               />
             </div>
           </div>
           <div style={{ flex: 1 }}>
-            <label className="label-micro" style={FIELD_LABEL_STYLE} htmlFor="pay-inr">
+            <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="pay-inr">
               Paid (INR)
             </label>
             <div style={{ position: "relative" }}>
               <span style={prefixStyle}>₹</span>
-              <input
+              <Input
                 id="pay-inr"
                 type="number"
                 inputMode="decimal"
@@ -139,7 +163,7 @@ export function RecordPaymentModal({ open, onClose, subscription, onSaved }: Pro
                 onChange={(e) => setInr(e.target.value)}
                 disabled={isPending}
                 placeholder="0.00"
-                style={{ ...INPUT_STYLE, paddingLeft: "var(--space-7)" }}
+                style={{ paddingLeft: "var(--space-7)" }}
               />
             </div>
           </div>
@@ -151,62 +175,61 @@ export function RecordPaymentModal({ open, onClose, subscription, onSaved }: Pro
         {/* Due date + Paid date */}
         <div style={{ display: "flex", gap: "var(--space-3)" }}>
           <div style={{ flex: 1 }}>
-            <label className="label-micro" style={FIELD_LABEL_STYLE} htmlFor="pay-due">
+            <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="pay-due">
               Due Date
             </label>
-            <input
+            <Input
               id="pay-due"
               type="date"
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
               disabled={isPending}
-              style={INPUT_STYLE}
             />
           </div>
           <div style={{ flex: 1 }}>
-            <label className="label-micro" style={FIELD_LABEL_STYLE} htmlFor="pay-paid">
+            <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="pay-paid">
               Paid Date
             </label>
-            <input
+            <Input
               id="pay-paid"
               type="date"
               value={paidAt}
               onChange={(e) => setPaidAt(e.target.value)}
               disabled={isPending}
-              style={INPUT_STYLE}
             />
           </div>
         </div>
 
         {/* Invoice + Notes */}
         <div>
-          <label className="label-micro" style={FIELD_LABEL_STYLE}>
+          <label className="serene-field-label" style={FIELD_LABEL_STYLE}>
             Invoice <span style={{ color: "var(--theme-text-tertiary)" }}>(optional)</span>
           </label>
           <InvoiceField
             value={invoicePath}
             onChange={setInvoicePath}
-            onError={(m) => toast.danger("Upload failed", { message: m })}
+            onError={setSaveError}
             onUploadingChange={setUploading}
             disabled={isPending}
           />
         </div>
 
         <div>
-          <label className="label-micro" style={FIELD_LABEL_STYLE} htmlFor="pay-notes">
+          <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="pay-notes">
             Notes <span style={{ color: "var(--theme-text-tertiary)" }}>(optional)</span>
           </label>
-          <textarea
+          <Textarea
             id="pay-notes"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             disabled={isPending}
             rows={2}
             maxLength={2000}
-            style={{ ...INPUT_STYLE, resize: "vertical" }}
+            style={{ resize: "vertical" }}
           />
         </div>
-      </div>
+        {saveError && <Alert tone="danger">{saveError}</Alert>}
+      </form>
     </Modal>
   );
 }

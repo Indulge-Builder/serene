@@ -1,5 +1,4 @@
-// Shared inline field styles for the Subscriptions modals (token-only, mirrors
-// AddRechargeModal's field chrome). Pure constants — no 'use client' needed.
+// Subscription form layout/help styles. Field appearance belongs to ui/Field.
 import type { CSSProperties } from "react";
 
 export const FIELD_LABEL_STYLE: CSSProperties = {
@@ -7,32 +6,12 @@ export const FIELD_LABEL_STYLE: CSSProperties = {
   marginBottom: "var(--space-2)",
 };
 
-export const INPUT_STYLE: CSSProperties = {
-  width: "100%",
-  padding: "var(--space-2) var(--space-3)",
-  background: "var(--neu-input-bg)",
-  border: "1px solid var(--neu-input-edge)",
-  borderRadius: "var(--neu-radius-control)",
-  boxShadow: "var(--neu-shadow-input)",
-  minHeight: "2.25rem",
-  color: "var(--theme-text-primary)",
-  fontFamily: "var(--font-sans)",
-  fontSize: "var(--text-sm)",
-};
-
 export const HELP_TEXT_STYLE: CSSProperties = {
   margin: "var(--space-1) 0 0",
   fontFamily: "var(--font-sans)",
-  fontSize: "var(--text-2xs)",
+  fontSize: "var(--text-xs)",
   color: "var(--theme-text-tertiary)",
   lineHeight: "var(--leading-snug)",
-};
-
-export const ERROR_TEXT_STYLE: CSSProperties = {
-  margin: "var(--space-1) 0 0",
-  fontFamily: "var(--font-sans)",
-  fontSize: "var(--text-xs)",
-  color: "var(--color-danger)",
 };
 
 /** Today as 'YYYY-MM-DD' in local time — the native <input type="date"> shape. */

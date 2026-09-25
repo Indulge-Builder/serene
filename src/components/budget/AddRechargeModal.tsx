@@ -9,6 +9,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Wallet, type LucideIcon } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { Input, Textarea, Select } from "@/components/ui/Field";
+import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/hooks/useToast";
 import { AD_ACCOUNTS, type AdAccountKey } from "@/lib/constants/ad-accounts";
@@ -22,17 +24,6 @@ type Props = {
 const fieldLabelStyle: React.CSSProperties = {
   display:      "block",
   marginBottom: "var(--space-2)",
-};
-
-const inputStyle: React.CSSProperties = {
-  width:        "100%",
-  padding:      "var(--space-2) var(--space-3)",
-  background:   "var(--theme-paper)",
-  border:       "1px solid var(--theme-paper-border)",
-  borderRadius: "var(--radius-sm)",
-  color:        "var(--theme-text-primary)",
-  fontFamily:   "var(--font-sans)",
-  fontSize:     "var(--text-sm)",
 };
 
 /** Today as YYYY-MM-DD in local time (the date input's native shape). */
@@ -53,9 +44,11 @@ export function AddRechargeModal({ open, onClose }: Props) {
   const [rechargedAt, setRechargedAt] = useState(todayIso());
   const [method, setMethod]         = useState("");
   const [note, setNote]             = useState("");
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function reset() {
+    setSaveError(null);
     setAdAccount(AD_ACCOUNTS[0].key);
     setAmount("");
     setCurrency("INR");
@@ -71,33 +64,39 @@ export function AddRechargeModal({ open, onClose }: Props) {
   }
 
   function handleSubmit() {
-    if (isPending) return;
+    if (isPending || !Number.isFinite(Number(amount)) || Number(amount) <= 0 || !rechargedAt) return;
     const amountNum = Number(amount);
+    setSaveError(null);
     startTransition(async () => {
-      const result = await createRechargeAction({
-        adAccount,
-        amount:      amountNum,
-        currency,
-        rechargedAt,
-        method:      method.trim() || null,
-        note:        note.trim() || null,
-      });
-      if (result.error || !result.data) {
-        toast.danger("Recharge not saved", { message: result.error ?? undefined });
-        return;
+      try {
+        const result = await createRechargeAction({
+          adAccount,
+          amount:      amountNum,
+          currency,
+          rechargedAt,
+          method:      method.trim() || null,
+          note:        note.trim() || null,
+        });
+        if (result.error || !result.data) {
+          setSaveError(result.error ?? "The recharge could not be saved. Your entries are still here.");
+          return;
+        }
+        toast.success("Recharge recorded");
+        reset();
+        onClose();
+        router.refresh();
+      } catch {
+        setSaveError("We could not confirm whether the recharge was saved. Check the list before trying again.");
       }
-      toast.success("Recharge recorded");
-      reset();
-      onClose();
-      router.refresh();
     });
   }
 
-  const amountValid = Number(amount) > 0;
+  const amountValid = Number.isFinite(Number(amount)) && Number(amount) > 0 && !!rechargedAt;
 
   return (
     <Modal
       open={open}
+      pending={isPending}
       onClose={handleClose}
       title="Add Recharge"
       description="Record money sent to a Meta ad account. Kept separate from campaign spend."
@@ -108,7 +107,8 @@ export function AddRechargeModal({ open, onClose }: Props) {
           </Button>
           <Button
             variant="primary"
-            onClick={handleSubmit}
+            type="submit"
+            form="add-recharge-form"
             disabled={!amountValid || isPending}
             loading={isPending}
             iconLeft={Wallet as LucideIcon}
@@ -118,34 +118,33 @@ export function AddRechargeModal({ open, onClose }: Props) {
         </>
       }
     >
-      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
+      <form id="add-recharge-form" onSubmit={event => { event.preventDefault(); handleSubmit(); }} aria-busy={isPending} style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
         {/* Ad account */}
         <div>
-          <label className="label-micro" style={fieldLabelStyle} htmlFor="recharge-account">
+          <label className="serene-field-label" style={fieldLabelStyle} htmlFor="recharge-account">
             Ad Account
           </label>
-          <select
+          <Select
             id="recharge-account"
             value={adAccount}
             onChange={(e) => setAdAccount(e.target.value as AdAccountKey)}
             disabled={isPending}
-            style={inputStyle}
           >
             {AD_ACCOUNTS.map((a) => (
               <option key={a.key} value={a.key}>
                 {a.displayName}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
 
         {/* Amount + currency */}
         <div style={{ display: "flex", gap: "var(--space-3)" }}>
           <div style={{ flex: 2 }}>
-            <label className="label-micro" style={fieldLabelStyle} htmlFor="recharge-amount">
+            <label className="serene-field-label" style={fieldLabelStyle} htmlFor="recharge-amount">
               Amount
             </label>
-            <input
+            <Input
               id="recharge-amount"
               type="number"
               inputMode="decimal"
@@ -155,23 +154,21 @@ export function AddRechargeModal({ open, onClose }: Props) {
               onChange={(e) => setAmount(e.target.value)}
               disabled={isPending}
               placeholder="0.00"
-              style={inputStyle}
             />
           </div>
           <div style={{ flex: 1 }}>
-            <label className="label-micro" style={fieldLabelStyle} htmlFor="recharge-currency">
+            <label className="serene-field-label" style={fieldLabelStyle} htmlFor="recharge-currency">
               Currency
             </label>
-            <select
+            <Select
               id="recharge-currency"
               value={currency}
               onChange={(e) => setCurrency(e.target.value as "INR" | "USD")}
               disabled={isPending}
-              style={inputStyle}
             >
               <option value="INR">INR ₹</option>
               <option value="USD">USD $</option>
-            </select>
+            </Select>
           </div>
         </div>
 
@@ -193,25 +190,24 @@ export function AddRechargeModal({ open, onClose }: Props) {
 
         {/* Recharged date */}
         <div>
-          <label className="label-micro" style={fieldLabelStyle} htmlFor="recharge-date">
+          <label className="serene-field-label" style={fieldLabelStyle} htmlFor="recharge-date">
             Recharge Date
           </label>
-          <input
+          <Input
             id="recharge-date"
             type="date"
             value={rechargedAt}
             onChange={(e) => setRechargedAt(e.target.value)}
             disabled={isPending}
-            style={inputStyle}
           />
         </div>
 
         {/* Method label */}
         <div>
-          <label className="label-micro" style={fieldLabelStyle} htmlFor="recharge-method">
+          <label className="serene-field-label" style={fieldLabelStyle} htmlFor="recharge-method">
             Method <span style={{ color: "var(--theme-text-tertiary)" }}>(optional label)</span>
           </label>
-          <input
+          <Input
             id="recharge-method"
             type="text"
             value={method}
@@ -219,7 +215,6 @@ export function AddRechargeModal({ open, onClose }: Props) {
             disabled={isPending}
             placeholder="e.g. NEFT, Razorpay, Card"
             maxLength={80}
-            style={inputStyle}
           />
           <p
             style={{
@@ -235,20 +230,21 @@ export function AddRechargeModal({ open, onClose }: Props) {
 
         {/* Note */}
         <div>
-          <label className="label-micro" style={fieldLabelStyle} htmlFor="recharge-note">
+          <label className="serene-field-label" style={fieldLabelStyle} htmlFor="recharge-note">
             Note <span style={{ color: "var(--theme-text-tertiary)" }}>(optional)</span>
           </label>
-          <textarea
+          <Textarea
             id="recharge-note"
             value={note}
             onChange={(e) => setNote(e.target.value)}
             disabled={isPending}
             rows={2}
             maxLength={500}
-            style={{ ...inputStyle, resize: "vertical" }}
+            style={{ resize: "vertical" }}
           />
         </div>
-      </div>
+        {saveError && <Alert tone="danger">{saveError}</Alert>}
+      </form>
     </Modal>
   );
 }

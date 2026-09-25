@@ -14,6 +14,7 @@
 import { useState, useTransition } from "react";
 import { LEAD_STATUS_LABELS } from "@/lib/constants/lead-statuses";
 import { updateRevivalPolicyAction } from "@/lib/actions/revival";
+import { Input } from "@/components/ui/Field";
 import { Toggle } from "@/components/ui/Toggle";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { toast } from "@/lib/toast";
@@ -169,11 +170,11 @@ export function RevivalPoliciesPanel({ initialPolicies }: RevivalPoliciesPanelPr
                   {LEAD_STATUS_LABELS[p.trigger_status as LeadStatus] ?? p.trigger_status}
                 </span>
 
-                <input
+                <Input
                   type="number"
+                  aria-label={`${LEAD_STATUS_LABELS[p.trigger_status as LeadStatus]} silence threshold in days`}
                   min={0}
                   max={365}
-                  className="serene-input"
                   disabled={isPending}
                   value={silenceDrafts[p.trigger_status] ?? String(p.silence_days)}
                   onChange={(e) =>
@@ -186,11 +187,11 @@ export function RevivalPoliciesPanel({ initialPolicies }: RevivalPoliciesPanelPr
                   style={inputStyle}
                 />
 
-                <input
+                <Input
                   type="number"
+                  aria-label={`${LEAD_STATUS_LABELS[p.trigger_status as LeadStatus]} daily revival cap per agent`}
                   min={0}
                   max={500}
-                  className="serene-input"
                   disabled={isPending}
                   value={capDrafts[p.trigger_status] ?? String(p.daily_cap_per_agent)}
                   onChange={(e) =>
@@ -223,11 +224,5 @@ export function RevivalPoliciesPanel({ initialPolicies }: RevivalPoliciesPanelPr
 
 const inputStyle: React.CSSProperties = {
   width: "96px",
-  padding: "6px 10px",
-  borderRadius: "var(--radius-sm)",
-  border: "1px solid var(--theme-paper-border)",
-  background: "var(--theme-paper)",
-  fontFamily: "var(--font-mono)",
-  fontSize: "var(--text-sm)",
-  color: "var(--theme-text-primary)",
+  fontVariantNumeric: "tabular-nums",
 };

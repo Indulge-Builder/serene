@@ -1,5 +1,7 @@
 'use client';
 
+import { Field, Input, Select } from '@/components/ui/Field';
+import { Alert } from '@/components/ui/Alert';
 import { SelectionButton } from '@/components/ui/SelectionButton';
 import { useState } from 'react';
 import { Trophy } from 'lucide-react';
@@ -46,6 +48,7 @@ export function WonDealModal({ open, leadId: _leadId, domain, isPending, error, 
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (isPending) return;
     setLocalError(null);
 
     if (!dealType) { setLocalError('This lead’s domain cannot record a deal.'); return; }
@@ -58,8 +61,8 @@ export function WonDealModal({ open, leadId: _leadId, domain, isPending, error, 
       return;
     }
 
-    const amount = parseFloat(amountStr.replace(/,/g, ''));
-    if (!amountStr.trim() || isNaN(amount) || amount <= 0) {
+    const amount = Number(amountStr.replace(/,/g, ''));
+    if (!amountStr.trim() || !Number.isFinite(amount) || amount <= 0) {
       setLocalError('Please enter a valid deal amount.');
       return;
     }
@@ -86,16 +89,15 @@ export function WonDealModal({ open, leadId: _leadId, domain, isPending, error, 
       maxWidth="max-w-md"
       footer={
         <>
-          <Button variant="secondary" type="button" onClick={onClose} disabled={isPending}>
+          <Button variant="ghost" type="button" onClick={onClose} disabled={isPending}>
             Cancel
           </Button>
           <Button
-            variant="primary"
+            variant="success"
             type="submit"
             form="won-deal-form"
             disabled={isPending}
             loading={isPending}
-            style={{ background: 'var(--color-success)', color: 'var(--color-success-fg)' }}
           >
             {isPending ? 'Saving…' : 'Confirm Won'}
           </Button>
@@ -105,6 +107,8 @@ export function WonDealModal({ open, leadId: _leadId, domain, isPending, error, 
       <form
         id="won-deal-form"
         onSubmit={handleSubmit}
+        noValidate
+        aria-busy={isPending}
         style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}
       >
         {/* Derived deal-type recap — set by the lead's domain, not picked */}
@@ -124,53 +128,25 @@ export function WonDealModal({ open, leadId: _leadId, domain, isPending, error, 
           <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-semibold)', color: 'var(--color-success-text)' }}>
             {dealType ? DEAL_TYPE_LABELS[dealType] : '—'}
           </span>
-          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-success-text)', opacity: 0.75 }}>
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-success-text)' }}>
             · {DOMAIN_LABELS[domain]}
           </span>
         </div>
 
         {/* Category — retail (shop) only */}
         {dealType === 'retail' && categories && (
-          <div>
-            <p
-              style={{
-                fontSize:      'var(--text-2xs)',
-                fontWeight:    'var(--weight-semibold)',
-                letterSpacing: 'var(--tracking-widest)',
-                textTransform: 'uppercase',
-                color:         'var(--theme-text-tertiary)',
-                margin:        '0 0 var(--space-2) 0',
-              }}
-            >
-              Product Category <span style={{ color: "var(--color-danger-text)" }}>*</span>
-            </p>
-            <select
+          <Field htmlFor="deal-category" label="Product category" required>
+            <Select
               value={category ?? ''}
               onChange={(e) => { setCategory((e.target.value || null) as DealCategory | null); setLocalError(null); }}
               disabled={isPending}
-              style={{
-                width:        '100%',
-                height:       '2.5rem',
-                padding:      '0 var(--space-3)',
-                border:       '1px solid var(--neu-input-edge)',
-                borderRadius: 'var(--radius-lg)',
-                background:   'var(--neu-input-bg)',
-                boxShadow:    'var(--neu-shadow-input)',
-                fontFamily:   'var(--font-sans)',
-                fontSize:     'var(--text-sm)',
-                color:        'var(--theme-text-primary)',
-                outline:      'none',
-                cursor:       'pointer',
-                boxSizing:    'border-box',
-                opacity:      isPending ? 0.6 : 1,
-              }}
             >
               <option value="">— select —</option>
               {DEAL_CATEGORY_OPTIONS.filter((opt) => categories.includes(opt.id)).map((opt) => (
                 <option key={opt.id} value={opt.id}>{opt.label}</option>
               ))}
-            </select>
-          </div>
+            </Select>
+          </Field>
         )}
 
         {/* Duration — membership only */}
@@ -214,21 +190,7 @@ export function WonDealModal({ open, leadId: _leadId, domain, isPending, error, 
         )}
 
         {/* Amount */}
-        <div>
-          <label
-            htmlFor="deal-amount"
-            style={{
-              display:       'block',
-              fontSize:      'var(--text-2xs)',
-              fontWeight:    'var(--weight-semibold)',
-              letterSpacing: 'var(--tracking-widest)',
-              textTransform: 'uppercase',
-              color:         'var(--theme-text-tertiary)',
-              marginBottom:  'var(--space-2)',
-            }}
-          >
-            Deal Amount (₹) <span style={{ color: "var(--color-danger-text)" }}>*</span>
-          </label>
+        <Field htmlFor="deal-amount" label="Deal amount (₹)" required>
           <div style={{ position: 'relative' }}>
             <span
               style={{
@@ -244,7 +206,7 @@ export function WonDealModal({ open, leadId: _leadId, domain, isPending, error, 
             >
               ₹
             </span>
-            <input
+            <Input
               id="deal-amount"
               type="text"
               inputMode="decimal"
@@ -257,33 +219,13 @@ export function WonDealModal({ open, leadId: _leadId, domain, isPending, error, 
               placeholder="0"
               disabled={isPending}
               autoFocus
-              style={{
-                width:        '100%',
-                height:       '2.5rem',
-                paddingLeft:  'calc(var(--space-3) + 1.25rem)',
-                paddingRight: 'var(--space-3)',
-                border:       '1px solid var(--neu-input-edge)',
-                borderRadius: 'var(--radius-lg)',
-                background:   'var(--neu-input-bg)',
-                boxShadow:    'var(--neu-shadow-input)',
-                fontFamily:   'var(--font-sans)',
-                fontSize:     'var(--text-sm)',
-                color:        'var(--theme-text-primary)',
-                outline:      'none',
-                boxSizing:    'border-box',
-                transition:   'box-shadow var(--duration-fast) var(--ease-in-out)',
-                opacity:      isPending ? 0.6 : 1,
-              }}
-              onFocus={(e) => { e.currentTarget.style.boxShadow = '0 0 0 1px var(--theme-accent), var(--neu-shadow-input)'; }}
-              onBlur={(e)  => { e.currentTarget.style.boxShadow = 'var(--neu-shadow-input)'; }}
+              style={{ paddingLeft: 'calc(var(--space-3) + 1.25rem)' }}
             />
           </div>
-        </div>
+        </Field>
 
         {displayError && (
-          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-danger-text)', margin: 0 }}>
-            {displayError}
-          </p>
+          <Alert tone="danger">{displayError}</Alert>
         )}
 
         {isPending && (

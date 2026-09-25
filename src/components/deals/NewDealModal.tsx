@@ -1,5 +1,7 @@
 'use client';
 
+import { Input } from '@/components/ui/Field';
+import { Alert } from '@/components/ui/Alert';
 import { SelectionButton } from '@/components/ui/SelectionButton';
 import { useState, useEffect, useMemo, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
@@ -143,6 +145,7 @@ export function NewDealModal({
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (isPending) return;
     setError(null);
 
     if (!dealType) { setError('Please select a valid domain.'); return; }
@@ -155,8 +158,8 @@ export function NewDealModal({
       return;
     }
 
-    const amount = parseFloat(amountStr.replace(/,/g, ''));
-    if (!amountStr.trim() || isNaN(amount) || amount <= 0) {
+    const amount = Number(amountStr.replace(/,/g, ''));
+    if (!amountStr.trim() || !Number.isFinite(amount) || amount <= 0) {
       setError('Please enter a valid deal amount.');
       return;
     }
@@ -166,46 +169,50 @@ export function NewDealModal({
     }
 
     startTransition(async () => {
-      // deal_type is intentionally NOT sent — the action derives it from domain.
-      const result = await createWalkInDeal({
-        contact_name:  contactName.trim(),
-        contact_phone: contactPhone.trim(),
-        contact_email: contactEmail.trim() || null,
-        domain,
-        assigned_to:   assignedTo || null,
-        won_at:        wonAt ? wonAt.toISOString() : new Date().toISOString(),
-        source:        (source as LeadSource) || null,
-        deal_duration: dealType === 'membership' ? duration : null,
-        deal_category: dealType === 'retail' ? category : null,
-        deal_amount:   amount,
-      });
+      try {
+        // deal_type is intentionally NOT sent — the action derives it from domain.
+        const result = await createWalkInDeal({
+          contact_name:  contactName.trim(),
+          contact_phone: contactPhone.trim(),
+          contact_email: contactEmail.trim() || null,
+          domain,
+          assigned_to:   assignedTo || null,
+          won_at:        wonAt ? wonAt.toISOString() : new Date().toISOString(),
+          source:        (source as LeadSource) || null,
+          deal_duration: dealType === 'membership' ? duration : null,
+          deal_category: dealType === 'retail' ? category : null,
+          deal_amount:   amount,
+        });
 
-      if (result.error) {
-        setError(result.error);
-        return;
-      }
-
-      // Stamp the new deal for the one-shot Won petal fall — the freshly
-      // rendered DealCard claims it after router.refresh() (polish §03).
-      if (result.data?.dealId) {
-        try {
-          sessionStorage.setItem(DEAL_CELEBRATE_STORAGE_KEY, result.data.dealId);
-        } catch {
-          // decorative only — never block the save on storage
+        if (result.error || !result.data?.dealId) {
+          setError(result.error ?? "The deal could not be saved. Your entries are still here.");
+          return;
         }
-      }
 
-      // Close first, THEN refresh. router.refresh() refetches the current
-      // route's RSC payload; if it is fired right before handleClose()
-      // unmounts the modal inside the SAME transition, the refetch is
-      // deprioritised against the teardown and frequently discarded — so the
-      // new deal doesn't appear until the Client Router Cache expires. Closing
-      // first lets the refresh run against the live /deals route owned by the
-      // still-mounted page (the AddLeadModal order). revalidatePath('/deals',
-      // 'page') in createWalkInDeal is the authoritative server-side bust; this
-      // refresh just pulls the freshly-revalidated payload immediately.
-      handleClose();
-      router.refresh();
+        // Stamp the new deal for the one-shot Won petal fall — the freshly
+        // rendered DealCard claims it after router.refresh() (polish §03).
+        if (result.data?.dealId) {
+          try {
+            sessionStorage.setItem(DEAL_CELEBRATE_STORAGE_KEY, result.data.dealId);
+          } catch {
+            // decorative only — never block the save on storage
+          }
+        }
+
+        // Close first, THEN refresh. router.refresh() refetches the current
+        // route's RSC payload; if it is fired right before handleClose()
+        // unmounts the modal inside the SAME transition, the refetch is
+        // deprioritised against the teardown and frequently discarded — so the
+        // new deal doesn't appear until the Client Router Cache expires. Closing
+        // first lets the refresh run against the live /deals route owned by the
+        // still-mounted page (the AddLeadModal order). revalidatePath('/deals',
+        // 'page') in createWalkInDeal is the authoritative server-side bust; this
+        // refresh just pulls the freshly-revalidated payload immediately.
+        handleClose();
+        router.refresh();
+      } catch {
+        setError("We could not confirm whether the deal was saved. Check the deals list before trying again.");
+      }
     });
   }
 
@@ -227,45 +234,26 @@ export function NewDealModal({
 
   const labelStyle: React.CSSProperties = {
     display:       'block',
-    fontSize:      'var(--text-2xs)',
+    fontSize:      'var(--text-xs)',
     fontWeight:    'var(--weight-semibold)',
-    letterSpacing: 'var(--tracking-widest)',
-    textTransform: 'uppercase',
     color:         'var(--theme-text-tertiary)',
     marginBottom:  'var(--space-2)',
-  };
-
-  /* Inputs FLOAT (neumorphic Rule 3): gradient sheen + paired input shadow. */
-  const inputStyle: React.CSSProperties = {
-    width:        '100%',
-    height:       '2.5rem',
-    padding:      '0 var(--space-3)',
-    border:       '1px solid var(--neu-input-edge)',
-    borderRadius: 'var(--radius-lg)',
-    background:   'var(--neu-input-bg)',
-    boxShadow:    'var(--neu-shadow-input)',
-    fontFamily:   'var(--font-sans)',
-    fontSize:     'var(--text-sm)',
-    color:        'var(--theme-text-primary)',
-    outline:      'none',
-    boxSizing:    'border-box',
-    transition:   'box-shadow var(--duration-fast) var(--ease-in-out)',
-    opacity:      isPending ? 0.6 : 1,
   };
 
   return (
     <Modal
       open={open}
+      pending={isPending}
       onClose={handleClose}
       title={step === 'contact' ? 'New Deal — Contact' : 'New Deal — Details'}
       maxWidth="max-w-md"
       footer={
         step === 'contact' ? (
           <>
-            <Button variant="secondary" type="button" onClick={handleClose} disabled={isPending}>
+            <Button variant="ghost" type="button" onClick={handleClose} disabled={isPending}>
               Cancel
             </Button>
-            <Button variant="primary" type="button" onClick={handleNext} disabled={isPending}>
+            <Button variant="primary" type="submit" form="new-deal-contact-form" disabled={isPending}>
               Next →
             </Button>
           </>
@@ -282,7 +270,7 @@ export function NewDealModal({
               ← Back
             </Button>
             <div style={{ flex: 1 }} />
-            <Button variant="secondary" type="button" onClick={handleClose} disabled={isPending}>
+            <Button variant="ghost" type="button" onClick={handleClose} disabled={isPending}>
               Cancel
             </Button>
             <Button
@@ -299,50 +287,47 @@ export function NewDealModal({
       }
     >
       {step === 'contact' ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        <form id="new-deal-contact-form" noValidate onSubmit={event => { event.preventDefault(); handleNext(); }} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
           {/* Contact name */}
           <div>
-            <label style={labelStyle}>
+            <label htmlFor="new-deal-name" style={labelStyle}>
               Name <span style={{ color: "var(--color-danger-text)" }}>*</span>
             </label>
-            <input
+            <Input
               type="text"
+              id="new-deal-name"
+              disabled={isPending}
               value={contactName}
               onChange={(e) => { setContactName(e.target.value); setError(null); }}
               placeholder="Full name"
-              style={inputStyle}
-              onFocus={(e) => { e.currentTarget.style.boxShadow = '0 0 0 1px var(--theme-accent), var(--neu-shadow-input)'; }}
-              onBlur={(e)  => { e.currentTarget.style.boxShadow = 'var(--neu-shadow-input)'; }}
             />
           </div>
 
           {/* Phone */}
           <div>
-            <label style={labelStyle}>
+            <label htmlFor="new-deal-phone" style={labelStyle}>
               Phone <span style={{ color: "var(--color-danger-text)" }}>*</span>
             </label>
-            <input
+            <Input
               type="tel"
+              id="new-deal-phone"
+              disabled={isPending}
               value={contactPhone}
               onChange={(e) => { setContactPhone(e.target.value); setError(null); }}
               placeholder="+91 98765 43210"
-              style={inputStyle}
-              onFocus={(e) => { e.currentTarget.style.boxShadow = '0 0 0 1px var(--theme-accent), var(--neu-shadow-input)'; }}
-              onBlur={(e)  => { e.currentTarget.style.boxShadow = 'var(--neu-shadow-input)'; }}
             />
           </div>
 
           {/* Email (optional) */}
           <div>
-            <label style={labelStyle}>Email</label>
-            <input
+            <label htmlFor="new-deal-email" style={labelStyle}>Email</label>
+            <Input
               type="email"
+              id="new-deal-email"
+              disabled={isPending}
               value={contactEmail}
               onChange={(e) => { setContactEmail(e.target.value); setError(null); }}
               placeholder="optional"
-              style={inputStyle}
-              onFocus={(e) => { e.currentTarget.style.boxShadow = '0 0 0 1px var(--theme-accent), var(--neu-shadow-input)'; }}
-              onBlur={(e)  => { e.currentTarget.style.boxShadow = 'var(--neu-shadow-input)'; }}
             />
           </div>
 
@@ -352,6 +337,9 @@ export function NewDealModal({
               <label style={labelStyle}>Domain</label>
               <div style={{ pointerEvents: isPending ? 'none' : undefined, opacity: isPending ? 0.6 : 1 }}>
                 <FilterDropdown
+                  disabled={isPending}
+                  clearable={false}
+                  ariaLabel={`Domain: ${DOMAIN_LABELS[domain]}`}
                   label={DOMAIN_LABELS[domain]}
                   items={domainItems}
                   selected={[domain]}
@@ -383,6 +371,7 @@ export function NewDealModal({
                   }}
                 >
                   <FilterDropdown
+                    disabled={isPending || agents.length === 0}
                     label={assigneeLabel}
                     items={agentItems}
                     selected={assignedTo ? [assignedTo] : []}
@@ -420,11 +409,9 @@ export function NewDealModal({
           )}
 
           {error && (
-            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-danger-text)', margin: 0 }}>
-              {error}
-            </p>
+            <Alert tone="danger">{error}</Alert>
           )}
-        </div>
+        </form>
       ) : (
         <form
           id="new-deal-form"
@@ -468,6 +455,7 @@ export function NewDealModal({
               </p>
               <div style={{ pointerEvents: isPending ? 'none' : undefined, opacity: isPending ? 0.6 : 1 }}>
                 <FilterDropdown
+                  disabled={isPending}
                   label={categoryLabel}
                   items={categoryItems}
                   selected={category ? [category] : []}
@@ -528,6 +516,7 @@ export function NewDealModal({
               </label>
               <div style={{ pointerEvents: isPending ? 'none' : undefined, opacity: isPending ? 0.6 : 1 }}>
                 <FilterDropdown
+                  disabled={isPending}
                   label={sourceLabel}
                   items={LEAD_SOURCE_OPTIONS}
                   selected={source ? [source] : []}
@@ -560,7 +549,7 @@ export function NewDealModal({
               >
                 ₹
               </span>
-              <input
+              <Input
                 id="new-deal-amount"
                 type="text"
                 inputMode="decimal"
@@ -572,19 +561,14 @@ export function NewDealModal({
                 placeholder="0"
                 disabled={isPending}
                 style={{
-                  ...inputStyle,
                   paddingLeft: 'calc(var(--space-3) + 1.25rem)',
                 }}
-                onFocus={(e) => { e.currentTarget.style.boxShadow = '0 0 0 1px var(--theme-accent), var(--neu-shadow-input)'; }}
-                onBlur={(e)  => { e.currentTarget.style.boxShadow = 'var(--neu-shadow-input)'; }}
               />
             </div>
           </div>
 
           {error && (
-            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-danger-text)', margin: 0 }}>
-              {error}
-            </p>
+            <Alert tone="danger">{error}</Alert>
           )}
 
           {isPending && (

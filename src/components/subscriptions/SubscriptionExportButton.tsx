@@ -8,10 +8,12 @@
 import { useState, useTransition } from "react";
 import { Download, type LucideIcon } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { Input } from "@/components/ui/Field";
+import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { TabSelector } from "@/components/ui/TabSelector";
 import { useToast } from "@/hooks/useToast";
-import { FIELD_LABEL_STYLE, INPUT_STYLE } from "./form-styles";
+import { FIELD_LABEL_STYLE } from "./form-styles";
 import {
   buildCSV,
   buildSingleSheetXLSX,
@@ -64,34 +66,40 @@ export function SubscriptionExportButton() {
   const [open, setOpen] = useState(false);
   const [month, setMonth] = useState(currentMonthIso());
   const [format, setFormat] = useState<"csv" | "xlsx">("csv");
+  const [feedback, setFeedback] = useState<{ tone: "danger" | "info"; message: string } | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function handleDownload() {
-    if (isPending) return;
+    if (isPending || !month) return;
+    setFeedback(null);
     startTransition(async () => {
-      const res = await getSubscriptionMonthlyReportAction(month);
-      if (res.error || !res.data) {
-        toast.danger("Export failed", { message: res.error ?? undefined });
-        return;
+      try {
+        const res = await getSubscriptionMonthlyReportAction(month);
+        if (res.error || !res.data) {
+          setFeedback({ tone: "danger", message: res.error ?? "The report could not be prepared. Try again." });
+          return;
+        }
+        if (res.data.rows.length === 0) {
+          setFeedback({ tone: "info", message: "No payments or top-ups in that month. Choose another month to export." });
+          return;
+        }
+        const rows = res.data.rows.map(toExportRow);
+        const base = `subscriptions-${month}`;
+        if (format === "csv") {
+          triggerBrowserDownload(`${base}.csv`, buildCSV(rows, REPORT_HEADERS), "text/csv;charset=utf-8;");
+        } else {
+          const bytes = await buildSingleSheetXLSX(rows, REPORT_HEADERS, "Subscriptions");
+          triggerBrowserDownload(
+            `${base}.xlsx`,
+            bytes,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          );
+        }
+        toast.success("Report downloaded");
+        setOpen(false);
+      } catch {
+        setFeedback({ tone: "danger", message: "The report could not be prepared. Try again." });
       }
-      if (res.data.rows.length === 0) {
-        toast.danger("Nothing to export", { message: "No payments or top-ups in that month." });
-        return;
-      }
-      const rows = res.data.rows.map(toExportRow);
-      const base = `subscriptions-${month}`;
-      if (format === "csv") {
-        triggerBrowserDownload(`${base}.csv`, buildCSV(rows, REPORT_HEADERS), "text/csv;charset=utf-8;");
-      } else {
-        const bytes = await buildSingleSheetXLSX(rows, REPORT_HEADERS, "Subscriptions");
-        triggerBrowserDownload(
-          `${base}.xlsx`,
-          bytes,
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        );
-      }
-      toast.success("Report downloaded");
-      setOpen(false);
     });
   }
 
@@ -101,13 +109,14 @@ export function SubscriptionExportButton() {
         variant="secondary"
         iconLeft={Download as LucideIcon}
         iconMotion="drop"
-        onClick={() => setOpen(true)}
+        onClick={() => { setFeedback(null); setOpen(true); }}
       >
         Export
       </Button>
 
       <Modal
         open={open}
+        pending={isPending}
         onClose={() => !isPending && setOpen(false)}
         title="Export Monthly Report"
         description="Download every payment and top-up recorded in the selected month."
@@ -119,8 +128,10 @@ export function SubscriptionExportButton() {
             </Button>
             <Button
               variant="primary"
-              onClick={handleDownload}
+              type="submit"
+              form="subscription-export-form"
               loading={isPending}
+              disabled={!month || isPending}
               iconLeft={Download as LucideIcon}
             >
               {isPending ? "Preparing…" : "Download"}
@@ -128,33 +139,33 @@ export function SubscriptionExportButton() {
           </>
         }
       >
-        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
+        <form id="subscription-export-form" onSubmit={event => { event.preventDefault(); handleDownload(); }} aria-busy={isPending} style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
           <div>
-            <label className="label-micro" style={FIELD_LABEL_STYLE} htmlFor="export-month">
+            <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="export-month">
               Month
             </label>
-            <input
+            <Input
               id="export-month"
               type="month"
               value={month}
               onChange={(e) => setMonth(e.target.value)}
               disabled={isPending}
-              style={INPUT_STYLE}
             />
           </div>
           <div>
-            <label className="label-micro" style={FIELD_LABEL_STYLE}>
+            <label className="serene-field-label" style={FIELD_LABEL_STYLE}>
               Format
             </label>
             <TabSelector
               variant="connected"
               indicatorLayoutId="subscriptions-export-format"
-              tabs={FORMAT_TABS}
+              tabs={FORMAT_TABS.map(tab => ({ ...tab, disabled: isPending }))}
               activeTab={format}
               onChange={(id) => setFormat(id as "csv" | "xlsx")}
             />
           </div>
-        </div>
+          {feedback && <Alert tone={feedback.tone}>{feedback.message}</Alert>}
+        </form>
       </Modal>
     </>
   );

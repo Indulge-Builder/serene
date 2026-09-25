@@ -4,13 +4,15 @@
 // currency live on the row (each top-up can differ). paid_amount_inr is the manual
 // INR that left the account — never auto-converted.
 
-import { useState, useTransition, type CSSProperties } from "react";
+import { useState, useEffect, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, type LucideIcon } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { Input, Textarea, Select } from "@/components/ui/Field";
+import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/hooks/useToast";
-import { FIELD_LABEL_STYLE, INPUT_STYLE, HELP_TEXT_STYLE, todayIso } from "./form-styles";
+import { FIELD_LABEL_STYLE, HELP_TEXT_STYLE, todayIso } from "./form-styles";
 import { InvoiceField } from "./InvoiceControls";
 import {
   SUBSCRIPTION_CURRENCY_OPTIONS,
@@ -38,60 +40,82 @@ export function LogTopupModal({ open, onClose, subscription, onSaved }: Props) {
   const [invoicePath, setInvoicePath] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  // Seed a new recording session; failed saves keep the current draft.
+  useEffect(() => {
+    if (!open) return;
+    setAmount("");
+    setCurrency(subscription.currency);
+    setToppedUpAt(todayIso());
+    setInr("");
+    setInvoicePath(null);
+    setNotes("");
+    setSaveError(null);
+    // A refresh of the same subscription must not overwrite an open draft.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, subscription.id]);
 
   const canSubmit =
     amount.trim() !== "" &&
-    Number(amount) >= 0 &&
+    Number.isFinite(Number(amount)) && Number(amount) >= 0 &&
     inr.trim() !== "" &&
-    Number(inr) >= 0 &&
+    Number.isFinite(Number(inr)) && Number(inr) >= 0 &&
     toppedUpAt !== "" &&
     !uploading &&
     !isPending;
 
   function handleClose() {
-    if (isPending) return;
+    if (isPending || uploading) return;
     onClose();
   }
 
   function handleSubmit() {
     if (!canSubmit) return;
+    setSaveError(null);
     startTransition(async () => {
-      const result = await addSubscriptionTopupAction({
-        subscriptionId: subscription.id,
-        topped_up_at: toppedUpAt,
-        amount: Number(amount),
-        currency,
-        paid_amount_inr: Number(inr),
-        invoice_path: invoicePath,
-        notes: notes.trim() || null,
-      });
-      if (result.error || !result.data) {
-        toast.danger("Top-up not logged", { message: result.error ?? undefined });
-        return;
+      try {
+        const result = await addSubscriptionTopupAction({
+          subscriptionId: subscription.id,
+          topped_up_at: toppedUpAt,
+          amount: Number(amount),
+          currency,
+          paid_amount_inr: Number(inr),
+          invoice_path: invoicePath,
+          notes: notes.trim() || null,
+        });
+        if (result.error || !result.data) {
+          setSaveError(result.error ?? "The top-up could not be saved. Your entries are still here.");
+          return;
+        }
+        toast.success("Top-up logged");
+        onSaved?.();
+        onClose();
+        router.refresh();
+      } catch {
+        setSaveError("We could not confirm whether the top-up was saved. Check the list before trying again.");
       }
-      toast.success("Top-up logged");
-      onSaved?.();
-      onClose();
-      router.refresh();
     });
   }
 
   return (
     <Modal
       open={open}
+      pending={isPending || uploading}
       onClose={handleClose}
       title="Log Top-up"
       description={subscription.name}
       maxWidth="max-w-lg"
       footer={
         <>
-          <Button variant="ghost" onClick={handleClose} disabled={isPending}>
+          <Button variant="ghost" onClick={handleClose} disabled={isPending || uploading}>
             Cancel
           </Button>
           <Button
             variant="primary"
-            onClick={handleSubmit}
+            type="submit"
+            form="log-topup-form"
             disabled={!canSubmit}
             loading={isPending}
             iconLeft={Plus as LucideIcon}
@@ -101,16 +125,16 @@ export function LogTopupModal({ open, onClose, subscription, onSaved }: Props) {
         </>
       }
     >
-      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
+      <form id="log-topup-form" onSubmit={event => { event.preventDefault(); handleSubmit(); }} aria-busy={isPending || uploading} style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
         {/* Amount + currency + INR */}
         <div style={{ display: "flex", gap: "var(--space-3)" }}>
           <div style={{ flex: 1.4 }}>
-            <label className="label-micro" style={FIELD_LABEL_STYLE} htmlFor="top-amount">
+            <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="top-amount">
               Amount
             </label>
             <div style={{ position: "relative" }}>
               <span style={prefixStyle}>{CURRENCY_SYMBOLS[currency]}</span>
-              <input
+              <Input
                 id="top-amount"
                 type="number"
                 inputMode="decimal"
@@ -120,38 +144,37 @@ export function LogTopupModal({ open, onClose, subscription, onSaved }: Props) {
                 onChange={(e) => setAmount(e.target.value)}
                 disabled={isPending}
                 placeholder="0.00"
-                style={{ ...INPUT_STYLE, paddingLeft: "var(--space-7)" }}
+                style={{ paddingLeft: "var(--space-7)" }}
               />
             </div>
           </div>
           <div style={{ flex: 1 }}>
-            <label className="label-micro" style={FIELD_LABEL_STYLE} htmlFor="top-currency">
+            <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="top-currency">
               Currency
             </label>
-            <select
+            <Select
               id="top-currency"
               value={currency}
               onChange={(e) => setCurrency(e.target.value as SubscriptionCurrency)}
               disabled={isPending}
-              style={INPUT_STYLE}
             >
               {SUBSCRIPTION_CURRENCY_OPTIONS.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.label}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
         </div>
 
         <div style={{ display: "flex", gap: "var(--space-3)" }}>
           <div style={{ flex: 1 }}>
-            <label className="label-micro" style={FIELD_LABEL_STYLE} htmlFor="top-inr">
+            <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="top-inr">
               Paid (INR)
             </label>
             <div style={{ position: "relative" }}>
               <span style={prefixStyle}>₹</span>
-              <input
+              <Input
                 id="top-inr"
                 type="number"
                 inputMode="decimal"
@@ -161,21 +184,20 @@ export function LogTopupModal({ open, onClose, subscription, onSaved }: Props) {
                 onChange={(e) => setInr(e.target.value)}
                 disabled={isPending}
                 placeholder="0.00"
-                style={{ ...INPUT_STYLE, paddingLeft: "var(--space-7)" }}
+                style={{ paddingLeft: "var(--space-7)" }}
               />
             </div>
           </div>
           <div style={{ flex: 1 }}>
-            <label className="label-micro" style={FIELD_LABEL_STYLE} htmlFor="top-date">
+            <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="top-date">
               Top-up Date
             </label>
-            <input
+            <Input
               id="top-date"
               type="date"
               value={toppedUpAt}
               onChange={(e) => setToppedUpAt(e.target.value)}
               disabled={isPending}
-              style={INPUT_STYLE}
             />
           </div>
         </div>
@@ -185,33 +207,34 @@ export function LogTopupModal({ open, onClose, subscription, onSaved }: Props) {
 
         {/* Invoice + Notes */}
         <div>
-          <label className="label-micro" style={FIELD_LABEL_STYLE}>
+          <label className="serene-field-label" style={FIELD_LABEL_STYLE}>
             Invoice <span style={{ color: "var(--theme-text-tertiary)" }}>(optional)</span>
           </label>
           <InvoiceField
             value={invoicePath}
             onChange={setInvoicePath}
-            onError={(m) => toast.danger("Upload failed", { message: m })}
+            onError={setSaveError}
             onUploadingChange={setUploading}
             disabled={isPending}
           />
         </div>
 
         <div>
-          <label className="label-micro" style={FIELD_LABEL_STYLE} htmlFor="top-notes">
+          <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="top-notes">
             Notes <span style={{ color: "var(--theme-text-tertiary)" }}>(optional)</span>
           </label>
-          <textarea
+          <Textarea
             id="top-notes"
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             disabled={isPending}
             rows={2}
             maxLength={2000}
-            style={{ ...INPUT_STYLE, resize: "vertical" }}
+            style={{ resize: "vertical" }}
           />
         </div>
-      </div>
+        {saveError && <Alert tone="danger">{saveError}</Alert>}
+      </form>
     </Modal>
   );
 }

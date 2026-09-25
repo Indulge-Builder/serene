@@ -331,3 +331,39 @@ contention; the targeted check passed. Authenticated workflow testing, screen-re
 review, and live mutation recovery remain unverified by these fixtures. Responsive testing remains user-owned. Further
 field migration should follow this contract, with feature-level checks for each
 form's validation and payloads; do not infer whole-app completion from these counts.
+
+## Legacy form rollout — 2026-09-25
+
+The next migration covers RecordPaymentModal, LogTopupModal, AddRechargeModal,
+WonDealModal, NewDealModal, SubscriptionExportButton, and RevivalPoliciesPanel.
+Their text, amount, date, month, multiline, and native selection fields now compose
+the shared field family. The unused subscription input/error style exports were
+removed; numeric policy fields retain their compact layout and existing blur-save
+behaviour, with explicit accessible names.
+
+Payment, top-up, recharge, and export actions now share the native form submit path
+with Enter. Payment/top-up dialogs protect both upload and save operations from
+close-button, backdrop, and Escape dismissal. Reopening a recording form starts a
+fresh session; a rejected save preserves its draft. Persistent errors distinguish
+an explicit rejection from an uncertain transport outcome. No automatic retries or
+real payment operations were added.
+
+Both deal forms reject malformed decimal strings instead of accepting a numeric
+prefix with `parseFloat`. The walk-in contact step has connected labels and submits
+with Enter. Its save only completes when the action returns a deal ID. Subscription
+exports preserve the chosen month after failure, and an empty month is informational.
+
+`node scripts/preview-form-workflows.mjs` builds isolated fixtures from the real
+feature components. `SERENE_BROWSER_PORT=9224 node scripts/check-form-workflows.mjs`
+runs them in a separate local Chromium session. Actions, invoice uploads, router
+refreshes, and downloads are mocked: these checks never create records or files
+through external services. The six scenarios cover payments, top-ups, recharges,
+retail won deals, agent-role retail walk-in deals, and subscription exports. They
+check applicable payload values, Enter submission, retained failed drafts, pending
+protection, upload blocking, reopening, malformed amounts, and export feedback.
+Other roles/domains and real services still require integration verification.
+
+Validation: changed-source lint, full Serene-only TypeScript (including the new
+fixtures, excluding the separate example app), the token/control baseline, all 13
+shared component contracts, and all six mocked feature scenarios passed. This
+resolves the full-codebase TypeScript check left pending in the preceding phase. No responsive tests were performed.

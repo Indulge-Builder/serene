@@ -12,6 +12,20 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-25 — Legacy forms and recording workflow consistency
+
+Migrated fields in payments, top-ups, recharges, won/walk-in deals, subscription
+exports, and revival policies to the shared family. Recording forms now preserve
+failed drafts, show persistent recovery feedback, support Enter submission, and
+protect in-flight saves/uploads from dismissal. Reopening a payment or top-up
+starts a fresh recording session. Policy autosave behaviour is unchanged.
+
+Fixed partial parsing of malformed deal amounts. Empty monthly exports now show
+informational feedback. Added isolated real-component workflow checks with mocked
+actions/uploads/downloads: six scenarios passed, alongside lint, full Serene-only
+TypeScript, token/control checks, and 13 shared component contracts. Live service,
+other-role/domain, and responsive verification remain outside these fixtures.
+
 ## 2026-09-25 — Elaya's living memory of each person, and the requests the team raises when she is wrong (0237)
 
 - Why: the founder wants Elaya to learn and evolve with each user, without a cap: "a living memory of
