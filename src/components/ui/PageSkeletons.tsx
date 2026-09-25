@@ -80,6 +80,8 @@ export function PageHeaderSkeleton({
 }
 
 export interface FilterBarSkeletonProps {
+  /** Width of a leading tab-tray shimmer (a view switcher sharing the strip); omit for none. */
+  leading?: number;
   /** Render the 16px sliders-icon placeholder (default false). */
   icon?: boolean;
   /** Search shimmer width; number = fixed px, 'flex' = grow (default 220). */
@@ -96,6 +98,7 @@ export interface FilterBarSkeletonProps {
 
 /** Row 2 of the contract — the `--theme-paper` filter strip with `--shadow-1`. */
 export function FilterBarSkeleton({
+  leading,
   icon = false,
   searchWidth = 220,
   chips = [],
@@ -120,6 +123,7 @@ export function FilterBarSkeleton({
     >
       {children ?? (
         <>
+          {leading !== undefined && <Shimmer w={leading} h={36} r="var(--radius-md)" style={{ flexShrink: 0 }} />}
           {icon && <Shimmer w={16} h={16} r="var(--radius-xs)" style={{ flexShrink: 0 }} />}
           {searchWidth === 'flex' ? (
             <Shimmer h={34} style={{ flex: '1 1 200px', minWidth: '160px' }} />
@@ -165,6 +169,53 @@ export function SkeletonCard({ style, children }: SkeletonCardProps) {
       }}
     >
       {children}
+    </div>
+  );
+}
+
+/** The rows of a conversation rail (ui/ConversationRailRow's shape: 40px avatar,
+ *  title + time, one preview line, a hairline between rows). */
+export function RailRowsSkeleton({ rows = 9 }: { rows?: number }) {
+  return (
+    <>
+      {Array.from({ length: rows }).map((_, i) => {
+        const delay = skeletonStagger(i);
+        return (
+          <div
+            key={i}
+            style={{
+              display:      'flex',
+              alignItems:   'center',
+              gap:          'var(--space-3)',
+              padding:      'var(--space-3) var(--space-4)',
+              borderBottom: '1px solid var(--theme-paper-border)',
+            }}
+          >
+            <Shimmer w={40} h={40} r="var(--radius-md)" delay={delay} style={{ flexShrink: 0 }} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
+                <Shimmer w="58%" h={12} r="var(--radius-xs)" delay={delay} />
+                <Shimmer w={34} h={10} r="var(--radius-xs)" delay={delay} style={{ flexShrink: 0 }} />
+              </div>
+              <Shimmer w="40%" h={10} r="var(--radius-xs)" delay={delay} />
+            </div>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+/** The empty-state hero's shape (ui/EmptyState: 64px tile, title, one line): a pane
+ *  before anything is picked. */
+export function EmptyStateSkeleton() {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-5)' }}>
+      <Shimmer w={64} h={64} r="var(--radius-xl)" />
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--space-2)' }}>
+        <Shimmer w={170} h={20} />
+        <Shimmer w={230} h={12} r="var(--radius-xs)" />
+      </div>
     </div>
   );
 }

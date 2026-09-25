@@ -6,7 +6,7 @@ import dynamic from 'next/dynamic';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { m as motion, AnimatePresence } from 'framer-motion';
 import { EASE_OUT_EXPO, EXIT_DURATION } from '@/lib/constants/motion';
-import { ArrowDownUp, Clock, Columns } from 'lucide-react';
+import { ArrowDownUp, Clock, Columns, UserRound } from 'lucide-react';
 import { buildFilterParams } from '@/lib/utils/filter-params';
 import type { LeadListItemWithAssignee } from '@/lib/services/leads-service';
 import { LEAD_STATUS_LABELS, LEAD_STATUS_BADGE } from '@/lib/constants/lead-statuses';
@@ -22,6 +22,7 @@ import { ExportButton } from '@/components/leads/ExportButton';
 import { TabSelector } from '@/components/ui/TabSelector';
 import { Tooltip } from '@/components/ui/Tooltip';
 import type { AppDomain, LeadFilters, UserRole } from '@/lib/types/database';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 // Load-on-intent (perf audit G-1): the picker (@dnd-kit chain) stays out of the
 // /leads route chunk until the Columns button is first clicked.
@@ -356,10 +357,7 @@ export function LeadsTable({ leads, totalCount, userId, role, domain, filters, h
               <tr>
                 <td
                   colSpan={orderedVisible.length + 1}
-                  style={{
-                    padding:   'var(--space-16) var(--space-4)',
-                    textAlign: 'center',
-                  }}
+                  style={{ padding: 'var(--space-16) var(--space-4)' }}
                 >
                   <LeadsEmptyCopy goingCold={goingCold} hasActiveFilters={hasActiveFilters} />
                 </td>
@@ -386,7 +384,7 @@ export function LeadsTable({ leads, totalCount, userId, role, domain, filters, h
           tablet+ — mobile is a monitoring surface (DNA §9 philosophy). */}
       <div className="md:hidden">
         {leads.length === 0 ? (
-          <div style={{ padding: 'var(--space-12) var(--space-4)', textAlign: 'center' }}>
+          <div style={{ padding: 'var(--space-12) var(--space-4)' }}>
             <LeadsEmptyCopy goingCold={goingCold} hasActiveFilters={hasActiveFilters} />
           </div>
         ) : (
@@ -411,37 +409,20 @@ function LeadsEmptyCopy({
   goingCold:        boolean;
   hasActiveFilters: boolean;
 }) {
+  // The /tickets empty, inside the table's own card (so never framed here).
   return (
-    <>
-      <p
-        style={{
-          fontFamily: 'var(--font-serif)',
-          fontSize:   'var(--text-lg)',
-          fontStyle:  'italic',
-          color:      'var(--theme-text-tertiary)',
-          fontWeight: 'var(--weight-normal)',
-        }}
-      >
-        {goingCold
-          ? 'No cold leads.'
-          : hasActiveFilters
-            ? 'Nothing matches these filters.'
-            : 'No leads yet.'}
-      </p>
-      <p
-        style={{
-          marginTop: 'var(--space-2)',
-          fontSize:  'var(--text-sm)',
-          color:     'var(--theme-text-tertiary)',
-        }}
-      >
-        {goingCold
+    <EmptyState
+      icon={UserRound}
+      title={goingCold ? 'No cold leads.' : hasActiveFilters ? 'Nothing matches these filters.' : 'No leads yet.'}
+      description={
+        goingCold
           ? 'All leads have had recent activity.'
           : hasActiveFilters
             ? 'Try adjusting or clearing your filters.'
-            : 'Leads will appear here once the webhook receives its first submission.'}
-      </p>
-    </>
+            : 'Leads will appear here once the webhook receives its first submission.'
+      }
+      style={{ padding: 0 }}
+    />
   );
 }
 

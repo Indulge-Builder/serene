@@ -12,6 +12,7 @@
 
 import { SelectionButton } from '@/components/ui/SelectionButton';
 import { LEAD_STATUS_LABELS } from '@/lib/constants/lead-statuses';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 // ─────────────────────────────────────────────
 // Pipeline status colour tokens (§16.4)
@@ -41,19 +42,7 @@ export function PipelineBar({
   const total = breakdown.reduce((s, b) => s + b.count, 0);
 
   if (total === 0) {
-    return (
-      <p
-        style={{
-          fontFamily: 'var(--font-serif)',
-          fontStyle:  'italic',
-          fontSize:   'var(--text-sm)',
-          color:      'var(--theme-text-tertiary)',
-          margin:     0,
-        }}
-      >
-        No leads in this period.
-      </p>
-    );
+    return <EmptyState title="No leads in this period." style={{ padding: 'var(--space-2) 0' }} />;
   }
 
   const ordered = STATUS_ORDER

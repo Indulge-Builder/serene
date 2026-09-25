@@ -4,10 +4,15 @@ import React, { useEffect, useState } from 'react';
 import { SeedMandala } from '@/components/ui/SeedMandala';
 
 // AppBootScreen — the hero loading sequence (logo-motion handoff §Boot).
-// Full-viewport on --neu-canvas: the mark draws itself (1.9s), then breathes
-// on a barely-perceptible 90s turn inside a pulsing accent glow; the wordmark
-// opens its tracking at 1.5s, the tagline fades up at 2.1s. The draw IS the
-// progress indicator — no bar below the mark. Plays once per app load (a hard navigation — the
+// Full-viewport on --neu-canvas: the mark and the SERENE / BY INDULGE lockup
+// beneath it (2026-09-25, after the Indulge app's splash). The eight rings draw
+// themselves (1.15s each, 90ms apart), the centre circle draws last and seals
+// the mark, and once the draw completes (~1.9s) it turns continuously, one
+// revolution per 24s (the Indulge app's mandalaSpin). The lockup fades in with
+// the draw, and the word's tracking breathes open (0.10em → 0.42em, transform
+// only) as the centre circle lands, on the splash's own clock. Nothing else: no
+// tagline, no glow, no pulse. The draw IS the progress indicator — no bar below
+// the mark. Plays once per app load (a hard navigation — the
 // dashboard layout persists across client-side route changes, so soft navs
 // never replay it). The overlay SSRs with the shell, so it is visible from
 // first paint; the layout beneath only streams once the shell's data has
@@ -16,6 +21,16 @@ import { SeedMandala } from '@/components/ui/SeedMandala';
 
 const SEQUENCE_MS = 3400;
 const REDUCED_MS = 500;
+/** The draw ends when the centre circle finishes: 8 × 90ms stagger + 1150ms. */
+const DRAW_DONE_MS = 8 * 90 + 1150;
+/** One revolution per 24s: the Indulge app's CLOCK.mandalaSpin. */
+const SPIN_S = 24;
+/** The wordmark, one span per letter so each can travel on its own (the
+ *  tracking reveal in design-tokens.css reads --serene-boot-gap). */
+const WORD = 'SERENE';
+const WORD_MIDDLE = (WORD.length - 1) / 2;
+/** The word's set tracking, the Indulge splash's TRACK_TO. */
+const WORD_TRACKING = '0.42em';
 // Once per browser session (2026-09-16): the draw sequence is a cold-start
 // moment, not a reload tax. The first hard load of a tab/PWA session plays it;
 // every later reload, deploy refresh, or back/forward restore in that session
@@ -63,85 +78,78 @@ export function AppBootScreen() {
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: '34px',
         background: 'var(--neu-canvas)',
         opacity: leaving ? 0 : 1,
         pointerEvents: leaving ? 'none' : 'auto',
         transition: 'opacity 500ms var(--ease-in-out)',
       }}
     >
-      {/* Soft ambient glow — theme accent (the ONLY theme-tinted piece of the
-          mark's stage), pulsing in phase with the breath (both from 2.6s). */}
-      <div
-        aria-hidden="true"
-        style={{
-          position: 'absolute',
-          width: 420,
-          height: 420,
-          borderRadius: '50%',
-          background:
-            'radial-gradient(circle, var(--neu-boot-glow) 0%, transparent 65%)',
-          opacity: 0.25,
-          animation: 'serene-logo-glow 4s ease-in-out 2.6s infinite both',
-        }}
+      {/* The spin waits for the draw, so the rings trace in still and only
+          then begin their slow, continuous turn. */}
+      <SeedMandala
+        size={176}
+        draw
+        spin={SPIN_S}
+        style={{ animationDelay: `${DRAW_DONE_MS}ms` }}
       />
 
-      {/* Breathe wraps the spin — two nested elements so transforms compose. */}
+      {/* The lockup. SERENE is the serif wordmark set wide (the mobile bar's
+          caps, at boot scale); the endorsement sits beneath it in small tracked
+          caps, the Indulge lockup's order. Hidden from assistive tech: the
+          status label already says what this is. */}
       <div
+        aria-hidden="true"
+        className="serene-boot-lockup"
         style={{
-          position: 'relative',
-          width: 190,
-          height: 190,
-          animation: 'serene-logo-breathe 4s ease-in-out 2.6s infinite',
-        }}
-      >
-        <SeedMandala size={190} draw spin={90} />
-      </div>
-
-      <div
-        style={{
+          marginTop: 'var(--space-10)',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           gap: 'var(--space-3)',
         }}
       >
-        <div
+        <span
           style={{
             fontFamily: 'var(--font-serif)',
-            fontSize: '26px',
-            fontWeight: 'var(--weight-semibold)',
+            fontSize: 'var(--text-xl)',
+            fontWeight: 'var(--weight-normal)',
+            letterSpacing: WORD_TRACKING,
+            // Letter-spacing trails the last letter; the same space on the left
+            // puts the word's optical middle under the mark's.
+            paddingLeft: WORD_TRACKING,
+            lineHeight: 1,
             color: 'var(--neu-text-primary)',
-            // paddingLeft mirrors the final tracking so the word stays
-            // optically centred while the letter-spacing opens.
-            paddingLeft: '0.42em',
-            animation: 'serene-word-in 1.4s cubic-bezier(0.22, 1, 0.36, 1) 1.5s both',
           }}
         >
-          SERENE
-        </div>
-        <div
+          {Array.from(WORD, (letter, i) => (
+            <span
+              key={i}
+              className="serene-boot-letter"
+              style={{ '--serene-boot-gap': i - WORD_MIDDLE } as React.CSSProperties}
+            >
+              {letter}
+            </span>
+          ))}
+        </span>
+        <span
           style={{
-            fontSize: 'var(--text-xs)',
-            letterSpacing: '0.08em',
+            fontFamily: 'var(--font-sans)',
+            fontSize: 'var(--text-2xs)',
+            fontWeight: 'var(--weight-medium)',
+            letterSpacing: '0.32em',
+            paddingLeft: '0.32em',
+            lineHeight: 1,
+            textTransform: 'uppercase',
             color: 'var(--neu-text-tertiary)',
-            animation: 'serene-tagline-in 900ms cubic-bezier(0.22, 1, 0.36, 1) 2.1s both',
           }}
         >
-          Attending to every detail
-        </div>
+          By Indulge
+        </span>
       </div>
 
-      {/* Reduced motion: kill every loop; the mark rests finished, text lands
-          static (the draw/spin classes are gated in the token layer — these
-          inline loops need their own gate). */}
-      <style>{`
-        @media (prefers-reduced-motion: reduce) {
-          [role="status"][aria-label="Serene is loading"] * {
-            animation: none !important;
-          }
-        }
-      `}</style>
+      {/* Reduced motion: the draw, spin and lockup classes are gated in the token
+          layer, so the mark rests finished and still, the lockup sits set, and
+          the cover fades after 500ms. */}
     </div>
   );
 }

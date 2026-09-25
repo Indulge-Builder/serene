@@ -232,12 +232,6 @@ export function CampaignCard({
         (e.currentTarget as HTMLAnchorElement).style.boxShadow = 'var(--shadow-1)';
         (e.currentTarget as HTMLAnchorElement).style.transform = 'translateY(0)';
       }}
-      onFocus={(e) => {
-        (e.currentTarget as HTMLAnchorElement).style.boxShadow = 'var(--shadow-focus)';
-      }}
-      onBlur={(e) => {
-        (e.currentTarget as HTMLAnchorElement).style.boxShadow = 'var(--shadow-1)';
-      }}
     >
         {/* Row 1 — identity: name + domain badge */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', minWidth: 0 }}>

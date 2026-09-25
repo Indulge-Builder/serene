@@ -128,8 +128,9 @@ export default async function SubscriptionsPage({
 
   return (
     <main className="flex-1 p-4 sm:p-6 lg:p-8">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-4 mb-6">
+      {/* Header — wraps on a phone, so the two actions drop under the title
+          instead of running off the edge. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3 mb-6">
         <h1 className="type-page-title m-0">
           Subscriptions<span className="page-title-dot">.</span>
         </h1>
@@ -139,22 +140,18 @@ export default async function SubscriptionsPage({
         </div>
       </div>
 
-      {/* View switcher */}
-      <div className="mb-6">
-        <SubscriptionViewTabs />
+      {/* One filter strip for every view: the List / Calendar / Overview switcher
+          leads it (never a row of its own), then the view's own filters. The
+          calendar has no filters, so its strip is the switcher alone. */}
+      <div className="px-5 py-4 mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)">
+        {view === "list" ? (
+          <SubscriptionFilters leading={<SubscriptionViewTabs />} />
+        ) : view === "overview" ? (
+          <OverviewFilters leading={<SubscriptionViewTabs />} />
+        ) : (
+          <SubscriptionViewTabs />
+        )}
       </div>
-
-      {/* Filter bar (list + overview views) */}
-      {view === "list" && (
-        <div className="px-5 py-4 mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)">
-          <SubscriptionFilters />
-        </div>
-      )}
-      {view === "overview" && (
-        <div className="px-5 py-4 mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)">
-          <OverviewFilters />
-        </div>
-      )}
 
       <Suspense key={contentKey} fallback={<ContentSkeleton />}>
         <SubscriptionContent

@@ -11,7 +11,7 @@ import { ManagerPerformanceSkeleton } from "./ManagerPerformanceSkeleton";
 import { PerformanceSkeleton } from "./PerformanceSkeleton";
 import { ManagerPerformanceAsync } from "./ManagerPerformanceAsync";
 import { ManagerPerformanceShell } from "./ManagerPerformanceShell";
-import { FounderPerformanceShell } from "./FounderPerformanceShell";
+import { FounderPerformanceShell, type FounderDomainsData } from "./FounderPerformanceShell";
 import { PerformanceFilters } from "@/components/performance/PerformanceFilters";
 import { AgentPerformanceShell } from "@/components/performance/AgentPerformanceShell";
 import type { AppDomain } from "@/lib/types/database";
@@ -130,6 +130,43 @@ async function AgentPerformanceAsync({
 }
 
 // ─────────────────────────────────────────────
+// Founder / admin Domains data — one promise the shell resolves behind Suspense.
+// Never rejects (the <Await> contract): a failed read renders the empty cards.
+// ─────────────────────────────────────────────
+
+async function loadFounderDomainsData(
+  domains: AppDomain[],
+  period: PerformancePeriod,
+  from: string,
+  to: string,
+): Promise<FounderDomainsData> {
+  try {
+    const { getDomainHealthMetrics, getPeriodDateRange } = await import("@/lib/services/performance-service");
+    const { getDomainTargets } = await import("@/lib/services/domain-targets-service");
+    const monthRange = getPeriodDateRange('this_month');
+
+    const [initialDomainHealth, monthHealth, initialTargets] = await Promise.all([
+      getDomainHealthMetrics(domains, from, to),
+      // The target meter is month-pinned; when the active period IS this month,
+      // reuse the same fetch instead of a second RPC round trip.
+      period === 'this_month'
+        ? Promise.resolve(null)
+        : getDomainHealthMetrics(domains, monthRange.from, monthRange.to),
+      getDomainTargets(),
+    ]);
+
+    const monthDeals = Object.fromEntries(
+      (monthHealth ?? initialDomainHealth).map((c) => [c.domain, c.totalDeals]),
+    ) as Partial<Record<AppDomain, number>>;
+
+    return { initialDomainHealth, initialTargets, monthDeals };
+  } catch (err) {
+    console.error("[performance/page] founder domains read failed:", err);
+    return { initialDomainHealth: [], initialTargets: [], monthDeals: {} };
+  }
+}
+
+// ─────────────────────────────────────────────
 // Page
 // ─────────────────────────────────────────────
 
@@ -238,23 +275,10 @@ export default async function PerformancePage({
   const scopeDomain = resolveDomainParam(params, await cookies(), profile.role);
   const healthDomains = (scopeDomain ? [scopeDomain] : [...GIA_DOMAINS]) as AppDomain[];
 
-  const { getDomainHealthMetrics, getPeriodDateRange } = await import("@/lib/services/performance-service");
-  const { getDomainTargets } = await import("@/lib/services/domain-targets-service");
-  const monthRange = getPeriodDateRange('this_month');
-
-  const [initialDomainHealth, monthHealth, domainTargets] = await Promise.all([
-    getDomainHealthMetrics(healthDomains, from, to),
-    // The target meter is month-pinned; when the active period IS this month,
-    // reuse the same fetch instead of a second RPC round trip.
-    period === 'this_month'
-      ? Promise.resolve(null)
-      : getDomainHealthMetrics(healthDomains, monthRange.from, monthRange.to),
-    getDomainTargets(),
-  ]);
-
-  const monthDeals = Object.fromEntries(
-    (monthHealth ?? initialDomainHealth).map((c) => [c.domain, c.totalDeals]),
-  ) as Partial<Record<AppDomain, number>>;
+  // Streamed, never awaited here (2026-09-25): the header and the filter strip paint
+  // at once and the Domains tab resolves this behind its ONE skeleton — the same
+  // shape the lazy chart chunk shows, so the wait reads as a single loading state.
+  const domainsData = loadFounderDomainsData(healthDomains, period, from, to);
 
   return (
     <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8">
@@ -279,9 +303,7 @@ export default async function PerformancePage({
         period={period}
         customFrom={customFrom ?? undefined}
         customTo={customTo ?? undefined}
-        initialDomainHealth={initialDomainHealth}
-        initialTargets={domainTargets}
-        monthDeals={monthDeals}
+        domainsData={domainsData}
         scopeDomain={scopeDomain}
         canEditTargets={true}
         agentsSlot={

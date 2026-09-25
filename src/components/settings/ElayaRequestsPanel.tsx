@@ -13,6 +13,7 @@ import { formatDate } from '@/lib/utils/dates';
 import { resolveImprovementRequestAction } from '@/lib/actions/elaya-memory';
 import { ELAYA_REQUEST_KIND_LABELS, ELAYA_REQUEST_STATUS_LABELS, ELAYA_REQUEST_STATUS_OPTIONS_FOR_PANEL, type ElayaRequestStatus } from '@/lib/constants/elaya-memory';
 import type { ElayaImprovementRequestRow } from '@/lib/services/elaya-memory-service';
+import { MessageSquareWarning } from 'lucide-react';
 
 const INPUT: React.CSSProperties = {
   width: '100%', padding: '8px var(--space-3)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--theme-paper-border)',
@@ -69,7 +70,7 @@ function RequestCard({ r }: { r: ElayaImprovementRequestRow }) {
 export function ElayaRequestsPanel({ requests }: { requests: ElayaImprovementRequestRow[] }) {
   const open = requests.filter((r) => r.status === 'open');
   const done = requests.filter((r) => r.status !== 'open');
-  if (requests.length === 0) return <EmptyState title="Nothing raised yet. When someone tells Elaya she was wrong about the system, it lands here." />;
+  if (requests.length === 0) return <EmptyState icon={MessageSquareWarning} framed title="Nothing raised yet." description="When someone tells Elaya she was wrong about the system, it lands here." />;
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
       {open.length > 0 && (

@@ -198,10 +198,10 @@ export function EscalatedLeadsSection({
       bodyPadding={false}
     >
       {rows.length === 0 ? (
-        // §08 brand empty — a clear breach board is good news; the mark rests
-        // behind the reassurance. No action (breaches aren't user-created).
+        // An all-clear: the Serene mark rests in the tile (good news, never a
+        // warning icon). No action (breaches aren't user-created).
         <EmptyState
-          brand
+          variant="hero"
           title={selfView ? "Nothing of yours is slipping." : "Nothing is breaching right now."}
           description="When a lead crosses its SLA, it will surface here for you to act on."
           minHeight="220px"
@@ -265,7 +265,7 @@ export function OverdueTasksSection({
     >
       {rows.length === 0 ? (
         <EmptyState
-          brand
+          variant="hero"
           title={selfView ? "Every follow-up of yours is on time." : "No follow-up has slipped past due."}
           description="An overdue follow-up task will appear here the moment it passes its deadline."
           minHeight="220px"
@@ -344,7 +344,7 @@ export function GoingColdSection({
     >
       {rows.length === 0 ? (
         <EmptyState
-          brand
+          variant="hero"
           title={selfView ? "Every one of your leads has recent movement." : "Every active lead has recent movement."}
           description="Leads drifting quiet for too long will gather here before they go cold."
           minHeight="220px"

@@ -91,9 +91,9 @@ export function AgentLeadsDrillModal({ open, agentId, agentName, domain, period,
           <LogoSpinner size="md" />
         </div>
       ) : error && rows.length === 0 ? (
-        <EmptyState variant="inline" title="Couldn't load leads." size="sm" />
+        <EmptyState variant="inline" title="Couldn't load leads." />
       ) : rows.length === 0 ? (
-        <EmptyState variant="inline" title="No leads assigned." size="sm" />
+        <EmptyState variant="inline" title="No leads assigned." />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
           {rows.map((lead) => (

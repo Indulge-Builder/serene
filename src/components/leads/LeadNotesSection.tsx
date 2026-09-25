@@ -1,5 +1,6 @@
 import { MessageSquare } from 'lucide-react';
 import { CardHeader } from '@/components/leads/CardHeader';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { CALL_OUTCOME_LABELS } from '@/lib/constants/call-outcomes';
 import { formatDate } from '@/lib/utils/dates';
 import type { LeadNoteWithAuthor } from '@/lib/services/leads-service';
@@ -46,28 +47,7 @@ export function LeadNotesSection({ notes }: Props) {
 
       {/* Timeline */}
       {notes.length === 0 ? (
-        <div style={{ padding: 'var(--space-12) var(--space-6)', textAlign: 'center' }}>
-          <p
-            style={{
-              fontFamily: 'var(--font-serif)',
-              fontSize:   'var(--text-lg)',
-              fontStyle:  'italic',
-              color:      'var(--theme-text-tertiary)',
-              margin:     0,
-            }}
-          >
-            No calls logged yet.
-          </p>
-          <p
-            style={{
-              marginTop: 'var(--space-2)',
-              fontSize:  'var(--text-sm)',
-              color:     'var(--theme-text-tertiary)',
-            }}
-          >
-            Use the Called button to log your first call.
-          </p>
-        </div>
+        <EmptyState title="No calls logged yet." description="Use the Called button to log your first call." />
       ) : (
         <div style={{ padding: 'var(--space-5)' }}>
           {/* Notes */}

@@ -26,13 +26,12 @@ const CELL: React.CSSProperties = {
 export function MembersTable({ members, hasFilters }: { members: MemberListItem[]; hasFilters: boolean }) {
   if (members.length === 0) {
     return (
-      <div style={{ background: 'var(--theme-paper)', border: '1px solid var(--theme-paper-border)', borderRadius: 'var(--neu-radius-card)', boxShadow: 'var(--shadow-1)', padding: 'var(--space-12) var(--space-6)' }}>
-        <EmptyState
-          icon={Users}
-          title={hasFilters ? 'Nobody matches these filters.' : 'No members yet.'}
-          description={hasFilters ? 'Try clearing a filter.' : 'Add the first member with the button above.'}
-        />
-      </div>
+      <EmptyState
+        icon={Users}
+        framed
+        title={hasFilters ? 'Nobody matches these filters.' : 'No members yet.'}
+        description={hasFilters ? 'Try clearing a filter.' : 'Add the first member with the button above.'}
+      />
     );
   }
   return (

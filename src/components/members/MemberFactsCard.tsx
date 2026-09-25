@@ -1,54 +1,58 @@
 'use client';
 
-// MemberFactsCard — the twin's facts at dossier density, grouped by facet, each with its
-// source and date, plus "correct" (a new fact that supersedes the old — the old row stays in
-// the ledger). New facts come in through the Observation box (MemberObservationCard), never
-// a form here. One component, two mounts: Essentials and Preferences.
+// MemberFactsCard — the twin's facts at dossier density. One section per facet (Family,
+// Dietary, …), each a quiet label → value list; the source and date sit beside the value
+// and the whole provenance is in its tooltip. Double-click a value to correct it in place
+// (the lead dossier's inline-edit look, ui/InlineEdit): Enter or leaving the field saves,
+// Esc cancels. A correction is a new fact that supersedes the old; the old row and its
+// duplicates stay in the ledger. New facts come in through the Observation box
+// (MemberObservationCard), never a form here. One component, two mounts: Essentials and
+// Preferences.
 
-import { useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Compass, Heart, ShieldCheck, Sparkles } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-
-// A server page cannot pass a component to a member card; it passes a name.
-const ICONS: Record<'compass' | 'heart', LucideIcon> = { compass: Compass, heart: Heart };
 import { CardHeader } from '@/components/leads/CardHeader';
-import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { toast } from '@/lib/toast';
+import { EditableValueText, FieldSaveFeedback, INLINE_EDIT_INPUT_STYLE } from '@/components/ui/InlineEdit';
 import { addMemberFactAction } from '@/lib/actions/members';
 import { formatDate } from '@/lib/utils/dates';
 import { CLIENT_FACETS, FACT_SOURCES, FACT_KEY_LABELS, type MemberFacet } from '@/lib/constants/member-facets';
 import type { MemberFactView } from '@/lib/types/member';
 
+// A server page cannot pass a component to a member card; it passes a name.
+const ICONS: Record<'compass' | 'heart', LucideIcon> = { compass: Compass, heart: Heart };
+
+const SUCCESS_HOLD_MS = 2000;
+
 function keyLabel(facet: string, key: string): string {
-  return FACT_KEY_LABELS[`${facet}.${key}`] ?? (key ? key.replace(/_/g, ' ') : CLIENT_FACETS.labels[facet as MemberFacet] ?? facet);
+  const label = FACT_KEY_LABELS[`${facet}.${key}`] ?? (key ? key.replace(/_/g, ' ') : CLIENT_FACETS.labels[facet as MemberFacet] ?? facet);
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function provenance(f: MemberFactView): string {
+  const sources = f.sources.map((src) => FACT_SOURCES.labels[src] ?? src).join(' and ');
+  return `${sources}, ${formatDate(f.observed_at, 'd MMM yyyy')}${f.created_by_name ? `, by ${f.created_by_name}` : ''}, confidence ${Math.round(f.confidence * 100)}%`;
 }
 
 export function MemberFactsCard({ clientId, facts, facets, title, icon }: { clientId: string; facts: MemberFactView[]; facets: readonly MemberFacet[]; title: string; icon: 'compass' | 'heart' }) {
-  const router = useRouter();
-  const [pending, start] = useTransition();
-  const [composing, setComposing] = useState<{ facet: MemberFacet; key: string; polarity: 'likes' | 'dislikes' | 'neutral'; value: string; supersedes: string | null } | null>(null);
-
-  const groups = useMemo(() => {
-    const byKey = new Map<string, MemberFactView[]>();
+  // facet → key → facts, in the card's facet order; keys A→Z inside a facet.
+  const sections = useMemo(() => {
+    const byFacet = new Map<MemberFacet, Map<string, MemberFactView[]>>();
     for (const f of facts) {
       if (!facets.includes(f.facet)) continue;
-      const k = `${f.facet}|${f.key}`;
-      byKey.set(k, [...(byKey.get(k) ?? []), f]);
+      const keys = byFacet.get(f.facet) ?? new Map<string, MemberFactView[]>();
+      keys.set(f.key, [...(keys.get(f.key) ?? []), f]);
+      byFacet.set(f.facet, keys);
     }
-    return [...byKey.entries()].sort(([a], [b]) => a.localeCompare(b));
+    return facets
+      .filter((facet) => byFacet.has(facet))
+      .map((facet) => ({
+        facet,
+        rows: [...byFacet.get(facet)!.entries()].sort(([a], [b]) => a.localeCompare(b)),
+      }));
   }, [facts, facets]);
-
-  function submit() {
-    if (!composing || !composing.value.trim()) return;
-    start(async () => {
-      const res = await addMemberFactAction({ member_id: clientId, facet: composing.facet, key: composing.key, value: composing.value, polarity: composing.polarity, supersedes_id: composing.supersedes });
-      if (res.error) { toast.danger(res.error); return; }
-      setComposing(null);
-      router.refresh();
-    });
-  }
 
   return (
     <div style={{
@@ -59,74 +63,180 @@ export function MemberFactsCard({ clientId, facts, facets, title, icon }: { clie
       overflow: 'hidden',
     }}>
       <CardHeader icon={ICONS[icon]} label={title} />
-      <div style={{ padding: 'var(--space-4) var(--space-6) var(--space-5)' }}>
-        {groups.length === 0 && !composing && (
+      <div style={{ padding: 'var(--space-4) var(--space-6) var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
+        {sections.length === 0 && (
           <EmptyState variant="inline" title="Nothing recorded yet." description="Write an observation above; what it says lands here, with who said it and when." />
         )}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 'var(--space-4) var(--space-6)' }}>
-          {groups.map(([k, list]) => {
-            const [facet, key] = k.split('|');
-            return (
-              <div key={k} style={{ minWidth: 0 }}>
-                <div className="label-micro" style={{ color: 'var(--theme-text-tertiary)', marginBottom: 'var(--space-1)' }}>{keyLabel(facet, key)}</div>
-                <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                  {list.map((f) => (
-                    <li key={f.id} style={{
-                      fontSize: 'var(--text-sm)',
-                      color: f.polarity === 'dislikes' ? 'var(--color-danger-text)' : 'var(--theme-text-primary)',
-                      display: 'flex',
-                      alignItems: 'baseline',
-                      gap: 'var(--space-2)',
-                      flexWrap: 'wrap',
-                    }}>
-                      <span>{f.polarity === 'dislikes' ? 'Avoids ' : ''}{f.value}</span>
-                      <span title={`${f.sources.map((src) => FACT_SOURCES.labels[src] ?? src).join(' and ')}, ${formatDate(f.observed_at, 'd MMM yyyy')}${f.created_by_name ? `, by ${f.created_by_name}` : ''}, confidence ${Math.round(f.confidence * 100)}%`}
-                        style={{ fontSize: 'var(--text-2xs)', color: 'var(--theme-text-tertiary)', display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-                        {f.source === 'agent_note' ? <ShieldCheck style={{ width: 10, height: 10 }} /> : <Sparkles style={{ width: 10, height: 10 }} />}
-                        {formatDate(f.observed_at, 'MMM yy')}{f.sources.length > 1 ? ` · ${f.sources.length} sources` : ''}
+        {sections.map(({ facet, rows }) => {
+          const facetLabel = CLIENT_FACETS.labels[facet];
+          return (
+            <section key={facet} style={{ minWidth: 0 }}>
+              <div className="label-micro" style={{ color: 'var(--theme-text-tertiary)', marginBottom: 'var(--space-2)' }}>{facetLabel}</div>
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
+                {rows.map(([key, list], i) => {
+                  const label = keyLabel(facet, key);
+                  return (
+                    <div
+                      key={key}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'minmax(88px, 30%) minmax(0, 1fr)',
+                        columnGap: 'var(--space-4)',
+                        padding: 'var(--space-2) 0',
+                        borderTop: i === 0 ? 'none' : '1px solid var(--theme-paper-border)',
+                      }}
+                    >
+                      {/* A key that only repeats its facet ("Dietary" under Dietary) shows no label. */}
+                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--theme-text-secondary)', lineHeight: 'var(--leading-normal)', paddingTop: 1 }}>
+                        {label.toLowerCase() === facetLabel.toLowerCase() ? '' : label}
                       </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        type="button"
-                        onClick={() => setComposing({ facet: f.facet, key: f.key, polarity: f.polarity, value: f.value, supersedes: f.id })}
-                      >
-                        correct
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)', minWidth: 0 }}>
+                        {list.map((f, idx) => (
+                          // Keyed by position: a correction comes back from the server under a
+                          // new id, and the row keeps its "saved" check across the refresh.
+                          <FactValue key={`${key}:${idx}`} clientId={clientId} fact={f} label={label} />
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
-        </div>
-
-        {composing && (
-          <div style={{
-            marginTop: 'var(--space-4)',
-            paddingTop: 'var(--space-4)',
-            borderTop: '1px solid var(--theme-paper-border)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 'var(--space-2)',
-          }}>
-            <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-              <select className="serene-input neu-input" value={composing.facet} onChange={(e) => setComposing({ ...composing, facet: e.target.value as MemberFacet })} style={{ width: 140 }} disabled={Boolean(composing.supersedes)}>
-                {facets.map((f) => <option key={f} value={f}>{CLIENT_FACETS.labels[f]}</option>)}
-              </select>
-              <input className="serene-input neu-input" value={composing.key} onChange={(e) => setComposing({ ...composing, key: e.target.value })} placeholder="what (e.g. seat, cuisine, home)" style={{ width: 200 }} disabled={Boolean(composing.supersedes)} />
-              <select className="serene-input neu-input" value={composing.polarity} onChange={(e) => setComposing({ ...composing, polarity: e.target.value as 'likes' | 'dislikes' | 'neutral' })} style={{ width: 110 }}>
-                <option value="neutral">is</option><option value="likes">likes</option><option value="dislikes">avoids</option>
-              </select>
-            </div>
-            <input className="serene-input neu-input" value={composing.value} onChange={(e) => setComposing({ ...composing, value: e.target.value })} placeholder="the value" onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} autoFocus maxLength={2000} />
-            <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
-              <Button variant="ghost" size="xs" onClick={() => setComposing(null)}>Cancel</Button>
-              <Button size="xs" onClick={submit} loading={pending} disabled={!composing.value.trim()}>{composing.supersedes ? 'Correct' : 'Add'}</Button>
-            </div>
-          </div>
-        )}
+            </section>
+          );
+        })}
       </div>
+    </div>
+  );
+}
+
+function FactValue({ clientId, fact, label }: { clientId: string; fact: MemberFactView; label: string }) {
+  const router = useRouter();
+  const [, startRefresh] = useTransition();
+  const [editing, setEditing] = useState(false);
+  const [display, setDisplay] = useState(fact.value);
+  const [draft, setDraft] = useState(fact.value);
+  const [saving, setSaving] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [hovered, setHovered] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Disabling the focused input mid-save fires a blur; the ref stops it saving twice.
+  const inFlight = useRef(false);
+
+  useEffect(() => { setDisplay(fact.value); setDraft(fact.value); }, [fact.value]);
+  useEffect(() => { if (editing) inputRef.current?.select(); }, [editing]);
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+
+  function open() {
+    if (saving) return;
+    setDraft(display);
+    setError(null);
+    setEditing(true);
+  }
+
+  function cancel() {
+    setDraft(display);
+    setError(null);
+    setEditing(false);
+  }
+
+  async function commit() {
+    const next = draft.trim();
+    if (inFlight.current) return;
+    if (!next || next === display.trim()) { cancel(); return; }
+    inFlight.current = true;
+    setSaving(true);
+    setError(null);
+    const res = await addMemberFactAction({
+      member_id: clientId, facet: fact.facet, key: fact.key, value: next, polarity: fact.polarity, supersedes_id: fact.id,
+    });
+    inFlight.current = false;
+    setSaving(false);
+    // The draft stays open on error, so nothing typed is lost.
+    if (res.error) { setError(res.error); return; }
+    setDisplay(next);
+    setEditing(false);
+    setSuccess(true);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setSuccess(false), SUCCESS_HOLD_MS);
+    startRefresh(() => router.refresh());
+  }
+
+  const avoids = fact.polarity === 'dislikes';
+
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 'var(--space-2)', minWidth: 0 }}>
+        {avoids && (
+          <span style={{
+            flexShrink: 0,
+            padding: '1px var(--space-2)',
+            borderRadius: 'var(--radius-full)',
+            background: 'var(--color-danger-light)',
+            color: 'var(--color-danger-text)',
+            fontSize: 'var(--text-2xs)',
+            fontWeight: 'var(--weight-medium)',
+          }}>
+            Avoids
+          </span>
+        )}
+        {editing ? (
+          <input
+            ref={inputRef}
+            value={draft}
+            disabled={saving}
+            maxLength={2000}
+            aria-label={`Correct ${label}`}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={() => void commit()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); void commit(); }
+              if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+            }}
+            style={{ ...INLINE_EDIT_INPUT_STYLE, flex: 1, minWidth: 0 }}
+          />
+        ) : (
+          <span
+            role="button"
+            tabIndex={0}
+            aria-label={`${label}: ${display}. Double-click to correct.`}
+            title={`${provenance(fact)}\nDouble-click to correct.`}
+            onDoubleClick={open}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); open(); } }}
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              fontSize: 'var(--text-sm)',
+              lineHeight: 'var(--leading-normal)',
+              color: 'var(--theme-text-primary)',
+              wordBreak: 'break-word',
+              cursor: saving ? 'wait' : 'text',
+            }}
+          >
+            <EditableValueText hovered={hovered}>{display}</EditableValueText>
+          </span>
+        )}
+        <span style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)', alignSelf: 'center' }}>
+          <FieldSaveFeedback saving={saving} success={success} error={null} />
+          {!editing && !saving && !success && (
+            <span
+              title={provenance(fact)}
+              style={{ fontSize: 'var(--text-2xs)', color: 'var(--theme-text-tertiary)', display: 'inline-flex', alignItems: 'center', gap: 3, whiteSpace: 'nowrap' }}
+            >
+              {fact.source === 'agent_note'
+                ? <ShieldCheck style={{ width: 10, height: 10, strokeWidth: 1.5 }} />
+                : <Sparkles style={{ width: 10, height: 10, strokeWidth: 1.5 }} />}
+              {formatDate(fact.observed_at, 'MMM yy')}{fact.sources.length > 1 ? ` · ${fact.sources.length}` : ''}
+            </span>
+          )}
+        </span>
+      </div>
+      {error && (
+        <p style={{ margin: 'var(--space-1) 0 0', fontSize: 'var(--text-xs)', color: 'var(--color-danger-text)' }}>{error}</p>
+      )}
     </div>
   );
 }

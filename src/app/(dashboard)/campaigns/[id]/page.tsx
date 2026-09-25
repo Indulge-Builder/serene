@@ -208,22 +208,9 @@ export default async function CampaignDetailPage({
         </h1>
       </div>
 
-      {/* Video + metrics row — ad video on the left, the 8 score tiles (2×4) on
-          the right. The video panel renders immediately (creatives awaited
-          up-front); the metrics stream into the right column via Suspense, so a
-          slow RPC never delays the video. Stacks to one column below lg. */}
-      <div
-        className="grid grid-cols-1 lg:grid-cols-[320px_1fr]"
-        style={{ gap: 'var(--space-6)', marginBottom: 'var(--space-6)', alignItems: 'start' }}
-      >
-        {/* Left — ad video (or the add-a-video tile when empty) */}
-        <CampaignAdPanel
-          adCreatives={adCreatives}
-          campaignKey={normalizeCampaignKey(campaignName)}
-          canUpload={canUpload}
-        />
-
-        {/* Right — metrics strip, own Suspense boundary */}
+      {/* Metrics first, full width, streaming behind their own Suspense so a
+          slow RPC never holds the page. */}
+      <div style={{ marginBottom: 'var(--space-6)' }}>
         <Suspense fallback={<CampaignMetricsStripSkeleton />}>
           <CampaignMetricsAsync
             campaignName={campaignName}
@@ -243,6 +230,16 @@ export default async function CampaignDetailPage({
           filters={filters}
         />
       </Suspense>
+
+      {/* The ad creative sits below the work (2026-09-25): the numbers and the
+          leads lead the page; the video is the reference beneath them. */}
+      <div style={{ marginTop: 'var(--space-6)' }}>
+        <CampaignAdPanel
+          adCreatives={adCreatives}
+          campaignKey={normalizeCampaignKey(campaignName)}
+          canUpload={canUpload}
+        />
+      </div>
     </main>
   );
 }

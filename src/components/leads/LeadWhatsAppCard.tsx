@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { MessageCircle } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { EmptyState } from '@/components/ui/EmptyState';
 import { createClient } from "@/lib/supabase/client";
 import {
   sendWhatsAppMessage,
@@ -193,25 +194,11 @@ export function LeadWhatsAppCard({
         }}
       >
         <CardHeader conversation={null} />
-        <div
-          style={{
-            background: "var(--theme-paper-subtle)",
-            padding:    "var(--space-12) var(--space-6)",
-            textAlign:  "center",
-          }}
-        >
-          <p
-            style={{
-              fontFamily: "var(--font-serif)",
-              fontStyle:  "italic",
-              fontSize:   "var(--text-sm)",
-              color:      "var(--theme-text-tertiary)",
-              margin:     0,
-            }}
-          >
-            No phone number on file.
-          </p>
-        </div>
+        <EmptyState
+          title="No phone number on file."
+          description="Add a phone number to this lead to message them on WhatsApp."
+          style={{ padding: "var(--space-8) var(--space-6)" }}
+        />
       </div>
     );
   }
@@ -229,39 +216,11 @@ export function LeadWhatsAppCard({
         }}
       >
         <CardHeader conversation={null} />
-        <div
-          style={{
-            background:    "var(--theme-paper-subtle)",
-            padding:       "var(--space-12) var(--space-6)",
-            textAlign:     "center",
-            display:       "flex",
-            flexDirection: "column",
-            alignItems:    "center",
-            gap:           "var(--space-2)",
-          }}
-        >
-          <p
-            style={{
-              fontFamily: "var(--font-serif)",
-              fontStyle:  "italic",
-              fontSize:   "var(--text-sm)",
-              color:      "var(--theme-text-secondary)",
-              margin:     0,
-            }}
-          >
-            No messages yet.
-          </p>
-          <p
-            style={{
-              fontFamily: "var(--font-sans)",
-              fontSize:   "var(--text-sm)",
-              color:      "var(--theme-text-tertiary)",
-              margin:     0,
-            }}
-          >
-            Send the first message to start this conversation on WhatsApp.
-          </p>
-          <div style={{ marginTop: "var(--space-4)" }}>
+        <EmptyState
+          title="No messages yet."
+          description="Send the first message to start this conversation on WhatsApp."
+          style={{ padding: "var(--space-8) var(--space-6)" }}
+          action={
             <Button
               variant="primary"
               size="sm"
@@ -272,8 +231,8 @@ export function LeadWhatsAppCard({
             >
               {isInitiatePending ? "Starting…" : "Start Conversation"}
             </Button>
-          </div>
-        </div>
+          }
+        />
       </div>
     );
   }
@@ -308,18 +267,7 @@ export function LeadWhatsAppCard({
         }}
       >
         {messages.length === 0 ? (
-          <p
-            style={{
-              fontFamily: "var(--font-serif)",
-              fontStyle:  "italic",
-              fontSize:   "var(--text-sm)",
-              color:      "var(--theme-text-tertiary)",
-              textAlign:  "center",
-              margin:     "var(--space-8) 0",
-            }}
-          >
-            No messages yet.
-          </p>
+          <EmptyState title="No messages yet." style={{ margin: "var(--space-4) 0" }} />
         ) : (
           messages.map((msg, idx) => {
             const showSeparator =

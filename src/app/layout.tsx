@@ -56,7 +56,10 @@ export async function generateMetadata(): Promise<Metadata> {
     // needs the apple entry below regardless, since it ignores manifest icons).
     manifest: `/api/manifest?icon=${icon}`,
     icons: {
-      icon: "/logo.webp",
+      // The tab icon is the mark on its cream plate (app/favicon.ico, built by
+      // scripts/pad-app-icons.mjs), the same look as the home-screen icon. The
+      // transparent logo.webp vanished on dark tab strips.
+      icon: "/favicon.ico",
       apple: iconHref,
     },
     // Installed-app chrome on iOS (no manifest `display` support there).

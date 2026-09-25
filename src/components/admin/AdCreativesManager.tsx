@@ -1,14 +1,13 @@
 "use client";
 
-import { Button } from '@/components/ui/Button';
 import { useMemo, useState, useTransition } from "react";
 import { m as motion } from "framer-motion";
-import { Plus, Pencil, Trash2, Film, SlidersHorizontal } from "lucide-react";
+import { Plus, Film, SlidersHorizontal } from "lucide-react";
 import { MotionButton, MOTION_BUTTON_DEFAULTS } from "@/components/ui/MotionButton";
 import { SearchBar } from "@/components/ui/SearchBar";
-import { SeedMandala } from "@/components/ui/SeedMandala";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { EditDeleteActions } from "@/components/ui/RowActions";
 import { AdCreativeFormModal } from "./AdCreativeFormModal";
 import { deleteAdCreative } from "@/lib/actions/ad-creatives";
 import { useToast } from "@/hooks/useToast";
@@ -153,7 +152,8 @@ export function AdCreativesManager({ initialCreatives, campaignKeys }: AdCreativ
       {/* Row 3 — card list */}
       {filtered.length === 0 ? (
         <EmptyState
-          variant="hero"
+          icon={Film}
+          framed
           title={
             creatives.length === 0
               ? "No ad creatives yet."
@@ -164,7 +164,6 @@ export function AdCreativesManager({ initialCreatives, campaignKeys }: AdCreativ
               ? "Add one to bring campaigns to life on lead dossiers."
               : "Try a different campaign or ad name."
           }
-          style={{ padding: "var(--space-20) var(--space-8)" }}
         />
       ) : (
         <div className="flex flex-col gap-2">
@@ -320,35 +319,7 @@ function CreativeCard({
         )}
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", flexShrink: 0 }}>
-        <Button
-          variant="control"
-          size="sm"
-          type="button"
-          onClick={onEdit}
-          aria-label="Edit creative"
-        >
-          <Pencil style={{ width: 12, height: 12, strokeWidth: 1.5 }} />
-          Edit
-        </Button>
-        <Button
-          variant="danger"
-          iconOnly size="sm"
-          type="button"
-          onClick={onDelete}
-          disabled={isDeleting}
-          aria-label="Delete creative"
-        >
-          {isDeleting ? (
-            <SeedMandala size={14} variant="currentColor" spin={3.5} />
-          ) : (
-            <>
-              <Trash2 style={{ width: 12, height: 12, strokeWidth: 1.5 }} />
-              Delete
-            </>
-          )}
-        </Button>
-      </div>
+      <EditDeleteActions onEdit={onEdit} onDelete={onDelete} deleting={isDeleting} subject="creative" />
     </motion.div>
   );
 }

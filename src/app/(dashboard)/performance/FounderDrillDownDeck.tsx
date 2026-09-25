@@ -51,6 +51,7 @@ import type { FirstTouchBucketId } from '@/lib/constants/performance';
 import type { AgentRosterRow, AgentDetailMetrics } from '@/lib/types/index';
 import type { AppDomain, LeadStatus, CallOutcome } from '@/lib/types/database';
 import type { PerformancePeriod, FirstTouchScorecard as FirstTouchScorecardData } from '@/lib/services/performance-service';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 // Recharts importer — lazy per perf G-3 so the chart chunk never lands in the
 // /performance initial bundle. Same same-shape skeleton placeholder pattern as
@@ -186,17 +187,7 @@ export function FounderDrillDownDeck({
       description={activeAgent ? (DOMAIN_LABELS[activeAgent.domain] ?? activeAgent.domain) : undefined}
     >
       {roster.length === 0 ? (
-        <p
-          style={{
-            fontFamily: 'var(--font-serif)',
-            fontStyle: 'italic',
-            color: 'var(--theme-text-tertiary)',
-            textAlign: 'center',
-            margin: 'var(--space-8) 0',
-          }}
-        >
-          No agents to show.
-        </p>
+        <EmptyState title="No agents to show." style={{ margin: 'var(--space-4) 0' }} />
       ) : (
         <Carousel
           items={roster}
@@ -433,19 +424,7 @@ function DeckBreakdown({
           style={{ height: '200px', borderRadius: 'var(--radius-lg)', width: '100%' }}
         />
       ) : breakdown.status === 'error' ? (
-        <p
-          style={{
-            fontFamily: 'var(--font-serif)',
-            fontStyle: 'italic',
-            fontSize: 'var(--text-sm)',
-            color: 'var(--theme-text-tertiary)',
-            margin: 0,
-            padding: 'var(--space-5)',
-            textAlign: 'center',
-          }}
-        >
-          Breakdown unavailable.
-        </p>
+        <EmptyState title="Breakdown unavailable." description="Try again in a moment." />
       ) : mode === 'outcome' ? (
         <motion.div
           key="outcome"

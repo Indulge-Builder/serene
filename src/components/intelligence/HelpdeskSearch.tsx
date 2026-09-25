@@ -27,6 +27,7 @@ import {
 } from '@/lib/constants/interests';
 import { caseMatchesQuery } from '@/lib/utils/case-search';
 import type { ServiceCase, ConversationHook } from '@/lib/services/intelligence-service';
+import { BookOpen } from 'lucide-react';
 
 // Detail modal loads on intent (perf G-1) — kept mounted after first open via
 // useMountOnFirstOpen so modal.tsx's internal exit animation still plays.
@@ -143,21 +144,22 @@ export function HelpdeskSearch({
 
       {filtered.length === 0 ? (
         initialCases.length === 0 ? (
-          // §08 brand empty — the library itself is bare. Elaya draws on these
-          // delivery examples when she helps, so name her. No action here: cases
-          // are authored via the +Suggestion CTA in the page header (admin only).
+          // The library itself is bare. Elaya draws on these delivery examples when
+          // she helps, so name her. No action: cases are authored via the
+          // +Suggestion CTA in the page header (admin only).
           <EmptyState
-            brand
+            icon={BookOpen}
+            framed
             title="The library is still being written."
             description="As delivery stories are added here, Elaya will lean on them to help the team answer well."
-            minHeight="320px"
           />
         ) : (
-          // A search/category miss — not a bare library. Keep it quiet and inline.
+          // A search/category miss: the same page-level card, the /tickets way.
           <EmptyState
-            variant="inline"
-            title="Nothing matches. Try a different keyword."
-            style={{ padding: 'var(--space-10) var(--space-4)' }}
+            icon={BookOpen}
+            framed
+            title="Nothing matches."
+            description="Try a different keyword or category."
           />
         )
       ) : (

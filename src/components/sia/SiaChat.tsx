@@ -274,9 +274,8 @@ export function SiaChat({
   }, [group.member_count, group.message_count]);
 
   return (
-    <section
-      className="relative flex flex-col min-h-0 flex-1 rounded-(--radius-lg) border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1) overflow-hidden"
-    >
+    // The card is SiaWorkspace's SplitPane; the chat is a plain column inside it.
+    <div className="relative flex flex-col min-h-0 flex-1">
       {/* ── Header ── */}
       <div className="px-4 py-2.5 border-b border-(--theme-paper-border) bg-(--theme-paper)">
         <div className="flex items-center gap-3">
@@ -502,7 +501,7 @@ export function SiaChat({
           />
         )}
       </AnimatePresence>
-    </section>
+    </div>
   );
 }
 

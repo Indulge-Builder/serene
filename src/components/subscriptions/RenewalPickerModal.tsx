@@ -104,7 +104,6 @@ export function RenewalPickerModal({ open, onClose, onSelect }: Props) {
           ) : filtered.length === 0 ? (
             <EmptyState
               variant="inline"
-              size="lg"
               title={search.trim() ? "No subscriptions match." : "No active subscriptions."}
               description={
                 search.trim()

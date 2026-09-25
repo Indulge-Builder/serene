@@ -18,6 +18,7 @@ import { getHelpdeskLibraryAction } from '@/lib/actions/intelligence';
 import { caseMatchesQuery } from '@/lib/utils/case-search';
 import type { ServiceCase, ConversationHook } from '@/lib/services/intelligence-service';
 import type { AppDomain } from '@/lib/types/database';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 const SEARCH_RESULT_CAP = 8;
 
@@ -137,17 +138,7 @@ export function ServiceInterestCard({ interests, cases, hooks, domain }: Props) 
             The library is unreachable right now. Keep typing to retry.
           </p>
         ) : matches.length === 0 ? (
-          <p
-            style={{
-              fontFamily: 'var(--font-serif)',
-              fontStyle:  'italic',
-              fontSize:   'var(--text-sm)',
-              color:      'var(--theme-text-tertiary)',
-              margin:     0,
-            }}
-          >
-            Nothing matches. Try a different keyword.
-          </p>
+          <EmptyState title="Nothing matches." description="Try a different keyword." style={{ padding: 'var(--space-4) 0' }} />
         ) : (
           <>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
@@ -174,18 +165,11 @@ export function ServiceInterestCard({ interests, cases, hooks, domain }: Props) 
         /* ── Rest view — curated interest/city matches ───────────────── */
         <>
           {cases.length === 0 ? (
-            <p
-              style={{
-                fontFamily: 'var(--font-sans)',
-                fontSize:   'var(--text-sm)',
-                color:      'var(--theme-text-tertiary)',
-                margin:     0,
-              }}
-            >
-              {interests.length === 0
-                ? 'No interests on file yet — search the library above, or add interests on the contact card.'
-                : 'No examples on file for this category yet.'}
-            </p>
+            <EmptyState
+              title={interests.length === 0 ? 'No interests on file yet.' : 'No examples for this category yet.'}
+              description={interests.length === 0 ? 'Search the library above, or add interests on the contact card.' : undefined}
+              style={{ padding: 'var(--space-4) 0' }}
+            />
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
               {cases.map((c, i) => (

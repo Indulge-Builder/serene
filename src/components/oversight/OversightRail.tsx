@@ -27,6 +27,7 @@ import {
 import type { LucideIcon } from "lucide-react";
 import type { AppDomain } from "@/lib/types/database";
 import type { TaskEventRow, TaskEventType } from "@/lib/types/oversight";
+import { EmptyState } from '@/components/ui/EmptyState';
 
 const EVENT_META: Record<TaskEventType, { icon: LucideIcon; verb: string }> = {
   created: { icon: ListChecks, verb: "created" },
@@ -104,17 +105,7 @@ function OversightRail({
       </div>
 
       {events.length === 0 ? (
-        <p
-          style={{
-            fontFamily: "var(--font-serif)",
-            fontStyle: "italic",
-            fontSize: "var(--text-sm)",
-            color: "var(--theme-text-tertiary)",
-            margin: 0,
-          }}
-        >
-          Quiet for now.
-        </p>
+        <EmptyState title="Quiet for now." description="Moves across the teams stream in here as they happen." style={{ padding: "var(--space-4) 0" }} />
       ) : (
         <ul className="flex flex-col" style={{ gap: "var(--space-3)" }}>
           {events.map((ev) => (

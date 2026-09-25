@@ -85,12 +85,7 @@ export function Toggle({
           transition: `background var(--duration-base) var(--ease-spring)`,
           outline:    'none',
         }}
-        onFocus={(e) => {
-          (e.currentTarget as HTMLButtonElement).style.boxShadow = 'var(--neu-focus-ring)';
-        }}
-        onBlur={(e) => {
-          (e.currentTarget as HTMLButtonElement).style.boxShadow = 'var(--neu-shadow-inset)';
-        }}
+        // Keyboard focus is the shared outline; a click leaves the inset track alone.
       >
         {/* Thumb */}
         <motion.span

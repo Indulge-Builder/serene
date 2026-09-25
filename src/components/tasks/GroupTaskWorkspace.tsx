@@ -56,7 +56,7 @@ import {
   ArrowRight,
   CalendarDays,
   ChevronDown,
-  Trash2,
+  Trash2, CheckSquare
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -97,6 +97,7 @@ import type {
   AppDomain,
 } from "@/lib/types/database";
 import { BASE_DURATION, EASE_OUT_EXPO } from "@/lib/constants/motion";
+import { EmptyState } from '@/components/ui/EmptyState';
 
 // Load-on-intent (perf audit G-1): SubTaskModal (1,672 lines) stays out of the
 // /tasks/[id] route chunk until a subtask is first opened (the call site
@@ -746,38 +747,12 @@ export function GroupTaskWorkspace({
       {view === "list" && (
         <div>
           {sortedSubtasks.length === 0 ? (
-            <div
-              style={{
-                border: "1px solid var(--theme-paper-border)",
-                borderRadius: "var(--radius-md)",
-                padding: "var(--space-16) var(--space-8)",
-                textAlign: "center",
-                boxShadow: "var(--shadow-1)",
-              }}
-            >
-              <p
-                style={{
-                  fontFamily: "var(--font-serif)",
-                  fontStyle: "italic",
-                  fontSize: "var(--text-lg)",
-                  color: "var(--theme-text-tertiary)",
-                  margin: 0,
-                }}
-              >
-                No subtasks yet.
-              </p>
-              <p
-                style={{
-                  fontFamily: "var(--font-sans)",
-                  fontSize: "var(--text-sm)",
-                  color: "var(--theme-text-tertiary)",
-                  marginTop: "var(--space-2)",
-                  marginBottom: 0,
-                }}
-              >
-                Add the first subtask with the button below.
-              </p>
-            </div>
+            <EmptyState
+              icon={CheckSquare}
+              framed
+              title="No subtasks yet."
+              description="Add the first subtask with the button below."
+            />
           ) : (
             <div
               style={{

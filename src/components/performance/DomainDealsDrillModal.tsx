@@ -89,9 +89,9 @@ export function DomainDealsDrillModal({ open, domain, period, customFrom, custom
           <LogoSpinner size="md" />
         </div>
       ) : error ? (
-        <EmptyState variant="inline" title="Couldn't load deals." size="sm" />
+        <EmptyState variant="inline" title="Couldn't load deals." />
       ) : rows.length === 0 ? (
-        <EmptyState variant="inline" title="No deals closed here." size="sm" />
+        <EmptyState variant="inline" title="No deals closed here." />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
           {rows.map((deal) => (

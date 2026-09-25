@@ -97,9 +97,9 @@ export function LeadDrillModal({ open, title, subtitle, emptyLabel = 'No leads h
           <LogoSpinner size="md" />
         </div>
       ) : error ? (
-        <EmptyState variant="inline" title="Couldn't load leads." size="sm" />
+        <EmptyState variant="inline" title="Couldn't load leads." />
       ) : rows.length === 0 ? (
-        <EmptyState variant="inline" title={emptyLabel} size="sm" />
+        <EmptyState variant="inline" title={emptyLabel} />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
           {rows.map((lead) => (

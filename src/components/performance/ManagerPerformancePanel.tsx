@@ -6,7 +6,7 @@ import { useState, useRef, useEffect, useMemo }  from 'react';
 import dynamic                                   from 'next/dynamic';
 import { useSearchParams }                      from 'next/navigation';
 import { m as motion, AnimatePresence }               from 'framer-motion';
-import { ChevronDown, LayoutGrid }               from 'lucide-react';
+import { ChevronDown, LayoutGrid, BarChart2 }               from 'lucide-react';
 import { Avatar }                                from '@/components/ui/Avatar';
 import { CollapseReveal }                        from '@/components/ui/CollapseReveal';
 import { EmptyState }                            from '@/components/ui/EmptyState';
@@ -450,18 +450,12 @@ export function ManagerPerformancePanel({
 
   if (agentRoster.length === 0) {
     return (
-      <div
-        style={{
-          background:   'var(--theme-paper)',
-          border:       '1px solid var(--theme-paper-border)',
-          borderRadius: 'var(--radius-lg)',
-          padding:      'var(--space-12) var(--space-6)',
-          textAlign:    'center',
-          boxShadow:    'var(--shadow-1)',
-        }}
-      >
-        <EmptyState title="No agents in this domain yet." size="lg" style={{ padding: 0 }} />
-      </div>
+      <EmptyState
+        icon={BarChart2}
+        framed
+        title="No agents in this domain yet."
+        description="Agents appear here once they are active in this domain."
+      />
     );
   }
 
@@ -514,34 +508,21 @@ export function ManagerPerformancePanel({
           />
         ) : (
           // Closed deck → a calm prompt to reopen it (never the list on mobile).
-          <div
-            style={{
-              display:        'flex',
-              flexDirection:  'column',
-              alignItems:     'center',
-              gap:            'var(--space-4)',
-              background:     'var(--theme-paper)',
-              border:         '1px solid var(--theme-paper-border)',
-              borderRadius:   'var(--radius-lg)',
-              padding:        'var(--space-10) var(--space-6)',
-              textAlign:      'center',
-              boxShadow:      'var(--shadow-1)',
-            }}
-          >
-            <EmptyState
-              title="Swipe through your team."
-              size="lg"
-              style={{ padding: 0 }}
-            />
-            <Button
-              variant="control"
-              type="button"
-              onClick={() => setDeckOpen(true)}
-            >
-              <LayoutGrid style={{ width: 15, height: 15, strokeWidth: 1.5 }} aria-hidden="true" />
-              Open agent deck
-            </Button>
-          </div>
+          <EmptyState
+            icon={BarChart2}
+            framed
+            title="Swipe through your team."
+            action={
+              <Button
+                variant="control"
+                type="button"
+                iconLeft={LayoutGrid}
+                onClick={() => setDeckOpen(true)}
+              >
+                Open agent deck
+              </Button>
+            }
+          />
         )}
       </div>
     );

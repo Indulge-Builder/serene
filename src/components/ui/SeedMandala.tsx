@@ -10,6 +10,12 @@ import React, { useId } from 'react';
 // the clean 8-petal seed flower that is the signature of the mark. If the
 // middle reads as a mess of arcs, the geometry is wrong. Never eyeball it.
 //
+// PLUS the intersecting centre circle (r48 here, r24 in the Indulge app's 100
+// box): part of the official Indulge logo, and the circle the Indulge app's
+// splash draws LAST to seal the mark (indulge-app-example MandalaLogo, owner
+// geometry FINAL 2026-07-28). Serene drew the 8 rings without it until
+// 2026-09-25. It is larger than the petal knot, so it crosses the ring arcs.
+//
 // The three gradient stops below are BRAND-FIXED (the handoff's only
 // sanctioned hex in components) — they never re-tint with the theme. Only
 // glow washes / progress sweeps outside this component use --neu-accent.
@@ -26,7 +32,7 @@ export interface SeedMandalaProps {
    * darkDisc: light-gold gradient, stroke 4 — the charcoal Elaya disc.
    */
   variant?: SeedMandalaVariant;
-  /** Trace each circle in (1.15s, 90ms stagger). Reusable first-reveal. */
+  /** Trace each circle in (1.15s, 90ms stagger; the centre circle last). */
   draw?: boolean;
   /** Seconds per revolution, linear infinite. Never faster than 3.5. */
   spin?: number;
@@ -38,6 +44,8 @@ export interface SeedMandalaProps {
 
 const R = 46;
 const CENTER = 100;
+/** The intersecting centre circle (the official logo's ninth ring). */
+const CENTER_R = 48;
 const CIRCLES = Array.from({ length: 8 }, (_, k) => {
   const angle = (k / 8) * Math.PI * 2 - Math.PI / 2;
   return {
@@ -125,6 +133,16 @@ export function SeedMandala({
           style={draw ? { animationDelay: `${k * 90}ms` } : undefined}
         />
       ))}
+      {/* The centre circle draws last, sealing the mark (the Indulge splash order). */}
+      <circle
+        cx={CENTER}
+        cy={CENTER}
+        r={CENTER_R}
+        stroke={stroke}
+        strokeWidth={sw}
+        {...(draw ? { pathLength: 1, strokeDasharray: 1 } : {})}
+        style={draw ? { animationDelay: `${CIRCLES.length * 90}ms` } : undefined}
+      />
     </svg>
   );
 }

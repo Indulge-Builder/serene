@@ -10,7 +10,7 @@
 
 import { useState, useTransition } from 'react';
 import dynamic from 'next/dynamic';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Activity } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { TabSelector } from '@/components/ui/TabSelector';
 import { StatTile } from '@/components/ui/StatTile';
@@ -54,10 +54,10 @@ export function UsageDashboard({ initialReport }: { initialReport: AgentUsageRep
   if (!report) {
     return (
       <EmptyState
+        icon={Activity}
+        framed
         title="Usage data is unavailable right now."
         description="Try refreshing in a moment."
-        framed
-        minHeight="280px"
       />
     );
   }
@@ -109,10 +109,10 @@ export function UsageDashboard({ initialReport }: { initialReport: AgentUsageRep
         <UsageTodayTable today={today} />
       ) : history.length === 0 ? (
         <EmptyState
+          icon={Activity}
+          framed
           title="No history yet."
           description="Daily active-time history accumulates here from the first full day of tracking."
-          framed
-          minHeight="280px"
         />
       ) : (
         <div

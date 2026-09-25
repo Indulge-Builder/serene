@@ -59,7 +59,6 @@ export function RechargeHistoryTable({ rows }: { rows: AccountRecharge[] }) {
       <EmptyState
         variant="inline"
         title="No recharges recorded for this period."
-        size="sm"
       />
     );
   }

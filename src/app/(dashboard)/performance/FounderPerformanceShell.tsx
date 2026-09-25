@@ -13,9 +13,10 @@
 // passed as a prop (RSC composition pattern). Both tabs share the same
 // period/customFrom/customTo from URL params.
 
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { TabSelector } from '@/components/ui/TabSelector';
+import { Await } from '@/components/ui/Await';
 import { PerformanceFilters } from '@/components/performance/PerformanceFilters';
 import { useMediaQuery, MQ } from '@/hooks/useMediaQuery';
 import { FounderPerfActionsProvider } from './founder-perf-actions';
@@ -24,12 +25,23 @@ import type { DomainHealthCard, DomainTarget } from '@/lib/types/index';
 import type { AppDomain } from '@/lib/types/database';
 
 // Loaded on intent (perf audit G-3): the Domains tab is the only Recharts
-// consumer in the founder shell, so its chunk is fetched on first tab click
-// instead of shipping in the /performance initial chunk.
-const DomainOverviewPanel = dynamic(
-  () => import('@/components/performance/DomainOverviewPanel').then((mod) => mod.DomainOverviewPanel),
-  { loading: () => <DomainsTabFallback /> },
-);
+// consumer in the founder shell, so its chunk never ships in the /performance
+// initial chunk. The shell starts the download on mount (below), in parallel
+// with the streamed domain data.
+const loadDomainOverviewPanel = () =>
+  import('@/components/performance/DomainOverviewPanel').then((mod) => mod.DomainOverviewPanel);
+const DomainOverviewPanel = dynamic(loadDomainOverviewPanel, { loading: () => <DomainsTabFallback /> });
+
+/** The Domains tab's server data, streamed as ONE promise (the page never awaits
+ *  it, so the header and strip paint at once). Never rejects: the page catches
+ *  to the empty shape. */
+export type FounderDomainsData = {
+  initialDomainHealth: DomainHealthCard[];
+  /** Founder-set monthly deals targets (domain_targets) */
+  initialTargets:      DomainTarget[];
+  /** Deals closed THIS MONTH per domain — month-pinned target meter input */
+  monthDeals:          Partial<Record<AppDomain, number>>;
+};
 
 function DomainsTabFallback() {
   return (
@@ -52,11 +64,7 @@ type Props = {
   period:              PerformancePeriod;
   customFrom?:         string;
   customTo?:           string;
-  initialDomainHealth: DomainHealthCard[];
-  /** Founder-set monthly deals targets (domain_targets) */
-  initialTargets:      DomainTarget[];
-  /** Deals closed THIS MONTH per domain — month-pinned target meter input */
-  monthDeals:          Partial<Record<AppDomain, number>>;
+  domainsData:         Promise<FounderDomainsData>;
   /** Global serene-domain narrowing (resolveDomainParam): a picked domain renders
    *  just that one card on the Domains tab; null = all GIA domains. */
   scopeDomain:         AppDomain | null;
@@ -68,13 +76,17 @@ export function FounderPerformanceShell({
   period,
   customFrom,
   customTo,
-  initialDomainHealth,
-  initialTargets,
-  monthDeals,
+  domainsData,
   scopeDomain,
   canEditTargets,
   agentsSlot,
 }: Props) {
+  // Start the Domains chart chunk now, while the data streams: when both land,
+  // the panel replaces the ONE skeleton it shares with the data wait.
+  useEffect(() => {
+    void loadDomainOverviewPanel();
+  }, []);
+
   // Active tab is seeded from ?tab= and mirrored back via history.replaceState
   // (no navigation, no RSC re-run) so a round-trip to a lead dossier and back
   // RESTORES the tab the user was on — instead of snapping back to Domains and
@@ -165,16 +177,24 @@ export function FounderPerformanceShell({
       </div>
 
       {activeTab === 'domains' && (
-        <DomainOverviewPanel
-          initialData={initialDomainHealth}
-          period={period}
-          customFrom={customFrom}
-          customTo={customTo}
-          initialTargets={initialTargets}
-          monthDeals={monthDeals}
-          scopeDomain={scopeDomain}
-          canEditTargets={canEditTargets}
-        />
+        // One skeleton for the whole wait: the data (this boundary) and the chart
+        // chunk (the dynamic() loading above) draw the same DomainsTabFallback.
+        <Suspense fallback={<DomainsTabFallback />}>
+          <Await promise={domainsData}>
+            {(d) => (
+              <DomainOverviewPanel
+                initialData={d.initialDomainHealth}
+                period={period}
+                customFrom={customFrom}
+                customTo={customTo}
+                initialTargets={d.initialTargets}
+                monthDeals={d.monthDeals}
+                scopeDomain={scopeDomain}
+                canEditTargets={canEditTargets}
+              />
+            )}
+          </Await>
+        </Suspense>
       )}
     </div>
   );

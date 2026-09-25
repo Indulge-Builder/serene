@@ -302,30 +302,11 @@ body {
   /* Breathing room above the page title — the paper is full-bleed below md,
      so the page-padding ladder's p-4 alone leaves the <h1> hugging the
      screen top (and the status bar on notched phones). Scoped to mains that
-     carry the ladder; full-bleed mains (e.g. /whatsapp) are untouched. The
-     trigger's `top` above moves by the same +12px to stay on the h1 line. */
+     carry the ladder (every page since /whatsapp joined the Sia layout,
+     2026-09-25). The trigger's `top` above moves by the same +12px to stay
+     on the h1 line. */
   .serene-shell-paper main.p-4 {
     padding-top: calc(var(--space-7) + env(safe-area-inset-top, 0px));
-  }
-  /* WhatsApp is a full-bleed app shell (no main.p-4 ladder), so the rule above
-     skips it — its left rail keeps the flat p-4 (16px) top and the "WhatsApp"
-     <h1> ends up hugging the screen top, sitting visibly higher than the
-     floating hamburger (which lives at --space-7 + safe-area). Give the rail
-     the SAME mobile top offset so the title baseline lands on the trigger's
-     line. (md+ the p-4/sm/lg ladder takes back over — this is <md only.) */
-  .serene-shell-paper .serene-wa-rail {
-    padding-top: calc(var(--space-7) + env(safe-area-inset-top, 0px));
-  }
-  /* Single-pane conversation header (mobile) — same top offset as the rail so
-     the back arrow + contact name clear the notch and sit on the floating
-     trigger's line, plus a left indent so its content clears the hamburger
-     that overlays the top-left corner (the rail title gets the same 52px via
-     the .type-page-title rule below). */
-  .serene-shell-paper .serene-wa-pane-header {
-    padding-top: calc(var(--space-7) + env(safe-area-inset-top, 0px));
-    /* 68px: the back arrow carries a -8px inline margin, so its left edge lands
-       at ~60px — just past the 40px-wide hamburger that spans 16→56px. */
-    padding-left: 68px;
   }
   /* Page title clears the floating trigger — fires only when the trigger
      is mounted (general-sibling scope: topbar and gutter share .serene-shell). */
@@ -601,10 +582,11 @@ body {
   color: var(--neu-text-tertiary);
 }
 
+/* The field focus frame (serene-neumorphic-tokens.css, .neu-input). */
 .serene-input:focus-visible {
-  border-color: var(--theme-accent);
+  border-color: var(--neu-focus-edge);
   box-shadow:
-    0 0 0 1px var(--theme-accent),
+    0 0 0 1px var(--neu-focus-edge),
     var(--neu-shadow-input);
 }
 

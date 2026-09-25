@@ -122,7 +122,7 @@ export function DashboardDateFilter({ activePreset, fromParam, toParam }: Dashbo
           height:         '36px',
           width:          isMobile ? '36px' : undefined,
           padding:        isMobile ? 0 : '0 var(--space-3)',
-          ...filterTriggerStyle(isActive, open),
+          ...filterTriggerStyle(isActive),
           fontSize:     'var(--text-xs)',
           fontWeight:   'var(--weight-medium)',
           cursor:       'pointer',

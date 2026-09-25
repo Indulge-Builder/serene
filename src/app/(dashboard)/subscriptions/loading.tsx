@@ -10,12 +10,8 @@ export default function SubscriptionsLoading() {
     <main className="flex-1 p-4 sm:p-6 lg:p-8">
       <PageHeaderSkeleton titleWidth={180} actionWidth={150} />
 
-      {/* View switcher */}
-      <div style={{ marginBottom: "var(--space-6)" }}>
-        <Shimmer w={220} h={36} r="var(--radius-xl)" />
-      </div>
-
-      <FilterBarSkeleton chips={[110, 80, 90]} />
+      {/* One strip: the view switcher leads it, then search + filters */}
+      <FilterBarSkeleton leading={228} icon searchWidth="flex" chips={[110, 80, 90]} />
 
       {/* Table */}
       <div

@@ -5,6 +5,7 @@ import { getAllRevivalPolicies } from "@/lib/services/revival-service";
 import { RevivalPoliciesPanel }  from "@/components/settings/RevivalPoliciesPanel";
 import { BackButton }            from "@/components/ui/BackButton";
 import { EmptyState }            from "@/components/ui/EmptyState";
+import { Sparkles } from 'lucide-react';
 
 export const metadata = { title: "Lead Revival — Serene" };
 
@@ -29,6 +30,8 @@ export default async function LeadRevivalPage() {
         <RevivalPoliciesPanel initialPolicies={revivalPolicies} />
       ) : (
         <EmptyState
+          icon={Sparkles}
+          framed
           title="No revival policies yet"
           description="Revival policies will appear here once they are seeded."
         />

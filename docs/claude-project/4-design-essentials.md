@@ -182,10 +182,12 @@ every other waiting state is a smaller quotation of it.
   form the 8-petal seed flower). Variants `gradient` (umber `#2B1D10` → gold `#C08A4E`),
   `currentColor`, `darkDisc`. Its three gradient stops are the **only sanctioned component hex** —
   brand-fixed, never theme-tinted (they resolve through `--neu-mandala-*` so dark mode lifts them).
-- **`AppBootScreen`** — the full-viewport boot on `--neu-canvas`, once per hard load: the mark draws
-  → breathes → turns at 90s/rev inside an accent glow, "SERENE" opens its letter-spacing, the
-  tagline fades up, and the whole thing lifts at ~3.4s. Soft navigations never replay it. The
-  progress bar under the wordmark was removed 2026-07-10 — the draw *is* the progress indicator.
+- **`AppBootScreen`** — the full-viewport boot on `--neu-canvas`, once per hard load, after the
+  Indulge app's splash (2026-09-25): the mark draws (the centre circle last), then turns at 24s/rev;
+  beneath it the SERENE / BY INDULGE lockup fades in and the word's tracking opens (0.10em to
+  0.42em, each letter moved by a transform) as the draw completes; the whole thing fades at ~3.4s.
+  No tagline, no glow, no pulse. Soft navigations never replay it. The progress bar under the
+  wordmark was removed 2026-07-10 — the draw *is* the progress indicator.
 - **`LogoSpinner` replaced the arc `Spinner`, which is DELETED — never recreate it.** Sizes `lg`/`md`
   are the mark in an inset cream well; `sm` is bare. Tiny in-control indicators use an inline
   14–16px `currentColor` mark. `LoadingVeil` (exported from `LogoSpinner.tsx`) is the scrim +

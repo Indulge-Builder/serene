@@ -5,6 +5,7 @@ import { getAllSlaPolicies }   from "@/lib/services/sla-service";
 import { SlaPoliciesPanel }    from "@/components/settings/SlaPoliciesPanel";
 import { BackButton }          from "@/components/ui/BackButton";
 import { EmptyState }          from "@/components/ui/EmptyState";
+import { Timer } from 'lucide-react';
 
 export const metadata = { title: "Follow-up Engine — Serene" };
 
@@ -29,6 +30,8 @@ export default async function FollowUpEnginePage() {
         <SlaPoliciesPanel initialPolicies={slaPolicies} />
       ) : (
         <EmptyState
+          icon={Timer}
+          framed
           title="No follow-up rules yet"
           description="Follow-up rules will appear here once the engine is seeded."
         />

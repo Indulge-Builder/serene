@@ -8,6 +8,7 @@ import { CardHeader } from '@/components/leads/CardHeader';
 import { toast } from '@/lib/toast';
 import { tickChecklistAction } from '@/lib/actions/tickets';
 import type { TicketRow } from '@/lib/types/ticket';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 export function TicketChecklistCard({ ticket }: { ticket: TicketRow }) {
   const router = useRouter();
@@ -29,7 +30,7 @@ export function TicketChecklistCard({ ticket }: { ticket: TicketRow }) {
             </label>
           </li>
         ))}
-        {list.length === 0 && <li style={{ fontSize: 'var(--text-sm)', color: 'var(--theme-text-tertiary)' }}>No checklist for this category.</li>}
+        {list.length === 0 && <li style={{ listStyle: 'none' }}><EmptyState title="No checklist for this category." /></li>}
       </ul>
     </div>
   );

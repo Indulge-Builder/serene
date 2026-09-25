@@ -91,6 +91,7 @@ export function SubscriptionsTable({
     return (
       <EmptyState
         icon={Receipt}
+        framed
         title={archived ? "Nothing archived" : "No subscriptions yet"}
         description={
           archived

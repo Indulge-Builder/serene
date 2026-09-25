@@ -94,8 +94,9 @@ export const MessageBar = forwardRef<HTMLTextAreaElement, MessageBarProps>(
           }}
           onFocus={(e) => {
             if (isNested) return;
-            (e.currentTarget as HTMLDivElement).style.borderColor = "var(--theme-accent)";
-            (e.currentTarget as HTMLDivElement).style.boxShadow   = "0 0 0 1px var(--theme-accent), var(--neu-shadow-input)";
+            // The field focus frame (serene-neumorphic-tokens.css, .neu-input).
+            (e.currentTarget as HTMLDivElement).style.borderColor = "var(--neu-focus-edge)";
+            (e.currentTarget as HTMLDivElement).style.boxShadow   = "0 0 0 1px var(--neu-focus-edge), var(--neu-shadow-input)";
           }}
           onBlur={(e) => {
             if (isNested) return;

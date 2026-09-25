@@ -1,6 +1,5 @@
 'use client';
 
-import { Button } from '@/components/ui/Button';
 import { useState } from 'react';
 import dynamic from 'next/dynamic';
 import { m as motion } from 'framer-motion';
@@ -8,6 +7,7 @@ import { Plus } from 'lucide-react';
 import { EASE_OUT_EXPO, SLOW_DURATION } from '@/lib/constants/motion';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { UploadButton } from '@/components/ui/UploadButton';
 import { AdCreativeCarousel } from './AdCreativeCarousel';
 import type { AdCreative } from '@/lib/types/database';
 
@@ -27,16 +27,14 @@ interface CampaignAdPanelProps {
 }
 
 /**
- * Left-column ad-creative panel for the campaign detail page.
+ * The ad-creative card at the foot of the campaign detail page (below the leads
+ * since 2026-09-25; it used to open the page beside the metrics).
  *
  * - Has creatives → the looping AdCreativeCarousel (showMeta) in a SectionCard.
- * - No creatives + canUpload → an empty "add a video" tile with a Plus that
- *   opens the SAME AdCreativeFormModal the /admin/ad-creatives page uses
+ * - No creatives + canUpload → the shared UploadButton surface ("Add a video")
+ *   that opens the SAME AdCreativeFormModal the /admin/ad-creatives page uses
  *   (R-01 — no second uploader), with this campaign pre-selected + locked.
- * - No creatives + !canUpload → the empty tile without the upload affordance.
- *
- * The card frame is ALWAYS shown (the metrics grid sits to its right), so the
- * two columns stay balanced whether or not a video exists.
+ * - No creatives + !canUpload → one quiet line, no upload affordance.
  */
 export function CampaignAdPanel({ adCreatives, campaignKey, canUpload }: CampaignAdPanelProps) {
   const [creatives, setCreatives] = useState<AdCreative[]>(adCreatives);
@@ -56,7 +54,7 @@ export function CampaignAdPanel({ adCreatives, campaignKey, canUpload }: Campaig
       transition={{ duration: SLOW_DURATION, ease: EASE_OUT_EXPO }}
     >
       <SectionCard
-        title="AD CREATIVE"
+        title="Ad creative"
         headerRight={
           hasVideo && creatives.length > 1 ? (
             <span
@@ -95,72 +93,21 @@ export function CampaignAdPanel({ adCreatives, campaignKey, canUpload }: Campaig
 }
 
 // ─────────────────────────────────────────────
-// Empty state — same 9:16 footprint as the player, with an upload affordance
+// Empty state — the shared file-chooser surface, or one quiet line
 // ─────────────────────────────────────────────
 
 function EmptyAdTile({ canUpload, onAdd }: { canUpload: boolean; onAdd: () => void }) {
-  const sharedTileStyle: React.CSSProperties = {
-    width:          '100%',
-    maxWidth:       '270px',          // matches the carousel player width
-    marginInline:   'auto',
-    aspectRatio:    '9 / 16',
-    maxHeight:      '480px',
-    borderRadius:   'var(--radius-md)',
-    background:     'var(--neu-surface)',
-    border:         '1px dashed var(--neu-edge-strong)',
-    boxShadow:      'var(--neu-shadow-raised-sm)',
-    display:        'flex',
-    flexDirection:  'column',
-    alignItems:     'center',
-    justifyContent: 'center',
-    gap:            'var(--space-3)',
-    color:          'var(--theme-text-tertiary)',
-    textAlign:      'center',
-    padding:        'var(--space-6)',
-  };
-
   if (!canUpload) {
-    return (
-      <div style={sharedTileStyle}>
-        <EmptyState title="No video yet." size="lg" style={{ padding: 0 }} />
-      </div>
-    );
+    return <EmptyState title="No video yet." style={{ padding: 'var(--space-4) 0' }} />;
   }
 
   return (
-    <Button
-      variant="control"
-      iconOnly size="sm"
-      type="button"
-      onClick={onAdd}
-      aria-label="Add a video for this campaign"
-      className="serene-pressable serene-icon-rotate-hover"
-      style={{ ...sharedTileStyle }}
-    >
-      <span
-        style={{
-          display:        'inline-flex',
-          alignItems:     'center',
-          justifyContent: 'center',
-          width:          '3rem',
-          height:         '3rem',
-          borderRadius:   'var(--radius-full)',
-          background:     'var(--theme-paper)',
-          border:         '1px solid var(--theme-paper-border)',
-          boxShadow:      'var(--shadow-1)',
-        }}
-      >
-        <Plus style={{ width: '1.25rem', height: '1.25rem', strokeWidth: 1.5 }} />
+    <UploadButton onClick={onAdd} aria-label="Add a video for this campaign" className="serene-icon-rotate-hover">
+      <Plus style={{ width: '1.25rem', height: '1.25rem', strokeWidth: 1.5 }} aria-hidden="true" />
+      <span style={{ fontWeight: 'var(--weight-medium)', color: 'var(--theme-text-primary)' }}>Add a video</span>
+      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>
+        Upload the ad video for this campaign.
       </span>
-      <span
-        style={{
-          fontFamily: 'var(--font-sans)',
-          fontSize:   'var(--text-sm)',
-          color:      'inherit',
-        }}
-      >
-        Add a video
-      </span>
-    </Button>
+    </UploadButton>
   );
 }

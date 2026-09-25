@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { AnimatePresence } from "framer-motion";
 import { SectionCard } from "@/components/ui/SectionCard";
+import { EmptyState } from '@/components/ui/EmptyState';
 import { TaskCompletionCircle } from "@/components/tasks/TaskCompletionCircle";
 import { useTaskCompletionToggle } from "@/hooks/useTaskCompletionToggle";
 import { TASK_TYPE_LABELS } from "@/lib/constants/task-types";
@@ -79,19 +80,7 @@ export function LeadTasksCard({ leadId, initialTasks }: LeadTasksCardProps) {
             }}
           >
             {tasks.length === 0 ? (
-              <p
-                style={{
-                  fontFamily: "var(--font-serif)",
-                  fontStyle: "italic",
-                  fontSize: "var(--text-sm)",
-                  color: "var(--theme-text-tertiary)",
-                  margin: 0,
-                  textAlign: "center",
-                  padding: "var(--space-1) 0",
-                }}
-              >
-                No tasks yet.
-              </p>
+              <EmptyState title="No tasks yet." style={{ padding: "var(--space-2) 0" }} />
             ) : (
               <div
                 style={{

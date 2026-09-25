@@ -3,7 +3,7 @@
 import { SelectionButton } from '@/components/ui/SelectionButton';
 import { useState, useTransition, useMemo } from "react";
 import { m as motion } from "framer-motion";
-import { X } from "lucide-react";
+import { X, Users } from "lucide-react";
 import { DOMAIN_LABELS, compareDomainDisplayOrder } from "@/lib/constants/domains";
 import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
@@ -17,6 +17,7 @@ import { toast } from "@/lib/toast";
 import { EASE_OUT_EXPO, EXIT_DURATION } from "@/lib/constants/motion";
 import { normalizeTimeHHMM } from "@/lib/utils/dates";
 import type { AgentRosterRow, UserRole, AppDomain } from "@/lib/types/database";
+import { EmptyState } from '@/components/ui/EmptyState';
 
 interface AgentSettingsTableProps {
   initialRoster: AgentRosterRow[];
@@ -371,31 +372,12 @@ export function AgentSettingsTable({
 
       {/* ── Empty state ────────────────────────────────────────────── */}
       {filtered.length === 0 && (
-        <div style={{ padding: "var(--space-20) var(--space-8)", textAlign: "center" }}>
-          <p
-            style={{
-              fontFamily: "var(--font-serif)",
-              fontStyle:  "italic",
-              fontSize:   "var(--text-xl)",
-              color:      "var(--theme-text-secondary)",
-              margin:     "0 0 var(--space-2)",
-            }}
-          >
-            {roster.length === 0 ? "No agents in the roster yet." : "No agents match your filters."}
-          </p>
-          <p
-            style={{
-              fontFamily: "var(--font-sans)",
-              fontSize:   "var(--text-sm)",
-              color:      "var(--theme-text-tertiary)",
-              margin:     0,
-            }}
-          >
-            {roster.length === 0
-              ? "Agents appear here once they are added to your domain."
-              : "Try adjusting your search or filters."}
-          </p>
-        </div>
+        <EmptyState
+          icon={Users}
+          framed
+          title={roster.length === 0 ? "No agents in the roster yet." : "No agents match your filters."}
+          description={roster.length === 0 ? "Agents appear here once they are added to your domain." : "Try adjusting your search or filters."}
+        />
       )}
 
       {/* ── Card list ──────────────────────────────────────────────── */}

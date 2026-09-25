@@ -50,7 +50,7 @@ export function ElayaMemoryCard({ entries, userId, own }: { entries: ElayaMemory
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
       {rows.length === 0 ? (
-        <EmptyState variant="inline" size="sm" title={own ? 'Nothing yet. Tell Elaya how you want things, in the chat or below.' : 'Nothing learned yet.'} />
+        <EmptyState variant="inline" title={own ? 'Nothing yet. Tell Elaya how you want things, in the chat or below.' : 'Nothing learned yet.'} />
       ) : (
         <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column' }}>
           {rows.map((r) => (

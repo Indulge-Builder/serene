@@ -30,25 +30,16 @@ const CELL: React.CSSProperties = {
 export function FreshdeskTable({ tickets, hasFilters }: { tickets: FdTicketListItem[]; hasFilters: boolean }) {
   if (tickets.length === 0) {
     return (
-      <div
-        style={{
-          background: 'var(--theme-paper)',
-          border: '1px solid var(--theme-paper-border)',
-          borderRadius: 'var(--neu-radius-card)',
-          boxShadow: 'var(--shadow-1)',
-          padding: 'var(--space-12) var(--space-6)',
-        }}
-      >
-        <EmptyState
-          icon={Ticket}
-          title={hasFilters ? 'Nothing matches these filters.' : 'The mirror is still filling.'}
-          description={
-            hasFilters
-              ? 'Try a wider date range or clear a filter.'
-              : 'The first sync pulls the newest tickets first; history follows over the next hours.'
-          }
-        />
-      </div>
+      <EmptyState
+        icon={Ticket}
+        framed
+        title={hasFilters ? 'Nothing matches these filters.' : 'The mirror is still filling.'}
+        description={
+          hasFilters
+            ? 'Try a wider date range or clear a filter.'
+            : 'The first sync pulls the newest tickets first; history follows over the next hours.'
+        }
+      />
     );
   }
 

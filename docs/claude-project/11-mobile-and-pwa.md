@@ -180,7 +180,8 @@ behaviour worth knowing:
   (black-translucent's white text would vanish on cream).
 - **Service worker (`public/sw.js`):** network-first; it **never** caches RSC payloads, Server Action
   responses, or navigation responses — only the static shell and icons. `CACHE_VERSION` must be
-  bumped whenever a precached asset changes (it went to `serene-shell-v2` with the cream icons).
+  bumped whenever a precached asset changes (it went to `serene-shell-v3` with the mark-on-cream
+  icons, 2026-09-25).
 - **Boot:** `AppBootScreen` plays once per hard load and merges visually with the OS splash. The
   progress bar was removed — the mandala draw is the progress indicator.
 - **Push on iOS** works **only inside the installed PWA**; `usePushSubscription` reports

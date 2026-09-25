@@ -2,7 +2,7 @@
 
 import { Button } from '@/components/ui/Button';
 import { useState, useMemo } from 'react';
-import { Search, ChevronDown, ChevronRight, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Search, ChevronDown, ChevronRight } from 'lucide-react';
 import type { LeadRawPayload } from '@/lib/types/database';
 import { formatDate } from '@/lib/utils/dates';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -222,8 +222,8 @@ export function ErrorLogTable({ rows }: ErrorLogTableProps) {
               transition:   'var(--transition-hover)',
             }}
             onFocus={(e) => {
-              e.currentTarget.style.borderColor = 'var(--theme-accent)';
-              e.currentTarget.style.boxShadow   = 'var(--shadow-focus)';
+              e.currentTarget.style.borderColor = 'var(--neu-focus-edge)';
+              e.currentTarget.style.boxShadow   = '0 0 0 1px var(--neu-focus-edge)';
             }}
             onBlur={(e) => {
               e.currentTarget.style.borderColor = 'var(--theme-paper-border)';
@@ -321,17 +321,9 @@ export function ErrorLogTable({ rows }: ErrorLogTableProps) {
                 >
                   {rows.length === 0 ? (
                     <>
-                      <CheckCircle2
-                        style={{
-                          width:   '2rem',
-                          height:  '2rem',
-                          color:   "var(--color-success-text)",
-                          margin:  '0 auto var(--space-3)',
-                          display: 'block',
-                        }}
-                      />
+                      {/* An all-clear: the Serene mark rests in the tile. */}
                       <EmptyState
-                        size="lg"
+                        variant="hero"
                         title="All clear — no ingestion errors."
                         description="Every payload received so far has been ingested successfully."
                         style={{ padding: 0 }}
@@ -339,17 +331,8 @@ export function ErrorLogTable({ rows }: ErrorLogTableProps) {
                     </>
                   ) : (
                     <>
-                      <AlertTriangle
-                        style={{
-                          width:   '1.5rem',
-                          height:  '1.5rem',
-                          color:   "var(--color-warning-text)",
-                          margin:  '0 auto var(--space-3)',
-                          display: 'block',
-                        }}
-                      />
                       <EmptyState
-                        size="lg"
+                        variant="hero"
                         title="No errors match your filters."
                         description="Try clearing the search or changing the source filter."
                         style={{ padding: 0 }}

@@ -23,6 +23,7 @@ import {
 import { DOMAIN_LABELS } from "@/lib/constants/domains";
 import { formatCount, formatCurrency, formatCurrencyCompact, formatCompact } from "@/lib/utils/numbers";
 import { StatTile } from "@/components/ui/StatTile";
+import { StatStrip } from "@/components/ui/StatStrip";
 import { BudgetEmptyState } from "@/components/budget/BudgetEmptyState";
 import { BudgetWorkspace } from "@/components/budget/BudgetWorkspace";
 import { BudgetTable } from "@/components/budget/BudgetTable";
@@ -55,10 +56,7 @@ export async function BudgetAsync({ from, to, canUpload, scopeDomain }: Props) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
         {/* Totals strip — one shared card of StatTile cells (spend-derived only) */}
-        <div
-          className="rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)"
-          style={{ display: "flex", flexWrap: "wrap", alignItems: "stretch" }}
-        >
+        <StatStrip>
           <StatTile variant="cell" label="Total Spend"   value={formatCurrencyCompact(totalSpend)} />
           <StatTile variant="cell" label="Leads"         value={formatCompact(totalLeads)} />
           <StatTile
@@ -73,7 +71,7 @@ export async function BudgetAsync({ from, to, canUpload, scopeDomain }: Props) {
             value={totalDeals > 0 ? formatCurrency(Math.round(totalSpend / totalDeals)) : "—"}
           />
           <StatTile variant="cell" label="Revenue"       value={formatCurrencyCompact(totalRevenue)} />
-        </div>
+        </StatStrip>
 
         {/* Domain caption — a manager's view is pinned to their own domain's spend. */}
         <p
@@ -121,10 +119,7 @@ export async function BudgetAsync({ from, to, canUpload, scopeDomain }: Props) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
       {/* Totals strip — one shared card of StatTile cells */}
-      <div
-        className="rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)"
-        style={{ display: "flex", flexWrap: "wrap", alignItems: "stretch" }}
-      >
+      <StatStrip>
         <StatTile variant="cell" label="Total Spend"   value={formatCurrencyCompact(totalSpend)} />
         <StatTile variant="cell" label="Leads"         value={formatCompact(totalLeads)} />
         <StatTile
@@ -139,7 +134,7 @@ export async function BudgetAsync({ from, to, canUpload, scopeDomain }: Props) {
           value={totalDeals > 0 ? formatCurrency(Math.round(totalSpend / totalDeals)) : "—"}
         />
         <StatTile variant="cell" label="Revenue"       value={formatCurrencyCompact(totalRevenue)} />
-      </div>
+      </StatStrip>
 
       {/* Attribution caption — this page is an ROI-of-ad-spend view: Leads, Deals
           and Revenue are attributed to Meta campaigns only (joined on the lead's

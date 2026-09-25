@@ -33,10 +33,10 @@ type FilterBarDateRange = {
   /** Stable AnimatePresence key — unique per page (e.g. 'deals-range-panel'). */
   panelKey: string;
   /**
-   * Trigger chrome. 'badge' (default): count badge when dates set, accent
-   * border when open OR active. 'chevron' (leads): rotating ChevronDown, no
-   * badge, accent border only when dates are set — never just because the
-   * panel is open.
+   * Trigger chrome. 'badge' (default): count badge when dates are set.
+   * 'chevron' (leads): rotating ChevronDown, no badge. Either way a set range
+   * shows the pastel wash and an open panel presses the trigger; neither
+   * draws an accent ring.
    */
   trigger?: 'badge' | 'chevron';
 };
@@ -99,7 +99,6 @@ type FilterBarProps = {
 /** Shared chrome for the Range (presets) and Dates (From → To) triggers. */
 function dateTriggerStyle(
   active: boolean,
-  accented: boolean,
   chevronVariant: boolean,
 ): React.CSSProperties {
   return {
@@ -108,7 +107,7 @@ function dateTriggerStyle(
     gap:          'var(--space-2)',
     height:       '2.25rem',
     padding:      'var(--space-1) var(--space-3)',
-    ...filterTriggerStyle(active, accented),
+    ...filterTriggerStyle(active),
     fontSize:     'var(--text-sm)',
     fontFamily:   'var(--font-sans)',
     fontWeight:   'var(--weight-medium)',
@@ -165,14 +164,12 @@ export function FilterBar({
   const isScroll      = layout === 'scroll' || isMobile;
   const rangeVariant  = dateRange?.trigger ?? 'badge';
   const rangeActive   = !!(dateRange?.from || dateRange?.to);
-  const rangeAccented = rangeVariant === 'chevron' ? rangeActive : range.open || rangeActive;
 
   // "Range" preset trigger state — active only when from/to exactly match a preset.
   const matchedPreset = dateRange?.onPresetSelect
     ? matchDateRangePreset(dateRange.from, dateRange.to)
     : null;
   const presetActive   = matchedPreset !== null;
-  const presetAccented = rangeVariant === 'chevron' ? presetActive : presets.open || presetActive;
 
   return (
     <div
@@ -263,7 +260,7 @@ export function FilterBar({
             onClick={presets.toggle}
             aria-haspopup="menu"
             aria-expanded={presets.open}
-            style={dateTriggerStyle(presetActive, presetAccented, rangeVariant === 'chevron')}
+            style={dateTriggerStyle(presetActive, rangeVariant === 'chevron')}
           >
             {matchedPreset ? DATE_RANGE_PRESET_LABELS[matchedPreset] : 'Range'}
             <ChevronDown
@@ -305,7 +302,7 @@ export function FilterBar({
             aria-haspopup="dialog"
             aria-expanded={range.open}
             className="serene-filter-trigger"
-            style={dateTriggerStyle(rangeActive, rangeAccented, rangeVariant === 'chevron')}
+            style={dateTriggerStyle(rangeActive, rangeVariant === 'chevron')}
           >
             Dates
             {rangeVariant === 'chevron' ? (

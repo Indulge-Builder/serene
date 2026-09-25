@@ -86,13 +86,13 @@ export function CampaignMetricsStrip({
 
   return (
     <div>
-      {/* 8 stat cards (6 pipeline + Amount Spent + Cost/Lead) as a 2×4 grid —
-          sits in the right column beside the ad video on the detail page.
-          Inline grid-template-columns would override the responsive classes —
-          the column count must live in classes only.
-          Below sm it drops to a single column; from sm up it is the 2×4 grid. */}
+      {/* 8 stat cards (6 pipeline + Amount Spent + Cost/Lead): the full-width
+          first row of the detail page (the ad creative moved below the leads,
+          2026-09-25). Inline grid-template-columns would override the responsive
+          classes — the column count must live in classes only. One column below
+          sm, two from sm, four (a 4×2 block) from lg. */}
       <div
-        className="grid grid-cols-1 sm:grid-cols-2"
+        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4"
         style={{ gap: 'var(--space-3)' }}
       >
         <StatTile

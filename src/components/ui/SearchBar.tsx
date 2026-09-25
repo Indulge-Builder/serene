@@ -72,10 +72,10 @@ export function SearchBar({
       : "var(--neu-input-edge)"
     : variant === "soft"
       ? focused
-        ? "var(--theme-accent)"
+        ? "var(--neu-focus-edge)"
         : "transparent"
       : focused
-        ? "var(--theme-accent)"
+        ? "var(--neu-focus-edge)"
         : "var(--neu-input-edge)";
 
   return (
@@ -138,7 +138,7 @@ export function SearchBar({
             variant === "soft"
               ? "none"
               : !suppressFocusAccent && focused
-                ? "0 0 0 1px var(--theme-accent), var(--neu-shadow-input)"
+                ? "0 0 0 1px var(--neu-focus-edge), var(--neu-shadow-input)"
                 : "var(--neu-shadow-input)",
           caretColor: "var(--theme-accent)",
           opacity: disabled ? 0.5 : 1,

@@ -124,9 +124,10 @@ export function PersonalDetailsCard({ lead, canEdit }: Props) {
     <div
       style={{
         background:   'var(--theme-paper)',
-        border:       `1px solid ${active ? 'var(--theme-accent)' : 'var(--theme-paper-border)'}`,
+        // Editing lifts the card; its fields carry the focus frame. No accent border.
+        border:       '1px solid var(--theme-paper-border)',
         borderRadius: 'var(--neu-radius-card)',
-        boxShadow:    active ? 'var(--shadow-focus)' : 'var(--shadow-1)',
+        boxShadow:    active ? 'var(--shadow-2)' : 'var(--shadow-1)',
         overflow:     'hidden',
         transition:   'border-color 0.15s ease, box-shadow 0.15s ease',
       }}

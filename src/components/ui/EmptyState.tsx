@@ -7,201 +7,136 @@ import { ENTER_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
 import { SeedMandala } from './SeedMandala';
 
 /**
- * THE canonical empty state. Makes the design rule structural:
- * "Empty states: Always Playfair italic heading. Never 'No data available.'"
+ * THE canonical empty state — ONE anatomy everywhere in Serene (2026-09-25), taken
+ * from the /tickets table when it has nothing to show: a raised tile, a Playfair
+ * italic title, a calm sans description, an optional action, centred. The tile
+ * holds the caller's icon, or the Serene mark (the seed mandala) when no icon fits:
+ * the mark rests where nothing is. "Never 'No data available'" stays structural.
  *
- * Two variants:
- * - `hero` (default when `icon` is provided): 64px icon tile + xl italic serif
- *   title + sans tertiary description. Centred, Framer entrance.
- *   Used for full-panel empties (WhatsApp right pane, performance roster).
- * - `inline`: a single centred serif-italic tertiary sentence (+ optional
- *   description line). Used inside cards, panels, and lists.
+ * - `variant="hero"` (default when an icon is given): a page, a table or a section
+ *   with nothing in it. 64px tile, xl title.
+ * - `variant="inline"` (default without an icon): inside a card, panel, modal, list
+ *   or menu. The SAME anatomy at a compact scale (44px tile, base title). It used to
+ *   be a bare italic line; that is gone, so an empty card reads like an empty page.
+ * - `framed`: the page-level surface, the paper card the tickets table sits in. Use
+ *   it when the empty state IS the page's content and no card already holds it
+ *   (a list or table that came back empty). Never wrap a framed empty in a card.
  *
- * `framed` adds the paper-subtle bordered surface; `ambient` adds the accent
- * radial wash (decorative, aria-hidden). Both are hero-variant options.
- *
- * `brand` (polish handoff §08; simplified 2026-07-06) is the mark-rests-here
- * composition: a single 240px watermark mandala CENTERED behind the content
- * (gradient, opacity .08, one revolution per 120s) with the title/description
- * resting over it — no foreground glyph, no icon tile. Pair with exactly ONE
- * primary action in `action`, per-module copy (calm, one poetic touch, mention
- * Elaya where relevant).
+ * Copy: calm, specific, one poetic touch at most; say what will appear here and, if
+ * there is one, the single thing to do next (then pass exactly ONE `action`).
  */
 
 export interface EmptyStateProps {
   title: string;
   description?: string;
-  /** Lucide icon — renders the 64px hero tile and implies variant="hero". */
+  /** Lucide icon for the tile; without one the tile holds the Serene mark. */
   icon?: LucideIcon;
+  /** hero = a page/table/section; inline = inside a card/panel/menu. Default:
+   *  hero when an icon is given, inline otherwise. */
   variant?: 'hero' | 'inline';
-  /** Hero: the §08 brand composition — 76px SeedMandala + corner watermark. */
-  brand?: boolean;
-  /** Hero only: wrap in a paper-subtle bordered card surface. */
+  /** The page-level paper card (the /tickets empty). Hero use only. */
   framed?: boolean;
-  /** Hero only: accent radial wash behind the content (requires framed). */
-  ambient?: boolean;
-  /** Inline only: title scale — 'sm' (default, --text-sm) or 'lg' (--text-lg, light). */
-  size?: 'sm' | 'lg';
-  /** Optional action slot rendered below the text. */
+  /** One action below the text (usually the page's primary "create"). */
   action?: React.ReactNode;
   minHeight?: string;
   className?: string;
   style?: React.CSSProperties;
 }
 
+const SCALE = {
+  hero: {
+    tile: 64, radius: 'var(--radius-xl)', icon: 28, mark: 38, gap: 'var(--space-5)',
+    padding: 'var(--space-8)', title: 'var(--text-xl)', description: 'var(--text-sm)',
+    textMax: 360, actionGap: 'var(--space-5)',
+  },
+  inline: {
+    tile: 44, radius: 'var(--radius-lg)', icon: 20, mark: 26, gap: 'var(--space-3)',
+    padding: 'var(--space-6) var(--space-4)', title: 'var(--text-base)', description: 'var(--text-xs)',
+    textMax: 300, actionGap: 'var(--space-4)',
+  },
+} as const;
+
+/** The framed surface — exactly the /tickets empty card (its old wrapper padding
+ *  plus the hero's own, as one element). */
+const FRAME: React.CSSProperties = {
+  background:   'var(--theme-paper)',
+  border:       '1px solid var(--theme-paper-border)',
+  borderRadius: 'var(--neu-radius-card)',
+  boxShadow:    'var(--shadow-1)',
+  padding:      'var(--space-20) var(--space-6)',
+};
+
 export function EmptyState({
   title,
   description,
   icon: Icon,
   variant,
-  brand = false,
   framed = false,
-  ambient = false,
-  size = 'sm',
   action,
   minHeight,
   className,
   style,
 }: EmptyStateProps) {
-  const resolved = variant ?? (Icon || brand ? 'hero' : 'inline');
-
-  if (resolved === 'inline') {
-    return (
-      <div className={className} style={{ textAlign: 'center', padding: 'var(--space-6) var(--space-4)', ...style }}>
-        <p
-          style={{
-            fontFamily: 'var(--font-serif)',
-            fontStyle:  'italic',
-            fontSize:   size === 'lg' ? 'var(--text-lg)' : 'var(--text-sm)',
-            fontWeight: size === 'lg' ? 'var(--weight-light)' : undefined,
-            color:      'var(--theme-text-tertiary)',
-            margin:     0,
-          }}
-        >
-          {title}
-        </p>
-        {description && (
-          <p
-            style={{
-              fontFamily: 'var(--font-sans)',
-              fontSize:   'var(--text-xs)',
-              color:      'var(--theme-text-tertiary)',
-              margin:     'var(--space-1) 0 0',
-              lineHeight: 'var(--leading-relaxed)',
-            }}
-          >
-            {description}
-          </p>
-        )}
-        {action && <div style={{ marginTop: 'var(--space-4)' }}>{action}</div>}
-      </div>
-    );
-  }
+  const resolved = variant ?? (Icon ? 'hero' : 'inline');
+  const s = SCALE[resolved];
+  const hero = resolved === 'hero';
 
   return (
     <motion.div
       className={className}
-      initial={{ opacity: 0, y: 8 }}
+      initial={{ opacity: 0, y: hero ? 8 : 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: ENTER_DURATION, ease: EASE_OUT_EXPO }}
       style={{
-        position:       'relative',
         display:        'flex',
         flexDirection:  'column',
         alignItems:     'center',
         justifyContent: 'center',
-        gap:            'var(--space-5)',
-        padding:        'var(--space-8)',
+        gap:            s.gap,
+        padding:        s.padding,
+        textAlign:      'center',
         ...(minHeight ? { minHeight } : {}),
-        ...(framed
-          ? {
-              borderRadius: 'var(--radius-lg)',
-              border:       '1px solid var(--theme-paper-border)',
-              background:   'var(--theme-paper-subtle)',
-              boxShadow:    'var(--shadow-1)',
-              overflow:     'hidden',
-            }
-          : {}),
-        // The watermark bleeds off the corner — clip it even when unframed.
-        ...(brand ? { overflow: 'hidden' } : {}),
+        ...(framed && hero ? FRAME : {}),
         ...style,
       }}
     >
-      {/* §08 watermark — 240px mandala CENTERED behind the content, one turn
-          every 2 minutes (class-driven spin → reduced-motion rests it). It is
-          the sole brand mark now (the crisp 76px foreground glyph was removed
-          2026-07-06 — the text rests over the faint watermark alone). */}
-      {brand && (
-        <div
-          aria-hidden="true"
-          style={{
-            position:       'absolute',
-            inset:          0,
-            display:        'flex',
-            alignItems:     'center',
-            justifyContent: 'center',
-            // 0.08 on cream; rises to 0.10 under [data-neu="dark"] — gold
-            // carries further on charcoal (dark-mode handoff §mandala).
-            opacity:        'var(--neu-watermark-opacity, 0.08)',
-            pointerEvents:  'none',
-          }}
-        >
-          <SeedMandala size={240} variant="gradient" spin={120} />
-        </div>
-      )}
+      <div
+        aria-hidden="true"
+        style={{
+          width:          s.tile,
+          height:         s.tile,
+          flexShrink:     0,
+          borderRadius:   s.radius,
+          background:     'var(--theme-paper)',
+          border:         '1px solid var(--theme-paper-border)',
+          boxShadow:      'var(--shadow-1)',
+          display:        'flex',
+          alignItems:     'center',
+          justifyContent: 'center',
+        }}
+      >
+        {Icon ? (
+          <Icon style={{ width: s.icon, height: s.icon, strokeWidth: 1.5, color: 'var(--neu-accent-deep)' }} />
+        ) : (
+          // The mark rests here. Only the hero turns (once every two minutes,
+          // class-driven so reduced motion rests it); a card full of compact
+          // empties never becomes a field of spinners.
+          <SeedMandala size={s.mark} variant="gradient" spin={hero ? 120 : undefined} />
+        )}
+      </div>
 
-      {ambient && (
-        <div
-          aria-hidden="true"
-          style={{
-            position:      'absolute',
-            inset:         0,
-            pointerEvents: 'none',
-            background:    `
-              radial-gradient(ellipse 55% 45% at 18% 22%, color-mix(in srgb, var(--theme-accent) 9%, transparent), transparent 70%),
-              radial-gradient(ellipse 50% 40% at 82% 78%, color-mix(in srgb, var(--theme-accent) 6%, transparent), transparent 72%)
-            `,
-          }}
-        />
-      )}
-
-      {!brand && Icon && (
-        <div
-          style={{
-            position:       'relative',
-            zIndex:         1,
-            width:          '64px',
-            height:         '64px',
-            borderRadius:   'var(--radius-xl)',
-            background:     'var(--theme-paper)',
-            border:         '1px solid var(--theme-paper-border)',
-            boxShadow:      'var(--shadow-1)',
-            display:        'flex',
-            alignItems:     'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Icon
-            style={{
-              width:       '28px',
-              height:      '28px',
-              strokeWidth: 1.5,
-              color:       "var(--neu-accent-deep)",
-            }}
-          />
-        </div>
-      )}
-
-      <div style={{ position: 'relative', zIndex: 1, textAlign: 'center', maxWidth: '280px' }}>
+      <div style={{ maxWidth: `${s.textMax}px` }}>
         <p
           style={{
             fontFamily: 'var(--font-serif)',
             fontStyle:  'italic',
-            fontSize:   'var(--text-xl)',
-            color:      'var(--theme-text-primary)',
-            margin:     description ? '0 0 var(--space-2)' : 0,
+            fontSize:   s.title,
             fontWeight: 'var(--weight-normal)',
+            color:      'var(--theme-text-primary)',
             lineHeight: 1.3,
+            margin:     description ? `0 0 ${hero ? 'var(--space-2)' : 'var(--space-1)'}` : 0,
+            // Balanced lines: a title never ends on one orphaned word.
+            textWrap:   'balance',
           }}
         >
           {title}
@@ -210,16 +145,17 @@ export function EmptyState({
           <p
             style={{
               fontFamily: 'var(--font-sans)',
-              fontSize:   'var(--text-sm)',
+              fontSize:   s.description,
               color:      'var(--theme-text-tertiary)',
-              margin:     0,
               lineHeight: 'var(--leading-relaxed)',
+              margin:     0,
+              textWrap:   'pretty',
             }}
           >
             {description}
           </p>
         )}
-        {action && <div style={{ marginTop: 'var(--space-5)' }}>{action}</div>}
+        {action && <div style={{ marginTop: s.actionGap }}>{action}</div>}
       </div>
     </motion.div>
   );

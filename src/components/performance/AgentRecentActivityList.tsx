@@ -137,11 +137,11 @@ export function AgentRecentActivityList() {
       )}
 
       {!isLoading && error && items.length === 0 && (
-        <EmptyState variant="inline" size="sm" title={error} />
+        <EmptyState variant="inline" title={error} />
       )}
 
       {!isLoading && !error && items.length === 0 && (
-        <EmptyState variant="inline" size="sm" title="No activity on your leads yet." />
+        <EmptyState variant="inline" title="No activity on your leads yet." />
       )}
 
       {items.map((item) => {

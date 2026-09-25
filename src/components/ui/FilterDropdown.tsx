@@ -40,8 +40,6 @@ export interface FilterDropdownProps {
   menuPortal?: boolean;
   /** Hide the numeric active-count badge on the trigger (form selects) */
   hideCountBadge?: boolean;
-  /** When false, open state does not switch trigger border to accent (filter bars). */
-  accentBorderOnOpen?: boolean;
   /**
    * Collapse the trigger to a square icon-only button (label + chevron hidden;
    * `icon` required). When something is selected, an accent dot replaces the
@@ -70,7 +68,6 @@ export function FilterDropdown({
   fullWidth = false,
   menuPortal = false,
   hideCountBadge = false,
-  accentBorderOnOpen = true,
   iconOnly = false,
   disabled = false,
   clearable = true,
@@ -199,8 +196,6 @@ export function FilterDropdown({
 
   const activeCount = selected.length;
   const showCountBadge = activeCount > 0 && !hideCountBadge;
-  const triggerAccentBorder =
-    activeCount > 0 || (accentBorderOnOpen && open);
 
   const menuPanelStyle: React.CSSProperties = menuPortal
     ? {
@@ -428,7 +423,7 @@ export function FilterDropdown({
           height:         '2.25rem',
           width:          iconOnly ? '2.25rem' : (fullWidth ? '100%' : undefined),
           padding:        iconOnly ? 0 : 'var(--space-1) var(--space-3)',
-          ...filterTriggerStyle(activeCount > 0, open || triggerAccentBorder),
+          ...filterTriggerStyle(activeCount > 0),
           fontSize:       'var(--text-sm)',
           fontFamily:     'var(--font-sans)',
           fontWeight:     'var(--weight-medium)',

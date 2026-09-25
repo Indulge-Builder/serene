@@ -182,7 +182,6 @@ export function CompletedTasksModal({ open, onClose, currentUser }: CompletedTas
           ) : rows.length === 0 ? (
             <EmptyState
               variant="inline"
-              size="lg"
               title="Nothing completed yet."
               description={
                 isSelf

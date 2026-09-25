@@ -26,11 +26,16 @@ textarea.serene-field-control { resize: vertical; min-height: 96px; }
 .serene-field-control[readonly] { background: var(--neu-section-bg); box-shadow: none; }
 .serene-field-control:disabled { opacity: 0.6; cursor: not-allowed; }
 .serene-field-control[aria-invalid="true"] { border-color: var(--color-danger-text); }
+/* The field focus frame (serene-neumorphic-tokens.css, .neu-input): hugging, never offset. */
 .serene-field-control:focus-visible {
-  outline: 2px solid var(--neu-accent-deep); outline-offset: 2px;
-  border-color: var(--neu-accent-deep);
+  outline: none;
+  border-color: var(--neu-focus-edge);
+  box-shadow: 0 0 0 1px var(--neu-focus-edge), var(--neu-shadow-input);
 }
-.serene-field-control[aria-invalid="true"]:focus-visible { outline-color: var(--color-danger-text); border-color: var(--color-danger-text); }
+.serene-field-control[aria-invalid="true"]:focus-visible {
+  border-color: var(--color-danger-text);
+  box-shadow: 0 0 0 1px var(--color-danger-text), var(--neu-shadow-input);
+}
 @media (hover: hover) and (pointer: fine) {
   .serene-field-control:hover:not(:disabled):not([readonly]):not([aria-invalid="true"]):not(:focus-visible) { border-color: var(--neu-edge-strong); }
 }
@@ -63,12 +68,18 @@ textarea.serene-field-control { resize: vertical; min-height: 96px; }
 
 .serene-filter-trigger[data-invalid="true"] { border-color: var(--color-danger-text); }
 
+/* StatStrip (ui/StatStrip.tsx): hairlines between breakdown cells. Each cell draws
+   its rule on its left and top edges; the card's overflow clips the rules that fall
+   on the card's own edge, so a wrapped row never starts with a stray line. */
+.serene-stat-strip[data-divided="true"] .serene-stat-strip-cells > * {
+  box-shadow: -1px 0 0 var(--theme-paper-border), 0 -1px 0 var(--theme-paper-border);
+}
+
 /* Dark surfaces need less pigment to keep secondary metadata readable. */
 [data-neu="dark"] {
   --neu-table-row-hover: color-mix(in srgb, var(--theme-accent) 2%, var(--neu-surface));
   --neu-table-row-selected: color-mix(in srgb, var(--theme-accent) 3%, var(--neu-surface));
 }
-.serene-table-row[data-selected="true"] { box-shadow: inset 2px 0 var(--neu-accent-deep); }
 
 @media (pointer: coarse) {
   .serene-field-control { min-height: 44px; }

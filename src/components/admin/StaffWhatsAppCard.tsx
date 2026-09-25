@@ -6,18 +6,15 @@ import { SectionCard } from "@/components/ui/SectionCard";
 import { formatRelativeTime } from "@/lib/utils/dates";
 import type { StaffWhatsAppLink } from "@/lib/services/sia-staff-link";
 import { LinkNowButton } from "@/components/admin/LinkNowButton";
+import { EmptyState } from '@/components/ui/EmptyState';
 
 export function StaffWhatsAppCard({ profileId, phone, links, canLink }: { profileId: string; phone: string | null; links: StaffWhatsAppLink[]; canLink: boolean }) {
   return (
     <SectionCard title="WhatsApp" description="Linked by the phone on this account. The link runs every 15 minutes, or now." headerRight={canLink ? <LinkNowButton profileId={profileId} /> : undefined}>
       {!phone ? (
-        <p style={{ margin: 0, fontSize: "var(--text-sm)", color: "var(--theme-text-tertiary)", fontFamily: "var(--font-serif)", fontStyle: "italic" }}>
-          No phone on this account yet. Add the company phone above and the WhatsApp contact links itself.
-        </p>
+        <EmptyState title="No phone on this account yet." description="Add the company phone above and the WhatsApp contact links itself." />
       ) : links.length === 0 ? (
-        <p style={{ margin: 0, fontSize: "var(--text-sm)", color: "var(--theme-text-tertiary)", fontFamily: "var(--font-serif)", fontStyle: "italic" }}>
-          No WhatsApp contact with this phone has been seen in the groups yet.
-        </p>
+        <EmptyState title="Not seen in the groups yet." description="No WhatsApp contact with this phone has appeared in the watched groups." />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
           {links.map((l) => (

@@ -39,8 +39,6 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
   iconLeft?: LucideIcon;
   iconRight?: LucideIcon;
   children?: React.ReactNode;
-  /** When true, focus does not add --shadow-focus (filter bar actions). */
-  suppressFocusRing?: boolean;
   /** Opt-in icon hover gesture — maps to the .serene-icon-*-hover utilities.
    *  rotate: Plus CTAs / close ×. lift: send. drop: download. ring: phone. */
   iconMotion?: ButtonIconMotion;
@@ -168,7 +166,6 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function 
     children,
     style,
     className,
-    suppressFocusRing = false,
     iconMotion,
     ...rest
   },
@@ -184,7 +181,6 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function 
     'serene-pressable',
     'serene-action',
     `serene-btn-${variant}`,
-    suppressFocusRing && 'serene-btn-no-ring',
     iconMotion && `serene-icon-${iconMotion}-hover`,
     className,
   ]
@@ -218,7 +214,8 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function 
         ...SIZE_STYLES[size],
         flexShrink: 0,
         ...(iconOnly ? { width: SIZE_STYLES[size].height, padding: 0 } : {}),
-        ...(variant === 'control' ? filterTriggerStyle(active, rest['aria-expanded'] === true) : {}),
+        // Open (aria-expanded) sinks via CSS; applied (active) keeps the pastel wash.
+        ...(variant === 'control' ? filterTriggerStyle(active) : {}),
         // Success re-tint — SEMANTIC sage, never the theme accent (§03).
         ...(isSuccess
           ? { background: 'var(--neu-success-gradient)', color: 'var(--neu-success-ink)' }

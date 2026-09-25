@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { LogoSpinner } from '@/components/ui/LogoSpinner';
 import { AnimatedNumber } from '@/components/ui/AnimatedNumber';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 /**
  * Shared mobile-room presentation bits (mobile-ops.md §9). Display-only
@@ -182,16 +183,10 @@ export function PaneError({ message, onRetry }: { message: string; onRetry: () =
   );
 }
 
-/** Serif-italic empty line — never "No data available." */
-export function RoomEmpty({ children }: { children: ReactNode }) {
-  return (
-    <span
-      className="block text-center text-[13px] text-(--neu-text-tertiary) py-5 px-4"
-      style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic' }}
-    >
-      {children}
-    </span>
-  );
+/** A room with nothing to show: the shared compact empty state (ui/EmptyState),
+ *  so the mobile rooms read like every other empty in Serene. */
+export function RoomEmpty({ children }: { children: string }) {
+  return <EmptyState title={children} style={{ padding: 'var(--space-5) var(--space-4)' }} />;
 }
 
 /** Mobile room page heading — serif 22, the ActivityScreen treatment. */

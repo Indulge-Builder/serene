@@ -12,7 +12,7 @@ not making every clickable object look like a raised button.
 | Secondary action | `Button variant="secondary"` | Neutral raised material |
 | Toolbar / view / sort action | `Button variant="control"` | Same material and states as filter triggers |
 | Applied toggle | Control with `active` and `aria-pressed` | Pastel wash, readable accent ink |
-| Popup trigger | Control with `aria-expanded` | Open-state ring, retained keyboard focus |
+| Popup trigger | Control with `aria-expanded` | Sits pressed while open (no ring, 2026-09-25), retained keyboard focus |
 | Quiet / cancel / inline action | `Button variant="ghost"` | No resting elevation |
 | Destructive / positive action | `danger` / `success` | Semantic pastel, readable ink even on hover |
 | Caution / quiet destructive action | `warning` / `ghost-danger` | Shared semantic ink and interaction states |
@@ -296,8 +296,10 @@ inset shading; actions retain contact elevation; badges and alerts remain flat.
 The sidebar's existing theme-derived gradient is retained.
 
 Table hover and selected states have explicit tokens. Dark-mode pigment is reduced
-because the previous tint failed contrast for tertiary text. A selection edge
-supports recognition without requiring stronger fill. CSS remains in
+because the previous tint failed contrast for tertiary text. (The one-edge
+selection strip that stood in for a stronger fill was removed on 2026-09-25: a
+coloured edge on one side of a row is on the Never-Do list, and no table passes
+a selected row today.) CSS remains in
 `src/styles/serene-families.css`; consumers should customize layout, not duplicate
 these materials.
 
@@ -367,3 +369,39 @@ Validation: changed-source lint, full Serene-only TypeScript (including the new
 fixtures, excluding the separate example app), the token/control baseline, all 13
 shared component contracts, and all six mocked feature scenarios passed. This
 resolves the full-codebase TypeScript check left pending in the preceding phase. No responsive tests were performed.
+
+## Focus and state without rings — 2026-09-25
+
+The shared control commit gave every `input`, `textarea` and `select` the global
+keyboard outline (2px, 3px out, deep ink). A text field matches `:focus-visible` on
+every mouse click, so each click into a search bar or form field drew a dark ring
+floating outside the field's own focus border. Applied filters also kept a permanent
+1px accent ring, and so did an open trigger. Together they read as stray border lines
+wherever something was active.
+
+The rules now:
+
+| State | Treatment |
+| --- | --- |
+| Focused text field | ONE hugging frame: the field's edge and a 1px ring, both `--neu-focus-edge`, no offset. `.neu-input` (also `:has(input/textarea:focus)` for shells), `.serene-input`, `.serene-field-control`, SearchBar and MessageBar. A text field never also takes the outline below. |
+| Keyboard focus on an action | The global outline in `--neu-focus-edge`, 2px wide, 2px out (hugs the control; no longer clipped in a tab tray). Buttons, links, summaries, tab-index elements, checkable inputs, and a bare `<select>` (keyboard only); never anything that already draws the field frame (a field-class select, or a button dressed as a field). |
+| Applied filter / toggle | The pastel wash and accent ink only (`filterTriggerStyle(active)`). No ring. |
+| Open popup trigger | Pressed material (`--neu-shadow-pressed`) while `aria-expanded` is true. No ring. |
+| Selected rail row (Sia, WhatsApp) | The avatar's accent ring and a semibold title (ui/ConversationRailRow). No wash over the row: the DNA's "highlight only the icon; rows stay transparent" rule, as in the sidebar. |
+
+`--neu-focus-edge` is 35% of the pastel accent mixed into 65% of its deep ink.
+`scripts/check-theme-contrast.mjs` now measures it on five surfaces and on the field
+gradient: every theme and mode clears 3:1, the lowest being Earth light at 3.20:1.
+The old values missed. An even split measured 2.76:1 on Earth, and the pastel
+alone about 2:1. `--neu-focus-ring` no longer carries the retired external bloom.
+The `.serene-pressable` box-shadow focus ring, which doubled the outline, is gone,
+and with it Button's unused `suppressFocusRing` prop. Mouse-driven JS focus rings
+were removed from Toggle, CampaignCard, DealCard and SettingsLinkCard. Their keyboard
+focus is the shared outline. Editing PersonalDetailsCard now lifts the card instead
+of drawing an accent border around it.
+
+Validation: token references, the control baseline, 13 component contract tests,
+the real-component keyboard checks, the six mocked form workflows, and 1,568
+computed contrast pairs (0 below target). Visual review ran on real components with
+mock data, in a headless browser against the compiled app CSS, across five themes,
+light and dark, at 1240, 820 and 390px. Authenticated pages were not opened.

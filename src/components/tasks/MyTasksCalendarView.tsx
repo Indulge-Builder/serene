@@ -21,7 +21,7 @@ import {
   CalendarDays,
   ChevronDown,
   Sparkles,
-  Plus,
+  Plus, CheckSquare
 } from 'lucide-react';
 import { Calendar } from '@/components/ui/Calendar';
 import { Button } from '@/components/ui/Button';
@@ -547,27 +547,12 @@ export function MyTasksCalendarView({
             <CollapseReveal key="body">
               {isEmpty ? (
                 /* Empty state — for today or a selected date with no tasks */
-                <div style={{
-                  padding: 'var(--space-8) var(--space-6)',
-                  textAlign: 'center',
-                  background: 'var(--theme-paper)',
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 'var(--space-3)' }}>
-                    <Sparkles style={{ width: 28, height: 28, strokeWidth: 1, color: "var(--neu-accent-deep)", opacity: 0.5 }} />
-                  </div>
-                  <p style={{
-                    fontFamily: 'var(--font-serif)', fontStyle: 'italic',
-                    fontSize: 'var(--text-lg)', color: 'var(--theme-text-secondary)', margin: 0,
-                  }}>
-                    Hooray<span className="page-title-dot">.</span>
-                  </p>
-                  <p style={{
-                    fontFamily: 'var(--font-sans)', fontSize: 'var(--text-sm)',
-                    color: 'var(--theme-text-tertiary)', marginTop: 'var(--space-1)', marginBottom: 0,
-                  }}>
-                    {sIsToday ? 'Nothing due today.' : 'Nothing scheduled for this day.'}
-                  </p>
-                </div>
+                <EmptyState
+                  variant="inline"
+                  icon={Sparkles}
+                  title="Hooray."
+                  description={sIsToday ? 'Nothing due today.' : 'Nothing scheduled for this day.'}
+                />
               ) : (
                 // Row choreography (polish §02): a completed/undone task lifts
                 // out and its siblings glide up. initial={false} so a section's
@@ -761,10 +746,10 @@ export function MyTasksCalendarView({
             action. A per-day / filtered empty keeps its own inline state below. */}
         {isAllMode && !hasActiveFilters && !hasMore && !isLoadingMore && activeTasks.length === 0 ? (
           <EmptyState
-            brand
+            icon={CheckSquare}
+            framed
             title="A clear slate — nothing on your plate."
             description="Add your first task and it will find its place on the calendar."
-            minHeight="340px"
             action={
               <Button
                 variant="primary"
@@ -782,24 +767,12 @@ export function MyTasksCalendarView({
 
           {/* Global empty state — only when filters hide everything in all-mode */}
           {isAllMode && visibleSections.every((s) => s.tasks.length === 0 && !s.isToday) && hasActiveFilters && (
-            <div style={{
-              padding: 'var(--space-16) var(--space-8)', textAlign: 'center',
-              background: 'var(--theme-paper)', border: '1px solid var(--theme-paper-border)',
-              borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-1)',
-            }}>
-              <p style={{
-                fontFamily: 'var(--font-serif)', fontStyle: 'italic',
-                fontSize: 'var(--text-lg)', color: 'var(--theme-text-tertiary)', margin: 0,
-              }}>
-                Nothing matches your filters.
-              </p>
-              <p style={{
-                fontFamily: 'var(--font-sans)', fontSize: 'var(--text-sm)',
-                color: 'var(--theme-text-tertiary)', marginTop: 'var(--space-2)', marginBottom: 0,
-              }}>
-                Try adjusting your search or filters.
-              </p>
-            </div>
+            <EmptyState
+              icon={CheckSquare}
+              framed
+              title="Nothing matches your filters."
+              description="Try adjusting your search or filters."
+            />
           )}
         </div>
         )}

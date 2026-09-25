@@ -2,12 +2,13 @@
 
 import { useMemo, useState } from "react";
 import { AnimatePresence } from "framer-motion";
-import { Plus, Pencil, Trash2, SlidersHorizontal, NotebookPen } from "lucide-react";
+import { Plus, SlidersHorizontal, NotebookPen } from "lucide-react";
 import { MotionButton, MOTION_BUTTON_DEFAULTS } from "@/components/ui/MotionButton";
 import { Button } from "@/components/ui/Button";
 import { CondensingPageHeader } from "@/components/layout/CondensingPageHeader";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { EditDeleteActions } from "@/components/ui/RowActions";
 import { MotionRow } from "@/components/ui/RowMotion";
 import { NoteFormModal } from "./NoteFormModal";
 import { deleteNote } from "@/lib/actions/elaya-notes";
@@ -146,12 +147,12 @@ export function NotesManager({ initialNotes }: NotesManagerProps) {
       {/* Row 3 — note cards */}
       {filtered.length === 0 ? (
         notes.length === 0 ? (
-          // §08 brand empty — one poetic line, one primary action, Elaya named.
+          // One poetic line, one primary action, Elaya named.
           <EmptyState
-            brand
+            icon={NotebookPen}
+            framed
             title="Nothing here yet — beautifully so."
             description="Notes you write will appear here, and Elaya will keep them in mind whenever she helps you."
-            minHeight="340px"
             action={
               <Button
                 variant="primary"
@@ -166,6 +167,7 @@ export function NotesManager({ initialNotes }: NotesManagerProps) {
         ) : (
           <EmptyState
             icon={NotebookPen}
+            framed
             title="Nothing matches your search."
             description="Try a different word."
           />
@@ -251,27 +253,7 @@ function NoteCard({
         )}
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", flexShrink: 0 }}>
-        <Button
-          variant="control"
-          size="sm"
-          type="button"
-          onClick={onEdit}
-          aria-label="Edit note"
-        >
-          <Pencil style={{ width: 12, height: 12, strokeWidth: 1.5 }} />
-          Edit
-        </Button>
-        <Button
-          variant="danger"
-          size="sm"
-          type="button"
-          onClick={onDelete}
-          aria-label="Delete note"
-        >
-          <Trash2 style={{ width: 12, height: 12, strokeWidth: 1.5 }} />Delete
-        </Button>
-      </div>
+      <EditDeleteActions onEdit={onEdit} onDelete={onDelete} subject="note" />
     </div>
   );
 }

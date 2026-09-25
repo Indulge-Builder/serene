@@ -49,6 +49,8 @@ export function ElayaIdentityCard({ busy, onPromptSelect, viewer = null }: Props
         padding: 'var(--space-6)',
         gap: 'var(--space-5)',
         overflowY: 'auto',
+        // Scrolls down only; nothing in the card may push it sideways.
+        overflowX: 'hidden',
       }}
     >
       {/* Presence — the glyph always breathes while she occupies this card */}
@@ -83,6 +85,20 @@ export function ElayaIdentityCard({ busy, onPromptSelect, viewer = null }: Props
             disabled={busy}
             onClick={() => onPromptSelect(prompt)}
             className="serene-pressable w-full text-left border border-(--theme-paper-border) text-(--theme-text-secondary) hover:border-(--theme-accent-muted) hover:text-(--theme-text-primary) disabled:opacity-50 disabled:pointer-events-none"
+            // A prompt is a sentence, not a label: it wraps inside the pill and the pill
+            // grows to fit (Button defaults to one nowrap line at a fixed 32px).
+            style={{
+              height: 'auto',
+              minHeight: '2rem',
+              whiteSpace: 'normal',
+              overflowWrap: 'anywhere',
+              justifyContent: 'flex-start',
+              textAlign: 'left',
+              lineHeight: 'var(--leading-snug)',
+              padding: 'var(--space-2) var(--space-3)',
+              flexShrink: 1,
+              minWidth: 0,
+            }}
           >
             {prompt}
           </Button>

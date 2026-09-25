@@ -24,9 +24,8 @@ function dueCell(t: TicketListItem): { text: string; color: string } {
 export function TicketsTable({ tickets, hasFilters, labels }: { tickets: TicketListItem[]; hasFilters: boolean; labels?: Record<string, string> }) {
   if (tickets.length === 0) {
     return (
-      <div style={{ background: 'var(--theme-paper)', border: '1px solid var(--theme-paper-border)', borderRadius: 'var(--neu-radius-card)', boxShadow: 'var(--shadow-1)', padding: 'var(--space-12) var(--space-6)' }}>
-        <EmptyState icon={ClipboardList} title={hasFilters ? 'No tickets match.' : 'Nothing open.'} description={hasFilters ? 'Try clearing a filter.' : 'Create a ticket from a member\'s messages in Sia, or by hand with New ticket.'} />
-      </div>
+      // The model every empty page follows (ui/EmptyState framed).
+      <EmptyState icon={ClipboardList} framed title={hasFilters ? 'No tickets match.' : 'Nothing open.'} description={hasFilters ? 'Try clearing a filter.' : 'Create a ticket from a member\'s messages in Sia, or by hand with New ticket.'} />
     );
   }
   return (

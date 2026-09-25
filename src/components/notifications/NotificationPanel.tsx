@@ -216,11 +216,11 @@ export function NotificationPanel({
               style={{ flex: 1, minHeight: 0, overflowY: "auto" }}
             >
               {notifications.length === 0 ? (
-                // §08 brand empty — the mark rests here when the inbox is clear.
-                // No action (nothing to do when caught up). minHeight is sized
-                // for the 380px dropdown / bottom sheet, not a full page.
+                // An all-clear: the Serene mark rests in the tile. No action (nothing
+                // to do when caught up). minHeight is sized for the 380px dropdown /
+                // bottom sheet, not a full page.
                 <EmptyState
-                  brand
+                  variant="hero"
                   title="All caught up."
                   description="New alerts will land here as they arrive."
                   minHeight="240px"

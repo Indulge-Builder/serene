@@ -431,12 +431,6 @@ export function DealCard({ deal, index }: DealCardProps) {
           (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-1)';
           (e.currentTarget as HTMLElement).style.transform = 'translateY(0)';
         }}
-        onFocus={(e) => {
-          (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-focus)';
-        }}
-        onBlur={(e) => {
-          (e.currentTarget as HTMLElement).style.boxShadow = 'var(--shadow-1)';
-        }}
       >
         <CardBody deal={deal} />
         {celebrating && <PetalFall onDone={endCelebration} />}

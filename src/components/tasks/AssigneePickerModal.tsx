@@ -30,6 +30,7 @@ import { getInitials } from "@/lib/utils/strings";
 import type { AppDomain } from "@/lib/types/database";
 import type { AssignableUser } from "@/lib/types";
 import { BASE_DURATION, EASE_OUT_EXPO, FAST_DURATION } from '@/lib/constants/motion';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -318,24 +319,11 @@ export function AssigneePickerModal({
               }}
             >
               {filteredUsers.length === 0 ? (
-                <div
-                  style={{
-                    padding:   "var(--space-8) var(--space-5)",
-                    textAlign: "center",
-                  }}
-                >
-                  <p
-                    style={{
-                      fontFamily: "var(--font-serif)",
-                      fontStyle:  "italic",
-                      fontSize:   "var(--text-sm)",
-                      color:      "var(--theme-text-tertiary)",
-                      margin:     0,
-                    }}
-                  >
-                    {search ? "No matching team members." : "No team members in this domain."}
-                  </p>
-                </div>
+                <EmptyState
+                  title={search ? "No matching team members." : "No team members in this domain."}
+                  description={search ? "Try a different name." : undefined}
+                  style={{ padding: "var(--space-8) var(--space-5)" }}
+                />
               ) : (
                 filteredUsers.map((user) => {
                   const selected   = user.id === selectedUserId;

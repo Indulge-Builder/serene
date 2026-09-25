@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { m as motion } from "framer-motion";
-import { Pencil, ChevronDown } from "lucide-react";
+import { Pencil, ChevronDown, Shield } from "lucide-react";
 import type { Profile } from "@/lib/types/database";
 import { ROLE_LABELS, USER_ROLES } from "@/lib/constants/roles";
 import { SIA_ROLES, isSiaRole } from "@/lib/constants/sia-roles";
@@ -42,10 +42,9 @@ export function UsersTable({ users }: UsersTableProps) {
 
   const emptyState = (
     <EmptyState
-      variant="hero"
+      icon={Shield}
       title={users.length === 0 ? "No team members yet." : "No members match your filters."}
       description={users.length === 0 ? "Add the first member to get started." : "Try adjusting your search or filters."}
-      style={{ padding: "var(--space-20) var(--space-8)" }}
     />
   );
 

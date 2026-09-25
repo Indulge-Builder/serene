@@ -28,7 +28,6 @@ export function AgentBreakdownGrid({
         title="No agents on this team yet."
         description="Active agents in this domain will appear here."
         framed
-        ambient
       />
     );
   }

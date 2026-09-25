@@ -6,41 +6,20 @@ import {
   useRef,
   useState,
   useTransition,
-  type CSSProperties,
 } from "react";
 import { useSearchParams } from "next/navigation";
 import { SearchBar } from "@/components/ui/SearchBar";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { ConversationRailRow } from "@/components/ui/ConversationRailRow";
+import { SplitRail, SplitRailHeader, SplitRailList } from "@/components/ui/SplitWorkspace";
 import { useDebounce } from "@/hooks/useDebounce";
-import { ConversationRow } from "@/components/whatsapp/ConversationRow";
+import { formatRelativeTime } from "@/lib/utils/dates";
 import { WhatsAppConversationPeriodFilter } from "@/components/whatsapp/WhatsAppConversationPeriodFilter";
 import { searchConversationsAction } from "@/lib/actions/whatsapp";
 import type { WhatsAppPeriod } from "@/lib/constants/whatsapp-period";
 import { parseWhatsAppPeriodFromSearchParams } from "@/lib/utils/whatsapp-period";
 import { WHATSAPP_CONVERSATIONS_PAGE_SIZE } from "@/lib/constants/whatsapp";
 import type { WhatsAppConversation } from "@/lib/types/whatsapp";
-
-const RAIL_CARD: CSSProperties = {
-  background: "var(--theme-paper)",
-  border: "1px solid var(--theme-paper-border)",
-  borderRadius: "var(--radius-lg)",
-  boxShadow: "var(--shadow-1)",
-  overflow: "hidden",
-};
-
-const RAIL_CARD_LABEL: CSSProperties = {
-  fontFamily: "var(--font-sans)",
-  fontSize: "var(--text-2xs)",
-  fontWeight: "var(--weight-medium)",
-  letterSpacing: "0.12em",
-  textTransform: "uppercase",
-  color: "var(--theme-text-tertiary)",
-};
-
-const RAIL_CARD_HEADER: CSSProperties = {
-  flexShrink: 0,
-  padding: "var(--space-3) var(--space-4) var(--space-2)",
-  borderBottom: "1px solid var(--theme-paper-border)",
-};
 
 interface ConversationListProps {
   conversations: WhatsAppConversation[];
@@ -113,148 +92,89 @@ export function ConversationList({
 
   const displayList = searchResults ?? conversations;
 
-  function staggerDelay(i: number) {
-    return Math.min(i * 35, 280);
-  }
-
+  // The rail card (ui/SplitWorkspace): search + period in the header strip, then
+  // the rows. The Sia rail's anatomy, so the two conversation pages read the same.
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        height: "100%",
-        overflow: "hidden",
-      }}
-    >
-      <div
-        style={{
-          flex: 1,
-          minHeight: 0,
-          display: "flex",
-          flexDirection: "column",
-          gap: "var(--space-3)",
-          marginRight: "var(--space-4)",
-          marginBottom: "var(--space-4)",
-        }}
-      >
-        {/* Search card — bar only, no section header */}
-        <div style={{ ...RAIL_CARD, flexShrink: 0, padding: "var(--space-3) var(--space-4)" }}>
-            <SearchBar
-              value={query}
-              onChange={handleQueryChange}
-              placeholder="Search conversations…"
-              size="sm"
-              variant="default"
-              aria-label="Search conversations"
+    <SplitRail>
+      <SplitRailHeader>
+        <SearchBar
+          value={query}
+          onChange={handleQueryChange}
+          placeholder="Search conversations…"
+          size="sm"
+          aria-label="Search conversations"
+        />
+        <div className="flex items-center justify-between gap-2">
+          <span className="label-micro" style={{ color: "var(--theme-text-tertiary)" }}>
+            Conversations
+          </span>
+          <WhatsAppConversationPeriodFilter />
+        </div>
+      </SplitRailHeader>
+
+      <SplitRailList>
+        {displayList.length === 0 ? (
+          <div className="py-10 px-4">
+            <EmptyState
+              variant="inline"
+              title={query ? "No results found." : period ? "Nothing matches this period." : "No conversations yet."}
             />
-        </div>
-
-        {/* Conversations card */}
-        <div
-          style={{
-            ...RAIL_CARD,
-            flex: 1,
-            minHeight: 0,
-            display: "flex",
-            flexDirection: "column",
-          }}
-        >
-          <div
-            style={{
-              ...RAIL_CARD_HEADER,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginBottom: 0,
-            }}
-          >
-            <span style={RAIL_CARD_LABEL}>Conversations</span>
-            <WhatsAppConversationPeriodFilter />
           </div>
+        ) : (
+          <>
+            {displayList.map((conv, i) => (
+              <ConversationRailRow
+                key={conv.id}
+                title={conv.lead_name ?? conv.phone}
+                // The number under the name, unless the number already IS the title.
+                preview={conv.lead_name ? (conv.lead_phone ?? conv.phone) : null}
+                meta={conv.last_message_at ? formatRelativeTime(conv.last_message_at) : null}
+                selected={conv.id === activeConversationId}
+                unread={(conv.unread_count ?? 0) > 0}
+                index={i}
+                onSelect={() => onSelect(conv.id)}
+              />
+            ))}
 
-          <div
-            style={{
-              flex: 1,
-              overflowY: "auto",
-              padding: "var(--space-1)",
-              WebkitOverflowScrolling:
-                "touch" as React.CSSProperties["WebkitOverflowScrolling"],
-              overscrollBehavior: "contain",
-            }}
-          >
-            {displayList.length === 0 ? (
-              <p
-                style={{
-                  fontFamily: "var(--font-serif)",
-                  fontStyle: "italic",
-                  fontSize: "var(--text-sm)",
-                  color: "var(--theme-text-tertiary)",
-                  textAlign: "center",
-                  padding: "var(--space-8) var(--space-4)",
-                  margin: 0,
-                }}
+            {hasMore && !searchResults && (
+              <div
+                ref={loadMoreRef}
+                style={{ padding: "var(--space-4)", textAlign: "center" }}
               >
-                {query
-                  ? "No results found."
-                  : period
-                    ? "Nothing matches this period."
-                    : "No conversations yet."}
-              </p>
-            ) : (
-              <>
-                {displayList.map((conv, i) => (
-                  <ConversationRow
-                    key={conv.id}
-                    conversation={conv}
-                    isActive={conv.id === activeConversationId}
-                    hasUnread={(conv.unread_count ?? 0) > 0}
-                    onClick={() => onSelect(conv.id)}
-                    delay={staggerDelay(i)}
-                  />
-                ))}
-
-                {hasMore && !searchResults && (
-                  <div
-                    ref={loadMoreRef}
-                    style={{ padding: "var(--space-4)", textAlign: "center" }}
+                {isLoadingMore ? (
+                  <span
+                    style={{
+                      fontFamily: "var(--font-sans)",
+                      fontSize: "var(--text-xs)",
+                      color: "var(--theme-text-tertiary)",
+                    }}
                   >
-                    {isLoadingMore ? (
-                      <span
-                        style={{
-                          fontFamily: "var(--font-sans)",
-                          fontSize: "var(--text-xs)",
-                          color: "var(--theme-text-tertiary)",
-                        }}
-                      >
-                        Loading…
-                      </span>
-                    ) : null}
-                  </div>
-                )}
-
-                {!hasMore &&
-                  !searchResults &&
-                  displayList.length >=
-                    WHATSAPP_CONVERSATIONS_PAGE_SIZE && (
-                    <p
-                      style={{
-                        fontFamily: "var(--font-sans)",
-                        fontSize: "var(--text-xs)",
-                        color: "var(--theme-text-tertiary)",
-                        textAlign: "center",
-                        padding: "var(--space-4)",
-                        margin: 0,
-                      }}
-                    >
-                      That's everything.
-                    </p>
-                  )}
-              </>
+                    Loading…
+                  </span>
+                ) : null}
+              </div>
             )}
-          </div>
-        </div>
-      </div>
-    </div>
+
+            {!hasMore &&
+              !searchResults &&
+              displayList.length >= WHATSAPP_CONVERSATIONS_PAGE_SIZE && (
+                <p
+                  style={{
+                    fontFamily: "var(--font-sans)",
+                    fontSize: "var(--text-xs)",
+                    color: "var(--theme-text-tertiary)",
+                    textAlign: "center",
+                    padding: "var(--space-4)",
+                    margin: 0,
+                  }}
+                >
+                  That&apos;s everything.
+                </p>
+              )}
+          </>
+        )}
+      </SplitRailList>
+    </SplitRail>
   );
 }
 

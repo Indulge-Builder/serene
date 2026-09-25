@@ -12,6 +12,123 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-25 — One empty state everywhere, the mark with its centre circle, a clean boot, the cream icon
+
+Why: the founder picked the /tickets empty table as the best empty state and asked for it across
+the whole app; asked for the boot screen to be cleaned to the Indulge app's splash (the drawn mark
+turning continuously, the tagline gone), then for a title on it again in the premium style,
+"Serene, by Indulge"; pointed out the mark lacked the circle in the middle; and asked for Serene's
+phone icon on the cream background, never black (the Indulge member app is the black one).
+
+- **Empty states: one anatomy.** `ui/EmptyState` was rebuilt on the /tickets empty: a raised tile,
+  a Playfair italic title (balanced, never an orphan word), a calm description, one optional action.
+  The tile holds the caller's icon or, without one, the Serene mark. `hero` is a page, table or
+  section; `inline` is the same anatomy at a compact 44px for cards, panels, modals and mobile rooms
+  (it was a bare italic line); `framed` is the /tickets paper card. Icon rule: a page with nothing in
+  it takes its sidebar icon, an all-clear takes the mark, never a warning icon. The `brand`, `ambient`
+  and `size` props are gone. All 117 call sites moved over: page-level empties got `framed` and
+  their page icon (Deals, Campaigns, Books, Notes, Helpdesk, Tasks, Subscriptions, Ad creatives,
+  training, suggestions, Usage, two settings pages, Elaya requests, Performance, agent settings),
+  and the hand-written wrapper cards on Tickets, Members, Freshdesk, Vendors and Performance became
+  `framed`. About 25 hand-rolled empties became `EmptyState` too: the Leads table (desktop and
+  mobile), the lead dossier cards (activity, calls, tasks, WhatsApp), group tasks and the workspace,
+  the calendar's day and filter empties, the ticket board columns and checklist, the assignee picker,
+  agent settings, notification preferences, the subscription history modal (its local `EmptyLine` is
+  deleted), the help-desk card, the oversight rail, the performance bars and scorecard, the drill
+  deck, the staff WhatsApp card and the mobile rooms (`RoomEmpty` now composes it). Menus and
+  listboxes keep a short text line; field placeholders ("Unassigned", "Empty seat") stay text.
+- **The mark.** `ui/SeedMandala` gained the intersecting centre circle (r48 in its 200 box, r24 in
+  the Indulge app's 100 box: the official logo's ninth ring). It draws last in the draw sequence.
+  Every spinner, button pending state, Elaya disc and empty-state tile shows it.
+- **Boot screen.** `layout/AppBootScreen` is the mark with one lockup beneath it, after the Indulge
+  app's splash. The rings trace in, the centre circle seals them, then the mark turns continuously
+  at one revolution per 24s (the Indulge app's mandalaSpin), starting once the draw completes.
+  Beneath it: SERENE in the Playfair wordmark set wide (0.42em, the mobile bar's caps at boot
+  scale), and BY INDULGE in small tracked caps under it. The lockup fades in with the draw, and the
+  word's tracking opens from 0.10em to 0.42em as the centre circle lands, on the splash's own clock
+  (1.5s in, over 1.4s). Each letter moves with a transform (the `serene-boot-track` keyframes and a
+  `--serene-boot-gap` per letter), so no glyph is squashed and nothing is laid out again per frame;
+  with reduced motion the lockup sits set and still. The "Attending to every detail" tagline, the
+  accent glow and the breathing pulse are gone, with their four keyframes and the `--neu-boot-glow`
+  and `--neu-watermark-opacity` tokens.
+- **Icons.** `scripts/pad-app-icons.mjs` now renders the mark from the component's geometry and
+  builds from it the default home-screen icon (`public/icon-1.webp`, on the cream #ECE8E1 plate),
+  `src/app/apple-icon.png`, `public/icons/icon-192/512.png`, the transparent `public/logo.webp`
+  (sidebar, mobile trigger, auth pages) and a real `src/app/favicon.ico` (it was Next's default
+  black triangle, the likely "black icon" on a phone). The two unused black maskable PNGs are
+  deleted, the tab icon points at the favicon, and the service worker cache is bumped to
+  `serene-shell-v3`. An app already on a home screen keeps its old icon until it is removed and
+  added again (iOS always; Android refreshes on its own within a few days).
+- WhatsApp's new title row also carries the shared `PageControls` bell, like every other page.
+
+Checked: Serene TypeScript (only another session's in-progress files fail), lint on every changed
+file, the before and after specimens (real components, mock data, compiled CSS, headless browser:
+Earth light and dark, Rose, 1240 and 390px, the boot sequence frame by frame), and the icon renders.
+
+## 2026-09-25 — Design pass: no rings on active states, WhatsApp on the Sia layout, and eight page fixes
+
+Why: a set of design problems across Serene, most of them introduced by the shared control work
+(commit 99b571b, 2026-09-22 to 09-24). Fixed as a system, through shared pieces, not page by page.
+
+- **Rings on active things.** Every text field took the global keyboard outline on each mouse click
+  (2px, 3px out, deep ink), on top of its own focus border. Applied filters and open triggers carried a
+  permanent 1px accent ring. Now there is one focus colour, `--neu-focus-edge` (35% pastel accent,
+  65% deep ink, at least 3:1 in every theme and mode, lowest 3.20:1 on Earth light). Text fields draw
+  one hugging frame in it (`.neu-input` incl. shells via `:has`, `.serene-input`, `.serene-field-control`,
+  SearchBar, MessageBar). Actions get a 2px keyboard outline, 2px out, that no longer clips in a tab
+  tray. An applied filter keeps only its pastel wash. An open trigger sits pressed (`aria-expanded`).
+  The `.serene-pressable` focus ring (a double signal) and Button's unused `suppressFocusRing` prop are
+  gone. `--neu-focus-ring` lost the retired white bloom. Click-triggered JS rings were removed from
+  Toggle, CampaignCard, DealCard and SettingsLinkCard. Editing PersonalDetailsCard lifts the card
+  instead of an accent border. The one-edge strip on selected table rows (a Never-Do, used nowhere)
+  is removed. `filterTriggerStyle(active)` lost its open argument; FilterDropdown lost
+  `accentBorderOnOpen`. Files: `src/styles/serene-neumorphic-tokens.css`,
+  `src/styles/serene-families.css`, `src/styles/design-tokens.css`, `src/app/globals.css`,
+  `ui/material-styles.ts`, `ui/Button.tsx`, `ui/FilterDropdown.tsx`, `ui/FilterBar.tsx`,
+  `ui/SearchBar.tsx`, `ui/MessageBar.tsx`, `ui/Toggle.tsx`, `dashboard/DashboardDateFilter.tsx`. The
+  contrast audit (`scripts/check-theme-contrast.mjs`) now measures the new colour.
+- **Subscriptions.** The List / Calendar / Overview switcher had a full-width row of its own. It now
+  leads the filter strip (the FilterBar `leading` slot, the /tasks and /performance layout). The
+  calendar's strip is the switcher alone. The header wraps on a phone instead of running off the edge.
+- **WhatsApp on the Sia layout.** It was full-bleed: a paper rail, paper cards inside it, and a grey
+  empty pane. It now uses the Sia anatomy through new shared pieces: `ui/SplitWorkspace` (page header,
+  a 340px rail card, a pane card) and `ui/ConversationRailRow` (avatar, name and time, one preview
+  line). Sia composes the same two. A selected row shows only the avatar ring, as the WhatsApp spec
+  always said; the control migration had given it the selection wash. `ConversationRow.tsx` and the
+  `.serene-wa-rail` / `.serene-wa-pane-header` mobile carve-outs are deleted. The header shows
+  "N unread".
+- **Sia skeleton.** The list card had `width: 100%` beside a `flex: 1` message card, so the list ate
+  the row and the message card collapsed to a sliver, with the rows centred mid-card. Both Sia and
+  WhatsApp `loading.tsx` now compose the same split pieces plus `RailRowsSkeleton` and
+  `EmptyStateSkeleton` (`ui/PageSkeletons.tsx`).
+- **Notes (and every brand empty state).** The 240px mandala sat behind the title and description.
+  `EmptyState brand` now puts the mark in the same 64px tile the icon variant uses, above the words.
+- **Performance: one skeleton.** Founders saw the roster-shaped `loading.tsx` skeleton, then a second,
+  Domains-shaped one while the chart chunk loaded. `loading.tsx` now draws only the header and strip.
+  The founder page streams the Domains data as one promise (`loadFounderDomainsData`, never rejects),
+  and the shell resolves it behind `DomainsTabFallback`, the same skeleton the lazy chart chunk shows.
+  The chunk download starts on mount. Every role now sees one content skeleton of its own shape.
+- **Campaign detail.** The ad-creative card moved below the leads; the metrics open the page at full
+  width (a 4×2 block from `lg`). "Add a video" was a `Button iconOnly`, whose locked 32px height crushed
+  the 9:16 tile. It is now the shared `UploadButton` surface, and a one-line empty state for those who
+  cannot upload.
+- **Row Delete.** Ad Creatives and Elaya Training both had `iconOnly` Delete buttons with a text
+  label, so "Delete" spilled out of a 32px pink square. New `ui/RowActions.tsx` `EditDeleteActions`:
+  a `control` Edit and a labelled `ghost-danger` Delete, with Button's own pending state. Notes uses it too.
+- **Freshdesk status mix and Books aging.** Both floated as loose label and number text under the
+  tiles. New `ui/StatStrip.tsx` holds them as a card of compact `StatTile` cells (`size="sm"`: status
+  dot, one-line legend, optional sub). Freshdesk orders the statuses by flow (with us, waiting, done)
+  and puts the sync health in the card's footer. Books shows each aging bucket's share, with the
+  oldest bucket's share in danger ink. New `ui/MetaLine.tsx` renders both provenance lines. Budget's
+  two inline totals strips now compose `StatStrip`.
+
+Checked: Serene TypeScript, lint on every changed file, `npm run check:ui` (tokens, control baseline,
+13 contract tests), the real-component keyboard checks, the six mocked form workflows, and 1,568
+computed contrast pairs (0 below target). Visual review used real components with mock data in a
+headless browser against the compiled CSS: before and after, five themes, light and dark, at 1240,
+820 and 390px. Not verified: authenticated pages in a live session, the open WhatsApp conversation
+header, and a founder's real Domains load.
+
 ## 2026-09-25 — The lesson writer: the team's verdicts become instructions the ticket AI follows (0240)
 
 Part three of the founder's ask, and the point of the other two: "keep all the approvals,

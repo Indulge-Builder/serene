@@ -83,9 +83,9 @@ export function AgentDealsDrillModal({ open, agentId, agentName, domain, onClose
           <LogoSpinner size="md" />
         </div>
       ) : error && rows.length === 0 ? (
-        <EmptyState variant="inline" title="Couldn't load deals." size="sm" />
+        <EmptyState variant="inline" title="Couldn't load deals." />
       ) : rows.length === 0 ? (
-        <EmptyState variant="inline" title="No deals won yet." size="sm" />
+        <EmptyState variant="inline" title="No deals won yet." />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
           {rows.map((deal) => (

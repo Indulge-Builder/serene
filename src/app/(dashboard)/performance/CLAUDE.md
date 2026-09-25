@@ -64,7 +64,17 @@ the agent's own rows. The SECURITY DEFINER RPC computes true domain-wide
 averages — only the four aggregate numbers are exposed, never per-agent rows.
 
 `PerformanceAsync.tsx` is deleted (it was mounted nowhere — the shell above is
-the real agent view). `PerformanceSkeleton` remains: `loading.tsx` uses it.
+the real agent view). `PerformanceSkeleton` remains: the agent branch's Suspense
+fallback in page.tsx.
+
+**Loading contract (2026-09-25): ONE content skeleton per role.** `loading.tsx`
+draws only the route chrome (page header + filter strip). Each role's content then
+streams behind a single skeleton of its own shape: agent → `PerformanceSkeleton`,
+manager → `ManagerPerformanceSkeleton` (the roster Suspense), founder/admin →
+`DomainsTabFallback` for the Domains tab (see below) and `ManagerPerformanceSkeleton`
+on Agents. The old roster-shaped content in `loading.tsx` showed first and was then
+replaced by a second, differently shaped skeleton for founders and agents; never put
+a role-specific content skeleton back into `loading.tsx`.
 
 ### Manager view
 
@@ -98,10 +108,12 @@ directly.
 
 ```text
 performance/page.tsx              ← role = founder | admin
-  │  fetches initialDomainHealth server-side via getDomainHealthMetrics(GIA_DOMAINS, from, to)
+  │  builds domainsData = loadFounderDomainsData(...) — ONE un-awaited promise
+  │  (getDomainHealthMetrics + the month-pinned read + getDomainTargets; never rejects,
+  │  catches to the empty shape), so the header and strip paint at once
   │  (NO separate filter strip here — the shell owns it)
   │
-  └── <FounderPerformanceShell period customFrom customTo initialDomainHealth agentsSlot />
+  └── <FounderPerformanceShell period customFrom customTo domainsData agentsSlot />
         'use client' — owns activeTab: 'domains' | 'agents' (Domains is FIRST +
         the DEFAULT; seeded from ?tab= and mirrored back via history.replaceState
         — no navigation/RSC re-run — so a back-nav from a lead dossier RESTORES
@@ -115,7 +127,9 @@ performance/page.tsx              ← role = founder | admin
         │     Domain narrowing: the GLOBAL serene-domain selector (top bar) — NO per-roster dropdown
         │     Detail metrics: per-agent (no domain restriction on fetch)
         │
-        └── Domains tab (default): <DomainOverviewPanel initialData period customFrom customTo scopeDomain />
+        └── Domains tab (default): <Suspense fallback={<DomainsTabFallback/>}><Await promise={domainsData}>
+              → <DomainOverviewPanel initialData period customFrom customTo scopeDomain /> — the data wait
+              and the lazy chart chunk draw the SAME DomainsTabFallback, so it reads as one skeleton
               Four domain cards (2×2 grid): Leads, Calls, Deals Closed, Revenue per GIA domain
               Comparative BarChart with a metric toggle (Leads | Calls | Revenue) — the shared
               TabSelector (variant "accent", indicatorLayoutId "domain-metric-toggle" so its pill
@@ -181,8 +195,10 @@ chart library never sits in the `/performance` initial chunk: `CoreFourGrid` +
 `CallOutcomeBar` + `AgentActivityTrendChart` in `AgentPerformanceShell` (same-shape
 `.skeleton` placeholders), `CallOutcomeBar` in `AgentDetailPanel` (chunk
 loads in parallel with the panel's own metrics fetch), `DomainOverviewPanel` in
-`FounderPerformanceShell` (fetched on first Domains-tab click). Never reintroduce
-a static import of a Recharts-consuming component into a shell on this route.
+`FounderPerformanceShell` (the shell starts the download on mount, in parallel with
+the streamed `domainsData`; its `dynamic()` loading and the data Suspense share
+`DomainsTabFallback`). Never reintroduce a static import of a Recharts-consuming
+component into a shell on this route.
 
 ## Service File
 

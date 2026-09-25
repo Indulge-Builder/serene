@@ -359,19 +359,17 @@ export function ConversationPanel({
         overflow:      "hidden",
       }}
     >
-      {/* ZONE A — Header. In single-pane mobile mode (onBack present) the
-          floating nav hamburger overlays the top-left, so the header takes the
-          same mobile top offset the rail does (.serene-wa-pane-header) to clear
-          the notch + sit on the trigger's line. */}
+      {/* ZONE A — Header: the Sia chat header's compact paper strip. The page
+          header sits above the card on every width, so no notch offsets here. */}
       <div
-        className={`px-4 py-4 md:px-8 md:pt-8 md:pb-5${onBack ? " serene-wa-pane-header" : ""}`}
+        className="px-4 py-2.5"
         style={{
           display:        "flex",
           alignItems:     "center",
           gap:            "var(--space-3)",
           flexShrink:     0,
-          borderBottom:   "1px solid var(--neu-header-edge)",
-          background:     "var(--neu-header-wash)",
+          borderBottom:   "1px solid var(--theme-paper-border)",
+          background:     "var(--theme-paper)",
         }}
       >
         {/* Back to list — single-pane mode only (<md) */}
@@ -425,10 +423,7 @@ export function ConversationPanel({
             style={{
               fontFamily: "var(--font-mono)",
               fontSize:   "var(--text-xs)",
-              /* Header ink, not tertiary: this strip is the accent wash, where
-                 tertiary measured 1.8:1 (2026-08-10). The serif name above stays
-                 text-primary, so the hierarchy still reads. */
-              color:      "var(--neu-header-ink)",
+              color:      "var(--theme-text-tertiary)",
               margin:     0,
             }}
           >

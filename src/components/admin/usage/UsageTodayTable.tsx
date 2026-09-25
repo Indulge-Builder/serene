@@ -55,8 +55,6 @@ export function UsageTodayTable({ today }: { today: AgentUsageToday[] }) {
         title="No one active yet today."
         description="Active time appears here as team members work in Serene. A blank board through the working day is itself the signal worth chasing."
         framed
-        ambient
-        minHeight="280px"
       />
     );
   }

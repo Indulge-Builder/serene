@@ -9,6 +9,7 @@ import type { OutcomeBreakdownItem } from '@/lib/services/performance-service';
 import type { CallOutcome } from '@/lib/types/database';
 import { EXIT_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
 import { useChartTokens, resolveColorMap } from '@/components/ui/charts/useChartTokens';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 // ─────────────────────────────────────────────
 // Outcome config — colour tokens, display labels
@@ -65,18 +66,7 @@ export function CallOutcomeBar({ breakdown, onSliceClick }: Props) {
           textAlign:    'center',
         }}
       >
-        <p
-          style={{
-            fontFamily:  'var(--font-serif)',
-            fontStyle:   'italic',
-            fontSize:    'var(--text-md)',
-            fontWeight:  'var(--weight-light)',
-            color:       'var(--theme-text-tertiary)',
-            margin: 0,
-          }}
-        >
-          No calls logged this period.
-        </p>
+        <EmptyState title="No calls logged this period." style={{ padding: 0 }} />
       </div>
     );
   }

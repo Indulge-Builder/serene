@@ -582,16 +582,18 @@ No `Suspense` boundary on page — `loading.tsx` handles the route-level skeleto
 - **Period filter:** `WhatsAppConversationPeriodFilter` in card header (URL-driven).
 - **Load more:** `IntersectionObserver` on sentinel (`threshold: 0.5`) — P-05 (no scroll listener). Disabled during search results.
 - **End state:** "That's everything." when `!hasMore && list length >= WHATSAPP_CONVERSATIONS_PAGE_SIZE` and not searching.
-- **Skeleton:** `loading.tsx` mirrors the rail (title shimmer, search card, 7 staggered row shimmers).
-- **Row pattern:** Bordered card (`--shadow-1`, `--radius-lg`), uppercase "Conversations" label.
+- **Skeleton:** `loading.tsx` composes the SAME `ui/SplitWorkspace` pieces as the page (title shimmer, the rail card with its search and Conversations row, `RailRowsSkeleton`, the empty pane's `EmptyStateSkeleton`).
+- **Card pattern (the Sia layout, 2026-09-25):** the rail is ONE `SplitRail` card: a header strip (search, then the uppercase "Conversations" label with the period filter) above the rows. The open conversation, its loading spinner and the empty "Select a conversation" state sit in the `SplitPane` card beside it.
 
-#### 8e. `ConversationRow`
+#### 8e. The rail row (`ui/ConversationRailRow`, shared with /sia since 2026-09-25)
 
-**Renders:** `Avatar` (sm) with optional unread dot (10px accent, top-right, driven by `hasUnread` derived from `unread_count`), lead name (ellipsis), trailing mono last-message relative time. (The "Resolved" trailing label was removed 2026-06-20 — every row shows the timestamp.)
+`ConversationRow.tsx` is deleted: `ConversationList` renders the shared `ConversationRailRow` (the same row the Sia rail uses).
 
-**Active/hover state:** `Avatar` `selected={isActive || hovered}` — **accent ring on avatar**, not a row background fill and **not** a left-border strip. Name → semibold on hover; trailing time → accent. Row background stays transparent.
+**Renders:** `Avatar` (md) with the optional unread dot (10px accent, top-right, from `unread_count`), lead name (ellipsis) + relative last-message time, and the phone as the second line (omitted when the phone already is the title). Rows are full-bleed with a hairline between them.
 
-**Motion:** `opacity 0→1`, `x -8→0`, stagger delay prop (max 280ms).
+**Active state:** the **accent ring on the avatar** and a semibold name. Never a row background fill and never a left-border strip; the row stays transparent (hover keeps the shared quiet hover wash). The shared-control migration (2026-09-24) had given the active row the selection wash, against this spec; that is undone.
+
+**Motion:** `opacity 0→1`, `y 4→0`, 15ms stagger capped at 240ms.
 
 #### 8f. `ConversationPanel`
 

@@ -46,21 +46,12 @@ const NUM: React.CSSProperties = {
 export function VendorsTable({ vendors }: { vendors: VendorListItem[] }) {
   if (vendors.length === 0) {
     return (
-      <div
-        style={{
-          background: 'var(--theme-paper)',
-          border: '1px solid var(--theme-paper-border)',
-          borderRadius: 'var(--neu-radius-card)',
-          boxShadow: 'var(--shadow-1)',
-          padding: 'var(--space-12) var(--space-6)',
-        }}
-      >
-        <EmptyState
-          icon={Building2}
-          title="No vendors here."
-          description="Try a different search, or clear the category filter."
-        />
-      </div>
+      <EmptyState
+        icon={Building2}
+        framed
+        title="No vendors here."
+        description="Try a different search, or clear the category filter."
+      />
     );
   }
 

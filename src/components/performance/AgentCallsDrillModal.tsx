@@ -92,9 +92,9 @@ export function AgentCallsDrillModal({ open, agentId, agentName, domain, onClose
           <LogoSpinner size="md" />
         </div>
       ) : error && items.length === 0 ? (
-        <EmptyState variant="inline" title="Couldn't load calls." size="sm" />
+        <EmptyState variant="inline" title="Couldn't load calls." />
       ) : items.length === 0 ? (
-        <EmptyState variant="inline" title="No calls logged yet." size="sm" />
+        <EmptyState variant="inline" title="No calls logged yet." />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
           {items.map((c) => (

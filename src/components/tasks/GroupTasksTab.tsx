@@ -56,6 +56,7 @@ import {
   groupFiltersActiveCount,
   type GroupTaskFiltersState,
 } from '@/lib/utils/task-client-filters';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 // Load-on-intent (perf audit G-1): SubTaskModal (1,672 lines) and
 // CreateGroupTaskModal (974 lines) stay out of the /tasks route chunk until
@@ -848,19 +849,7 @@ const GroupRow = memo(function GroupRow({
               )}
 
               {!isLoadingSubtasks && subtasks.length === 0 && !showAddSubtask && (
-                <div style={{ padding: 'var(--space-5)', textAlign: 'center' }}>
-                  <p
-                    style={{
-                      fontFamily: 'var(--font-serif)',
-                      fontStyle:  'italic',
-                      fontSize:   'var(--text-sm)',
-                      color:      'var(--theme-text-tertiary)',
-                      margin:     0,
-                    }}
-                  >
-                    No subtasks yet.
-                  </p>
-                </div>
+                <EmptyState title="No subtasks yet." style={{ padding: 'var(--space-5)' }} />
               )}
 
               {/* Row choreography (polish §02) — a subtask deleted via undo
@@ -1240,47 +1229,12 @@ export function GroupTasksTab({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
 
       {filteredRows.length === 0 ? (
-        <div
-          style={{
-            border:       '1px solid var(--theme-paper-border)',
-            borderRadius: 'var(--radius-lg)',
-            padding:      'var(--space-16) var(--space-8)',
-            textAlign:    'center',
-            background:   'var(--theme-paper)',
-            boxShadow:    'var(--shadow-1)',
-          }}
-        >
-          <p
-            style={{
-              fontFamily: 'var(--font-serif)',
-              fontStyle:  'italic',
-              fontSize:   'var(--text-lg)',
-              color:      'var(--theme-text-tertiary)',
-              margin:     0,
-            }}
-          >
-            {groupRows.length === 0
-              ? 'No group tasks yet.'
-              : hasActiveFilters
-                ? 'Nothing matches your filters.'
-                : 'No group tasks yet.'}
-          </p>
-          <p
-            style={{
-              fontFamily:   'var(--font-sans)',
-              fontSize:     'var(--text-sm)',
-              color:        'var(--theme-text-tertiary)',
-              marginTop:    'var(--space-2)',
-              marginBottom: 0,
-            }}
-          >
-            {groupRows.length === 0
-              ? 'Use the button above to create one.'
-              : hasActiveFilters
-                ? 'Try adjusting your search or filters.'
-                : null}
-          </p>
-        </div>
+        <EmptyState
+          icon={LucideIcons.CheckSquare}
+          framed
+          title={groupRows.length > 0 && hasActiveFilters ? 'Nothing matches your filters.' : 'No group tasks yet.'}
+          description={groupRows.length > 0 && hasActiveFilters ? 'Try adjusting your search or filters.' : 'Use the button above to create one.'}
+        />
       ) : (
         filteredRows.map((group, idx) => (
           <GroupRow

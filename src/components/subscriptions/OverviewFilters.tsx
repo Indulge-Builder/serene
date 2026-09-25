@@ -5,6 +5,7 @@
 // getSpendingOverview with the committed params. Shares the `department` param
 // with the list view so a department focus survives switching views; dates use
 // the house `date_from`/`date_to` params (the leads/deals convention).
+// `leading` = the page's view switcher, sharing the strip (see SubscriptionFilters).
 
 import { FilterBar } from "@/components/ui/FilterBar";
 import { FilterDropdown } from "@/components/ui/FilterDropdown";
@@ -12,7 +13,7 @@ import { useUrlFilters, useMultiSelectUrlParam } from "@/hooks/useUrlFilters";
 import { SUBSCRIPTION_DEPARTMENT_OPTIONS } from "@/lib/constants/subscription-constants";
 import type { AppDomain } from "@/lib/types/database";
 
-export function OverviewFilters() {
+export function OverviewFilters({ leading }: { leading?: React.ReactNode }) {
   const url = useUrlFilters();
   const { params, push } = url;
 
@@ -27,6 +28,7 @@ export function OverviewFilters() {
   return (
     <FilterBar
       hideSearch
+      leading={leading}
       searchValue=""
       onSearchChange={() => {}}
       activeCount={activeCount}
@@ -46,7 +48,6 @@ export function OverviewFilters() {
       <FilterDropdown
         menuPortal
         hideCountBadge
-        accentBorderOnOpen={false}
         label="Department"
         items={SUBSCRIPTION_DEPARTMENT_OPTIONS}
         selected={departments}

@@ -22,6 +22,7 @@ import type {
   SubscriptionPaymentRow,
   SubscriptionTopupRow,
 } from "@/lib/types/subscription";
+import { EmptyState } from '@/components/ui/EmptyState';
 
 type Props = {
   open: boolean;
@@ -208,7 +209,7 @@ function PaymentHistory({
   currency: SubscriptionRow["currency"];
 }) {
   if (payments.length === 0) {
-    return <EmptyLine text="No payments recorded yet." />;
+    return <EmptyState title="No payments recorded yet." />;
   }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
@@ -240,7 +241,7 @@ function PaymentHistory({
 
 function TopupHistory({ topups }: { topups: SubscriptionTopupRow[] }) {
   if (topups.length === 0) {
-    return <EmptyLine text="No top-ups logged yet." />;
+    return <EmptyState title="No top-ups logged yet." />;
   }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
@@ -286,24 +287,6 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="label-micro">{label}</span>
       <span style={{ fontSize: "var(--text-sm)", color: "var(--theme-text-primary)" }}>{children}</span>
     </div>
-  );
-}
-
-function EmptyLine({ text }: { text: string }) {
-  return (
-    <p
-      style={{
-        margin: 0,
-        textAlign: "center",
-        padding: "var(--space-4) 0",
-        fontFamily: "var(--font-serif)",
-        fontStyle: "italic",
-        color: "var(--theme-text-tertiary)",
-        fontSize: "var(--text-sm)",
-      }}
-    >
-      {text}
-    </p>
   );
 }
 

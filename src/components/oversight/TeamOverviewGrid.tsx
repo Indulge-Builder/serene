@@ -29,7 +29,6 @@ export function TeamOverviewGrid({ rows }: { rows: TeamTaskOverviewRow[] }) {
         title="No teams to oversee yet."
         description="Teams appear here once a domain has an active agent."
         framed
-        ambient
       />
     );
   }

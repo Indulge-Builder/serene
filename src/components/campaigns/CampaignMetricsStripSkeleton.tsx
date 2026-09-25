@@ -9,9 +9,9 @@ export function CampaignMetricsStripSkeleton() {
     <div>
       {/* Column count lives in classes only — inline grid-template-columns
           would override the responsive variants (mirrors CampaignMetricsStrip:
-          single column below sm, 2×4 from sm up — it sits in the right column). */}
+          one column below sm, two from sm, four from lg). */}
       <div
-        className="grid grid-cols-1 sm:grid-cols-2"
+        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4"
         style={{ gap: 'var(--space-3)' }}
       >
         {staggerDelays.map((delay, i) => (

@@ -26,6 +26,7 @@ import {
 import { setNotificationPrefAction } from "@/lib/actions/notification-prefs";
 import { toast } from "@/lib/toast";
 import type { UserRole } from "@/lib/types/database";
+import { EmptyState } from '@/components/ui/EmptyState';
 
 interface SeedPref {
   notification_key: string;
@@ -94,18 +95,7 @@ export function NotificationPreferences({ role, initialPrefs }: NotificationPref
   }
 
   if (categories.length === 0) {
-    return (
-      <p
-        style={{
-          fontFamily: "var(--font-serif)",
-          fontStyle:  "italic",
-          fontSize:   "var(--text-sm)",
-          color:      "var(--theme-text-tertiary)",
-        }}
-      >
-        No notifications to configure for your role.
-      </p>
-    );
+    return <EmptyState title="No notifications to configure for your role." />;
   }
 
   return (

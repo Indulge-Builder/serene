@@ -8,7 +8,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { m as motion } from "framer-motion";
-import { Inbox, Check, ExternalLink } from "lucide-react";
+import { Check, ExternalLink, MessageSquarePlus } from "lucide-react";
 import { TabSelector } from "@/components/ui/TabSelector";
 import { Button } from "@/components/ui/Button";
 import { Avatar } from "@/components/ui/Avatar";
@@ -83,7 +83,8 @@ export function SuggestionInboxClient({
 
       {visible.length === 0 ? (
         <EmptyState
-          icon={Inbox}
+          icon={MessageSquarePlus}
+          framed
           title="Nothing here yet."
           description={
             tab === "open"

@@ -168,8 +168,9 @@ Every primary page with a standard server title row renders `PageControls` (bell
 when `isPrivileged`): leads, deals, campaigns (selector ON — domain-aware), tasks, performance (all
 3 role branches), helpdesk, budget, escalations, settings, elaya, admin/users (bell-only). Dashboard
 has no server title row — its bell rides the `DashboardCanvas` header cluster (`PageControls` reads
-state from the layout provider, no seed threaded in). **`/whatsapp` is the one exception** —
-full-bleed chat, no title row, no bell (reachable on every other page).
+state from the layout provider, no seed threaded in). `/whatsapp` renders it too since it joined
+the Sia layout (2026-09-25): its title row (title, the "N unread" pill, the bell) lives inside
+`WhatsAppShell`.
 
 ### Domain selector → `param ?? cookie` (the navigation-persistence fix)
 

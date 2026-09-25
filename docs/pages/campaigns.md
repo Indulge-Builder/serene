@@ -313,7 +313,7 @@ detail page; clicking it navigates directly. It is NOT a button that opens a pre
   dim to `opacity: 0.45`. There is **no "total" pill and no 7-pill row** — the old `MetricPill`/`CostCell`
   are gone.
 - **Hover:** `box-shadow: var(--shadow-2)` + `transform: translateY(-1px)` on mouse enter; reset to
-  `--shadow-1` / `translateY(0)` on leave. Focus → `--shadow-focus`, blur resets.
+  `--shadow-1` / `translateY(0)` on leave. Keyboard focus → the shared outline (`--neu-focus-edge`); the JS focus ring was removed 2026-09-25 (it also flashed on mouse clicks).
 - **URL encoding contract (critical):**
 
 ```ts
@@ -379,13 +379,15 @@ try {
 
 #### 6b. `page.tsx` structure
 
-- **Video ↔ metrics row** (`grid grid-cols-1 lg:grid-cols-[320px_1fr]`, stacks below `lg`): the
-  `CampaignAdPanel` sits **left**, the metrics strip **right**. The creatives are awaited up-front
-  (so the video panel renders immediately); the metrics stream into the right column via their own
-  Suspense boundary, so a slow RPC never blocks the video.
-- **Two independent `Suspense` boundaries:** metrics (`CampaignMetricsStripSkeleton` → `CampaignMetricsAsync`,
-  in the right column) and leads (`LeadsTableSkeleton` → `CampaignLeadsAsync`, **full width below** the row)
-  so a slow table query never blocks the stat cards and vice versa.
+- **Order (2026-09-25): metrics → leads → ad creative.** The metrics strip opens the page at full
+  width (one column below `sm`, two from `sm`, a 4×2 block from `lg`); the leads table follows; the
+  `CampaignAdPanel` card sits **below the leads** as the reference (it used to open the page in a
+  320px column beside the metrics, where it crowded the numbers). Its empty state is the shared
+  `UploadButton` surface ("Add a video", admin/founder) or one inline line; it was a `Button iconOnly`
+  whose locked 32px height crushed the 9:16 tile.
+- **Two independent `Suspense` boundaries:** metrics (`CampaignMetricsStripSkeleton` → `CampaignMetricsAsync`)
+  and leads (`LeadsTableSkeleton` → `CampaignLeadsAsync`), so a slow table query never blocks the stat
+  cards and vice versa. The creatives are still awaited up-front (one small read).
 - **`CampaignMetricsAsync`** runs a **three-way** `Promise.all` — never sequential:
 
 ```ts

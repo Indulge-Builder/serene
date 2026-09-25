@@ -36,8 +36,8 @@ const MotionLink = motion.create(Link);
  * A paper card that links to a dedicated settings sub-page. Matches the
  * card-list treatment from the Standard Page Layout Contract exactly
  * (mirrors CampaignCard): --shadow-1 at rest → --shadow-2 + translateY(-1px)
- * on hover via CSS transition (box-shadow/transform), --shadow-focus on
- * keyboard focus, staggered opacity/y entrance. Icon tile uses
+ * on hover via CSS transition (box-shadow/transform), the shared keyboard
+ * outline on focus, staggered opacity/y entrance. Icon tile uses
  * --theme-accent-surface; the trailing chevron is the only affordance.
  * Display-only chrome — no business logic.
  */
@@ -80,12 +80,6 @@ export function SettingsLinkCard({
       onMouseLeave={(e) => {
         (e.currentTarget as HTMLAnchorElement).style.boxShadow = "var(--shadow-1)";
         (e.currentTarget as HTMLAnchorElement).style.transform = "translateY(0)";
-      }}
-      onFocus={(e) => {
-        (e.currentTarget as HTMLAnchorElement).style.boxShadow = "var(--shadow-focus)";
-      }}
-      onBlur={(e) => {
-        (e.currentTarget as HTMLAnchorElement).style.boxShadow = "var(--shadow-1)";
       }}
     >
       {/* Icon tile */}

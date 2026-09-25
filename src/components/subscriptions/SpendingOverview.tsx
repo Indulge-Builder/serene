@@ -6,7 +6,7 @@
 
 import dynamic from "next/dynamic";
 import type { CSSProperties } from "react";
-import { TrendingUp } from "lucide-react";
+import { Receipt } from "lucide-react";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { StatTile } from "@/components/ui/StatTile";
 import { ChartSkeleton } from "@/components/ui/charts/ChartSkeleton";
@@ -62,7 +62,7 @@ export function SpendingOverview({ data }: { data: SpendingOverviewData }) {
 
       {!hasData ? (
         <EmptyState
-          icon={TrendingUp}
+          icon={Receipt}
           title="No spending recorded yet"
           description="Record a payment or top-up and your spending analytics will appear here."
           framed

@@ -1,12 +1,13 @@
 import type { CSSProperties } from 'react';
 
-/** One raised material for date, range, and option filter triggers. */
-export function filterTriggerStyle(active: boolean, open = false): CSSProperties {
+/** One raised material for date, range, and option filter triggers. `active` = a
+ * value is applied: a pastel wash and accent ink, never an accent ring. The open
+ * state needs no argument: CSS presses any trigger whose `aria-expanded` is true. */
+export function filterTriggerStyle(active: boolean): CSSProperties {
   return {
     '--control-fill': active
       ? 'color-mix(in srgb, var(--theme-accent) 12%, var(--neu-surface))'
       : 'var(--neu-surface)',
-    '--control-ring': open ? '0 0 0 1px var(--theme-accent)' : '0 0 0 0 transparent',
     '--control-ink': active ? 'var(--neu-accent-deep)' : 'var(--theme-text-secondary)',
   } as CSSProperties;
 }

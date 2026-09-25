@@ -4,6 +4,25 @@
 > the current shared action, filter, field, focus, and sizing rules. It supersedes
 > older per-component button radius and focus-suppression instructions below.
 
+> **Empty states, the mark and the boot — 2026-09-25:** every empty state has ONE anatomy, taken
+> from the /tickets table when it has nothing to show: a raised tile, a Playfair italic title, a
+> calm description, at most one action (`ui/EmptyState`: `hero` for a page, table or section,
+> `inline` for inside a card, `framed` for the page-level paper card). The tile takes the page's
+> sidebar icon for a page with nothing in it, and the Serene mark for an all-clear or where no icon
+> fits. The mark itself gained the intersecting centre circle of the official Indulge logo (8 rings
+> plus the centre ring, drawn last). The boot screen is the mark with one lockup beneath it,
+> after the Indulge app's splash: SERENE in the Playfair wordmark set wide (0.42em), BY INDULGE in
+> small tracked caps under it. The mark draws, then turns once every 24 seconds; the word's
+> tracking opens as the centre circle lands, moved letter by letter with a transform (no tagline,
+> no glow, no pulse). The home-screen icon, logo and favicon are the same mark on the cream plate,
+> rendered by `scripts/pad-app-icons.mjs`. This supersedes the older bare italic inline empty
+> line, the `brand` watermark composition and the old boot wordmark with its tagline.
+
+> **Focus and state — 2026-09-25:** one focus colour (`--neu-focus-edge`); text fields
+> draw a hugging frame, actions a 2px keyboard outline; applied and open states never
+> draw a ring. See [control-system.md](./control-system.md#focus-and-state-without-rings--2026-09-25).
+> This supersedes the white-gap `--shadow-focus` ring described below.
+
 > **Material update — 2026-09-22:** The current shell uses a softly layered pastel-gradient sidebar,
 > ivory workspace, and porcelain cards. Two broad washes derive from the selected
 > theme accent over an opaque pearl base (18% / 9% pigment in light mode;

@@ -51,22 +51,24 @@ export function MemberObservationCard({ clientId, notes }: { clientId: string; n
     <div style={{ background: 'var(--theme-paper)', border: '1px solid var(--theme-paper-border)', borderRadius: 'var(--neu-radius-card)', boxShadow: 'var(--shadow-1)', overflow: 'hidden' }}>
       <CardHeader icon={Eye} label="Observation" right={notes.length > 0 ? <span style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--neu-header-ink)' }}>{notes.length}</span> : undefined} />
       <div style={{ padding: 'var(--space-4) var(--space-6) var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-        <textarea
-          className="serene-input neu-input"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submit(); }}
-          placeholder="Write your observation on the member in free form. Example: he likes smart bands, uses a Whoop, his wife Priya is vegetarian."
-          rows={3}
-          maxLength={2000}
-          style={{ width: '100%', resize: 'vertical', minHeight: 84, fontSize: 'var(--text-sm)', lineHeight: 1.5 }}
-        />
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-3)', fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>
+        {/* One field: the text on top, the mic and Save tucked into its foot. The shell draws
+            the focus ring (neu-input :focus-within); the bare textarea inside draws none. */}
+        <div className="neu-input" style={{ display: 'flex', flexDirection: 'column', padding: 'var(--space-3) var(--space-4) var(--space-2)', gap: 'var(--space-2)' }}>
+          <textarea
+            className="serene-input-bare"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submit(); }}
+            placeholder="Write your observation on the member in free form. Example: he likes smart bands, uses a Whoop, his wife Priya is vegetarian."
+            aria-label="Observation"
+            rows={3}
+            maxLength={2000}
+            style={{ width: '100%', minHeight: 72, resize: 'vertical', padding: 0, border: 'none', outline: 'none', background: 'transparent', fontFamily: 'var(--font-sans)', fontSize: 'var(--text-sm)', lineHeight: 1.5, color: 'var(--theme-text-primary)' }}
+          />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)' }}>
             <DictationButton variant="inline" what="an observation" onTranscript={(t) => setDraft((d) => (d ? `${d} ${t}` : t))} onError={(m) => toast.danger(m)} onBusyChange={setBusy} />
-            <span>Spelling is fixed and the profile is updated for you. ⌘↵ to save.</span>
-          </span>
-          <Button size="sm" onClick={submit} loading={pending} loadingLabel="Filing…" disabled={draft.trim().length < 3 || busy}>Save</Button>
+            <Button size="sm" onClick={submit} loading={pending} loadingLabel="Filing…" disabled={draft.trim().length < 3 || busy}>Save</Button>
+          </div>
         </div>
         {error && <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--color-danger-text)' }}>{error}</p>}
 
@@ -88,7 +90,7 @@ export function MemberObservationCard({ clientId, notes }: { clientId: string; n
                 ))}
               </div>
             )}
-            <span style={{ fontSize: 'var(--text-2xs)', color: 'var(--theme-text-tertiary)' }}>Wrong? Use "correct" on the card it landed in.</span>
+            <span style={{ fontSize: 'var(--text-2xs)', color: 'var(--theme-text-tertiary)' }}>Wrong? Double-click it on the card it landed in.</span>
           </div>
         )}
 

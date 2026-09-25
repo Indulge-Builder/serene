@@ -10,7 +10,6 @@ export function PerformanceRosterEmptyState() {
       title="Select an agent."
       description="Choose someone from the roster to see their performance for this period."
       framed
-      ambient
       minHeight="min(320px, 40vh)"
     />
   );

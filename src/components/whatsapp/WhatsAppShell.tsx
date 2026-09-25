@@ -6,6 +6,9 @@ import { ConversationList } from "@/components/whatsapp/ConversationList";
 import { LogoSpinner } from "@/components/ui/LogoSpinner";
 import { ConversationPanel } from "@/components/whatsapp/ConversationPanel";
 import { EmptyConversationState } from "@/components/whatsapp/EmptyConversationState";
+import { SplitWorkspace, SplitPane } from "@/components/ui/SplitWorkspace";
+import { PageControls } from "@/components/layout/PageControls";
+import { TOP_BAR_ENABLED } from "@/lib/constants/feature-flags";
 import { createClient } from "@/lib/supabase/client";
 import { useMediaQuery, MQ } from "@/hooks/useMediaQuery";
 import {
@@ -249,57 +252,42 @@ export function WhatsAppShell({
   const showPane = !isMobile || activeConversation !== null;
 
   return (
-    <div
-      style={{
-        display: "flex",
-        width: "100%",
-        flex: 1,
-        minHeight: 0,
-        overflow: "hidden",
-      }}
-    >
-      {/* Left rail — page title + search + list (same inset as Leads / Settings).
-          Full-width pane <md; fixed 320px rail at md+ (w-80 = 320px). */}
-      {showRail && (
-      <div
-        className="serene-wa-rail w-full md:w-80 p-4 pb-0 sm:p-6 sm:pb-0 lg:p-8 lg:pb-0"
-        style={{
-          flexShrink: 0,
-          display: "flex",
-          flexDirection: "column",
-          background: "var(--theme-paper)",
-          borderRight: "1px solid var(--theme-paper-border)",
-          overflow: "hidden",
-        }}
-      >
-        <div className="mb-6 flex shrink-0 items-center justify-between gap-4">
-          <h1 className="type-page-title m-0">
-            WhatsApp<span className="page-title-dot">.</span>
-          </h1>
-          {unreadBadge > 0 && (
-            <span
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                minWidth: "22px",
-                height: "22px",
-                padding: "0 var(--space-1)",
-                borderRadius: "var(--radius-full)",
-                background: "var(--theme-accent)",
-                color: "var(--theme-accent-fg)",
-                fontFamily: "var(--font-sans)",
-                fontSize: "var(--text-xs)",
-                fontWeight: "var(--weight-semibold)",
-                flexShrink: 0,
-              }}
-            >
-              {unreadBadge > 99 ? "99+" : unreadBadge}
-            </span>
-          )}
-        </div>
+    // The Sia layout (2026-09-25): page header, then the rail card beside the pane
+    // card on the workspace ground (ui/SplitWorkspace), never a full-bleed split.
+    <div className="flex-1 min-h-0 flex flex-col">
+      <div className="mb-6 flex shrink-0 items-center gap-4">
+        <h1 className="type-page-title m-0" style={{ marginRight: "auto" }}>
+          WhatsApp<span className="page-title-dot">.</span>
+        </h1>
+        {unreadBadge > 0 && (
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              height: "22px",
+              padding: "0 var(--space-2)",
+              borderRadius: "var(--radius-full)",
+              background: "var(--theme-accent)",
+              color: "var(--theme-accent-fg)",
+              fontFamily: "var(--font-sans)",
+              fontSize: "var(--text-xs)",
+              fontWeight: "var(--weight-semibold)",
+              flexShrink: 0,
+            }}
+          >
+            {unreadBadge > 99 ? "99+" : unreadBadge} unread
+          </span>
+        )}
+        {/* The shared title-row controls (bell), as on every other page. WhatsApp is
+            not domain-aware, so never the domain selector. */}
+        {TOP_BAR_ENABLED && (
+          <PageControls isPrivileged={false} />
+        )}
+      </div>
 
-        <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+      <SplitWorkspace>
+        {showRail && (
           <ConversationList
             conversations={conversations}
             activeConversationId={activeConversationId}
@@ -309,50 +297,31 @@ export function WhatsAppShell({
             isLoadingMore={isLoadingMore || isRefetchingList}
             period={period}
           />
-        </div>
-      </div>
-      )}
-
-      {/* Right pane — full height from top; contact header owns top breathing room */}
-      {showPane && (
-      <div
-        style={{
-          flex: 1,
-          minWidth: 0,
-          minHeight: 0,
-          display: "flex",
-          flexDirection: "column",
-          background: "var(--theme-paper-subtle)",
-          overflow: "hidden",
-        }}
-      >
-        {activeConversation ? (
-          isLoadingConv ? (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flex: 1,
-                minHeight: 0,
-              }}
-            >
-              <LogoSpinner size="md" />
-            </div>
-          ) : (
-            <ConversationPanel
-              key={activeConversation.id}
-              conversation={activeConversation}
-              initialMessages={activeMessages}
-              callerProfile={callerProfile}
-              onBack={isMobile ? () => setActiveConversationId(null) : undefined}
-            />
-          )
-        ) : (
-          <EmptyConversationState />
         )}
-      </div>
-      )}
+
+        {showPane &&
+          (activeConversation ? (
+            isLoadingConv ? (
+              <SplitPane className="flex items-center justify-center">
+                <LogoSpinner size="md" />
+              </SplitPane>
+            ) : (
+              <SplitPane>
+                <ConversationPanel
+                  key={activeConversation.id}
+                  conversation={activeConversation}
+                  initialMessages={activeMessages}
+                  callerProfile={callerProfile}
+                  onBack={isMobile ? () => setActiveConversationId(null) : undefined}
+                />
+              </SplitPane>
+            )
+          ) : (
+            <SplitPane className="hidden md:flex items-center justify-center">
+              <EmptyConversationState />
+            </SplitPane>
+          ))}
+      </SplitWorkspace>
     </div>
   );
 }

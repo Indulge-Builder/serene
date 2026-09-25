@@ -15,6 +15,7 @@ import { m as motion } from 'framer-motion';
 import { FIRST_TOUCH_BUCKETS, type FirstTouchBucketId } from '@/lib/constants/performance';
 import { ENTER_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
 import type { FirstTouchScorecard as ScorecardData } from '@/lib/services/performance-service';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 const LABEL_STYLE: React.CSSProperties = {
   fontFamily:    'var(--font-sans)',
@@ -59,21 +60,11 @@ export function FirstTouchScorecard({
 }) {
   const { buckets, untouched, leadsWithFirstCall, totalCohort } = data;
 
-  // No cohort at all in the period → serif-italic empty line (panel convention).
+  // No cohort at all in the period → the shared compact empty state.
   if (totalCohort === 0) {
     return (
       <CardShell delay={delay}>
-        <p
-          style={{
-            fontFamily: 'var(--font-serif)',
-            fontStyle:  'italic',
-            fontSize:   'var(--text-sm)',
-            color:      'var(--theme-text-tertiary)',
-            margin:     0,
-          }}
-        >
-          No leads in this period.
-        </p>
+        <EmptyState title="No leads in this period." style={{ padding: 'var(--space-2) 0' }} />
       </CardShell>
     );
   }

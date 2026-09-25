@@ -1,16 +1,14 @@
 // loading.tsx — performance page.
 //
-// The manager/admin/founder views share one chrome: page header, filter bar
-// (sliders icon + agent search + Period dropdown), then the two-column roster
-// panel — so this file renders that shape and the founder/manager load is
-// seamless (the in-page Suspense fallback is the same ManagerPerformanceSkeleton).
-//
-// loading.tsx cannot know the role, so the agent view briefly shows this chrome
-// too — but only for the profile-fetch window: the agent branch in page.tsx
-// wraps its RPC in a Suspense whose fallback is PerformanceSkeleton (the agent
-// shape), so agents flip to their correct skeleton as soon as the role is known.
+// The route chrome only: page header + the filter strip. Every role's content then
+// streams behind exactly ONE skeleton of its own shape, rendered by the page
+// (2026-09-25; the old roster-shaped content here showed first and was then
+// replaced by a second, differently shaped skeleton for founders and agents):
+//   agent            → PerformanceSkeleton (the Suspense in page.tsx)
+//   manager          → ManagerPerformanceSkeleton (the roster Suspense)
+//   founder / admin  → DomainsTabFallback (the Domains data + chart chunk wait,
+//                      FounderPerformanceShell); ManagerPerformanceSkeleton on Agents
 
-import { ManagerPerformanceSkeleton } from './ManagerPerformanceSkeleton';
 import { PageHeaderSkeleton, FilterBarSkeleton } from '@/components/ui/PageSkeletons';
 
 export default function PerformanceLoading() {
@@ -21,9 +19,6 @@ export default function PerformanceLoading() {
 
       {/* Filter bar — sliders icon + agent search + Period dropdown */}
       <FilterBarSkeleton icon searchWidth="flex" chips={[96]} />
-
-      {/* Roster + detail panel — same shape as the in-page Suspense fallback */}
-      <ManagerPerformanceSkeleton />
     </main>
   );
 }

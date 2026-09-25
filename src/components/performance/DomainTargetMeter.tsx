@@ -41,7 +41,7 @@ export function DomainTargetMeter({ value, target }: Props) {
           justifyContent: 'center',
         }}
       >
-        <EmptyState variant="inline" size="sm" title="No target set." />
+        <EmptyState title="No target set." style={{ padding: 0 }} />
       </div>
     );
   }

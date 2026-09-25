@@ -1,5 +1,6 @@
 import { Activity, Phone, UserCheck, ArrowRight, PlusCircle, Pencil, Copy } from 'lucide-react';
 import { CardHeader } from '@/components/leads/CardHeader';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { LEAD_STATUS_LABELS } from '@/lib/constants/lead-statuses';
 import { CALL_OUTCOME_LABELS } from '@/lib/constants/call-outcomes';
 import { DOMAIN_LABELS } from '@/lib/constants/domains';
@@ -118,19 +119,7 @@ export function LeadActivityLog({ activities }: Props) {
 
       {/* Timeline */}
       {visible.length === 0 ? (
-        <div style={{ padding: 'var(--space-8)', textAlign: 'center' }}>
-          <p
-            style={{
-              fontFamily:  'var(--font-serif)',
-              fontSize:    'var(--text-base)',
-              fontStyle:   'italic',
-              color:       'var(--theme-text-tertiary)',
-              margin:      0,
-            }}
-          >
-            No activity yet.
-          </p>
-        </div>
+        <EmptyState title="No activity yet." description="Status changes, calls, notes and assignments appear here as they happen." />
       ) : (
         <ol
           style={{

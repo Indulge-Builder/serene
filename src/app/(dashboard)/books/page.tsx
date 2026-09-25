@@ -4,7 +4,7 @@
 
 import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
-import { AlertTriangle, FileText, ReceiptIndianRupee } from 'lucide-react';
+import { AlertTriangle, FileText, ReceiptIndianRupee, Landmark } from 'lucide-react';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
 import { getBooksOverview } from '@/lib/services/zoho-service';
 import { zohoOrgId } from '@/lib/services/zoho-api';
@@ -34,8 +34,8 @@ async function BooksAsync() {
   if (!overview) {
     return (
       <EmptyState
-        variant="inline"
-        size="lg"
+        icon={Landmark}
+        framed
         title={failure ? 'Zoho did not answer.' : 'Zoho Books is not connected.'}
         description={failure ? 'The last good copy has expired. Try Refresh in a minute; if it keeps failing the token or the daily allowance needs a look.' : 'Add the Zoho credentials to the environment (ZOHO_CLIENT_ID, ZOHO_CLIENT_SECRET, ZOHO_REFRESH_TOKEN, ZOHO_ORGANIZATION_ID).'}
       />

@@ -65,7 +65,7 @@ export function ElayaPlaybooksPanel({ initialPlaybooks, conversationId }: { init
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 340px) 1fr', gap: 'var(--space-6)', alignItems: 'start' }} className="serene-playbooks-grid">
         <SectionCard title="Playbooks" description="One per kind of question. Click to edit." headerRight={<Button size="xs" variant="secondary" iconLeft={Plus} iconMotion="rotate" onClick={() => setDraft(EMPTY)}>New</Button>} bodyPadding={false}>
           {initialPlaybooks.length === 0 ? (
-            <div style={{ padding: 'var(--space-6)' }}><EmptyState variant="inline" size="sm" title="No playbooks yet. Write the first one on the right." /></div>
+            <div style={{ padding: 'var(--space-6)' }}><EmptyState variant="inline" title="No playbooks yet. Write the first one on the right." /></div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {initialPlaybooks.map((p) => (

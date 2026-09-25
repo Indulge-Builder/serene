@@ -4,6 +4,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { DealsSummaryStrip } from '@/components/deals/DealsSummaryStrip';
 import { LeadsPagination } from '@/components/leads/LeadsPagination';
 import type { UserRole, AppDomain, DealFilters } from '@/lib/types/database';
+import { Trophy } from 'lucide-react';
 
 type DealsAsyncProps = {
   role:         UserRole;
@@ -43,18 +44,17 @@ export async function DealsAsync({
       {deals.length === 0 ? (
         hasActiveFilters ? (
           <EmptyState
-            variant="inline"
-            size="lg"
+            icon={Trophy}
+            framed
             title="Nothing matches these filters."
-            style={{ padding: 'var(--space-16) var(--space-8)' }}
+            description="Try clearing a filter."
           />
         ) : (
-          // §08 brand empty — the mark rests here until the first win lands.
           <EmptyState
-            brand
+            icon={Trophy}
+            framed
             title="The first win is still on its way."
             description="Deals you close will gather here — gold petals and all."
-            minHeight="340px"
           />
         )
       ) : (

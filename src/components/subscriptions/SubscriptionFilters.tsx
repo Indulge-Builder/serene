@@ -2,6 +2,8 @@
 
 // List-view filter bar: search + Department / Type / Status dropdowns + the
 // Active / Archived tab. URL-driven via useUrlFilters (immediate-commit).
+// `leading` = the page's List / Calendar / Overview switcher, which shares this
+// strip (the /tasks and /performance single-strip layout, never its own row).
 
 import { FilterBar } from "@/components/ui/FilterBar";
 import { FilterDropdown } from "@/components/ui/FilterDropdown";
@@ -21,7 +23,7 @@ const TAB_OPTIONS = [
   { id: "archived", label: "Archived" },
 ];
 
-export function SubscriptionFilters() {
+export function SubscriptionFilters({ leading }: { leading?: React.ReactNode }) {
   const url = useUrlFilters();
   const { params, push } = url;
 
@@ -40,6 +42,7 @@ export function SubscriptionFilters() {
   return (
     <FilterBar
       layout="scroll"
+      leading={leading}
       searchValue={url.searchInput}
       onSearchChange={url.setSearchInput}
       searchPlaceholder="Search subscriptions…"
@@ -61,7 +64,6 @@ export function SubscriptionFilters() {
       <FilterDropdown
         menuPortal
         hideCountBadge
-        accentBorderOnOpen={false}
         label="Department"
         items={SUBSCRIPTION_DEPARTMENT_OPTIONS}
         selected={departments}
@@ -71,7 +73,6 @@ export function SubscriptionFilters() {
       <FilterDropdown
         menuPortal
         hideCountBadge
-        accentBorderOnOpen={false}
         label="Type"
         items={SUBSCRIPTION_TYPE_OPTIONS}
         selected={types}
@@ -81,7 +82,6 @@ export function SubscriptionFilters() {
       <FilterDropdown
         menuPortal
         hideCountBadge
-        accentBorderOnOpen={false}
         label="Status"
         items={SUBSCRIPTION_STATUS_OPTIONS}
         selected={statuses}

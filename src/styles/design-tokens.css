@@ -961,10 +961,12 @@
 }
 
 /* ── Seed-mandala logo motion (design_handoff_logo_loading_motion) ──
-   One boot sequence (draw → breathe → turn → glow) is the source of
-   truth; every waiting state quotes it. Spin speeds are FIXED per
-   consumer (boot 90s · spinners/veil/buttons 3.5s · Elaya 8s ·
-   watermark 40s) — never faster than 3.5s/rev. */
+   One boot sequence (the draw, the SERENE / BY INDULGE lockup opening
+   beneath it, then the turn; since 2026-09-25, after the Indulge app's
+   splash) is the source of truth; every waiting state quotes it. Spin
+   speeds are FIXED per consumer (boot 24s, the Indulge app's mandalaSpin,
+   starting once the draw completes · spinners/veil/buttons 3.5s · Elaya
+   8s · resting marks 120s) — never faster than 3.5s/rev. */
 
 /* Each circle traces itself in (pathLength=1, dasharray 1). */
 @keyframes serene-logo-trace {
@@ -972,28 +974,21 @@
   to   { stroke-dashoffset: 0; }
 }
 
-/* Breathe — wraps the spin (two nested elements) so transforms compose. */
-@keyframes serene-logo-breathe {
-  0%, 100% { transform: scale(1);     }
-  50%       { transform: scale(1.035); }
+/* Boot lockup (AppBootScreen), on the Indulge splash's clock. The text fades in
+   with the draw. The word is SET at its final tracking (0.42em) and each letter
+   starts pulled toward the middle by its gap count × 0.32em (the distance from
+   0.10em to 0.42em tracking), then eases out to rest: the tracking breathes open
+   with transform alone, exact at every letter, with no squashed glyphs (a scaleX
+   would pinch a serif) and no per-frame text layout (an animated letter-spacing
+   would). --serene-boot-gap = the letter's index minus the word's middle. */
+@keyframes serene-boot-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
-/* Ambient radial wash behind the boot mark — in phase with the breath. */
-@keyframes serene-logo-glow {
-  0%, 100% { opacity: 0.25; }
-  50%       { opacity: 0.6;  }
-}
-
-/* Boot wordmark — letter-spacing opens as it fades in. */
-@keyframes serene-word-in {
-  from { opacity: 0; letter-spacing: 0.1em;  }
-  to   { opacity: 1; letter-spacing: 0.42em; }
-}
-
-/* Boot tagline — fade up 8px. */
-@keyframes serene-tagline-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: none;            }
+@keyframes serene-boot-track {
+  from { transform: translateX(calc(var(--serene-boot-gap, 0) * -0.32em)); }
+  to   { transform: none; }
 }
 
 /* Skeleton sheen — left→right background sweep (replaces the opacity
@@ -1012,12 +1007,24 @@
 .serene-logo-draw circle {
   animation: serene-logo-trace 1.15s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
+/* The boot lockup: in with the draw, and the word opens 1.5s in, over 1.4s,
+   as the centre circle seals the mark (AppBootScreen). */
+.serene-boot-lockup {
+  animation: serene-boot-fade 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+.serene-boot-letter {
+  display: inline-block;
+  animation: serene-boot-track 1.4s cubic-bezier(0.22, 1, 0.36, 1) 1.5s both;
+}
 
 /* Reduced motion: the mark rests finished and still (dashoffset attribute
-   default is 0 → full circles), never mid-draw or spinning. */
+   default is 0 → full circles), never mid-draw or spinning; the boot lockup
+   sits set. */
 @media (prefers-reduced-motion: reduce) {
   .serene-logo-spin,
-  .serene-logo-draw circle {
+  .serene-logo-draw circle,
+  .serene-boot-lockup,
+  .serene-boot-letter {
     animation: none;
   }
 }
@@ -1194,11 +1201,9 @@
   }
 }
 
-/* Keyboard focus ring — :focus-visible only (a mouse click no longer
-   flashes the ring). suppressFocusRing → .serene-btn-no-ring. */
-.serene-pressable:focus-visible:not(.serene-btn-no-ring) {
-  box-shadow: var(--shadow-focus);
-}
+/* Keyboard focus — the one outline in serene-neumorphic-tokens.css (the
+   :focus-visible rule beside the control materials). A button keeps its own
+   material shadow on focus; the old ring here doubled that outline (2026-09-25). */
 
 /* Press feedback — the key pressing down (design-dna §6.3 button press).
    CSS-only so plain Button keeps zero Framer cost. Declared AFTER the

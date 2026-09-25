@@ -10,17 +10,16 @@
 // gear (SiaControlModal), so both panes stay clean. Data crosses the server
 // boundary via the actions in lib/actions/sia.ts (A-15).
 
-import { MotionSelectionButton } from '@/components/ui/MotionButton';
 import { SelectionButton } from '@/components/ui/SelectionButton';
+import { ConversationRailRow } from '@/components/ui/ConversationRailRow';
+import { SplitWorkspace, SplitRail, SplitRailHeader, SplitRailList, SplitPane } from '@/components/ui/SplitWorkspace';
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MessagesSquare, Settings2 } from "lucide-react";
-import { Avatar } from "@/components/ui/Avatar";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useMediaQuery, MQ } from "@/hooks/useMediaQuery";
 import { formatRelativeTime } from "@/lib/utils/dates";
-import { EASE_OUT_EXPO } from "@/lib/constants/motion";
 import { getSiaGroupsAction, getSiaHealthAction } from "@/lib/actions/sia";
 import { SiaChat } from "./SiaChat";
 import { SiaControlModal } from "./SiaControlModal";
@@ -197,21 +196,21 @@ export function SiaWorkspace({ groups: initialGroups, initialGroupJid = null, ca
       </div>
 
       {groups.length === 0 ? (
-        <div className="flex-1 rounded-(--radius-lg) border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1) flex items-center justify-center">
-          <EmptyState
-            icon={MessagesSquare}
-            title="No groups yet"
-            description="Once the Sia watcher is linked and added to member groups, they'll appear here with their live message streams."
-          />
-        </div>
+        <SplitWorkspace>
+          <SplitPane className="flex items-center justify-center">
+            <EmptyState
+              icon={MessagesSquare}
+              title="No groups yet"
+              description="Once the Sia watcher is linked and added to member groups, they'll appear here with their live message streams."
+            />
+          </SplitPane>
+        </SplitWorkspace>
       ) : (
-        <div className="flex-1 min-h-0 flex gap-4">
+        <SplitWorkspace>
           {/* ── Conversations rail ── */}
           {showRail && (
-            <aside
-              className="rounded-(--radius-lg) border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1) flex flex-col min-h-0 w-full md:w-[340px] md:shrink-0 overflow-hidden"
-            >
-              <div className="px-3 pt-3 pb-2 border-b border-(--theme-paper-border) flex flex-col gap-2">
+            <SplitRail>
+              <SplitRailHeader>
                 <SearchBar
                   value={railSearch}
                   onChange={setRailSearch}
@@ -244,9 +243,9 @@ export function SiaWorkspace({ groups: initialGroups, initialGroupJid = null, ca
                     );
                   })}
                 </div>
-              </div>
+              </SplitRailHeader>
 
-              <div className="overflow-y-auto flex-1 min-h-0">
+              <SplitRailList>
                 {visible.length === 0 ? (
                   <div className="py-10 px-4">
                     <EmptyState variant="inline" title="No groups match" />
@@ -262,32 +261,34 @@ export function SiaWorkspace({ groups: initialGroups, initialGroupJid = null, ca
                     />
                   ))
                 )}
-              </div>
-            </aside>
+              </SplitRailList>
+            </SplitRail>
           )}
 
           {/* ── Chat pane ── */}
           {showChat &&
             (selected ? (
-              <SiaChat
-                key={selected.group_jid}
-                group={selected}
-                isMobile={isMobile}
-                onBack={() => setSelectedJid(null)}
-                onLiveMessages={handleLiveMessages}
-                onPatchGroup={patchGroup}
-                canManage={canManage}
-              />
+              <SplitPane>
+                <SiaChat
+                  key={selected.group_jid}
+                  group={selected}
+                  isMobile={isMobile}
+                  onBack={() => setSelectedJid(null)}
+                  onLiveMessages={handleLiveMessages}
+                  onPatchGroup={patchGroup}
+                  canManage={canManage}
+                />
+              </SplitPane>
             ) : (
-              <section className="flex-1 rounded-(--radius-lg) border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1) hidden md:flex items-center justify-center">
+              <SplitPane className="hidden md:flex items-center justify-center">
                 <EmptyState
                   icon={MessagesSquare}
                   title="Pick a conversation"
                   description="Every watched group lives on the left — member rooms, vendors, and the ones still waiting to be classified."
                 />
-              </section>
+              </SplitPane>
             ))}
-        </div>
+        </SplitWorkspace>
       )}
 
       {canManage && <SiaControlModal
@@ -302,7 +303,7 @@ export function SiaWorkspace({ groups: initialGroups, initialGroupJid = null, ca
 }
 
 // ─────────────────────────────────────────────
-// One rail row — avatar · subject + time · preview line (WhatsApp-Web anatomy)
+// One rail row: the shared ConversationRailRow (avatar · subject + time · preview)
 // ─────────────────────────────────────────────
 
 function RailRow({
@@ -316,63 +317,45 @@ function RailRow({
   selected: boolean;
   onSelect: () => void;
 }) {
-  const title = groupTitle(group);
   return (
-    <MotionSelectionButton
-          appearance="option" selected={selected} aria-pressed={selected}
-          type="button"
-          data-sia-jid={group.group_jid}
-          onClick={onSelect}
-          initial={{ opacity: 0, y: 4 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.25, ease: EASE_OUT_EXPO, delay: Math.min(index * 0.015, 0.24) }}
-          className="w-full text-left px-3 py-2.5 flex items-center gap-3 border-b border-(--theme-paper-border)"
-        >
-      <Avatar name={title} size="md" />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-baseline justify-between gap-2">
-          <span className="type-body-sm font-(--weight-medium) text-(--theme-text-primary) truncate">{title}</span>
-          <span className="type-caption text-(--theme-text-tertiary) shrink-0 inline-flex items-center gap-1.5">
-            {group.group_kind === "unmapped" && (
-              <span
-                aria-hidden
-                title="Unmapped"
-                className="rounded-full inline-block"
-                style={{ width: "6px", height: "6px", background: "var(--color-warning)" }}
-              />
-            )}
-            {group.last_message_at ? formatRelativeTime(group.last_message_at) : "—"}
-          </span>
-        </div>
-        <RailPreview group={group} />
-      </div>
-    </MotionSelectionButton>
+    <ConversationRailRow
+      data-sia-jid={group.group_jid}
+      title={groupTitle(group)}
+      meta={group.last_message_at ? formatRelativeTime(group.last_message_at) : null}
+      metaMarker={
+        group.group_kind === "unmapped" ? (
+          <span
+            aria-hidden
+            title="Unmapped"
+            style={{ width: "6px", height: "6px", borderRadius: "var(--radius-full)", background: "var(--color-warning)", display: "inline-block" }}
+          />
+        ) : undefined
+      }
+      preview={<RailPreview group={group} />}
+      selected={selected}
+      index={index}
+      onSelect={onSelect}
+    />
   );
 }
 
+// Inline content only: the row's preview line owns the truncation.
 function RailPreview({ group }: { group: SiaGroupRow }) {
-  if (!group.last_type) {
-    return (
-      <div className="type-caption text-(--theme-text-tertiary) truncate italic">No messages captured yet</div>
-    );
-  }
+  const quiet = { fontStyle: "italic" } as const;
+  if (!group.last_type) return <span style={quiet}>No messages captured yet</span>;
 
   const who = group.last_from_me ? "Watcher" : (group.last_sender_name?.split(" ")[0] ?? null);
 
   if (group.last_is_revoked) {
-    return (
-      <div className="type-caption text-(--theme-text-tertiary) truncate italic">
-        {who ? `${who}: ` : ""}Message deleted
-      </div>
-    );
+    return <span style={quiet}>{who ? `${who}: ` : ""}Message deleted</span>;
   }
 
   // System/undecrypted rows carry protocol stubs — always show the human copy.
   if (group.last_type === "system" || group.last_type === "undecrypted") {
     return (
-      <div className="type-caption text-(--theme-text-tertiary) truncate italic">
+      <span style={quiet}>
         {group.last_type === "undecrypted" ? "Waiting for a message" : formatSystemText(group.last_text)}
-      </div>
+      </span>
     );
   }
 
@@ -380,10 +363,17 @@ function RailPreview({ group }: { group: SiaGroupRow }) {
   const text = group.last_text?.trim();
 
   return (
-    <div className="type-caption text-(--theme-text-tertiary) truncate flex items-center gap-1">
-      {who && <span className="shrink-0" style={{ color: "var(--theme-text-secondary)" }}>{who}:</span>}
-      {media && <media.icon className="w-3 h-3 shrink-0" strokeWidth={1.5} />}
-      <span className="truncate">{text || media?.label || group.last_type}</span>
-    </div>
+    <>
+      {who && <span style={{ color: "var(--theme-text-secondary)" }}>{who}: </span>}
+      {media && (
+        <media.icon
+          aria-hidden
+          className="w-3 h-3"
+          strokeWidth={1.5}
+          style={{ display: "inline", verticalAlign: "-2px", marginRight: "3px" }}
+        />
+      )}
+      {text || media?.label || group.last_type}
+    </>
   );
 }

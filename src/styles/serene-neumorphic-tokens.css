@@ -208,9 +208,6 @@
   --neu-mandala-to:        #C08A4E;
   --neu-mandala-disc-from: #E8CFA0;
   --neu-mandala-disc-to:   #C08A4E;
-  /* Empty-state corner watermark mandala + boot-screen ambient glow */
-  --neu-watermark-opacity: 0.08;
-  --neu-boot-glow: color-mix(in srgb, var(--neu-accent, #D68891) 28%, transparent);
 }
 
 
@@ -252,10 +249,19 @@
   --neu-header-ink:  color-mix(in srgb, var(--theme-accent-fg) 82%, var(--neu-header-wash));
   --neu-header-icon: var(--theme-accent-muted);
 
+  /* THE focus colour (2026-09-25): a third pastel accent, two thirds its deep ink.
+     The pastel alone measured ~2:1 on ivory (below the 3:1 focus bar); the deep ink
+     alone read as a hard dark ring; an even split still missed on Earth (2.76:1).
+     At 35/65 every theme and mode clears 3:1 (lowest 3.20:1, Earth light, on the
+     field's gradient; 6.3–7.5:1 in dark), measured by scripts/check-theme-contrast.mjs.
+     Every focus signal uses it: the hugging frame on text fields and the keyboard
+     outline on actions. */
+  --neu-focus-edge: color-mix(in srgb, var(--theme-accent) 35%, var(--theme-accent-muted));
+  /* Hugging edge on the resting contact shadow. No outer bloom: the material
+     revision retired external blooms, and this token still carried the old one. */
   --neu-focus-ring:
-    0 0 0 1px var(--theme-accent, var(--neu-accent)),
-    6px 6px 14px rgb(var(--neu-dark) / 0.38),
-    -6px -6px 14px rgb(var(--neu-light) / 0.85);
+    0 0 0 1px var(--neu-focus-edge),
+    var(--neu-shadow-raised-sm);
 }
 
 /* Softened accents are applied by re-pointing the --theme-accent*
@@ -458,8 +464,6 @@
   --neu-mandala-to:        #D6AF6E;
   --neu-mandala-disc-from: #7A5C30;
   --neu-mandala-disc-to:   #E8CFA0;
-  --neu-watermark-opacity: 0.10;
-  --neu-boot-glow: rgba(214, 175, 110, 0.18);
 
   /* On-cream accent tones lift for charcoal — "text-safe" flips lighter
      here, so legacy consumers of the muted/hover/surface family stay
@@ -680,11 +684,16 @@
   box-shadow: var(--neu-shadow-input);
   color: var(--neu-text-primary);
 }
+/* THE field focus frame: edge and a 1px ring in --neu-focus-edge, hugging the field
+   (never offset). The same frame on .serene-input, .serene-field-control, SearchBar
+   and MessageBar; a text field never also takes the keyboard outline below. A shell
+   lights while its text is being edited, not when its mic or Save button is pressed. */
 .neu-input:focus-visible,
-.neu-input:focus-within {
+.neu-input:has(:is(input, textarea):focus) {
   outline: none;
+  border-color: var(--neu-focus-edge);
   box-shadow:
-    0 0 0 1px var(--theme-accent),
+    0 0 0 1px var(--neu-focus-edge),
     var(--neu-shadow-input);
 }
 
@@ -986,31 +995,43 @@
 }
 
 /* Ordinary actions share one material; filters expose state through custom
-   properties so hover/press/focus cannot be defeated by inline box shadows. */
+   properties so hover/press/focus cannot be defeated by inline box shadows.
+   State never draws an accent ring (2026-09-25): an applied filter keeps its
+   pastel wash, and an open popup trigger sits pressed while its panel is up. */
 .serene-btn-control,
 .serene-filter-trigger {
   background: var(--control-fill, var(--neu-surface));
   color: var(--control-ink, var(--neu-text-secondary));
   border: 1px solid var(--neu-edge);
   border-radius: var(--neu-radius-control);
-  box-shadow: var(--control-ring, 0 0 0 0 transparent), var(--neu-shadow-raised-sm);
+  box-shadow: var(--neu-shadow-raised-sm);
 }
 @media (hover: hover) and (pointer: fine) {
   .serene-btn-control:hover:not(:disabled),
   .serene-filter-trigger:hover:not(:disabled) {
     border-color: var(--neu-edge-strong);
-    box-shadow: var(--control-ring, 0 0 0 0 transparent), var(--neu-shadow-hover);
+    box-shadow: var(--neu-shadow-hover);
   }
 }
 .serene-btn-control:active:not(:disabled),
-.serene-filter-trigger:active:not(:disabled) {
-  box-shadow: var(--control-ring, 0 0 0 0 transparent), var(--neu-shadow-pressed);
+.serene-filter-trigger:active:not(:disabled),
+.serene-btn-control[aria-expanded="true"]:not(:disabled),
+.serene-filter-trigger[aria-expanded="true"]:not(:disabled) {
+  box-shadow: var(--neu-shadow-pressed);
 }
-/* Visible keyboard focus across custom controls, including inline-styled ones.
-   Outline is independent of material elevation and never creates a bloom. */
-:where(button, a[href], input, select, textarea, [tabindex]):focus-visible {
-  outline: 2px solid var(--theme-accent-muted) !important;
-  outline-offset: 3px;
+/* Keyboard focus on actions (buttons, links, tabs, rows, toggles): one unblurred
+   outline in the focus colour, 2px out so it hugs the control. A mouse click never
+   shows it (buttons match :focus-visible only from the keyboard). Text fields are
+   deliberately absent: they draw the hugging field frame (.neu-input above), so a
+   click into a field never grows a second, floating ring. A bare <select> stays
+   listed (it matches :focus-visible from the keyboard only). Anything that already
+   draws the field frame (a field-class select, or a button dressed as a field) is
+   excluded, so it never carries both. */
+:where(button, a[href], summary, select, [tabindex]:not(input, textarea, select),
+       input:is([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"]))
+  :not(.serene-field-control, .serene-input, .neu-input):focus-visible {
+  outline: 2px solid var(--neu-focus-edge) !important;
+  outline-offset: 2px;
 }
 @media (pointer: coarse) {
   .serene-action, .serene-filter-trigger, .serene-compact-field {

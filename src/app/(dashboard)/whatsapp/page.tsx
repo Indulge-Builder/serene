@@ -33,7 +33,7 @@ export default async function WhatsAppPage({ searchParams }: PageProps) {
   ]);
 
   return (
-    <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <main className="flex-1 min-h-0 flex flex-col p-4 sm:p-6 lg:p-8">
       <WhatsAppShell
         initialConversations={conversations}
         unreadCount={unreadCount}

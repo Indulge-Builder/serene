@@ -145,7 +145,7 @@ export function Table<T>({
                   color:      'var(--theme-text-tertiary)',
                 }}
               >
-                {loading ? <LoadingState label="Loading records…" /> : (emptyState ?? <EmptyState title="Nothing to show here." />)}
+                {loading ? <LoadingState label="Loading records…" /> : (emptyState ?? <EmptyState variant="hero" title="Nothing to show here." />)}
               </td>
             </tr>
           ) : (

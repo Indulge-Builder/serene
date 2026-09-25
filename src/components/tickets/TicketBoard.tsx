@@ -16,6 +16,7 @@ import { formatRelativeTime } from '@/lib/utils/dates';
 import { canTransition, TICKET_BOARD_STATUSES, TICKET_CATEGORIES, TICKET_STATUS_TONE, TICKETS_PATH, type TicketStatus } from '@/lib/constants/tickets';
 import { PriorityDot } from './TicketStatusPill';
 import type { TicketListItem } from '@/lib/types/ticket';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 const TONE_DOT: Record<string, string> = { info: 'var(--color-info)', warning: 'var(--color-warning)', success: 'var(--color-success)', danger: 'var(--color-danger)', neutral: 'var(--theme-text-tertiary)' };
 
@@ -69,7 +70,7 @@ function Column({ status, label, tickets, canDrop }: { status: TicketStatus; lab
         <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>{tickets.length}</span>
       </header>
       {tickets.map((t) => <DraggableCard key={t.id} t={t} />)}
-      {tickets.length === 0 && <p style={{ margin: 0, textAlign: 'center', fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)', padding: 'var(--space-6) 0' }}>Nothing here.</p>}
+      {tickets.length === 0 && <EmptyState title="Nothing here." style={{ padding: 'var(--space-6) var(--space-2)' }} />}
     </section>
   );
 }

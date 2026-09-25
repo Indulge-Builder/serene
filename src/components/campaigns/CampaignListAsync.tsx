@@ -9,6 +9,7 @@ import { getBudgetSummary } from '@/lib/services/ad-spend-service';
 import { CampaignCard } from '@/components/campaigns/CampaignCard';
 import { EmptyState } from '@/components/ui/EmptyState';
 import type { UserRole, AppDomain, CampaignFilters } from '@/lib/types/database';
+import { TrendingUp } from 'lucide-react';
 
 type CampaignListAsyncProps = {
   role:         UserRole;
@@ -38,9 +39,10 @@ export async function CampaignListAsync({
   if (campaigns.length === 0) {
     return (
       <EmptyState
+        icon={TrendingUp}
+        framed
         title="No campaigns match these filters."
-        size="lg"
-        style={{ padding: 'var(--space-16) var(--space-8)' }}
+        description="Try another date range or clear a filter."
       />
     );
   }

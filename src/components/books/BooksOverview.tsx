@@ -2,10 +2,12 @@
 // payables, cash, this month, the financial year, the aging strip and the bank accounts.
 // Every number is Zoho's, read live through zoho-service (five-minute Redis copy).
 
-import { Landmark, Wallet, CreditCard, Clock } from 'lucide-react';
+import { Landmark, Wallet, CreditCard } from 'lucide-react';
 import { CardHeader } from '@/components/leads/CardHeader';
 import { InfoRow } from '@/components/ui/InfoRow';
 import { StatTile } from '@/components/ui/StatTile';
+import { StatStrip } from '@/components/ui/StatStrip';
+import { MetaLine } from '@/components/ui/MetaLine';
 import { formatCount, formatCurrency, formatCurrencyCompact } from '@/lib/utils/numbers';
 import { formatDate, formatRelativeTime } from '@/lib/utils/dates';
 import type { BooksOverview as Overview } from '@/lib/types/zoho';
@@ -14,6 +16,11 @@ const SHELL: React.CSSProperties = { background: 'var(--theme-paper)', border: '
 const BODY: React.CSSProperties = { padding: 'var(--space-4) var(--space-6) var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' };
 const GRID: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 'var(--space-4)' };
 const tertiary = 'var(--theme-text-tertiary)';
+
+/** Zoho's "1-15 Days" / "Above 45 Days" read as "1–15 days" / "Above 45 days". */
+function agingLabel(interval: string): string {
+  return interval.replace(/(\d)\s*-\s*(\d)/g, '$1–$2').replace(/\bDays\b/g, 'days');
+}
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -37,14 +44,7 @@ export function BooksOverviewStrip({ o }: { o: Overview }) {
           <StatTile label="Due in 30 days" value={formatCurrencyCompact(r.dueWithin30)} />
           <StatTile label="Days to get paid" value={r.averageDaysToPay != null ? formatCount(r.averageDaysToPay) : '—'} sub={{ text: 'average, full payment', color: tertiary }} />
         </div>
-        {r.aging.length > 0 && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2) var(--space-5)', fontSize: 'var(--text-xs)', color: 'var(--theme-text-secondary)' }}>
-            <span style={{ color: tertiary }}>Aging</span>
-            {r.aging.map((a) => (
-              <span key={a.interval}>{a.interval_formatted}: <span style={{ fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums' }}>{formatCurrencyCompact(a.amount)}</span></span>
-            ))}
-          </div>
-        )}
+        {r.aging.length > 0 && <AgingStrip aging={r.aging} />}
       </Section>
 
       <Section title="This month and the year">
@@ -67,11 +67,41 @@ export function BooksOverviewStrip({ o }: { o: Overview }) {
         </div>
       </Section>
 
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2) var(--space-5)', fontSize: 'var(--text-xs)', color: tertiary, alignItems: 'center' }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)' }}><Clock style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5 }} />Read from Zoho {formatRelativeTime(o.fetchedAt)} · {o.org.name} · {o.org.currency}</span>
-        {o.dailyRemaining != null && <span>{formatCount(o.dailyRemaining)} API calls left today</span>}
-      </div>
+      <MetaLine
+        items={[
+          `Read from Zoho ${formatRelativeTime(o.fetchedAt)}`,
+          o.org.name,
+          o.org.currency,
+          o.dailyRemaining != null && `${formatCount(o.dailyRemaining)} API calls left today`,
+        ]}
+      />
     </div>
+  );
+}
+
+/** Receivables by how long they are overdue: one compact cell per bucket, its share
+ *  of the overdue total beneath. The oldest bucket's share takes the danger ink, as
+ *  the money most at risk (Zoho's aragingsummary lists the buckets youngest first:
+ *  1-15, 16-30, 31-45, Above 45 days). */
+function AgingStrip({ aging }: { aging: Overview['receivables']['aging'] }) {
+  const total = aging.reduce((sum, a) => sum + a.amount, 0);
+  return (
+    <StatStrip title="Aging" aside={`${formatCurrencyCompact(total)} overdue`} divided>
+      {aging.map((a, i) => {
+        const share = total > 0 ? Math.round((a.amount / total) * 100) : 0;
+        const oldest = i === aging.length - 1 && a.amount > 0;
+        return (
+          <StatTile
+            key={a.interval}
+            variant="cell"
+            size="sm"
+            label={agingLabel(a.interval_formatted)}
+            value={formatCurrencyCompact(a.amount)}
+            sub={{ text: `${share}%`, color: oldest ? 'var(--color-danger-text)' : tertiary }}
+          />
+        );
+      })}
+    </StatStrip>
   );
 }
 
