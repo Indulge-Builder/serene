@@ -22,6 +22,7 @@ import {
 import type { MemberPickerHit } from '@/lib/types/member';
 import type { StaffOption, TicketDraft } from '@/lib/types/ticket';
 import type { IntakeProposal } from '@/lib/types/intake';
+import { diffDraft } from '@/lib/utils/draft-diff';
 
 export const TICKET_SELECTION_KEY = 'serene:ticket-selection';
 export type TicketSelection = {
@@ -57,6 +58,7 @@ export function NewTicketForm({ initialMember, callerQueendomId, initialProposal
   const [staff, setStaff] = useState<StaffOption[]>([]);
   const [form, setForm] = useState({ category: 'special_request' as TicketCategory, sub_category: '', title: '', priority: 'medium' as TicketPriority, requested_for: '', assignee_id: '', note: '' });
   const [brief, setBrief] = useState<BriefState>({});
+  const [feedback, setFeedback] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const applyDraft = (d: Partial<TicketDraft>) => {
@@ -113,6 +115,13 @@ export function NewTicketForm({ initialMember, callerQueendomId, initialProposal
   }, [member?.queendom_id, callerQueendomId]);
 
   const fields = useMemo(() => TICKET_BRIEF_FIELDS_BY_CATEGORY[form.category], [form.category]);
+  // What the human has changed against the draft, live (the same compare the ledger uses, 0239).
+  const corrections = useMemo(() => {
+    if (!draft) return [];
+    const cleanBrief: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(brief)) if (v !== '' && v != null) cleanBrief[k] = v;
+    return diffDraft(draft, { category: form.category, sub_category: form.sub_category || null, title: form.title, priority: form.priority, requested_for: form.requested_for || null, brief: cleanBrief });
+  }, [draft, form.category, form.sub_category, form.title, form.priority, form.requested_for, brief]);
   const subs = TICKET_SUB_CATEGORIES[form.category];
 
   function submit() {
@@ -128,6 +137,9 @@ export function NewTicketForm({ initialMember, callerQueendomId, initialProposal
         message_links: (selection?.messages ?? []).map((m, i) => ({ chat_jid: m.chat_jid, wa_message_id: m.wa_message_id, sender_jid: m.sender_jid, link_kind: i === 0 ? 'origin' : 'update' })),
         proposed_by_run_id: draft?.run_id ?? null, note: form.note || null,
         proposal_id: initialProposal?.id ?? null,
+        feedback: feedback.trim() || null,
+        // The Sia-selection path has no card row, so the draft rides along for the ledger; a card's draft is read from its row.
+        draft: !initialProposal && draft ? { category: draft.category, sub_category: draft.sub_category, title: draft.title, priority: draft.priority, requested_for: draft.requested_for, brief: draft.brief as Record<string, unknown> } : null,
       });
       if (res.error || !res.data) { setError(res.error ?? 'Could not create the ticket.'); return; }
       toast.success(`${res.data.ticket_no} created.`);
@@ -215,6 +227,12 @@ export function NewTicketForm({ initialMember, callerQueendomId, initialProposal
               </select>
             </label>
             <label style={{ gridColumn: '1 / -1' }}><Label>Note (the member's words, or why)</Label><textarea style={{ ...FIELD, minHeight: 90, resize: 'vertical' }} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></label>
+            {draft && corrections.length > 0 && (
+              <label style={{ gridColumn: '1 / -1' }}>
+                <Label>What did Serene get wrong? (optional)</Label>
+                <input style={FIELD} value={feedback} onChange={(e) => setFeedback(e.target.value)} maxLength={500} placeholder={`You changed ${corrections.map((c) => c.field.replace('brief.', '')).join(', ')}. One line on why is how it learns.`} />
+              </label>
+            )}
           </div>
           {error && <p style={{ margin: 'var(--space-4) 0 0', fontSize: 'var(--text-sm)', color: 'var(--color-danger-text)' }}>{error}</p>}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)', marginTop: 'var(--space-5)' }}>

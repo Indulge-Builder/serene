@@ -12,6 +12,50 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-25 — Tickets: every human verdict on a machine draft is kept in full (0239)
+
+Part two of the founder's ask ("Elaya should get really good at creating tickets; the training
+phase must turn approvals, rejections and corrections into an instruction file a specialised
+ticket agent reads later"). Before a lesson can be written, the correction has to be kept, and
+it was not: an accepted intake card stored only WHICH fields changed ("title", "priority"),
+never what was written instead; a dismissal stored a fixed reason and "other" said nothing; a
+ticket drafted from a Sia selection (no card) and a sentinel suggestion kept no correction at
+all beyond a timeline line.
+
+- **Migration 0239, `sia.draft_reviews`:** the training ledger. One row per human decision on
+  a machine draft, from three sources: `intake_card`, `ticket_creator` (the New ticket form's
+  draft from a Sia selection), `sentinel` (its suggested status move). Each row keeps the
+  draft as it was, the final as made, every change as `{field, from, to}`, the dismiss reason,
+  the human's words (`feedback`), the model run and its prompt version (so the scoreboard can
+  split by version later). Append-only (Rule 08); admin and founder read it; the actions write
+  it through the service role. RLS verified: the anon key gets "permission denied".
+- **`lib/utils/draft-diff.ts`, `diffDraft(draft, made)`:** THE compare, pure and client-safe,
+  so the form and the ledger can never disagree about what counts as a change (trimmed
+  strings, `requested_for` on the minute, the brief key by key). `changedFieldNames()` keeps
+  `intake_proposals.fields_changed` as it was for the stats.
+- **`lib/services/draft-reviews.ts`, `recordDraftReviewCore()`:** the one write, best-effort
+  and never throwing (the activity-events posture: a ticket is created even if the ledger is
+  down); no `server-only` chain because the sentinel core calls it. The page read
+  `listDraftReviews()` lives in intake-service.ts (session client).
+- **Where the rows come from now:** `createTicketAction` (a card's draft from the card row; the
+  Sia path sends the creator's draft it was given, there being no stored copy),
+  `dismissIntakeProposalAction`, `acceptIntakeUpdateAction`, and `resolveSentinelProposalCore`
+  (approve and dismiss both).
+- **The words:** the New ticket form shows "What did Serene get wrong?" only when something
+  actually differs from the draft (the placeholder names the changed fields), and the dismiss
+  step on a card has a one-line "in your words, why?" above the fixed reasons. Both optional,
+  both `DRAFT_FEEDBACK_MAX` (500) characters. `CreateTicketSchema` gains `feedback` and the
+  optional `draft` snapshot; `DismissIntakeProposalSchema` gains `note`.
+- **Not yet:** the lesson writer (the weekly job that turns this ledger into a plain-English
+  instruction document the founder approves, folded into the intake and creator prompts and
+  exported as a file) and the scoreboard by prompt version. Next.
+
+Files: `supabase/migrations/20260925000239_draft_reviews.sql`, `src/lib/utils/draft-diff.ts`,
+`src/lib/services/draft-reviews.ts`, `src/lib/services/intake-service.ts`, `src/lib/services/ticket-mutations.ts`,
+`src/lib/actions/tickets.ts`, `src/lib/validations/ticket-schema.ts`, `src/lib/types/intake.ts`,
+`src/lib/constants/ticket-intake.ts`, `src/components/tickets/NewTicketForm.tsx`, `src/components/tickets/IntakeProposals.tsx`,
+`src/lib/types/database.ts`.
+
 ## 2026-09-25 — Tickets: the suggested-tickets strip is there on first paint, and its numbers are counted in SQL (0238)
 
 The founder opened /tickets and the "Suggested by Serene" strip was not there. Two seconds

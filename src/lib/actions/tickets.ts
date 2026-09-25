@@ -15,6 +15,9 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { formErrors } from "@/lib/validations/form-errors";
 import { canAccessMember } from "@/lib/elaya/access";
 import { TICKETS_PATH } from "@/lib/constants/tickets";
+import { TICKET_DRAFT_PROMPT_VERSION } from "@/lib/services/ticket-draft-core";
+import { recordDraftReviewCore } from "@/lib/services/draft-reviews";
+import { diffDraft, changedFieldNames, type DraftComparable } from "@/lib/utils/draft-diff";
 import { CLIENTS_PATH } from "@/lib/constants/sia-roles";
 import { draftTicketFromMessages } from "@/lib/services/ticket-creator";
 import { getIntakeProposal, resolveIntakeProposal } from "@/lib/services/intake-service";
@@ -86,26 +89,30 @@ export async function createTicketAction(input: unknown): Promise<ActionResult<T
   if (parsed.data.proposal_id && (!card || card.status !== "open" || card.member_id !== parsed.data.member_id)) return { data: null, error: "That suggestion is no longer open. Refresh the Tickets page." };
   const res = await createTicketCore(parsed.data, actorFromProfile(auth.profile));
   if (res.error !== null || !res.data) return { data: null, error: res.error ?? formErrors.generic };
+  // The training ledger (0239): the draft as it was, what was made, every change as from → to,
+  // and the human's words. A card's draft comes from the card row; the Sia-selection path sends
+  // the creator's draft it was given (there is no stored copy to compare against).
+  const made: DraftComparable = { category: parsed.data.category, sub_category: parsed.data.sub_category, title: parsed.data.title, priority: parsed.data.priority, requested_for: parsed.data.requested_for, brief: parsed.data.brief };
+  const madeFinal = made as unknown as Record<string, unknown>;
   if (card) {
-    await resolveIntakeProposal(card.id, auth.profile.id, { status: "accepted", ticket_id: res.data.id, fields_changed: draftFieldsChanged(card.draft, parsed.data) });
+    const corrections = diffDraft(card.draft, made);
+    await resolveIntakeProposal(card.id, auth.profile.id, { status: "accepted", ticket_id: res.data.id, fields_changed: changedFieldNames(corrections) });
+    await recordDraftReviewCore({
+      source: "intake_card", decision: corrections.length ? "edited" : "accepted", member_id: card.member_id, queendom_id: card.queendom_id,
+      proposal_id: card.id, ticket_id: res.data.id, run_id: card.draft_run_id, prompt_version: TICKET_DRAFT_PROMPT_VERSION,
+      draft: card.draft as Record<string, unknown>, final: madeFinal, corrections, feedback: parsed.data.feedback, decided_by: auth.profile.id,
+    });
     revalidatePath(TICKETS_PATH);
+  } else if (parsed.data.draft && parsed.data.proposed_by_run_id) {
+    const corrections = diffDraft(parsed.data.draft as Partial<TicketDraft>, made);
+    await recordDraftReviewCore({
+      source: "ticket_creator", decision: corrections.length ? "edited" : "accepted", member_id: parsed.data.member_id, queendom_id: q.queendom_id,
+      ticket_id: res.data.id, run_id: parsed.data.proposed_by_run_id, prompt_version: TICKET_DRAFT_PROMPT_VERSION,
+      draft: parsed.data.draft as Record<string, unknown>, final: madeFinal, corrections, feedback: parsed.data.feedback, decided_by: auth.profile.id,
+    });
   }
   revalidateTicket(res.data.id, res.data.member_id);
   return { data: res.data, error: null };
-}
-
-/** Which drafted fields the human changed before creating. Empty = accepted exactly as Serene drafted it. */
-function draftFieldsChanged(draft: Partial<TicketDraft>, made: { category: string; sub_category: string | null; title: string; priority: string; requested_for: string | null; brief: Record<string, unknown> }): string[] {
-  const out: string[] = [];
-  const same = (a: unknown, b: unknown) => String(a ?? "").trim() === String(b ?? "").trim();
-  if (!same(draft.category, made.category)) out.push("category");
-  if (!same(draft.sub_category, made.sub_category)) out.push("sub_category");
-  if (!same(draft.title, made.title)) out.push("title");
-  if (!same(draft.priority, made.priority)) out.push("priority");
-  if (!same(draft.requested_for?.slice(0, 16), made.requested_for?.slice(0, 16))) out.push("requested_for");
-  const d = (draft.brief ?? {}) as Record<string, unknown>;
-  for (const k of new Set([...Object.keys(d), ...Object.keys(made.brief)])) if (!same(d[k], made.brief[k])) out.push(`brief.${k}`);
-  return out;
 }
 
 /** Dismiss an intake card, with the reason. The reason is how intake learns; it is not optional. */
@@ -118,6 +125,12 @@ export async function dismissIntakeProposalAction(input: unknown): Promise<Actio
   if (!card || !canAccessMember(auth.profile, card.queendom_id)) return { data: null, error: formErrors.unauthorized };
   const done = await resolveIntakeProposal(card.id, auth.profile.id, { status: "dismissed", dismiss_reason: parsed.data.reason });
   if (!done) return { data: null, error: "Someone already handled that suggestion." };
+  await recordDraftReviewCore({
+    source: "intake_card", decision: "dismissed", member_id: card.member_id, queendom_id: card.queendom_id, proposal_id: card.id,
+    ticket_id: card.ticket_id, run_id: card.draft_run_id, prompt_version: TICKET_DRAFT_PROMPT_VERSION,
+    draft: { kind: card.kind, summary: card.summary, confidence: card.confidence, ...card.draft }, corrections: [],
+    dismiss_reason: parsed.data.reason, feedback: parsed.data.note, decided_by: auth.profile.id,
+  });
   revalidatePath(TICKETS_PATH);
   return { data: { id: card.id }, error: null };
 }
@@ -134,6 +147,10 @@ export async function acceptIntakeUpdateAction(input: unknown): Promise<ActionRe
   const res = await linkTicketMessagesCore(card.ticket_id, card.messages.map((m) => ({ chat_jid: m.chat_jid, wa_message_id: m.wa_message_id, sender_jid: m.sender_jid, link_kind: "update" as const })), actorFromProfile(auth.profile));
   if (res.error) return { data: null, error: res.error };
   await resolveIntakeProposal(card.id, auth.profile.id, { status: "accepted", ticket_id: card.ticket_id, fields_changed: [] });
+  await recordDraftReviewCore({
+    source: "intake_card", decision: "accepted", member_id: card.member_id, queendom_id: card.queendom_id, proposal_id: card.id, ticket_id: card.ticket_id,
+    run_id: card.draft_run_id, prompt_version: TICKET_DRAFT_PROMPT_VERSION, draft: { kind: "update", summary: card.summary, confidence: card.confidence }, corrections: [], decided_by: auth.profile.id,
+  });
   revalidatePath(TICKETS_PATH);
   revalidateTicket(card.ticket_id, card.member_id);
   return { data: { ticket_id: card.ticket_id }, error: null };

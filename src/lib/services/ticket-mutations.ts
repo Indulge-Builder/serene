@@ -11,6 +11,8 @@ import { memberDb } from "@/lib/supabase/schemas";
 import { ticketsAdminDb, resolveSlaPolicy } from "@/lib/services/tickets-service";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { closeTicketEngagement, outcomeForResolution } from "@/lib/services/ticket-vendor";
+import { recordDraftReviewCore } from "@/lib/services/draft-reviews";
+import { SENTINEL_PROMPT_VERSION } from "@/lib/constants/tickets";
 import { TICKET_VENDOR_REQUIRED_STATUSES, TICKET_VENDOR_REQUIRED_MESSAGE,
   canTransition, checklistForCategory, TICKET_SLA_STOPPED_STATUSES, TICKETS_PATH, type TicketPriority, type TicketStatus, TICKET_SETTING_KEYS, TICKET_STATUSES,
 } from "@/lib/constants/tickets";
@@ -338,7 +340,13 @@ export async function resolveSentinelProposalCore(ticketId: string, decision: "a
   const state = (t.sentinel_state ?? {}) as { proposal?: { status: TicketStatus; from_status: TicketStatus; reason: string; run_id: string | null } };
   const p = state.proposal;
   if (!p || p.from_status !== t.status) return fail("That suggestion is no longer current.");
-  if (decision === "approve") return moveTicketStatusCore(ticketId, p.status, actor, { note: `Approved the sentinel's suggestion. ${p.reason}` });
+  // The training ledger (0239): the sentinel's suggestion and the human's answer, in full.
+  const review = { source: "sentinel" as const, member_id: t.member_id, queendom_id: t.queendom_id, ticket_id: ticketId, run_id: p.run_id, prompt_version: SENTINEL_PROMPT_VERSION, draft: { suggested_status: p.status, from_status: p.from_status, reason: p.reason }, decided_by: actor.userId || null };
+  if (decision === "approve") {
+    const moved = await moveTicketStatusCore(ticketId, p.status, actor, { note: `Approved the sentinel's suggestion. ${p.reason}` });
+    if (moved.error === null) await recordDraftReviewCore({ ...review, decision: "accepted", final: { status: p.status }, corrections: [] });
+    return moved;
+  }
   const { proposal: _gone, ...rest } = state;
   void _gone;
   const { data, error } = await db.rpc("apply_ticket_change", {
@@ -346,5 +354,6 @@ export async function resolveSentinelProposalCore(ticketId: string, decision: "a
     p_event: humanEvent(actor, "observation", `Dismissed the sentinel's suggestion to move this to ${p.status}.`, { proposal_dismissed: p.status, from: t.status, run_id: p.run_id }),
   });
   if (error) return fail("Could not dismiss that suggestion.", error);
+  await recordDraftReviewCore({ ...review, decision: "dismissed", corrections: [] });
   return { data: data as TicketRow, error: null };
 }

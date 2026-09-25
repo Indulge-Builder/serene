@@ -7328,6 +7328,85 @@ export type Database = {
           },
         ]
       }
+      draft_reviews: {
+        Row: {
+          corrections: Json
+          decided_at: string
+          decided_by: string | null
+          decision: string
+          dismiss_reason: string | null
+          draft: Json
+          feedback: string | null
+          final: Json | null
+          id: string
+          member_id: string | null
+          prompt_version: string | null
+          proposal_id: string | null
+          queendom_id: string | null
+          run_id: string | null
+          source: string
+          ticket_id: string | null
+        }
+        Insert: {
+          corrections?: Json
+          decided_at?: string
+          decided_by?: string | null
+          decision: string
+          dismiss_reason?: string | null
+          draft?: Json
+          feedback?: string | null
+          final?: Json | null
+          id?: string
+          member_id?: string | null
+          prompt_version?: string | null
+          proposal_id?: string | null
+          queendom_id?: string | null
+          run_id?: string | null
+          source: string
+          ticket_id?: string | null
+        }
+        Update: {
+          corrections?: Json
+          decided_at?: string
+          decided_by?: string | null
+          decision?: string
+          dismiss_reason?: string | null
+          draft?: Json
+          feedback?: string | null
+          final?: Json | null
+          id?: string
+          member_id?: string | null
+          prompt_version?: string | null
+          proposal_id?: string | null
+          queendom_id?: string | null
+          run_id?: string | null
+          source?: string
+          ticket_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "draft_reviews_proposal_id_fkey"
+            columns: ["proposal_id"]
+            isOneToOne: false
+            referencedRelation: "intake_proposals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "draft_reviews_queendom_id_fkey"
+            columns: ["queendom_id"]
+            isOneToOne: false
+            referencedRelation: "queendoms"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "draft_reviews_ticket_id_fkey"
+            columns: ["ticket_id"]
+            isOneToOne: false
+            referencedRelation: "tickets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       extraction_runs: {
         Row: {
           cost_usd: number | null

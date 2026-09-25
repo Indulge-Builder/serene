@@ -47,12 +47,13 @@ export function IntakeStatsLine({ stats }: { stats: IntakeStats | null }) {
 
 function Card({ p, onGone, grouped }: { p: IntakeProposal; onGone: (id: string) => void; grouped: boolean }) {
   const [asking, setAsking] = useState(false);
+  const [note, setNote] = useState('');
   const [pending, start] = useTransition();
   const sure = p.confidence >= INTAKE_SURE_CONFIDENCE;
   const first = p.messages.find((m) => m.from_member) ?? p.messages[0];
 
   const dismiss = (reason: IntakeDismissReason) => start(async () => {
-    const res = await dismissIntakeProposalAction({ proposal_id: p.id, reason });
+    const res = await dismissIntakeProposalAction({ proposal_id: p.id, reason, note: note.trim() || null });
     if (res.error) { toast.danger(res.error); return; }
     onGone(p.id);
   });
@@ -77,10 +78,18 @@ function Card({ p, onGone, grouped }: { p: IntakeProposal; onGone: (id: string) 
       {first && <span style={{ fontSize: 'var(--text-xs)', color: 'var(--theme-text-secondary)', whiteSpace: 'pre-wrap' }}>“{first.text.slice(0, 220)}{first.text.length > 220 ? '…' : ''}”{p.messages.length > 1 ? `  +${p.messages.length - 1} more` : ''}</span>}
 
       {asking ? (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>Why?</span>
-          {INTAKE_DISMISS_REASONS.map((r) => <Button key={r.id} variant="ghost" size="xs" disabled={pending} onClick={() => dismiss(r.id)}>{r.label}</Button>)}
-          <Button variant="ghost" size="xs" disabled={pending} onClick={() => setAsking(false)}>Back</Button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
+          <input
+            className="serene-input-bare"
+            style={{ fontSize: 'var(--text-xs)', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--theme-paper-border)', background: 'var(--theme-paper-subtle)', color: 'var(--theme-text-primary)', maxWidth: 520 }}
+            value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} disabled={pending}
+            placeholder="In your words, why? (optional: this is how it learns)"
+          />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>Because it is</span>
+            {INTAKE_DISMISS_REASONS.map((r) => <Button key={r.id} variant="ghost" size="xs" disabled={pending} onClick={() => dismiss(r.id)}>{r.label}</Button>)}
+            <Button variant="ghost" size="xs" disabled={pending} onClick={() => setAsking(false)}>Back</Button>
+          </div>
         </div>
       ) : (
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>

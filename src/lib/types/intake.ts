@@ -1,6 +1,7 @@
 // Ticket intake (0219): the card a bishop sees, and the numbers that say how intake is doing.
 import type { TicketDraft } from "@/lib/types/ticket";
-import type { IntakeDismissReason } from "@/lib/constants/ticket-intake";
+import type { DRAFT_REVIEW_DECISIONS, DRAFT_REVIEW_SOURCES, IntakeDismissReason } from "@/lib/constants/ticket-intake";
+import type { DraftCorrection } from "@/lib/utils/draft-diff";
 
 export type IntakeProposalMessage = { chat_jid: string; wa_message_id: string; sender_jid: string; sender_name: string | null; from_member: boolean; at: string; text: string };
 
@@ -21,7 +22,31 @@ export type IntakeProposal = {
   last_message_at: string;
   ticket_id: string | null;
   ticket_no: string | null;
+  /** The model call that drafted the ticket (sia.extraction_runs); the ledger keeps it. */
+  draft_run_id: string | null;
   created_at: string;
+};
+
+/** One human verdict on a machine draft (0239, sia.draft_reviews). */
+export type DraftReviewSource = (typeof DRAFT_REVIEW_SOURCES)[number];
+export type DraftReviewDecision = (typeof DRAFT_REVIEW_DECISIONS)[number];
+export type DraftReview = {
+  id: string;
+  source: DraftReviewSource;
+  decision: DraftReviewDecision;
+  member_id: string | null;
+  queendom_id: string | null;
+  proposal_id: string | null;
+  ticket_id: string | null;
+  run_id: string | null;
+  prompt_version: string | null;
+  draft: Record<string, unknown>;
+  final: Record<string, unknown> | null;
+  corrections: DraftCorrection[];
+  dismiss_reason: string | null;
+  feedback: string | null;
+  decided_by: string | null;
+  decided_at: string;
 };
 
 export type IntakeStats = {

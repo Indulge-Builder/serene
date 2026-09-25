@@ -39,6 +39,11 @@ export const INTAKE_EXAM_CARDS = 60;
 export const INTAKE_STRIP_LIMIT = 40;
 /** How many cards the strip shows before "Show more". */
 export const INTAKE_STRIP_FIRST = 5;
+/** The training ledger (0239): where a machine draft came from, and what the human decided. */
+export const DRAFT_REVIEW_SOURCES = ["intake_card", "ticket_creator", "sentinel"] as const;
+export const DRAFT_REVIEW_DECISIONS = ["accepted", "edited", "dismissed"] as const;
+/** The human's own words on a verdict ("what did Serene get wrong?"); one line is plenty. */
+export const DRAFT_FEEDBACK_MAX = 500;
 export const INTAKE_KINDS = ["request", "update", "question", "feedback", "chatter"] as const;
 export type IntakeKind = (typeof INTAKE_KINDS)[number];
 export const INTAKE_TONES = ["neutral", "happy", "frustrated", "angry"] as const;

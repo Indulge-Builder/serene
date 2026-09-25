@@ -2,6 +2,7 @@ import { z } from "zod";
 import { sanitizeText } from "@/lib/utils/sanitize";
 import { formErrors } from "./form-errors";
 import { uuidField } from "./fields";
+import { DRAFT_FEEDBACK_MAX } from "@/lib/constants/ticket-intake";
 import { TICKET_CATEGORIES, TICKET_ORIGINS, TICKET_PRIORITIES, TICKET_RESOLUTIONS, TICKET_STATUSES, TICKET_REASSIGN_REASONS, TICKET_LINK_KINDS, TICKET_TAG_RE, TICKET_TAG_MAX } from "@/lib/constants/tickets";
 
 // ─────────────────────────────────────────────
@@ -65,6 +66,17 @@ export const CreateTicketSchema = z.object({
   note: optionalText(2000),
   /** Set when the ticket is created from an intake card (0219): the card is closed as accepted. */
   proposal_id: uuidField(formErrors.generic).nullish().transform((v) => v ?? null),
+  /**
+   * The training ledger (0239). `feedback` = the human's words on what the draft got wrong.
+   * `draft` = the creator's draft as the form received it, ONLY for the Sia-selection path
+   * (no card, so no stored draft to compare against); a card's draft is always read from the
+   * card row, never from here.
+   */
+  feedback: optionalText(DRAFT_FEEDBACK_MAX),
+  draft: z.object({
+    category: z.string().max(80).optional(), sub_category: z.string().max(80).nullish(), title: z.string().max(400).optional(),
+    priority: z.string().max(40).optional(), requested_for: z.string().max(40).nullish(), brief: z.record(z.string(), z.unknown()).optional(),
+  }).nullish().transform((v) => v ?? null),
 });
 export type CreateTicketInput = z.infer<typeof CreateTicketSchema>;
 
@@ -72,6 +84,8 @@ export type CreateTicketInput = z.infer<typeof CreateTicketSchema>;
 export const DismissIntakeProposalSchema = z.object({
   proposal_id: uuidField(formErrors.generic),
   reason: z.enum(["not_a_request", "already_handled", "duplicate", "wrong_member", "other"]),
+  /** The human's own words (0239): why, beyond the fixed reason. */
+  note: optionalText(DRAFT_FEEDBACK_MAX),
 });
 export const AcceptIntakeUpdateSchema = z.object({ proposal_id: uuidField(formErrors.generic) });
 

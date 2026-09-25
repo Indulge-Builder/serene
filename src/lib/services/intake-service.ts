@@ -10,11 +10,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { memberDb } from "@/lib/supabase/schemas";
 import { mapRows } from "@/lib/utils/rows";
 import { INTAKE_EXAM_CARDS, INTAKE_STRIP_LIMIT, type IntakeDismissReason } from "@/lib/constants/ticket-intake";
-import type { IntakeProposal, IntakeProposalMessage, IntakeStats } from "@/lib/types/intake";
+import type { DraftReview, DraftReviewSource, IntakeProposal, IntakeProposalMessage, IntakeStats } from "@/lib/types/intake";
 import type { TicketDraft } from "@/lib/types/ticket";
 
 type Row = Omit<IntakeProposal, "member_name" | "ticket_no" | "draft" | "messages"> & { draft: unknown; messages: unknown };
-const COLS = "id, member_id, queendom_id, group_jid, kind, status, confidence, tone, summary, draft, messages, first_message_at, last_message_at, ticket_id, created_at";
+const COLS = "id, member_id, queendom_id, group_jid, kind, status, confidence, tone, summary, draft, messages, first_message_at, last_message_at, ticket_id, draft_run_id, created_at";
 
 async function decorate(rows: Row[]): Promise<IntakeProposal[]> {
   if (rows.length === 0) return [];
@@ -84,4 +84,17 @@ export async function getIntakeStats(days = 7): Promise<IntakeStats> {
     // Routing tier (Haiku 4.5: $1 in, $5 out per million). The drafts are counted under ticket_creator.
     cost_usd: (n("tokens_in") * 1 + n("tokens_out") * 5) / 1_000_000,
   };
+}
+
+const REVIEW_COLS = "id, source, decision, member_id, queendom_id, proposal_id, ticket_id, run_id, prompt_version, draft, final, corrections, dismiss_reason, feedback, decided_by, decided_at";
+
+/** The newest verdicts on machine drafts (0239; session client, RLS admin/founder). The settings page reads this; the lesson writer reads the same table with the admin client. */
+export async function listDraftReviews(opts: { source?: DraftReviewSource; since?: string; limit?: number } = {}): Promise<DraftReview[]> {
+  const supabase = await createClient();
+  let q = supabase.schema("sia").from("draft_reviews").select(REVIEW_COLS).order("decided_at", { ascending: false }).limit(opts.limit ?? 100);
+  if (opts.source) q = q.eq("source", opts.source);
+  if (opts.since) q = q.gte("decided_at", opts.since);
+  const { data, error } = await q;
+  if (error) { console.error("[intake-service] reviews failed", error.message); return []; }
+  return mapRows<DraftReview, DraftReview>(data, (r) => ({ ...r, corrections: Array.isArray(r.corrections) ? r.corrections : [] }));
 }
