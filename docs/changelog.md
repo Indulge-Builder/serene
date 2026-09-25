@@ -12,6 +12,37 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-26 — New ticket: the messages behind a suggestion, as a mini WhatsApp view
+
+The founder opened a suggested ticket and the right-hand card listed the burst as flat text
+lines. He wanted the real thing: the messages as they look in the group, with a few before and
+after so the request makes sense, scrollable, and a way to jump to that spot on the Sia page.
+
+- **`SiaMessagesPeek`** (`components/sia/`): the burst rendered with the SAME bubbles the Sia page
+  uses (`SiaMessageBubble`, day separators included), inside the conversation around it. The
+  request's messages are ringed in the accent; the context sits at a lighter opacity. "Earlier"
+  and "Later" pull more (the existing before / after pages). The pane opens scrolled to the first
+  message of the request. Reads go through `getSiaMessagesAction`, so a queendom viewer sees only
+  their own groups here too. Mounted on the New ticket form in place of the flat list; the
+  Sia-selection path gets it as well.
+- **`getSiaMessages(jid, { around, radius })`:** the messages before a moment (up to `radius`,
+  default 12) and from it (radius + 60, a burst can be long), in one pair of indexed reads;
+  `hasMore` says whether older ones exist. Checked on the newest open card: 8 before, the burst,
+  a few after, in order, 0.8 s cold.
+- **The deep link with a message:** `siaMessageHref(jid, waMessageId)` adds `?message=` to the
+  group link; the Sia page validates it only with a valid group, `SiaWorkspace` hands it to
+  `SiaChat` as `initialJumpTo`, and the chat's existing reply-strip jump (`jumpToMessage`, now
+  with a page budget) finds it up to 12 pages back, scrolls there and flashes it. "Open in Sia"
+  on the peek uses it (new tab, so the half-filled form is not lost).
+- **Cross-feature note:** the tickets form composes a Sia component. `SiaChat` already imports the
+  ticket selection key from the tickets form, so the two features were coupled both ways before
+  this; duplicating the bubble rendering under tickets would have been the worse violation
+  (R-01).
+
+Files: `src/components/sia/SiaMessagesPeek.tsx`, `src/components/sia/SiaChat.tsx`, `src/components/sia/SiaWorkspace.tsx`,
+`src/components/tickets/NewTicketForm.tsx`, `src/lib/services/sia-service.ts`, `src/lib/actions/sia.ts`,
+`src/lib/constants/sia-roles.ts`, `src/app/(dashboard)/sia/page.tsx`.
+
 ## 2026-09-25 — The concierge floor on Serene: the queendom boundary audited, and the eight-room nav
 
 - Why: the queens and bishops are being onboarded. The founder's rule: a seated concierge teammate

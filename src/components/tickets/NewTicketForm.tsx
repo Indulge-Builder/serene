@@ -27,6 +27,7 @@ import { diffDraft } from '@/lib/utils/draft-diff';
 export const TICKET_SELECTION_KEY = 'serene:ticket-selection';
 export type TicketSelection = {
   member_id: string;
+import { SiaMessagesPeek } from '@/components/sia/SiaMessagesPeek';
   member_name: string;
   queendom_id: string | null;
   group_jid: string;
@@ -253,14 +254,8 @@ export function NewTicketForm({ initialMember, callerQueendomId, initialProposal
         )}
         {selection && (
           <div style={CARD}>
-            <Label>{selection.messages.length} selected messages</Label>
-            <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', maxHeight: 360, overflowY: 'auto' }}>
-              {selection.messages.map((m) => (
-                <li key={m.wa_message_id} style={{ fontSize: 'var(--text-xs)', color: 'var(--theme-text-secondary)' }}>
-                  <span style={{ color: 'var(--theme-text-tertiary)' }}>{m.from_member ? 'Member' : (m.sender_name ?? 'Staff')} · </span>{m.text}
-                </li>
-              ))}
-            </ul>
+            <Label>{selection.messages.length} message{selection.messages.length === 1 ? '' : 's'} this ticket rests on</Label>
+            <SiaMessagesPeek groupJid={selection.group_jid} messages={selection.messages} />
           </div>
         )}
       </div>

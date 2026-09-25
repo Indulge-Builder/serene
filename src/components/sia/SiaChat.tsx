@@ -46,6 +46,7 @@ export function SiaChat({
   onPatchGroup,
   canManage = true,
 }: {
+  initialJumpTo = null,
   group: SiaGroupRow;
   isMobile: boolean;
   onBack: () => void;
@@ -56,6 +57,8 @@ export function SiaChat({
   /** False for a queendom viewer: the info panel shows the link, not the mapping controls. */
   canManage?: boolean;
 }) {
+  /** A wa_message_id to scroll to once the first page is in (the ?message= deep link). Pulls older pages to find it. */
+  initialJumpTo?: string | null;
   const [messages, setMessages] = useState<SiaMessageRow[]>([]);
   // Ticket creation from selected messages (member-ticket-plan.md 7.8, phase 1): a selection
   // mode over the stream; the chosen messages go to /tickets/new through sessionStorage.
@@ -224,11 +227,11 @@ export function SiaChat({
 
   // ── Reply-strip jump: scroll to the quoted original, flash it briefly.
   //    If it isn't loaded yet, pull up to 3 older pages looking for it. ──
-  const jumpToMessage = useCallback(async (waMessageId: string) => {
+  const jumpToMessage = useCallback(async (waMessageId: string, maxPages = 3) => {
     const find = () =>
       scrollRef.current?.querySelector(`[data-wa-id="${CSS.escape(waMessageId)}"]`) ?? null;
     let el = find();
-    for (let i = 0; i < 3 && !el && hasMoreRef.current; i++) {
+    for (let i = 0; i < maxPages && !el && hasMoreRef.current; i++) {
       await loadOlderRef.current();
       await new Promise((r) => requestAnimationFrame(r));
       el = find();
@@ -242,6 +245,14 @@ export function SiaChat({
   }, []);
 
   // ── In-group search (debounced) ──
+  // ── The deep link (?message=): once the first page is in, find the message, up to 12 pages back. ──
+  const jumpedTo = useRef<string | null>(null);
+  useEffect(() => {
+    if (loading || !initialJumpTo || jumpedTo.current === initialJumpTo) return;
+    jumpedTo.current = initialJumpTo;
+    void jumpToMessage(initialJumpTo, 12);
+  }, [loading, initialJumpTo, jumpToMessage]);
+
   useEffect(() => {
     const q = debouncedSearch.trim();
     if (q.length < 2) {

@@ -84,7 +84,7 @@ export async function getSiaGroupInfoAction(groupJid: string): Promise<ActionRes
 // ── getSiaMessagesAction — keyset pager (before) + the 4s live tail (after) ──
 export async function getSiaMessagesAction(
   groupJid: string,
-  opts?: { before?: string; after?: string },
+  opts?: { before?: string; after?: string; around?: string; radius?: number },
 ): Promise<ActionResult<{ messages: SiaMessageRow[]; hasMore: boolean }>> {
   const auth = await requireSiaViewer();
   if (!auth.ok) return auth.result;
@@ -94,8 +94,11 @@ export async function getSiaMessagesAction(
   const after = opts?.after;
   if (before !== undefined && !isIsoTimestamp(before)) return { data: null, error: formErrors.generic };
   if (after !== undefined && !isIsoTimestamp(after)) return { data: null, error: formErrors.generic };
+  const around = opts?.around;
+  if (around !== undefined && !isIsoTimestamp(around)) return { data: null, error: formErrors.generic };
+  const radius = typeof opts?.radius === "number" && Number.isFinite(opts.radius) ? Math.max(1, Math.min(60, Math.floor(opts.radius))) : undefined;
   try {
-    return { data: await getSiaMessages(groupJid, { before, after }), error: null };
+    return { data: await getSiaMessages(groupJid, { before, after, around, radius }), error: null };
   } catch (err) {
     console.error("[sia-action] getSiaMessages failed:", err);
     return { data: null, error: formErrors.generic };

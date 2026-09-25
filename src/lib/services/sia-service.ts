@@ -116,6 +116,9 @@ export type SiaHealth = {
 
 const MESSAGE_PAGE = 60;
 const LIVE_TAIL_LIMIT = 100;
+/** The peek around a moment: this many before it, and this many more than the radius from it (a burst can be long). */
+const AROUND_RADIUS = 12;
+const AROUND_TAIL = 60;
 const SEARCH_LIMIT = 50;
 const LIVE_WINDOW_MS = 3 * 60 * 1000; // a heartbeat within 3 min = watcher alive (beats land every 60s)
 
@@ -193,9 +196,29 @@ export async function getSiaGroups(): Promise<SiaGroupRow[]> {
 
 export async function getSiaMessages(
   groupJid: string,
-  opts: { before?: string; after?: string } = {},
+  opts: { before?: string; after?: string; around?: string; radius?: number } = {},
 ): Promise<{ messages: SiaMessageRow[]; hasMore: boolean }> {
   const db = siaDb();
+
+  // `around` (2026-09-26, the mini WhatsApp view on a suggested ticket): `radius` messages before
+  // the moment and up to `radius + AROUND_TAIL` from it, so a burst sits inside its conversation.
+  // hasMore says whether there is anything older than what came back.
+  if (opts.around) {
+    const radius = Math.max(1, Math.min(60, opts.radius ?? AROUND_RADIUS));
+    const [olderRes, newerRes] = await Promise.all([
+      db.from("wag_messages").select(MESSAGE_SELECT).eq("chat_jid", groupJid).lt("wa_timestamp", opts.around).order("wa_timestamp", { ascending: false }).limit(radius + 1),
+      db.from("wag_messages").select(MESSAGE_SELECT).eq("chat_jid", groupJid).gte("wa_timestamp", opts.around).order("wa_timestamp", { ascending: true }).limit(radius + AROUND_TAIL),
+    ]);
+    if (olderRes.error || newerRes.error) {
+      console.error("[sia-service] getSiaMessages (around) failed:", olderRes.error?.message ?? newerRes.error?.message);
+      return { messages: [], hasMore: false };
+    }
+    const olderAll = (olderRes.data ?? []) as BareMessage[];
+    const hasMore = olderAll.length > radius;
+    const older = (hasMore ? olderAll.slice(0, radius) : olderAll).reverse();
+    const messages = await enrichMessages(db, groupJid, [...older, ...((newerRes.data ?? []) as BareMessage[])]);
+    return { messages, hasMore };
+  }
 
   if (opts.after) {
     const { data, error } = await db

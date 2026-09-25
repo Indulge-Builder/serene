@@ -36,12 +36,14 @@ const RAIL_REFRESH_MS = 60_000;
 const HEALTH_REFRESH_MS = 60_000;
 const HEALTH_REFRESH_OPEN_MS = 20_000;
 
-export function SiaWorkspace({ groups: initialGroups, initialGroupJid = null, canManage = true }: {
+export function SiaWorkspace({ groups: initialGroups, initialGroupJid = null, initialMessageId = null, canManage = true }: {
   groups: SiaGroupRow[];
   initialGroupJid?: string | null;
   /** False for a queendom viewer: no console gear, no health poll, no mapping controls. The server refuses those actions anyway. */
   canManage?: boolean;
 }) {
+  /** With initialGroupJid: the message the chat scrolls to on arrival (siaMessageHref). */
+  initialMessageId?: string | null;
   const [groups, setGroups] = useState<SiaGroupRow[]>(initialGroups);
   const [filter, setFilter] = useState<KindFilter>("all");
   const [railSearch, setRailSearch] = useState("");
@@ -288,6 +290,7 @@ export function SiaWorkspace({ groups: initialGroups, initialGroupJid = null, ca
                 />
               </SplitPane>
             ))}
+                  initialJumpTo={selected.group_jid === initialGroupJid ? initialMessageId : null}
         </SplitWorkspace>
       )}
 

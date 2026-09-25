@@ -60,6 +60,11 @@ export const SIA_GROUP_PARAM = "group";
 export function siaGroupHref(groupJid: string): string {
   return `${SIA_PATH}?${SIA_GROUP_PARAM}=${encodeURIComponent(groupJid)}`;
 }
+/** ?message=<wa_message_id> on top of the group: the chat opens and scrolls to that message (2026-09-26). */
+export const SIA_MESSAGE_PARAM = "message";
+export function siaMessageHref(groupJid: string, waMessageId: string): string {
+  return `${siaGroupHref(groupJid)}&${SIA_MESSAGE_PARAM}=${encodeURIComponent(waMessageId)}`;
+}
 /** The member's finance page (membership money today; Zoho wallet, invoices and payments with M2). */
 export function memberFinancePath(clientId: string): string {
   return `${CLIENTS_PATH}/${clientId}/finance`;
