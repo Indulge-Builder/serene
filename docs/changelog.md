@@ -111,6 +111,11 @@ field migrations or authenticated workflow verification. See
   and **Going well**; By queendom is one line per queendom in a fixed shape; Team is at most four
   lines; Money only what changed. Writer allowance 2,500 tokens. Dry run: 30 lines on a busy overnight
   window, 34 seconds.
+- Two ticket numbers, both of the window (the founder's fourth reading: "when I read it I can't tell
+  he is talking about all these stats"): the per-queendom line now says "30 new tickets, 12 went
+  overdue". New = created in the window; went overdue = passed their Freshdesk due time during the
+  window while still unresolved, whenever they were created. The backlog, "open right now", "past due,
+  all time" and resolved counts are gone from the brief and from the data the writer sees.
 - Dry run on production (v3): per-queendom blocks with "right now, all time" on the backlog, Team one
   person per line by first name, Internal team from Jokers, Revenue, Queen's Council, Onboarding.
 
