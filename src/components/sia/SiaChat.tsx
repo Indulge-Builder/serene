@@ -45,8 +45,8 @@ export function SiaChat({
   onLiveMessages,
   onPatchGroup,
   canManage = true,
-}: {
   initialJumpTo = null,
+}: {
   group: SiaGroupRow;
   isMobile: boolean;
   onBack: () => void;
@@ -56,9 +56,9 @@ export function SiaChat({
   onPatchGroup: (jid: string, patch: Partial<SiaGroupRow>) => void;
   /** False for a queendom viewer: the info panel shows the link, not the mapping controls. */
   canManage?: boolean;
-}) {
   /** A wa_message_id to scroll to once the first page is in (the ?message= deep link). Pulls older pages to find it. */
   initialJumpTo?: string | null;
+}) {
   const [messages, setMessages] = useState<SiaMessageRow[]>([]);
   // Ticket creation from selected messages (member-ticket-plan.md 7.8, phase 1): a selection
   // mode over the stream; the chosen messages go to /tickets/new through sessionStorage.
@@ -244,7 +244,6 @@ export function SiaChat({
     flashTimer.current = setTimeout(() => setFlashId(null), 1400);
   }, []);
 
-  // ── In-group search (debounced) ──
   // ── The deep link (?message=): once the first page is in, find the message, up to 12 pages back. ──
   const jumpedTo = useRef<string | null>(null);
   useEffect(() => {
@@ -253,6 +252,7 @@ export function SiaChat({
     void jumpToMessage(initialJumpTo, 12);
   }, [loading, initialJumpTo, jumpToMessage]);
 
+  // ── In-group search (debounced) ──
   useEffect(() => {
     const q = debouncedSearch.trim();
     if (q.length < 2) {

@@ -23,11 +23,11 @@ import type { MemberPickerHit } from '@/lib/types/member';
 import type { StaffOption, TicketDraft } from '@/lib/types/ticket';
 import type { IntakeProposal } from '@/lib/types/intake';
 import { diffDraft } from '@/lib/utils/draft-diff';
+import { SiaMessagesPeek } from '@/components/sia/SiaMessagesPeek';
 
 export const TICKET_SELECTION_KEY = 'serene:ticket-selection';
 export type TicketSelection = {
   member_id: string;
-import { SiaMessagesPeek } from '@/components/sia/SiaMessagesPeek';
   member_name: string;
   queendom_id: string | null;
   group_jid: string;
