@@ -13,6 +13,7 @@
 // Free of `server-only` on purpose: the intake sweep runs from Trigger.dev and from a laptop.
 
 import { resolveLlmForJob } from "@/lib/elaya/registry";
+import { lessonPromptBlock } from "@/lib/services/intake-lessons";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { openVault, getBroadSenders } from "@/lib/services/member-profiler";
 import { TICKET_CATEGORIES, TICKET_PRIORITIES, TICKET_SUB_CATEGORIES, TICKET_BRIEF_FIELDS_BY_CATEGORY, type TicketCategory, type TicketPriority } from "@/lib/constants/tickets";
@@ -98,8 +99,9 @@ export function validateTicketDraft(raw: Record<string, unknown>, runId: string 
 
 export async function draftTicketCore(input: DraftCoreInput, broad?: Set<string>): Promise<TicketDraft | null> {
   const admin = createAdminClient();
+  const lesson = await lessonPromptBlock("ticket_creator"); // the approved lesson (0240), empty when none
   const { data: runRow } = await admin.schema("sia").from("extraction_runs").insert({
-    kind: "ticket_creator", member_id: input.member_id, prompt_version: TICKET_DRAFT_PROMPT_VERSION, started_at: new Date().toISOString(),
+    kind: "ticket_creator", member_id: input.member_id, prompt_version: TICKET_DRAFT_PROMPT_VERSION + lesson.suffix, started_at: new Date().toISOString(),
     input_ref: { group_jid: input.group_jid, via: input.via, message_ids: input.messages.map((m) => m.wa_message_id) },
   }).select("id").single();
   const runId = (runRow as { id: string } | null)?.id ?? null;
@@ -123,7 +125,7 @@ export async function draftTicketCore(input: DraftCoreInput, broad?: Set<string>
     if (leaked.length) { await finish(false, { error: `vault leak (${leaked.length})` }); return null; }
 
     const llm = await resolveLlmForJob("reasoning");
-    const result = await llm.adapter.complete({ model: llm.model, maxTokens: DRAFT_MAX_OUTPUT_TOKENS, effort: "low", timeoutMs: DRAFT_TIMEOUT_MS, system: SYSTEM, messages: [{ role: "user", content: userContent }] });
+    const result = await llm.adapter.complete({ model: llm.model, maxTokens: DRAFT_MAX_OUTPUT_TOKENS, effort: "low", timeoutMs: DRAFT_TIMEOUT_MS, system: SYSTEM + lesson.block, messages: [{ role: "user", content: userContent }] });
     const usage = { model: llm.model, tokens_in: result.usage.inputTokens, tokens_out: result.usage.outputTokens };
     if (result.stopReason === "max_tokens") { await finish(false, { ...usage, error: "answer cut off at the token limit" }); return null; }
     const raw = extractJson(result.text);

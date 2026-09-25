@@ -10,7 +10,10 @@
 import { revalidatePath } from "next/cache";
 import { requireProfile, actorFromProfile } from "./_auth";
 import { parseActionInput } from "./_validation";
-import { DeleteTicketSlaPolicySchema, UpdateTicketSettingsSchema, UpsertTicketSlaPolicySchema } from "@/lib/validations/ticket-schema";
+import { DeleteTicketSlaPolicySchema, IntakeLessonIdSchema, UpdateIntakeLessonSchema, UpdateTicketSettingsSchema, UpsertTicketSlaPolicySchema, WriteIntakeLessonSchema } from "@/lib/validations/ticket-schema";
+import { approveLessonCore, discardLessonCore, updateLessonBodyCore } from "@/lib/services/intake-lessons";
+import { startIntakeLessonWrite } from "@/trigger/intake-lessons";
+import type { IntakeLesson } from "@/lib/types/intake";
 import { deleteTicketSlaPolicyCore, updateTicketSettingsCore, upsertTicketSlaPolicyCore } from "@/lib/services/ticket-mutations";
 import { TICKET_SETTINGS_PATH, TICKETS_PATH } from "@/lib/constants/tickets";
 import type { ActionResult } from "@/lib/types";
@@ -54,4 +57,49 @@ export async function updateTicketSettingsAction(input: unknown): Promise<Action
   if (res.error) return { data: null, error: res.error };
   revalidate();
   return { data: res.data, error: null };
+}
+
+// ─── The lessons (0240): the founder's three moves on a draft, and "write one now" ────────────
+
+export async function approveIntakeLessonAction(input: unknown): Promise<ActionResult<IntakeLesson>> {
+  const parsed = parseActionInput(IntakeLessonIdSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
+  const auth = await requireProfile(ROLES);
+  if (!auth.ok) return auth.result;
+  const res = await approveLessonCore(parsed.data.lesson_id, auth.profile.id);
+  if (res.error !== null || !res.data) return { data: null, error: res.error ?? "Could not approve that lesson." };
+  revalidate();
+  return { data: res.data, error: null };
+}
+
+export async function updateIntakeLessonAction(input: unknown): Promise<ActionResult<IntakeLesson>> {
+  const parsed = parseActionInput(UpdateIntakeLessonSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
+  const auth = await requireProfile(ROLES);
+  if (!auth.ok) return auth.result;
+  const res = await updateLessonBodyCore(parsed.data.lesson_id, parsed.data.body);
+  if (res.error !== null || !res.data) return { data: null, error: res.error ?? "Could not save that lesson." };
+  revalidate();
+  return { data: res.data, error: null };
+}
+
+export async function discardIntakeLessonAction(input: unknown): Promise<ActionResult<{ id: string }>> {
+  const parsed = parseActionInput(IntakeLessonIdSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
+  const auth = await requireProfile(ROLES);
+  if (!auth.ok) return auth.result;
+  const res = await discardLessonCore(parsed.data.lesson_id);
+  if (res.error !== null) return { data: null, error: res.error };
+  revalidate();
+  return { data: { id: parsed.data.lesson_id }, error: null };
+}
+
+/** Queue a writing for one kind (Trigger.dev; a minute or two). The draft appears on the page when it lands. */
+export async function writeIntakeLessonNowAction(input: unknown): Promise<ActionResult<{ queued: true }>> {
+  const parsed = parseActionInput(WriteIntakeLessonSchema, input);
+  if (!parsed.ok) return { data: null, error: parsed.error };
+  const auth = await requireProfile(ROLES);
+  if (!auth.ok) return auth.result;
+  try { await startIntakeLessonWrite(parsed.data.kind); } catch (e) { console.error("[ticket-settings] lesson write could not be queued:", e instanceof Error ? e.message : e); return { data: null, error: "Could not start the writing. Try again in a minute." }; }
+  return { data: { queued: true }, error: null };
 }

@@ -44,6 +44,27 @@ export const DRAFT_REVIEW_SOURCES = ["intake_card", "ticket_creator", "sentinel"
 export const DRAFT_REVIEW_DECISIONS = ["accepted", "edited", "dismissed"] as const;
 /** The human's own words on a verdict ("what did Serene get wrong?"); one line is plenty. */
 export const DRAFT_FEEDBACK_MAX = 500;
+/**
+ * The lessons (0240): one instruction document per kind of work. `intake` = is this a request,
+ * `ticket_creator` = how to fill the ticket, `sentinel` = when to suggest a status move.
+ */
+export const LESSON_KINDS = ["intake", "ticket_creator", "sentinel"] as const;
+export const LESSON_STATUSES = ["draft", "approved", "retired"] as const;
+export const LESSON_LABELS: Record<(typeof LESSON_KINDS)[number], string> = { intake: "Is this a request?", ticket_creator: "How to fill the ticket", sentinel: "When to suggest a status move" };
+/** Fewer new verdicts than this since the last lesson and the writer does not write (nothing to learn yet). */
+export const LESSON_MIN_REVIEWS = 10;
+/** The most verdicts one writing reads (newest first). */
+export const LESSON_MAX_REVIEWS = 150;
+export const LESSON_BODY_MAX = 12_000;
+export const LESSON_PROMPT_VERSION = "lesson-writer-v1";
+export const LESSON_RUN_KIND = "lesson_writer";
+/** The switch row in elaya_settings: ON unless it says exactly false (the labels-refresh posture). */
+export const INTAKE_LESSONS_SETTING_KEY = "intake_lessons_enabled";
+/** Thinking counts against the allowance on the Claude 5 family; the document itself is a few thousand tokens. */
+export const LESSON_MAX_OUTPUT_TOKENS = 12_000;
+export const LESSON_TIMEOUT_MS = 180_000;
+/** The approved lesson block is re-read at most this often by the prompts (one small indexed select otherwise per call). */
+export const LESSON_CACHE_MS = 5 * 60_000;
 export const INTAKE_KINDS = ["request", "update", "question", "feedback", "chatter"] as const;
 export type IntakeKind = (typeof INTAKE_KINDS)[number];
 export const INTAKE_TONES = ["neutral", "happy", "frustrated", "angry"] as const;

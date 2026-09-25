@@ -12,6 +12,57 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-25 — The lesson writer: the team's verdicts become instructions the ticket AI follows (0240)
+
+Part three of the founder's ask, and the point of the other two: "keep all the approvals,
+rejections and corrections, then process them into an instruction file, and a specialised
+ticket agent reads that." The ledger (0239) keeps the verdicts. This turns them into lessons,
+with a human approving every one.
+
+- **Migration 0240, `sia.intake_lessons`:** one versioned plain-English instruction document
+  per kind of work: `intake` (is this a request), `ticket_creator` (how to fill the ticket),
+  `sentinel` (when to suggest a status move). Status draft / approved / retired; one approved
+  and one draft per kind at a time (partial unique indexes); never deleted, approving retires the
+  old. Plus `sia.draft_review_scoreboard(p_since)`: the verdicts by source and prompt version.
+- **The writer, `lib/services/intake-lessons.ts` `writeLessonDraft(kind)`:** reads the verdicts
+  decided since the last lesson of that kind (newest 150), hands them, masked, with the current
+  approved lesson to the reasoning tier, and writes ONE draft (a second run replaces the draft,
+  never stacks). Below 10 new verdicts it writes nothing (the button forces it, never with zero).
+  Names never reach the model: every member in the batch becomes MEMBER_n before maskPii, and a
+  leak check refuses the writing if a full name survives, in the input or the output. Every call
+  is a `sia.extraction_runs` row (kind `lesson_writer`). Fails closed. The reply is plain text
+  (SUMMARY line, a `---` line, the document): JSON was tried first and a document full of quotes
+  and newlines broke the parse on the very first run.
+- **The founder approves, the machine never does.** Settings → Tickets gains "What the team has
+  taught the ticket AI" (`IntakeLessonsPanel`): per kind, the draft waiting (editable, Approve
+  or Discard), the approved version to read, "Write a lesson now", the scoreboard by prompt
+  version (accepted as drafted / edited first / dismissed / with words, last 90 days), the
+  earlier versions. "Download instructions.md" exports every approved lesson as one file: the
+  same document the specialised ticket agent will read.
+- **Only the approved lesson reaches a prompt.** `lessonPromptBlock(kind)` appends it to the
+  system text of the intake reader, the ticket creator and the sentinel's reading (re-read at
+  most every 5 minutes), and the run's prompt version carries the lesson version
+  (`intake-v1+L3`). The ledger now takes its prompt version from the run row, so every verdict
+  says which lesson the draft was made under, and the scoreboard can say whether a lesson
+  helped.
+- **When it runs:** `src/trigger/intake-lessons.ts`: every Monday 06:00 IST for all three kinds
+  (ON unless `intake_lessons_enabled` is false), and `intake-lesson-write` for one kind from the
+  button. `getIntakeLessonsEnabled()` in llm-providers-service.
+- **The bench:** `scripts/tickets/lesson-bench.ts` asks the model with four hand-made verdicts in
+  dry-run mode (nothing written, the run row says dry_run). Its first real answer was a
+  nine-rule document for "how to fill the ticket" (sub-categories, specific titles, brief fields
+  from the chat, priority from the need-by date), 19 seconds, about a rupee.
+- **Not exercised end to end:** there are no real verdicts yet (0 decided cards), so the weekly
+  writer has had nothing to read; the bench is the proof of the model path, and the approve /
+  edit / discard moves are exercised through the page once the first draft lands.
+
+Files: `supabase/migrations/20260925000240_intake_lessons.sql`, `src/lib/services/intake-lessons.ts`,
+`src/trigger/intake-lessons.ts`, `src/components/settings/IntakeLessonsPanel.tsx`, `src/app/(dashboard)/settings/tickets/page.tsx`,
+`src/lib/actions/ticket-settings.ts`, `src/lib/services/ticket-intake.ts`, `src/lib/services/ticket-draft-core.ts`,
+`src/lib/services/ticket-sentinel.ts`, `src/lib/services/draft-reviews.ts`, `src/lib/services/intake-service.ts`,
+`src/lib/services/llm-providers-service.ts`, `src/lib/validations/ticket-schema.ts`, `src/lib/constants/ticket-intake.ts`,
+`src/lib/types/intake.ts`, `scripts/tickets/lesson-bench.ts`, `src/lib/types/database.ts`.
+
 ## 2026-09-25 — Tickets: every human verdict on a machine draft is kept in full (0239)
 
 Part two of the founder's ask ("Elaya should get really good at creating tickets; the training

@@ -35,14 +35,22 @@ export type RecordDraftReviewInput = {
   decided_by: string | null;
 };
 
+/** The prompt version the draft was made under, read from its run row (it carries the lesson suffix, 0240). */
+async function promptVersionOfRun(runId: string | null | undefined): Promise<string | null> {
+  if (!runId) return null;
+  const { data } = await createAdminClient().schema("sia").from("extraction_runs").select("prompt_version").eq("id", runId).maybeSingle();
+  return (data as { prompt_version: string | null } | null)?.prompt_version ?? null;
+}
+
 /** Write one verdict. Never throws; a failure is logged and the caller's own write stands. */
 export async function recordDraftReviewCore(input: RecordDraftReviewInput): Promise<void> {
   try {
+    const promptVersion = input.prompt_version ?? (await promptVersionOfRun(input.run_id));
     const { error } = await createAdminClient().schema("sia").from("draft_reviews").insert({
       source: input.source, decision: input.decision,
       member_id: input.member_id, queendom_id: input.queendom_id,
       proposal_id: input.proposal_id ?? null, ticket_id: input.ticket_id ?? null,
-      run_id: input.run_id ?? null, prompt_version: input.prompt_version ?? null,
+      run_id: input.run_id ?? null, prompt_version: promptVersion,
       draft: input.draft as never, final: (input.final ?? null) as never,
       corrections: (input.corrections ?? []) as never,
       dismiss_reason: input.dismiss_reason ?? null, feedback: input.feedback ?? null,

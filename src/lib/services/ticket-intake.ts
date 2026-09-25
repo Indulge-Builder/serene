@@ -20,6 +20,7 @@
 // Free of `server-only` on purpose: it runs from Trigger.dev and from a laptop.
 
 import { resolveLlmForJob } from "@/lib/elaya/registry";
+import { lessonPromptBlock } from "@/lib/services/intake-lessons";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { mapRows } from "@/lib/utils/rows";
 import { mapWithConcurrency } from "@/lib/utils/concurrency";
@@ -181,8 +182,9 @@ export async function readBurst(groupJid: string, memberId: string, context: Msg
   const leaked = vault.leaks(userContent);
   if (leaked.length) { console.warn(`${LOG} vault leak in ${groupJid}: ${leaked.length} known name(s) survived masking; burst not sent`); return { ...base, error: `vault leak (${leaked.length})` }; }
 
+  const lesson = await lessonPromptBlock("intake"); // the approved lesson (0240), empty when none
   const { data: runRow } = await admin.schema("sia").from("extraction_runs").insert({
-    kind: INTAKE_RUN_KIND, member_id: memberId, prompt_version: INTAKE_PROMPT_VERSION, started_at: new Date().toISOString(),
+    kind: INTAKE_RUN_KIND, member_id: memberId, prompt_version: INTAKE_PROMPT_VERSION + lesson.suffix, started_at: new Date().toISOString(),
     input_ref: { group_jid: groupJid, from_at: base.from_at, to_at: base.to_at, messages: burst.length, member_messages: memberMsgs.length, open_tickets: tickets.length, dry_run: !deps.apply, masked_window: userContent.slice(0, 12_000) },
   }).select("id").single();
   const runId = (runRow as { id: string } | null)?.id ?? null;
@@ -190,7 +192,7 @@ export async function readBurst(groupJid: string, memberId: string, context: Msg
 
   try {
     const llm = await resolveLlmForJob("routing");
-    const result = await llm.adapter.complete({ model: llm.model, maxTokens: 1500, effort: "low", timeoutMs: 30_000, cachePrefix: true, system: SYSTEM, messages: [{ role: "user", content: userContent }] });
+    const result = await llm.adapter.complete({ model: llm.model, maxTokens: 1500, effort: "low", timeoutMs: 30_000, cachePrefix: true, system: SYSTEM + lesson.block, messages: [{ role: "user", content: userContent }] });
     const usage = { model: llm.model, tokens_in: result.usage.inputTokens, tokens_out: result.usage.outputTokens };
     const raw = result.stopReason === "max_tokens" ? null : parseJson(result.text);
     if (!raw) { await finish(false, { ...usage, error: "no json", output: { text: result.text.slice(0, 1500) } }); return { ...base, error: "no json" }; }

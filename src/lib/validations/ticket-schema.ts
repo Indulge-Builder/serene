@@ -2,7 +2,7 @@ import { z } from "zod";
 import { sanitizeText } from "@/lib/utils/sanitize";
 import { formErrors } from "./form-errors";
 import { uuidField } from "./fields";
-import { DRAFT_FEEDBACK_MAX } from "@/lib/constants/ticket-intake";
+import { DRAFT_FEEDBACK_MAX, LESSON_BODY_MAX, LESSON_KINDS } from "@/lib/constants/ticket-intake";
 import { TICKET_CATEGORIES, TICKET_ORIGINS, TICKET_PRIORITIES, TICKET_RESOLUTIONS, TICKET_STATUSES, TICKET_REASSIGN_REASONS, TICKET_LINK_KINDS, TICKET_TAG_RE, TICKET_TAG_MAX } from "@/lib/constants/tickets";
 
 // ─────────────────────────────────────────────
@@ -88,6 +88,14 @@ export const DismissIntakeProposalSchema = z.object({
   note: optionalText(DRAFT_FEEDBACK_MAX),
 });
 export const AcceptIntakeUpdateSchema = z.object({ proposal_id: uuidField(formErrors.generic) });
+
+/** The lessons (0240): approve / discard a draft, edit its body first, or ask for a new draft now. */
+export const IntakeLessonIdSchema = z.object({ lesson_id: uuidField(formErrors.generic) });
+export const UpdateIntakeLessonSchema = z.object({
+  lesson_id: uuidField(formErrors.generic),
+  body: z.string().trim().min(20, "A lesson needs at least a few lines.").max(LESSON_BODY_MAX, "That lesson is too long to fold into a prompt.").transform(sanitizeText),
+});
+export const WriteIntakeLessonSchema = z.object({ kind: z.enum(LESSON_KINDS) });
 
 /** The human's answer to the sentinel's suggested status move. */
 export const ResolveSentinelProposalSchema = z.object({ ticket_id: uuidField(formErrors.generic), decision: z.enum(["approve", "dismiss"]) });

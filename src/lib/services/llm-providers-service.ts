@@ -150,6 +150,15 @@ export async function getElayaLabelsRefreshEnabled(): Promise<boolean> {
 }
 
 /**
+ * The lesson writer's switch (row `intake_lessons_enabled`, no seed row; 0240): ON unless the row
+ * says exactly `false`. It only writes DRAFTS a founder must approve, and only when there are
+ * enough new verdicts, so the default is on.
+ */
+export async function getIntakeLessonsEnabled(): Promise<boolean> {
+  try { return (await getSettingValue('intake_lessons_enabled')) !== false; } catch { return true; }
+}
+
+/**
  * The deep read's spend switch (row `elaya_deep_read_spend_cap_usd`, a number): a read whose
  * estimate is above it stops and asks the founder before judging. Missing or malformed row = the
  * default in constants/elaya-jobs.ts; 0 or a negative number = always ask.

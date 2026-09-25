@@ -10,7 +10,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { memberDb } from "@/lib/supabase/schemas";
 import { mapRows } from "@/lib/utils/rows";
 import { INTAKE_EXAM_CARDS, INTAKE_STRIP_LIMIT, type IntakeDismissReason } from "@/lib/constants/ticket-intake";
-import type { DraftReview, DraftReviewSource, IntakeProposal, IntakeProposalMessage, IntakeStats } from "@/lib/types/intake";
+import type { DraftReview, DraftReviewSource, IntakeLesson, IntakeProposal, IntakeProposalMessage, IntakeStats } from "@/lib/types/intake";
 import type { TicketDraft } from "@/lib/types/ticket";
 
 type Row = Omit<IntakeProposal, "member_name" | "ticket_no" | "draft" | "messages"> & { draft: unknown; messages: unknown };
@@ -97,4 +97,12 @@ export async function listDraftReviews(opts: { source?: DraftReviewSource; since
   const { data, error } = await q;
   if (error) { console.error("[intake-service] reviews failed", error.message); return []; }
   return mapRows<DraftReview, DraftReview>(data, (r) => ({ ...r, corrections: Array.isArray(r.corrections) ? r.corrections : [] }));
+}
+
+/** The lessons (0240), newest first: every draft, approved and retired version (session client, RLS admin/founder). */
+export async function listIntakeLessons(limit = 30): Promise<IntakeLesson[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.schema("sia").from("intake_lessons").select("id, kind, version, status, body, summary, evidence, run_id, created_by, approved_by, approved_at, retired_at, created_at, updated_at").order("created_at", { ascending: false }).limit(limit);
+  if (error) { console.error("[intake-service] lessons failed", error.message); return []; }
+  return mapRows<IntakeLesson, IntakeLesson>(data, (r) => r);
 }

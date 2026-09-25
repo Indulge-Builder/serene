@@ -15,7 +15,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { formErrors } from "@/lib/validations/form-errors";
 import { canAccessMember } from "@/lib/elaya/access";
 import { TICKETS_PATH } from "@/lib/constants/tickets";
-import { TICKET_DRAFT_PROMPT_VERSION } from "@/lib/services/ticket-draft-core";
 import { recordDraftReviewCore } from "@/lib/services/draft-reviews";
 import { diffDraft, changedFieldNames, type DraftComparable } from "@/lib/utils/draft-diff";
 import { CLIENTS_PATH } from "@/lib/constants/sia-roles";
@@ -99,7 +98,7 @@ export async function createTicketAction(input: unknown): Promise<ActionResult<T
     await resolveIntakeProposal(card.id, auth.profile.id, { status: "accepted", ticket_id: res.data.id, fields_changed: changedFieldNames(corrections) });
     await recordDraftReviewCore({
       source: "intake_card", decision: corrections.length ? "edited" : "accepted", member_id: card.member_id, queendom_id: card.queendom_id,
-      proposal_id: card.id, ticket_id: res.data.id, run_id: card.draft_run_id, prompt_version: TICKET_DRAFT_PROMPT_VERSION,
+      proposal_id: card.id, ticket_id: res.data.id, run_id: card.draft_run_id,
       draft: card.draft as Record<string, unknown>, final: madeFinal, corrections, feedback: parsed.data.feedback, decided_by: auth.profile.id,
     });
     revalidatePath(TICKETS_PATH);
@@ -107,7 +106,7 @@ export async function createTicketAction(input: unknown): Promise<ActionResult<T
     const corrections = diffDraft(parsed.data.draft as Partial<TicketDraft>, made);
     await recordDraftReviewCore({
       source: "ticket_creator", decision: corrections.length ? "edited" : "accepted", member_id: parsed.data.member_id, queendom_id: q.queendom_id,
-      ticket_id: res.data.id, run_id: parsed.data.proposed_by_run_id, prompt_version: TICKET_DRAFT_PROMPT_VERSION,
+      ticket_id: res.data.id, run_id: parsed.data.proposed_by_run_id,
       draft: parsed.data.draft as Record<string, unknown>, final: madeFinal, corrections, feedback: parsed.data.feedback, decided_by: auth.profile.id,
     });
   }
@@ -127,7 +126,7 @@ export async function dismissIntakeProposalAction(input: unknown): Promise<Actio
   if (!done) return { data: null, error: "Someone already handled that suggestion." };
   await recordDraftReviewCore({
     source: "intake_card", decision: "dismissed", member_id: card.member_id, queendom_id: card.queendom_id, proposal_id: card.id,
-    ticket_id: card.ticket_id, run_id: card.draft_run_id, prompt_version: TICKET_DRAFT_PROMPT_VERSION,
+    ticket_id: card.ticket_id, run_id: card.draft_run_id,
     draft: { kind: card.kind, summary: card.summary, confidence: card.confidence, ...card.draft }, corrections: [],
     dismiss_reason: parsed.data.reason, feedback: parsed.data.note, decided_by: auth.profile.id,
   });
@@ -149,7 +148,7 @@ export async function acceptIntakeUpdateAction(input: unknown): Promise<ActionRe
   await resolveIntakeProposal(card.id, auth.profile.id, { status: "accepted", ticket_id: card.ticket_id, fields_changed: [] });
   await recordDraftReviewCore({
     source: "intake_card", decision: "accepted", member_id: card.member_id, queendom_id: card.queendom_id, proposal_id: card.id, ticket_id: card.ticket_id,
-    run_id: card.draft_run_id, prompt_version: TICKET_DRAFT_PROMPT_VERSION, draft: { kind: "update", summary: card.summary, confidence: card.confidence }, corrections: [], decided_by: auth.profile.id,
+    run_id: card.draft_run_id, draft: { kind: "update", summary: card.summary, confidence: card.confidence }, corrections: [], decided_by: auth.profile.id,
   });
   revalidatePath(TICKETS_PATH);
   revalidateTicket(card.ticket_id, card.member_id);

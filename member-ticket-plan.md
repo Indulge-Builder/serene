@@ -567,6 +567,9 @@ T2  the sentinel: rules pass + reading pass, runs every minute in cloud DONE 202
 T3  intake phase 1: the genie selects messages -> a ticket draft        DONE
     intake phase 2: Serene reads the groups and proposes tickets itself DONE 2026-09-18 (0219), training phase: cards only, a human
                                                                         creates or dismisses; the numbers sit on the Tickets page
+    the training loop: every verdict kept in full (0239), the lesson
+    writer turns them into instructions the founder approves (0240),
+    folded into the prompts, exported as instructions.md                DONE 2026-09-25; waits on the first decided cards
 T4  the profiler: reads chats, files facts / people / relations /
     coming up, names hidden from the AI                                 DONE, SWITCHED ON 2026-09-18 (whole history,
                                                                         Active members only, about a day to finish)

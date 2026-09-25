@@ -28,6 +28,7 @@ import { ticketsAdminDb, resolveSlaPolicy } from "@/lib/services/tickets-service
 import { moveTicketStatusCore, SENTINEL_ACTOR, ticketDeadline } from "@/lib/services/ticket-mutations";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getQueendomSeats } from "@/lib/services/queendom-seats";
+import { lessonPromptBlock } from "@/lib/services/intake-lessons";
 import { mapRows } from "@/lib/utils/rows";
 import { businessMinutesBetween } from "@/lib/utils/sla";
 import {
@@ -339,8 +340,9 @@ function parseReading(raw: string, checklistLen: number, legalNext: readonly Tic
 
 export async function readNewText(t: TicketRow, input: NonNullable<WakePlan["readInput"]>, state: SentinelState): Promise<{ reading: Reading | null; runId: string | null }> {
   const admin = createAdminClient();
+  const lesson = await lessonPromptBlock("sentinel"); // the approved lesson (0240), empty when none
   const { data: runRow } = await admin.schema("sia").from("extraction_runs").insert({
-    kind: "sentinel", member_id: t.member_id, prompt_version: SENTINEL_PROMPT_VERSION,
+    kind: "sentinel", member_id: t.member_id, prompt_version: SENTINEL_PROMPT_VERSION + lesson.suffix,
     input_ref: { ticket_id: t.id, notes: input.notes.length, member_messages: input.memberMessages.length },
   }).select("id").single();
   const runId = (runRow as { id: string } | null)?.id ?? null;
@@ -355,7 +357,7 @@ export async function readNewText(t: TicketRow, input: NonNullable<WakePlan["rea
       `Ticket ${t.ticket_no}: ${t.title}\nCategory: ${t.category}${t.sub_category ? ` / ${t.sub_category}` : ""} · status ${t.status} · priority ${t.priority}\nRequested for: ${t.requested_for ?? "not set"}\nLEGAL NEXT STATUSES from ${t.status}: ${legalNext.join(", ") || "(none)"}\nBrief: ${JSON.stringify(t.brief)}\nMoney so far: ${JSON.stringify(t.money)}\nChecklist:\n${checklist || "(none)"}\nSummary so far: ${t.summary ?? "(none)"}\n\nNEW TEAM NOTES:\n${clip(input.notes) || "(none)"}\n\nNEW CLIENT MESSAGES:\n${clip(input.memberMessages) || "(none)"}\n\nNEW STAFF REPLIES TO THE CLIENT:\n${clip(input.staffMessages) || "(none)"}\n\nReturn the JSON.`,
       depth,
     );
-    const result = await llm.adapter.complete({ model: llm.model, maxTokens: Math.min(llm.maxTokens, 900), system: READ_SYSTEM, messages: [{ role: "user", content: user }], cachePrefix: true });
+    const result = await llm.adapter.complete({ model: llm.model, maxTokens: Math.min(llm.maxTokens, 900), system: READ_SYSTEM + lesson.block, messages: [{ role: "user", content: user }], cachePrefix: true });
     state.reads += 1;
     state.tokens_in += result.usage.inputTokens;
     state.tokens_out += result.usage.outputTokens;

@@ -7529,6 +7529,57 @@ export type Database = {
         }
         Relationships: []
       }
+      intake_lessons: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          body: string
+          created_at: string
+          created_by: string | null
+          evidence: Json
+          id: string
+          kind: string
+          retired_at: string | null
+          run_id: string | null
+          status: string
+          summary: string
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          body: string
+          created_at?: string
+          created_by?: string | null
+          evidence?: Json
+          id?: string
+          kind: string
+          retired_at?: string | null
+          run_id?: string | null
+          status?: string
+          summary?: string
+          updated_at?: string
+          version: number
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          body?: string
+          created_at?: string
+          created_by?: string | null
+          evidence?: Json
+          id?: string
+          kind?: string
+          retired_at?: string | null
+          run_id?: string | null
+          status?: string
+          summary?: string
+          updated_at?: string
+          version?: number
+        }
+        Relationships: []
+      }
       intake_proposals: {
         Row: {
           classify_run_id: string | null
@@ -10032,6 +10083,18 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      draft_review_scoreboard: {
+        Args: { p_since: string }
+        Returns: {
+          accepted: number
+          decided: number
+          dismissed: number
+          edited: number
+          prompt_version: string
+          source: string
+          with_feedback: number
+        }[]
       }
       groups_waiting_for_reply: {
         Args: { p_max_hours?: number; p_min_minutes?: number }

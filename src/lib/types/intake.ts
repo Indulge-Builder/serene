@@ -1,6 +1,6 @@
 // Ticket intake (0219): the card a bishop sees, and the numbers that say how intake is doing.
 import type { TicketDraft } from "@/lib/types/ticket";
-import type { DRAFT_REVIEW_DECISIONS, DRAFT_REVIEW_SOURCES, IntakeDismissReason } from "@/lib/constants/ticket-intake";
+import type { DRAFT_REVIEW_DECISIONS, DRAFT_REVIEW_SOURCES, IntakeDismissReason, LESSON_KINDS, LESSON_STATUSES } from "@/lib/constants/ticket-intake";
 import type { DraftCorrection } from "@/lib/utils/draft-diff";
 
 export type IntakeProposalMessage = { chat_jid: string; wa_message_id: string; sender_jid: string; sender_name: string | null; from_member: boolean; at: string; text: string };
@@ -67,3 +67,26 @@ export type IntakeStats = {
   health_by_signal: Record<string, number>;
   cost_usd: number;
 };
+
+/** A lesson (0240, sia.intake_lessons): one versioned instruction document per kind of work. */
+export type LessonKind = (typeof LESSON_KINDS)[number];
+export type LessonStatus = (typeof LESSON_STATUSES)[number];
+export type IntakeLesson = {
+  id: string;
+  kind: LessonKind;
+  version: number;
+  status: LessonStatus;
+  body: string;
+  summary: string;
+  evidence: Record<string, unknown>;
+  run_id: string | null;
+  created_by: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  retired_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+/** One row of sia.draft_review_scoreboard: the verdicts by source and prompt version. */
+export type DraftReviewScoreboardRow = { source: DraftReviewSource; prompt_version: string; decided: number; accepted: number; edited: number; dismissed: number; with_feedback: number };
