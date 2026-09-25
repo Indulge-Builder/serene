@@ -24,6 +24,10 @@ class StaffPrincipal:
     domain: str
     display_name: str
     toolset: frozenset[str]
+    # The concierge seat and its queendom (profiles.sia_role / queendom_id), for the reach hint only:
+    # every bridged tool re-reads the queendom in Node at call time. None outside Concierge.
+    sia_role: str | None = None
+    queendom_id: str | None = None
 
 
 async def resolve_staff_principal(user_id: str) -> StaffPrincipal | None:
@@ -39,4 +43,6 @@ async def resolve_staff_principal(user_id: str) -> StaffPrincipal | None:
         domain=profile["domain"],
         display_name=profile["full_name"],
         toolset=TOOLSET_BY_ROLE.get(role, frozenset()),
+        sia_role=profile.get("sia_role"),
+        queendom_id=profile.get("queendom_id"),
     )

@@ -30,6 +30,8 @@ import {
   type DateRange,
 } from "@/lib/utils/date-range";
 
+export const metadata = { title: "Dashboard" };
+
 const VALID_PRESETS: DatePreset[] = ['today', 'week', 'month', 'last_month', 'quarter', 'custom'];
 
 export default async function DashboardPage({
@@ -114,7 +116,10 @@ export default async function DashboardPage({
     budget_gauge:      null,
   };
 
-  const isManagerPlus = role === "manager" || role === "admin" || role === "founder";
+  // A Gia dashboard has the lead widgets; a concierge (or finance, tech) manager's does not
+  // (widgetAllowedFor), so their Gia seeds are skipped: no volume, no budget, no lead rollup.
+  const giaSurface = role === "admin" || role === "founder" || (GIA_DOMAINS as readonly string[]).includes(domain);
+  const isManagerPlus = giaSurface && (role === "manager" || role === "admin" || role === "founder");
   // Budget widget is manager+ (mirrors the /budget page + the budget widget's
   // roles). Admin/founder seed the ORG-WIDE gauge (spend + org recharges); a
   // MANAGER seeds a domain-scoped SPEND gauge (spend filtered to profile.domain,
@@ -145,9 +150,9 @@ export default async function DashboardPage({
       // agent_activity CTE (that is still the old event shape and would not
       // match the lead card). Default 'team' scope; admin/founder pass the
       // global scopeDomain (null = all-org), managers are pinned in SQL.
-      getAgentRecentActivity(profile.id, role, domain, scopeDomain ?? undefined, 'team'),
+      giaSurface ? getAgentRecentActivity(profile.id, role, domain, scopeDomain ?? undefined, 'team') : Promise.resolve(null),
       // Manager volume — single line, pinned to the manager's own domain.
-      isManager
+      isManager && giaSurface
         ? getLeadVolumeByRange(role, domain, dateRange)
         : Promise.resolve(null),
       // Admin/founder single-domain volume — only when a domain is scoped.

@@ -47,7 +47,12 @@ export const FOUNDER_NAV_PREFIXES: string[] = [
  * sales call-intelligence library; it is noise on the concierge floor (founder, 2026-09-18).
  * Visibility only, like FOUNDER_NAV_PREFIXES. Admin and founder are not affected.
  */
-export const DOMAIN_NAV_HIDDEN: Partial<Record<AppDomain, string[]>> = { concierge: ['/helpdesk'] };
+export const DOMAIN_NAV_HIDDEN: Partial<Record<AppDomain, string[]>> = {
+  // /tickets (Sia's own ticketing) stays REACHABLE for the concierge floor (the Sia chat's "make a
+  // ticket from these messages" lands there) but is not listed: the founder's concierge nav
+  // (2026-09-25) is Dashboard, Elaya, Members, Tasks, Vendors, Notes, Sia, Freshdesk.
+  concierge: ['/helpdesk', '/tickets'],
+};
 
 export const WORKBENCH_DOMAINS: AppDomain[] = ['tech'];
 /** Pages a workbench member still does not reach. /books is the organisation's money. */
@@ -93,7 +98,9 @@ export const DOMAIN_ROUTE_MAP: Record<AppDomain, string[]> = {
   // teammate sees only their own queendom (an unseated account is sent home).
   // /vendors (2026-09-18, founder): the whole concierge floor uses the vendor module; the pages
   // and actions ask hasVendorAccess (route-access.ts).
-  concierge: ['/tasks', '/settings', '/members', '/tickets', '/sia', '/freshdesk', '/vendors'],
+  // /settings left the concierge map 2026-09-25: it holds the Gia lead-routing roster and the Teach
+  // Elaya doors (admin/founder), nothing a queen or genie uses; a seated manager saw a hub of dead doors.
+  concierge: ['/tasks', '/members', '/tickets', '/sia', '/freshdesk', '/vendors'],
   finance:   ['/tasks', '/subscriptions', '/settings'],
   marketing: ['/tasks', '/campaigns', '/settings'],
   tech:      ['/tasks', '/subscriptions', '/settings'],

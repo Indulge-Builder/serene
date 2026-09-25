@@ -32,6 +32,11 @@ export type StaffPrincipal = {
   role: UserRole;
   domain: AppDomain;
   displayName: string;
+  /** The concierge seat (queen / bishop / genie / joker) and its queendom, from the profile row;
+   *  null outside Concierge or for an account nobody has seated. Read for the reach hint only:
+   *  every tool re-reads the queendom from the database at call time (principalQueendom). */
+  siaRole: string | null;
+  queendomId: string | null;
   toolset: readonly ElayaToolName[];
 };
 
@@ -59,6 +64,8 @@ export function resolveStaffPrincipal(profile: Profile): StaffPrincipal {
     role: profile.role,
     domain: profile.domain,
     displayName: profile.full_name,
+    siaRole: profile.sia_role ?? null,
+    queendomId: profile.queendom_id ?? null,
     toolset: TOOLSET_BY_ROLE[profile.role],
   };
 }

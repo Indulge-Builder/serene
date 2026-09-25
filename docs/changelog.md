@@ -12,6 +12,44 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-25 — The concierge floor on Serene: the queendom boundary audited, and the eight-room nav
+
+- Why: the queens and bishops are being onboarded. The founder's rule: a seated concierge teammate
+  (queen, bishop, genie, joker) sees only their own queendom, in every page and in every answer Elaya
+  gives, whatever the prompt; and their nav is eight rooms, nothing else.
+- The audit (read-only, every layer): the boundary is ONE fact in the database, `profiles.queendom_id`
+  set with the seat, and every layer derives from it. Rows: `can_access_member_queendom()` (RLS on
+  members, facts, events, people, Sia tickets) and the service-role reads that ask `canAccessMember` /
+  `getSiaViewerScope` / `canViewSiaGroup` / `pinnedFreshdeskGroup` before every read (members,
+  /sia, /freshdesk, tickets, their actions). Elaya: every member, group, Freshdesk and ticket tool
+  re-reads the caller's queendom from the database at call time (`principalQueendom`) and refuses or
+  filters; a name search reports "outside your seat" and nothing more; the founder-only tools
+  (query_database, start_deep_read, get_live_pulse, get_books_overview) are absent from a manager's
+  or agent's toolset in both brains, so no prompt can reach them. Bench as the seated bishop against
+  production: own queendom's member visible, another's hidden by id and by name, roster confined to
+  the seat, 25 Sia groups (the queendom's), Freshdesk pinned to the queendom's group, another group's
+  ticket unreachable by id, another queendom's WhatsApp group refused.
+- What changed. Routes (`route-permissions.ts`): the concierge map is tasks, members, tickets, sia,
+  freshdesk, vendors (settings out: it held the Gia routing roster and dead Teach Elaya doors);
+  /tickets stays reachable (the Sia chat's "make a ticket" lands there) but is not listed. The nav a
+  seated teammate sees is Dashboard, Elaya, Members, Tasks, Vendors, Notes, Sia, Freshdesk.
+- Dashboard (`dashboard-widgets.ts`): every Gia widget now declares the Gia domains; `widgetAllowedFor`
+  (role AND domain) gates the layout hook, the sanitiser of a stored layout and the add-widget menu;
+  `defaultGridFor` gives a non-Gia domain the two-widget first screen (My Tasks, Elaya) until the
+  queendom widgets are built; the page skips the Gia seeds and the date filter there. The Elaya card
+  is open to every role now (it is the live chat).
+- Elaya's reach hint, both brains (`persona.ts`, `persona.py`): the principal carries the seat
+  (`siaRole`, `queendomId`), and a concierge seat is told in words it can repeat that it sees one
+  queendom, nothing of another, no leads, no money, no database, and to say "not in your queendom"
+  rather than guess; an unseated concierge account is told it sees nothing until seated.
+- Decisions for the founder, not code: two accounts in the concierge domain hold the platform role
+  `founder` (Syndia, Karan Bhangay), which bypasses every scope and receives the founders' brief with
+  the company's money; a vendor's job history carries member names from every queendom (the founder
+  chose a shared vendor floor on 2026-09-18); a member's finance page shows to everyone who can see
+  the member (decision 2026-09-15).
+
+---
+
 ## 2026-09-25 — One empty state everywhere, the mark with its centre circle, a clean boot, the cream icon
 
 Why: the founder picked the /tickets empty table as the best empty state and asked for it across

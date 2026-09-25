@@ -2,6 +2,7 @@
 // IDs are stable localStorage keys — never rename after shipping.
 
 import type { UserRole, AppDomain } from '@/lib/types/database';
+import { GIA_DOMAINS } from '@/lib/constants/domains';
 
 export type WidgetSize = 'sm' | 'md' | 'lg' | 'xl';
 
@@ -124,7 +125,7 @@ export const DASHBOARD_WIDGETS: WidgetDefinition[] = [
     label:       'Recent Activity',
     description: 'A live feed of lead activity — calls, notes, status moves.',
     roles:       ['agent', 'manager', 'admin', 'founder'],
-    domains:     '*',
+    domains:     [...GIA_DOMAINS],
     defaultSize: 'lg',
     colSpan:     1,
     defaultGrid: { w: 6, h: 11, minW: 4, minH: 6 },
@@ -135,7 +136,7 @@ export const DASHBOARD_WIDGETS: WidgetDefinition[] = [
     label:       'Pending Calls',
     description: 'Open Gia follow-up calls on your plate. Live count — the date filter never applies.',
     roles:       ['agent'],
-    domains:     '*',
+    domains:     [...GIA_DOMAINS],
     defaultSize: 'sm',
     colSpan:     1,
     defaultGrid: { w: 2, h: 2, minW: 2, minH: 2 },
@@ -146,7 +147,7 @@ export const DASHBOARD_WIDGETS: WidgetDefinition[] = [
     label:       'New Leads',
     description: 'Your leads still at New, waiting for a first call. Live count — the date filter never applies.',
     roles:       ['agent'],
-    domains:     '*',
+    domains:     [...GIA_DOMAINS],
     defaultSize: 'sm',
     colSpan:     1,
     defaultGrid: { w: 2, h: 2, minW: 2, minH: 2 },
@@ -156,7 +157,7 @@ export const DASHBOARD_WIDGETS: WidgetDefinition[] = [
     id:          'elaya-presence',
     label:       'Elaya',
     description: 'Elaya’s seat on your dashboard — greeting now, the full Elaya layer arrives here.',
-    roles:       ['agent'],
+    roles:       ['agent', 'manager', 'admin', 'founder'],
     domains:     '*',
     defaultSize: 'md',
     colSpan:     1,
@@ -168,7 +169,7 @@ export const DASHBOARD_WIDGETS: WidgetDefinition[] = [
     label:       'Lead Pipeline',
     description: 'Lead counts by status across your domain, broken down by agent.',
     roles:       ['manager', 'admin', 'founder'],
-    domains:     '*',
+    domains:     [...GIA_DOMAINS],
     defaultSize: 'lg',
     colSpan:     1,
     defaultGrid: { w: 6, h: 11, minW: 4, minH: 7 },
@@ -179,7 +180,7 @@ export const DASHBOARD_WIDGETS: WidgetDefinition[] = [
     label:       'Lead Volume',
     description: 'Incoming leads over time — today, this week, this month, or this quarter.',
     roles:       ['manager', 'admin', 'founder'],
-    domains:     '*',
+    domains:     [...GIA_DOMAINS],
     defaultSize: 'lg',
     colSpan:     1,
     defaultGrid: { w: 6, h: 11, minW: 4, minH: 7 },
@@ -190,7 +191,7 @@ export const DASHBOARD_WIDGETS: WidgetDefinition[] = [
     label:       'Campaign Performance',
     description: 'Leads per campaign, broken down by status mix.',
     roles:       ['manager', 'admin', 'founder'],
-    domains:     '*',
+    domains:     [...GIA_DOMAINS],
     defaultSize: 'xl',
     colSpan:     2,
     defaultGrid: { w: 12, h: 11, minW: 6, minH: 7 },
@@ -202,7 +203,7 @@ export const DASHBOARD_WIDGETS: WidgetDefinition[] = [
     label:       'Going Cold',
     description: 'Leads with no activity in the last 5 days.',
     roles:       ['manager', 'admin', 'founder'],
-    domains:     '*',
+    domains:     [...GIA_DOMAINS],
     defaultSize: 'sm',
     colSpan:     1,
     // Snapshot count — same compact 2×2 footprint as Pending Calls / New Leads.
@@ -219,7 +220,7 @@ export const DASHBOARD_WIDGETS: WidgetDefinition[] = [
     // because recharges carry no domain — the widget switches on the payload's
     // scope flag, and the action pins the manager's domain server-side).
     roles:       ['manager', 'admin', 'founder'],
-    domains:     '*',
+    domains:     [...GIA_DOMAINS],
     defaultSize: 'md',
     colSpan:     2,
     // The fuel gauge needs room to breathe (hero number + tank + stat trio +
@@ -287,6 +288,30 @@ export const DEFAULT_GRID_BY_ROLE: Record<UserRole, GridPlacement[]> = {
 // as of 2026-07-10; a manager's gauge is domain-scoped spend, not the org tank).
 // Agent first screen: tasks left / Elaya right, the two live snapshot counts,
 // then the tall activity feed.
+/** May this widget sit on a dashboard of this role in this domain? Admin and founder are org-wide;
+ *  everyone else sees only widgets whose `domains` cover their own domain ('*' = every domain). */
+export function widgetAllowedFor(def: WidgetDefinition, role: UserRole, domain: AppDomain): boolean {
+  if (!def.roles.includes(role)) return false;
+  if (role === 'admin' || role === 'founder') return true;
+  return def.domains === '*' || def.domains.includes(domain);
+}
+
+/** The first screen of a domain the Gia widgets do not serve (the concierge floor, finance, tech):
+ *  tasks left, Elaya right. The queendom widgets land here when they are built (2026-09-25). */
+export const NON_GIA_GRID: GridPlacement[] = [
+  { widgetId: 'agent-tasks',    x: 0, y: 0, w: 6, h: 9  },
+  { widgetId: 'elaya-presence', x: 6, y: 0, w: 6, h: 11 },
+];
+
+/** THE default grid for a person: the role's grid, cut to the widgets their domain may hold; a
+ *  domain with none of the Gia widgets gets NON_GIA_GRID. Admin and founder keep the whole grid. */
+export function defaultGridFor(role: UserRole, domain: AppDomain): GridPlacement[] {
+  const base = DEFAULT_GRID_BY_ROLE[role] ?? [];
+  if (role === 'admin' || role === 'founder') return base.map((p) => ({ ...p }));
+  if ((GIA_DOMAINS as readonly string[]).includes(domain)) return base.map((p) => ({ ...p }));
+  return NON_GIA_GRID.filter((p) => WIDGET_MAP[p.widgetId]?.roles.includes(role)).map((p) => ({ ...p }));
+}
+
 export const DEFAULT_LAYOUT_BY_ROLE: Record<UserRole, string[]> = {
   founder: [
     'agent-tasks',

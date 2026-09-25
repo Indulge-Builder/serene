@@ -7,8 +7,8 @@ import { usePortalAnchor } from '@/hooks/usePortalAnchor';
 import { FloatingPanel } from '@/components/ui/FloatingPanel';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useMediaQuery, MQ } from '@/hooks/useMediaQuery';
-import { DASHBOARD_WIDGETS } from '@/lib/constants/dashboard-widgets';
-import type { UserRole } from '@/lib/types/database';
+import { DASHBOARD_WIDGETS, widgetAllowedFor } from '@/lib/constants/dashboard-widgets';
+import type { AppDomain, UserRole } from '@/lib/types/database';
 
 /**
  * Edit-mode "Add widget" control — the counterpart to the per-widget remove ×.
@@ -21,10 +21,12 @@ import type { UserRole } from '@/lib/types/database';
  */
 export function AddWidgetMenu({
   role,
+  domain,
   placedIds,
   onAdd,
 }: {
   role: UserRole;
+  domain: AppDomain;
   placedIds: Set<string>;
   onAdd: (widgetId: string) => void;
 }) {
@@ -33,7 +35,7 @@ export function AddWidgetMenu({
 
   // Widgets this role can see that aren't on the canvas right now = the removed set.
   const available = DASHBOARD_WIDGETS.filter(
-    (w) => w.roles.includes(role) && !placedIds.has(w.id),
+    (w) => widgetAllowedFor(w, role, domain) && !placedIds.has(w.id),
   );
 
   return (

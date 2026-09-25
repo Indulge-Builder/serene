@@ -1,6 +1,7 @@
 'use client';
 
 import { Button } from '@/components/ui/Button';
+import { GIA_DOMAINS } from '@/lib/constants/domains';
 import { Suspense, useState, useCallback, useMemo } from 'react';
 import { Await } from '@/components/ui/Await';
 import { DashboardGridSkeleton } from './DashboardGridSkeleton';
@@ -64,7 +65,7 @@ export function DashboardCanvas({
 }: DashboardCanvasProps) {
   const isPrivileged = role === 'admin' || role === 'founder';
   const { layout, isHydrated, applyLayout, addWidget, removeWidget, resetToDefaults } =
-    useDashboardLayout(userId, role);
+    useDashboardLayout(userId, role, domain);
   const [editMode, setEditMode] = useState(false);
   const isMobile = useMediaQuery(MQ.mobile);
   const [activeBp, setActiveBp] = useState<'lg' | 'xs'>('lg');
@@ -157,7 +158,9 @@ export function DashboardCanvas({
 
         <div className="flex flex-nowrap shrink-0 items-center justify-end gap-2">
           {/* Global date filter — only shown to manager/admin/founder roles */}
-          {(role === 'manager' || role === 'admin' || role === 'founder') && (
+          {/* The date filter drives the Gia cohort widgets: shown where those widgets can exist
+              (admin/founder anywhere, a manager of a Gia domain), not on a concierge dashboard. */}
+          {(isPrivileged || (role === 'manager' && (GIA_DOMAINS as readonly string[]).includes(domain))) && (
             <DashboardDateFilter
               activePreset={activePreset}
               fromParam={fromParam}
@@ -175,7 +178,7 @@ export function DashboardCanvas({
           )}
 
           {editMode && (
-            <AddWidgetMenu role={role} placedIds={placedIds} onAdd={addWidget} />
+            <AddWidgetMenu role={role} domain={domain} placedIds={placedIds} onAdd={addWidget} />
           )}
 
           {editMode && (

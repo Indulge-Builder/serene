@@ -4,11 +4,12 @@ import { useState, useCallback, useEffect } from 'react';
 import {
   WIDGET_MAP,
   isValidWidgetId,
-  DEFAULT_GRID_BY_ROLE,
+  defaultGridFor,
+  widgetAllowedFor,
   GRID_COLS,
   type GridPlacement,
 } from '@/lib/constants/dashboard-widgets';
-import type { UserRole } from '@/lib/types/database';
+import type { AppDomain, UserRole } from '@/lib/types/database';
 
 const STORAGE_KEY_PREFIX = 'serene:dashboard:layout';
 // v5 — 2026-06-24 the Campaign Budget widget became the fuel gauge and grew from
@@ -32,19 +33,19 @@ function storageKey(userId: string): string {
   return `${STORAGE_KEY_PREFIX}:${userId}:${STORAGE_VERSION}`;
 }
 
-function getDefaults(role: UserRole): StoredLayout {
-  // Clone so callers can never mutate the shared default array.
-  const placements = (DEFAULT_GRID_BY_ROLE[role] ?? []).map((p) => ({ ...p }));
-  return { placements };
+function getDefaults(role: UserRole, domain: AppDomain): StoredLayout {
+  // defaultGridFor clones, so callers can never mutate the shared default array.
+  return { placements: defaultGridFor(role, domain) };
 }
 
-// Validate a stored layout against the registry + the caller's role.
-// Unrecognised / role-forbidden / malformed placements are silently dropped.
-function sanitizeStored(raw: unknown, role: UserRole): StoredLayout {
-  if (!raw || typeof raw !== 'object') return getDefaults(role);
+// Validate a stored layout against the registry + the caller's role AND domain (a concierge
+// manager's stored Gia widgets are dropped, 2026-09-25). Unrecognised / forbidden / malformed
+// placements are silently dropped.
+function sanitizeStored(raw: unknown, role: UserRole, domain: AppDomain): StoredLayout {
+  if (!raw || typeof raw !== 'object') return getDefaults(role, domain);
 
   const obj = raw as Record<string, unknown>;
-  if (!Array.isArray(obj.placements)) return getDefaults(role);
+  if (!Array.isArray(obj.placements)) return getDefaults(role, domain);
 
   const seen = new Set<string>();
   const placements: WidgetPlacement[] = (obj.placements as unknown[])
@@ -53,7 +54,7 @@ function sanitizeStored(raw: unknown, role: UserRole): StoredLayout {
       (p) =>
         typeof p.widgetId === 'string' &&
         isValidWidgetId(p.widgetId) &&
-        WIDGET_MAP[p.widgetId].roles.includes(role),
+        widgetAllowedFor(WIDGET_MAP[p.widgetId], role, domain),
     )
     .map((p) => {
       const def = WIDGET_MAP[p.widgetId as string];
@@ -70,8 +71,8 @@ function sanitizeStored(raw: unknown, role: UserRole): StoredLayout {
     .filter((p) => (seen.has(p.widgetId) ? false : (seen.add(p.widgetId), true)));
 
   // An empty result from a non-empty default role → fall back to defaults.
-  if (placements.length === 0 && (DEFAULT_GRID_BY_ROLE[role] ?? []).length > 0) {
-    return getDefaults(role);
+  if (placements.length === 0 && defaultGridFor(role, domain).length > 0) {
+    return getDefaults(role, domain);
   }
   return { placements };
 }
@@ -84,13 +85,13 @@ function clampInt(v: unknown, min: number, max: number, fallback: number): numbe
   return Math.min(Math.max(n, min), Math.max(min, max));
 }
 
-function readFromStorage(userId: string, role: UserRole): StoredLayout {
+function readFromStorage(userId: string, role: UserRole, domain: AppDomain): StoredLayout {
   try {
     const raw = localStorage.getItem(storageKey(userId));
-    if (!raw) return getDefaults(role);
-    return sanitizeStored(JSON.parse(raw), role);
+    if (!raw) return getDefaults(role, domain);
+    return sanitizeStored(JSON.parse(raw), role, domain);
   } catch {
-    return getDefaults(role);
+    return getDefaults(role, domain);
   }
 }
 
@@ -112,21 +113,21 @@ export type UseDashboardLayoutReturn = {
   resetToDefaults: () => void;
 };
 
-export function useDashboardLayout(userId: string, role: UserRole): UseDashboardLayoutReturn {
-  const [stored, setStored] = useState<StoredLayout>(() => getDefaults(role));
+export function useDashboardLayout(userId: string, role: UserRole, domain: AppDomain): UseDashboardLayoutReturn {
+  const [stored, setStored] = useState<StoredLayout>(() => getDefaults(role, domain));
   const [isHydrated, setIsHydrated] = useState(false);
 
   // Hydrate from localStorage after mount — prevents SSR layout mismatch.
   // Only calls setStored when the persisted layout actually differs from the
   // default already initialised synchronously, keeping the widget subtree alive.
   useEffect(() => {
-    const persisted = readFromStorage(userId, role);
+    const persisted = readFromStorage(userId, role, domain);
     const persistedJson = JSON.stringify(persisted);
     setStored((current) =>
       persistedJson !== JSON.stringify(current) ? persisted : current,
     );
     setIsHydrated(true);
-  }, [userId, role]);
+  }, [userId, role, domain]);
 
   const persist = useCallback(
     (next: StoredLayout) => {
@@ -142,7 +143,7 @@ export function useDashboardLayout(userId: string, role: UserRole): UseDashboard
   const applyLayout = useCallback(
     (placements: WidgetPlacement[]) => {
       const valid = placements.filter(
-        (p) => isValidWidgetId(p.widgetId) && WIDGET_MAP[p.widgetId].roles.includes(role),
+        (p) => isValidWidgetId(p.widgetId) && widgetAllowedFor(WIDGET_MAP[p.widgetId], role, domain),
       );
       // Only persist if something actually changed (RGL fires on mount too).
       const sameLength = valid.length === stored.placements.length;
@@ -155,7 +156,7 @@ export function useDashboardLayout(userId: string, role: UserRole): UseDashboard
       if (unchanged) return;
       persist({ placements: valid });
     },
-    [stored, persist, role],
+    [stored, persist, role, domain],
   );
 
   const addWidget = useCallback(
@@ -184,8 +185,8 @@ export function useDashboardLayout(userId: string, role: UserRole): UseDashboard
   );
 
   const resetToDefaults = useCallback(() => {
-    persist(getDefaults(role));
-  }, [role, persist]);
+    persist(getDefaults(role, domain));
+  }, [role, domain, persist]);
 
   return {
     layout: stored.placements,

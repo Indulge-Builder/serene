@@ -60,9 +60,30 @@ _IST_MONTHS = [
 ]
 
 
+_SEAT_LABELS = {"queen": "Queen", "bishop": "Bishop", "genie": "Genie", "joker": "Joker"}
+
+
 def _scope_hint(principal) -> str:
     """Role-aware BEHAVIORAL hint — expectation-setting only; the tool layer
     enforces (the Node scopeHint, verbatim)."""
+    # A concierge seat (2026-09-25): one queendom, nothing else (persona.ts, verbatim).
+    if principal.domain == "concierge" and principal.role not in ("admin", "founder"):
+        if not getattr(principal, "sia_role", None) or not getattr(principal, "queendom_id", None):
+            return (
+                "Your reach: this user is on the concierge floor but has not been seated in a queendom yet, so they "
+                "see no members, no WhatsApp groups and no Freshdesk or Sia tickets until an admin seats them. Their "
+                "own tasks and notes, and the shared vendor list, are theirs. Say that plainly if they ask for anything "
+                "else; never guess."
+            )
+        seat = _SEAT_LABELS.get(principal.sia_role, "teammate")
+        return (
+            f"Your reach: this user is the {seat} of ONE queendom on the concierge floor. They see only that queendom: "
+            "its members, those members' WhatsApp groups, its Freshdesk tickets and its Sia tickets; vendors are shared "
+            "across the whole floor; tasks and notes are their own and their team's. They see nothing of another "
+            "queendom, no leads or deals, no company money, no database. A member or group you cannot find is outside "
+            'their queendom or does not exist: say "that is not in your queendom" plainly, never guess, and never name a '
+            "member or a group you did not get from a tool."
+        )
     if principal.role == "agent":
         return (
             "Your reach: this user is an agent. They can see and act on the leads assigned "

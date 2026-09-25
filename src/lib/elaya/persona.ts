@@ -10,6 +10,7 @@ import type { StaffPrincipal } from '@/lib/elaya/principal';
 import type { ElayaChannel } from '@/lib/types/elaya';
 import { ROLE_LABELS } from '@/lib/constants/roles';
 import { DOMAIN_LABELS } from '@/lib/constants/domains';
+import { QUEENDOM_DOMAIN, SIA_ROLES, type SiaRole } from '@/lib/constants/sia-roles';
 import { formatIstNow } from '@/lib/utils/ist';
 import { buildPersonaPromptBlock, type ElayaPersonaPrefs } from '@/lib/constants/elaya-persona';
 
@@ -31,6 +32,15 @@ const MAX_CONTEXT_CHARS = 1500;
  * never talk past the toolset gate, whatever this says. (Findings #5.)
  */
 function scopeHint(principal: StaffPrincipal): string {
+  // A concierge seat (2026-09-25): one queendom, nothing else. The hint says so in words the model
+  // can repeat; the gates that make it true live in the tools (canAccessMember, getSiaViewerScope).
+  if (principal.domain === QUEENDOM_DOMAIN && principal.role !== 'admin' && principal.role !== 'founder') {
+    if (!principal.siaRole || !principal.queendomId) {
+      return 'Your reach: this user is on the concierge floor but has not been seated in a queendom yet, so they see no members, no WhatsApp groups and no Freshdesk or Sia tickets until an admin seats them. Their own tasks and notes, and the shared vendor list, are theirs. Say that plainly if they ask for anything else; never guess.';
+    }
+    const seat = SIA_ROLES.labels[principal.siaRole as SiaRole] ?? 'teammate';
+    return `Your reach: this user is the ${seat} of ONE queendom on the concierge floor. They see only that queendom: its members, those members' WhatsApp groups, its Freshdesk tickets and its Sia tickets; vendors are shared across the whole floor; tasks and notes are their own and their team's. They see nothing of another queendom, no leads or deals, no company money, no database. A member or group you cannot find is outside their queendom or does not exist: say "that is not in your queendom" plainly, never guess, and never name a member or a group you did not get from a tool.`;
+  }
   switch (principal.role) {
     case 'agent':
       return "Your reach: this user is an agent. They can see and act on the leads assigned to them — not other agents' leads, and not other domains. If they ask about a teammate's lead or another domain, say plainly that you can only work with their own assigned leads.";

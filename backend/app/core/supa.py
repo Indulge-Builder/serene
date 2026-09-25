@@ -232,7 +232,7 @@ async def get_profile(user_id: str) -> dict[str, Any] | None:
     public.profiles (the Golden Rule / rule 09), never from a request payload."""
     return await select_one(
         "profiles",
-        {"select": "id, role, domain, full_name, is_active", "id": f"eq.{user_id}"},
+        {"select": "id, role, domain, full_name, is_active, sia_role, queendom_id", "id": f"eq.{user_id}"},
     )
 
 
