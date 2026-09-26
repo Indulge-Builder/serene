@@ -50,7 +50,13 @@ const SLUG_SAFE = /^[a-z0-9_ -]+$/;
 // ─────────────────────────────────────────────
 // Helpdesk: full library per domain (Redis 1hr → Supabase fallthrough)
 // ─────────────────────────────────────────────
-export async function getHelpdeskLibrary(domain: AppDomain): Promise<HelpdeskLibrary> {
+/** The three reads take an optional client: pages pass nothing (session, RLS `authenticated`); Elaya's
+ *  data seam passes the ADMIN client, because a sessionless caller (the Python brain's bridge, WhatsApp,
+ *  the MCP connector) reads as `anon`, sees nothing under the `TO authenticated` policy, and — for the
+ *  library — would then CACHE an empty envelope for an hour for everyone (2026-09-26 audit). */
+type IntelligenceClient = Awaited<ReturnType<typeof createClient>>;
+
+export async function getHelpdeskLibrary(domain: AppDomain, client?: IntelligenceClient): Promise<HelpdeskLibrary> {
   const key = REDIS_KEYS.helpdeskCases(domain);
   try {
     const cached = await redis.get<HelpdeskLibrary>(key);
@@ -59,7 +65,7 @@ export async function getHelpdeskLibrary(domain: AppDomain): Promise<HelpdeskLib
     /* Redis unavailable — fall through to DB */
   }
 
-  const supabase = await createClient();
+  const supabase = client ?? (await createClient());
   const [casesRes, hooksRes] = await Promise.all([
     giaDb(supabase)
       .from('service_cases')
@@ -106,6 +112,7 @@ export async function getCasesForLead(
   interests: string[],
   city: string | null,
   domain: AppDomain,
+  client?: IntelligenceClient,
 ): Promise<ServiceCase[]> {
   const safeInterests = interests.filter((i) => SLUG_SAFE.test(i));
   const citySlug = city?.trim().toLowerCase() ?? '';
@@ -113,7 +120,7 @@ export async function getCasesForLead(
 
   if (safeInterests.length === 0 && !hasCity) return [];
 
-  const supabase = await createClient();
+  const supabase = client ?? (await createClient());
   let query = giaDb(supabase)
     .from('service_cases')
     .select(CASE_COLUMNS)
@@ -148,11 +155,12 @@ export async function getHooksForCategories(
   categories: string[],
   domain: AppDomain,
   limit = 5,
+  client?: IntelligenceClient,
 ): Promise<ConversationHook[]> {
   const safe = categories.filter((c) => SLUG_SAFE.test(c));
   if (safe.length === 0) return [];
 
-  const supabase = await createClient();
+  const supabase = client ?? (await createClient());
   const { data, error } = await giaDb(supabase)
     .from('conversation_hooks')
     .select(HOOK_COLUMNS)

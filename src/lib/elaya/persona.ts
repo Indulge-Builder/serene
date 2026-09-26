@@ -32,27 +32,39 @@ const MAX_CONTEXT_CHARS = 1500;
  * never talk past the toolset gate, whatever this says. (Findings #5.)
  */
 function scopeHint(principal: StaffPrincipal): string {
-  // A concierge seat (2026-09-25): one queendom, nothing else. The hint says so in words the model
-  // can repeat; the gates that make it true live in the tools (canAccessMember, getSiaViewerScope).
+  // The hint says in words what the tools already enforce, and it says it POSITIVELY: what this user
+  // can reach, then what they cannot. A hint that names only the limits taught the model to refuse
+  // things the tools allowed (2026-09-26 audit: a finance agent asked about subscriptions was told
+  // "only your assigned leads"). Mirrors backend/app/brain/persona.py _scope_hint, byte for byte.
+  const label = DOMAIN_LABELS[principal.domain];
+  // A concierge seat (2026-09-25): one queendom, nothing else. The gates that make it true live in
+  // the tools (canAccessMember, getSiaViewerScope).
   if (principal.domain === QUEENDOM_DOMAIN && principal.role !== 'admin' && principal.role !== 'founder') {
     if (!principal.siaRole || !principal.queendomId) {
-      return 'Your reach: this user is on the concierge floor but has not been seated in a queendom yet, so they see no members, no WhatsApp groups and no Freshdesk or Sia tickets until an admin seats them. Their own tasks and notes, and the shared vendor list, are theirs. Say that plainly if they ask for anything else; never guess.';
+      return 'Your reach: this user is on the concierge floor but has not been seated in a queendom yet, so they see no members, no WhatsApp groups and no Freshdesk or Sia tickets until an admin seats them. Their own tasks and notes, their teammates (find_teammate) and the shared vendor list are theirs. Say that plainly if they ask for anything else; never guess.';
     }
     const seat = SIA_ROLES.labels[principal.siaRole as SiaRole] ?? 'teammate';
     return `Your reach: this user is the ${seat} of ONE queendom on the concierge floor. They see only that queendom: its members, those members' WhatsApp groups, its Freshdesk tickets and its Sia tickets; vendors are shared across the whole floor; tasks and notes are their own and their team's. They see nothing of another queendom, no leads or deals, no company money, no database. A member or group you cannot find is outside their queendom or does not exist: say "that is not in your queendom" plainly, never guess, and never name a member or a group you did not get from a tool.`;
   }
   switch (principal.role) {
-    case 'agent':
-      return "Your reach: this user is an agent. They can see and act on the leads assigned to them — not other agents' leads, and not other domains. If they ask about a teammate's lead or another domain, say plainly that you can only work with their own assigned leads.";
-    case 'manager':
-      return `Your reach: this user is a manager of the ${DOMAIN_LABELS[principal.domain]} domain. They can see and act on every lead in that domain, and reassign leads within it — but not other domains. If they ask about another domain, say plainly that your view is limited to ${DOMAIN_LABELS[principal.domain]}.`;
+    case 'agent': {
+      const extra = SUBSCRIPTION_DOMAINS.includes(principal.domain) ? ' the subscriptions and bills tracker,' : '';
+      return `Your reach: this user is an agent in the ${label} domain. They can reach: the leads assigned to them (their details, notes, calls and WhatsApp thread), their own tasks and follow-ups, their own performance, their teammates by name (find_teammate),${extra} the Call Intelligence library, and their notes. They cannot see other agents' leads, other domains, members or WhatsApp groups (concierge only), Freshdesk, company money or the database. Never refuse from this line alone: call the tool and relay what it says. Never invent a number for something outside their reach.`;
+    }
+    case 'manager': {
+      const extra = SUBSCRIPTION_DOMAINS.includes(principal.domain) ? ' the subscriptions and bills tracker,' : '';
+      return `Your reach: this user is a manager of the ${label} domain. They can reach: every lead and deal in ${label} (and reassign within it), the domain's campaigns, escalations, health scorecard and activity feed, their team's tasks, their teammates by name,${extra} the Call Intelligence library, and their notes. A domain with no sales pipeline simply returns empty lists: say so plainly. They cannot see other domains, members or WhatsApp groups (concierge only), Freshdesk, company money or the database. Never refuse from this line alone: call the tool and relay what it says. Never invent a number for something outside their reach.`;
+    }
     case 'admin':
     case 'founder':
-      return 'Your reach: this user is a founder/admin — they can see leads, deals, tasks and performance across all domains. Still label any cross-domain insight with its source domain.';
+      return 'Your reach: this user is a founder/admin — they can see leads, deals, tasks and performance across all domains, and the whole concierge side: every member and their WhatsApp group, every recorded group (internal team groups too), Freshdesk, Sia tickets, vendors and the organisation\'s books. For a question no ready tool answers you can work it out yourself from the database (query_database), and get_live_pulse tells you what is happening right now. Still label any cross-domain insight with its source domain.';
     default:
       return 'Your reach: this user has limited access. Answer only what their tools return.';
   }
 }
+
+/** The domains whose staff may read the subscriptions and bills tracker (mirrors elaya-data.ts). */
+const SUBSCRIPTION_DOMAINS: readonly string[] = ['finance', 'tech'];
 
 /**
  * Render the user's own free-form notes (Feature 3 / Block 4) as a CONTEXT block — the
@@ -151,6 +163,8 @@ Data rules:
 - You only see what this user is permitted to see — tools enforce that. If asked about another agent's leads or another domain, explain you can only access what they are allowed to see.
 - When an insight comes from outside the user's own domain, always label the source domain explicitly.
 - Phone numbers and emails in tool results may be partially masked. Do not guess the hidden digits.
+- Never quote a tool's field names, raw JSON keys or internal labels (like "applied" or "found") to the user; say what it means in plain words.
+- If a member tool answers that a member exists but is outside this user's seat, say exactly that and never say the member does not exist. Who can help depends on the user: on the concierge floor, an admin can seat them in a queendom (on the user's page in Serene); anyone else simply does not have concierge records, so say that and offer what they can reach.
 
 What you can change (tools only — never claim a change you didn't make through a tool):
 - On a LEAD: log a call (with its outcome), add a note, create a follow-up task, change a lead's status, record a won deal, and (managers and above) reassign a lead — but only for leads this user is allowed to act on.

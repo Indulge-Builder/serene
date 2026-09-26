@@ -131,6 +131,67 @@ staff, and the teach-elaya trigger over its back button. Nine shared changes cle
 
 ---
 
+## 2026-09-26 — Elaya for the whole company: the authorization audit, three sessionless reads fixed, a reach line that says what a person CAN do
+
+With 73 accounts across nine domains, the founder asked for two things at once: a genie in
+Anishqa's queendom must never get another queendom's or another department's data out of Elaya,
+whatever the prompt; and Elaya must not lose her power over the data a person IS allowed to see
+because the authorization story confused her into refusing or inventing.
+
+**How it was checked (evidence, not reading).** Eight temporary audit accounts made through the
+create-user core (a genie in Anishqa, an unseated concierge agent, an unseated concierge manager,
+a finance agent, a shop agent, a legacy manager, a business agent, a marketing agent), then two
+benches against production data: every relevant tool called directly through `executeTool` as each
+account (96 calls: another queendom's member by id and by name, its WhatsApp group, its Freshdesk
+ticket, its Sia ticket, another domain's lead, subscriptions, the activity feed, the founder tools),
+and 18 full turns through the live Python brain. Both transcripts are in the session scratchpad,
+never in the repo. The accounts are deleted at the end.
+
+**What held.** Every cross-queendom and cross-domain read was refused or empty at the tool layer,
+on both brains, with no name leaking: the genie could not see Sanika's member, group, ticket or
+Freshdesk ticket (a request for "Sanika's queendom" is pinned back to her own); no agent or manager
+holds the founder tools (books, database, pulse, budget); a shop agent saw nothing of a lead that is
+not theirs; finance saw subscriptions and nothing concierge. In the live turns Elaya said "outside
+your queendom" plainly and never denied a member existed, answered everything the tools allowed
+(tickets, Freshdesk counts, vendors, subscriptions, escalations, a task for the unseated account),
+and refused campaign numbers to a marketing agent without inventing any.
+
+**What was wrong, and is fixed.**
+
+- Three Elaya reads still used the session client, which has no user on the Python brain's
+  bridge, on WhatsApp and on the MCP connector: `list_tickets` and `get_ticket` resolved member,
+  assignee and queendom names through `nameMaps()` (every ticket came back as "Member" with no
+  assignee), and `get_helpdesk_content` read the Call Intelligence library as `anon`, which the
+  `TO authenticated` policy answers with nothing and which the library read then CACHED for an
+  hour for everyone. `tickets-service.ts` nameMaps and the three `intelligence-service.ts` reads now
+  take an optional client; `elaya-data.ts` passes the admin client (the channel-parity rule); pages
+  keep the session client.
+- The reach line in the prompt named only limits ("only your assigned leads"), and both brains had
+  drifted apart (Python's founder line was richer than Node's). Asked "what can you help me with", a
+  business agent was promised member pictures, WhatsApp groups and Freshdesk. `persona.ts`
+  scopeHint and `persona.py` _scope_hint are rewritten as one text, byte-identical (verified by
+  rendering both for all eight archetypes): what this role in this domain CAN reach first (leads
+  assigned, own tasks, teammates, the Call Intelligence library, subscriptions for finance and
+  tech, a manager's campaigns / escalations / health / activity), then what it cannot, then "never
+  refuse from this line alone: call the tool" and "never invent a number outside their reach".
+- Two persona rules added to both brains: never quote a tool's field names or JSON keys (she
+  wrote `applied:` to a genie), and the "member exists but outside your seat" line now depends on
+  who is asking (an admin can seat a concierge teammate; anyone else simply has no concierge
+  records).
+
+**Decisions surfaced, not changed.** `find_teammate` is a company directory (name, role, domain)
+for every staff account. A Gia agent asking about a lead that is not theirs is told whose lead it
+is within their own domain (the deliberate "ask a manager to reassign" hint). Vendor job titles
+still carry other queendoms' member names. Member finance stays visible to anyone who can see the
+member.
+
+**Speed.** Tool calls: p50 about 100 ms; the heavy reads 2 to 5 s (member 360, Sia group list,
+Freshdesk search, the vendor ranker with its intent read). Live turns: p50 about 9 s, one 50 s
+outlier where the marketing agent's question sent the model searching the catalog for a tool it
+does not hold; the new reach line names that limit up front.
+
+---
+
 ## 2026-09-26 — Create user: the real error at last, and the whole company onboarded from the roster
 
 The founder tried to create teammates on /admin/users/new and got "Something went wrong" every

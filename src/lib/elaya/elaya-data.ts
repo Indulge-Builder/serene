@@ -259,18 +259,19 @@ export function getHelpdeskCases(
   city: string | null,
   domain: Parameters<typeof getCasesForLead>[2],
 ): Promise<ServiceCase[]> {
-  return getCasesForLead(interests, city, domain);
+  // Admin client: the parity rule (a bridge / WhatsApp / MCP call has no session; anon sees nothing).
+  return getCasesForLead(interests, city, domain, createAdminClient());
 }
 
 export function getHelpdeskHooks(
   categories: string[],
   domain: Parameters<typeof getHooksForCategories>[1],
 ): Promise<ConversationHook[]> {
-  return getHooksForCategories(categories, domain);
+  return getHooksForCategories(categories, domain, 5, createAdminClient());
 }
 
 export function getHelpdeskFullLibrary(domain: Parameters<typeof getHelpdeskLibrary>[0]) {
-  return getHelpdeskLibrary(domain);
+  return getHelpdeskLibrary(domain, createAdminClient());
 }
 
 // ─────────────────────────────────────────────
@@ -756,7 +757,7 @@ export async function getMemberProfileFor(principal: StaffPrincipal, memberId: s
       membership_start: m.membership_start, membership_end: m.membership_end, queendom: d.queendom?.name ?? null,
       identity_status: m.identity_status, whatsapp_group: brief.group?.subject ?? null,
     },
-    team: { queen: d.team.queen?.full_name ?? null, bishop: d.team.bishop?.full_name ?? null, joker: d.team.joker?.full_name ?? null, genies: d.team.genies.map((g) => g.full_name) },
+    team: { queen: d.team.queen?.full_name ?? null, bishops: d.team.bishops.map((b) => b.full_name), joker: d.team.joker?.full_name ?? null, genies: d.team.genies.map((g) => g.full_name) },
     facts,
     facts_shown: shown.length,
     facts_total: d.facts.length,

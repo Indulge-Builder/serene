@@ -23,8 +23,11 @@ export function ticketsAdminDb() {
   return (createAdminClient() as unknown as SupabaseClient<TicketingDatabase, "sia">).schema("sia");
 }
 
-async function nameMaps(memberIds: string[], profileIds: string[]): Promise<{ members: Map<string, string>; profiles: Map<string, string>; queendoms: Map<string, string> }> {
-  const supabase = await createClient();
+// The page reads pass nothing (session client, RLS-scoped). Elaya's readers pass the ADMIN client:
+// they run on the Python brain's bridge and on WhatsApp, where there is no user session, and a
+// session read there returns nothing (2026-09-26 audit: every ticket came back as "Member", no assignee).
+async function nameMaps(memberIds: string[], profileIds: string[], client?: Awaited<ReturnType<typeof createClient>>): Promise<{ members: Map<string, string>; profiles: Map<string, string>; queendoms: Map<string, string> }> {
+  const supabase = client ?? (await createClient());
   const [c, p, q] = await Promise.all([
     memberIds.length ? memberDb(supabase).from("members").select("id, full_name").in("id", memberIds) : Promise.resolve({ data: [] }),
     profileIds.length ? supabase.from("profiles").select("id, full_name").in("id", profileIds) : Promise.resolve({ data: [] }),
@@ -256,7 +259,7 @@ export async function listTicketsForElaya(scope: { queendomId: string | null; as
   if (scope.search) { const t = searchToken(scope.search); if (t) q = q.or(`title.ilike.%${t}%,ticket_no.ilike.%${t}%`); }
   const { data } = await q.order("updated_at", { ascending: false }).limit(Math.min(scope.limit, 50));
   const rows = mapRows<TicketRow, TicketRow>(data, (r) => r);
-  const names = await nameMaps(rows.map((r) => r.member_id), rows.map((r) => r.assignee_id).filter((x): x is string => Boolean(x)));
+  const names = await nameMaps(rows.map((r) => r.member_id), rows.map((r) => r.assignee_id).filter((x): x is string => Boolean(x)), createAdminClient());
   return rows.map((r) => ({
     id: r.id, ticket_no: r.ticket_no, title: r.title, status: r.status, priority: r.priority, category: r.category, sub_category: r.sub_category,
     requested_for: r.requested_for, resolve_due_at: r.resolve_due_at, first_response_due_at: r.first_response_due_at, first_responded_at: r.first_responded_at,
@@ -277,7 +280,7 @@ export async function getTicketByRefForElaya(ref: string): Promise<{ ticket: Tic
   const t = data as TicketRow;
   const [{ data: ev }, names, policy] = await Promise.all([
     db.from("ticket_events").select("*").eq("ticket_id", t.id).order("created_at", { ascending: false }).limit(12),
-    nameMaps([t.member_id], t.assignee_id ? [t.assignee_id] : []),
+    nameMaps([t.member_id], t.assignee_id ? [t.assignee_id] : [], createAdminClient()),
     resolveSlaPolicy(t),
   ]);
   return { ticket: t, member_name: names.members.get(t.member_id) ?? "Member", assignee_name: t.assignee_id ? (names.profiles.get(t.assignee_id) ?? null) : null, events: mapRows<TicketEventRow, TicketEventRow>(ev, (r) => r).reverse(), policy };

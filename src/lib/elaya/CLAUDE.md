@@ -124,6 +124,13 @@ re-introduce a session dependency that blanks on WhatsApp; do not do it.
   `get_agent_roster_performance_for_elaya` — Q-13 revoked tier, service-role only). The ORIGINAL
   self-scoped functions are untouched (the in-app UI pages still call them). Shared mappers are
   extracted so the twin and the original never drift (R-01).
+- **The trap that keeps coming back (2026-09-26 audit):** a service helper that a read tool calls
+  INDIRECTLY can still be on the session client (`nameMaps()` in tickets-service, the three Call
+  Intelligence reads). On the Python brain's bridge, on WhatsApp and on the MCP connector there is
+  no user session, so such a read returns `anon`'s view: nothing, or worse, an empty envelope that a
+  cache then serves to everyone. Give the helper an optional client parameter (pages pass nothing)
+  and have `elaya-data.ts` pass `createAdminClient()`. A bench that calls `executeTool` from a
+  laptop (no request scope) finds these instantly: "cookies was called outside a request scope".
 - **Adding a new Elaya read:** add a function to `elaya-data.ts` (principal + filters → shaped
   result), reuse a principal-first service or add a `*ForElaya` twin; the tool calls it. Never let a
   tool reach a service directly.

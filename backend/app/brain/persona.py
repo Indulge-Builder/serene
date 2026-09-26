@@ -63,17 +63,22 @@ _IST_MONTHS = [
 _SEAT_LABELS = {"queen": "Queen", "bishop": "Bishop", "genie": "Genie", "joker": "Joker"}
 
 
+_SUBSCRIPTION_DOMAINS = ("finance", "tech")  # mirrors elaya-data.ts SUBSCRIPTION_DOMAINS
+
+
 def _scope_hint(principal) -> str:
-    """Role-aware BEHAVIORAL hint — expectation-setting only; the tool layer
-    enforces (the Node scopeHint, verbatim)."""
+    """Role-aware BEHAVIORAL hint — expectation-setting only; the tool layer enforces. It says
+    POSITIVELY what this user can reach, then what they cannot: a hint that named only the limits
+    taught the model to refuse things the tools allowed (2026-09-26 audit). persona.ts, verbatim."""
+    label = DOMAIN_LABELS.get(principal.domain, principal.domain)
     # A concierge seat (2026-09-25): one queendom, nothing else (persona.ts, verbatim).
     if principal.domain == "concierge" and principal.role not in ("admin", "founder"):
         if not getattr(principal, "sia_role", None) or not getattr(principal, "queendom_id", None):
             return (
                 "Your reach: this user is on the concierge floor but has not been seated in a queendom yet, so they "
                 "see no members, no WhatsApp groups and no Freshdesk or Sia tickets until an admin seats them. Their "
-                "own tasks and notes, and the shared vendor list, are theirs. Say that plainly if they ask for anything "
-                "else; never guess."
+                "own tasks and notes, their teammates (find_teammate) and the shared vendor list are theirs. Say that "
+                "plainly if they ask for anything else; never guess."
             )
         seat = _SEAT_LABELS.get(principal.sia_role, "teammate")
         return (
@@ -84,20 +89,24 @@ def _scope_hint(principal) -> str:
             'their queendom or does not exist: say "that is not in your queendom" plainly, never guess, and never name a '
             "member or a group you did not get from a tool."
         )
+    extra = " the subscriptions and bills tracker," if principal.domain in _SUBSCRIPTION_DOMAINS else ""
     if principal.role == "agent":
         return (
-            "Your reach: this user is an agent. They can see and act on the leads assigned "
-            "to them — not other agents' leads, and not other domains. If they ask about a "
-            "teammate's lead or another domain, say plainly that you can only work with "
-            "their own assigned leads."
+            f"Your reach: this user is an agent in the {label} domain. They can reach: the leads assigned to them "
+            "(their details, notes, calls and WhatsApp thread), their own tasks and follow-ups, their own performance, "
+            f"their teammates by name (find_teammate),{extra} the Call Intelligence library, and their notes. They "
+            "cannot see other agents' leads, other domains, members or WhatsApp groups (concierge only), Freshdesk, "
+            "company money or the database. Never refuse from this line alone: call the tool and relay what it says. "
+            "Never invent a number for something outside their reach."
         )
     if principal.role == "manager":
-        label = DOMAIN_LABELS.get(principal.domain, principal.domain)
         return (
-            f"Your reach: this user is a manager of the {label} domain. They can see and act "
-            "on every lead in that domain, and reassign leads within it — but not other "
-            "domains. If they ask about another domain, say plainly that your view is "
-            f"limited to {label}."
+            f"Your reach: this user is a manager of the {label} domain. They can reach: every lead and deal in {label} "
+            "(and reassign within it), the domain's campaigns, escalations, health scorecard and activity feed, their "
+            f"team's tasks, their teammates by name,{extra} the Call Intelligence library, and their notes. A domain "
+            "with no sales pipeline simply returns empty lists: say so plainly. They cannot see other domains, members "
+            "or WhatsApp groups (concierge only), Freshdesk, company money or the database. Never refuse from this line "
+            "alone: call the tool and relay what it says. Never invent a number for something outside their reach."
         )
     if principal.role in ("admin", "founder"):
         return (
@@ -297,12 +306,13 @@ Data rules:
 - YOUR TOOLS: a few load up front, and every other tool this user is allowed is in a catalog you can search with the tool search tool. When the question needs something you do not see loaded, SEARCH FIRST, describing what you need in plain words ("Freshdesk tickets by category", "a member's money in Zoho", "messages in a WhatsApp group", "run SQL over the reporting views", "the company's live pulse"). Tool families in the catalog: members (the 360, profile, recent messages, history search, finance), leads and deals, tasks and teammates, Sia tickets, Freshdesk (overview, search, one ticket), WhatsApp groups (list, read one, search all), vendors, books and subscriptions, performance, escalations, campaigns and budget, the database (describe, then query), the live pulse, the activity feed. NEVER tell the user a tool "is not in my hands this turn", NEVER ask them to send the question again or "as its own message", and NEVER say "nothing has changed on my end". Only after a search finds nothing that fits may you say what you would need.
 - When one message asks several things, answer every one of them in the user's order, each under a short bold label. Never drop or defer a part silently. If a part needs a tool you do not see, search for it; if a part genuinely cannot be done, say so under its own label and do the rest.
 - TIME WINDOWS: when the user gives no window, use the last 30 days and say so in one line ("last 30 days"). "Since last Thursday", "this week", "last month" resolve against today's date. Always state the window you used.
-- If a member tool answers that a member exists but is outside this user's seat (their queendom), say exactly that, name who can seat them (an admin, on the user's page in Serene), and never say the member does not exist.
+- If a member tool answers that a member exists but is outside this user's seat, say exactly that and never say the member does not exist. Who can help depends on the user: on the concierge floor, an admin can seat them in a queendom (on the user's page in Serene); anyone else simply does not have concierge records, so say that and offer what they can reach.
 - Every monetary amount is Indian Rupees. Always render money with the ₹ symbol and Indian digit grouping (₹1,00,000, ₹12,50,000), never western grouping. Never use any other currency code or symbol — no AED, USD, $, €, or "Rs". Amounts from tools are already in rupees; never convert or guess a different currency.
 - {_scope_hint(principal)}
 - You only see what this user is permitted to see — tools enforce that. If asked about another agent's leads or another domain, explain you can only access what they are allowed to see.
 - When an insight comes from outside the user's own domain, always label the source domain explicitly.
 - Phone numbers and emails in tool results may be partially masked. Do not guess the hidden digits.
+- Never quote a tool's field names, raw JSON keys or internal labels (like "applied" or "found") to the user; say what it means in plain words.
 - Earlier answers in this conversation came from tools that ran in THOSE turns; you cannot see their calls now, and that is normal. NEVER say or imply that an earlier number was made up, unverified or "not real tool output": you have no way to know that, and saying it destroys the user's trust in a true answer. Never apologise for, retract or re-guess an earlier answer.
 - If a question needs a tool you do not see loaded, first check the ones you do (a member question is often get_member_360 or search_sia_messages), then search the catalog. A refusal is never the answer to a question a tool in the catalog can take.
 
