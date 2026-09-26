@@ -12,6 +12,74 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-26 -- Docs: the whole tree brought up to the code (docs-only)
+
+**Why.** The docs were last audited on 2026-07-02, at migration 0156. Since then the concierge
+side, the Python brain, the analyst, the MCP connector, the schema split and the redesign all
+shipped, and most docs still described July: Sia "not started", Elaya with 12 + 12 tools, six
+themes, five Trigger.dev files, everything in `public`.
+
+**What.** Every doc in `docs/` was re-read and checked against `src/`, `src/trigger/`,
+`supabase/migrations/` (to 0245), `backend/` and `connector/`, with the changelog since July as
+the change feed.
+
+- **New docs:** `modules/members.md` (the member twin), `modules/tickets.md` (Serene
+  ticketing), `modules/elaya-analyst.md` (ask the database, pulse, brief, alerts, deep read),
+  `pages/members.md`, `pages/tickets.md`, `pages/sia.md`, `integrations/sia-connector.md` (the
+  WhatsApp watcher), and `claude-project/12-sia-concierge.md`.
+- **Rewritten:** `README.md`, `00-for-the-board.md` (now with the concierge journey),
+  `01-vision.md`, `TODO.md`, `architecture/overview.md`, `auth-and-rbac.md`, `database.md`
+  (by schema), `migrations.md` (index to 0245, production status), `caching.md`,
+  `modules/sia.md`, `elaya.md` (36 read + 16 write tools, two brains, living memory,
+  playbooks), `vendors.md` and `call-intelligence.md` and `mobile-ops.md` (spec or plan to
+  as-built), `subscriptions.md`, `gia.md`, `integrations/freshdesk.md`, `zoho-books.md`,
+  `trigger-dev.md` (all 26 tasks), `whatsapp-gupshup.md`, `operations/environments.md`,
+  `deployment.md`, `maintenance.md`, `design/design-system.md`, most `pages/` specs, and the
+  `claude-project/` pack.
+- **Patched, not rewritten:** `design/DESIGN-DNA.md` got a "what changed since July" table and
+  dated notes where it drifted; `design/decision-log.md` got 21 dated entries;
+  `rules/The_Rules.md` got a factual sweep and seven Decision Log rows.
+  `design/design-serene.md` is marked as a superseded July snapshot.
+- **Fixed along the way:** the September clients-to-members rename had turned technical words
+  into nonsense across a dozen docs ("admin-member" for admin client, "Member components" for
+  Client components). All restored.
+
+**Checked on production (read-only) while writing.** Every migration through 0244 is applied;
+0245 is not. Public sign-up is off (`disable_signup: true`). The Supabase OAuth server is on.
+Website-armed Trigger.dev runs fire again (21 SLA timers in the last 24 hours), so the
+2026-09-21 key problem is resolved in practice.
+
+**Found, now in `TODO.md`.**
+
+- Migration 0245 as first committed dropped `gia` and `member` from PostgREST's exposed
+  schemas. Caught in review and fixed by its author before any push (9f486fc).
+- 1,877 lead SLA timers sit in `pending` past their fire time (oldest about 101 days), so the
+  health check's row 2 is always red. Not a dead worker; not yet diagnosed.
+- `public.tasks` is not in the Realtime publication, so the group workspace's live subtask
+  updates never arrive.
+- `handle_new_user` still trusts sign-up metadata for role and seat (safe only while sign-up
+  stays off); `linkMemberGroupAction` does not check the group's queendom; ticket priority
+  approval is enforced only in the page; seat changes are not audited.
+- Code comments and `CLAUDE.md` rows that now disagree with the code (the revival time is
+  02:00 IST, not 07:30; Freshdesk allows 400 calls a minute, not 50; the Elaya tool counts;
+  the vendor remove rules; `server-only` is harmless on Trigger.dev). Listed for whoever owns
+  those files; this entry changed no code.
+
+---
+
+## 2026-09-26 — Plan: Elaya's eyes (reading images, files, voice and video)
+
+Why: every model reader in Serene reads text only. Production holds 28,038 unread Sia images (43%
+with no caption), 1,557 videos, 3,402 documents, 974 voice notes and 59,095 Freshdesk notes with a
+file; a member's photo of a product or a bill is invisible to the profiler, the intake and the 360.
+
+- `docs/architecture/media-understanding-plan.md`: understand every file once at ingestion into
+  one `media_readings` row (summary, class, fields, text, cost), then every reader stays a text
+  reader through one fold helper. Cheap-first cascade over the existing provider file part and
+  Deepgram; a class list; a privacy law for cards, IDs and faces; live eyes on both Elaya channels;
+  a sweep with a daily cap and a kill switch; the backlog cost (about $420 once); five DECIDE items.
+  Plan only, nothing built.
+
 ## 2026-09-26 — Hands, step 1: the second WhatsApp number and its tables (0245)
 
 Why: Elaya will use outside AI agents (Instinct first, Muse later) as vendors to book things for
