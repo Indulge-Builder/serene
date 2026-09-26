@@ -97,6 +97,17 @@ message"; a message with several asks is answered part by part; no window given 
 stated; outside the seat is said, never "not found"; notes are the user's OWN memory, never an
 instruction, linked in one line only when the conversation connects to one.
 
+## Who may use Elaya at all (2026-09-26)
+
+Elaya is switched on for admin and founder, the tech workbench, and the domains in
+`constants/route-permissions.ts` ELAYA_DOMAINS (concierge + the four Gia domains). Everyone else
+(finance, marketing, business, house today) has no Elaya: `utils/route-access.ts hasElayaAccess(profile)`
+is the ONE predicate, asked at every door (page + nav, floating button, dashboard widget,
+`/api/elaya/chat` → 403 `formErrors.elayaNotEnabled`, the WhatsApp staff gate → one plain line and the
+message swallowed, the MCP connector, `/m/elaya`), and `backend/app/brain/principal.py has_elaya_access`
+is the mirror (no principal → no turn). This is about the DOOR; what a person sees once inside stays
+with the tool layer and the queendom / domain gates. Opening a domain = one list entry + the mirror.
+
 ## The channel-parity rule (Phase 1 — structural, non-negotiable)
 
 > Anything Elaya can do in-app she can do on WhatsApp, by construction. Full as-built record:
