@@ -167,7 +167,7 @@ GRANT ALL ON ALL SEQUENCES IN SCHEMA hands TO service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA hands GRANT ALL ON TABLES    TO service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA hands GRANT ALL ON SEQUENCES TO service_role;
 
-ALTER ROLE authenticator SET pgrst.db_schemas = 'public, graphql_public, sia, freshdesk, hands';
+ALTER ROLE authenticator SET pgrst.db_schemas = 'public, graphql_public, sia, freshdesk, gia, member, hands';
 NOTIFY pgrst, 'reload config';
 NOTIFY pgrst, 'reload schema';
 
