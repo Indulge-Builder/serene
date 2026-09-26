@@ -10,6 +10,7 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { resolveStaffPrincipal, type StaffPrincipal } from '@/lib/elaya/principal';
 import { getMcpAudience } from '@/lib/services/llm-providers-service';
+import { hasElayaAccess } from '@/lib/utils/route-access';
 import type { Profile } from '@/lib/types';
 
 export type McpIdentity = {
@@ -52,6 +53,7 @@ export async function verifyMcpBearer(token: string): Promise<McpIdentity | null
   return {
     principal: resolveStaffPrincipal(profile),
     clientId: readClientId(token),
-    allowed: audience.includes(profile.role),
+    // The role must be in the audience AND the person's team must have Elaya at all (ELAYA_DOMAINS).
+    allowed: audience.includes(profile.role) && hasElayaAccess(profile),
   };
 }

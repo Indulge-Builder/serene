@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { getMobileRooms } from '@/lib/constants/mobile-rooms';
 import { useMobileSession } from './MobileSessionProvider';
+import { hasElayaAccess } from '@/lib/utils/route-access';
 
 /**
  * The bottom tab bar (design_handoff_mobile_system §Navigation).
@@ -57,7 +58,8 @@ function TabCell({ href, label, icon: Icon, active, onPick }: {
 
 export function MobileTabBar() {
   const pathname = usePathname();
-  const { role } = useMobileSession();
+  const { role, domain } = useMobileSession();
+  const elayaOn = hasElayaAccess({ role, domain });
   const TABS = getMobileRooms(role);
   // The tile moves on the TAP (2026-09-25), not when the server answers: a
   // room waits on its data, and until this the bar looked dead for that wait.
@@ -82,7 +84,7 @@ export function MobileTabBar() {
         {TABS.slice(0, 2).map((t) => (
           <TabCell key={t.key} href={t.href} label={t.label} icon={t.icon} active={isActive(t.href)} onPick={setPending} />
         ))}
-        <Link
+        {elayaOn && <Link
           href="/m/elaya"
           aria-label="Elaya"
           className="neu-m-touch-knob shrink-0 -mt-5 w-[52px] h-[52px] rounded-full border border-(--neu-accent-btn-edge) flex items-center justify-center text-[17px] text-(--neu-accent-fg)"
@@ -93,7 +95,7 @@ export function MobileTabBar() {
           }}
         >
           ✦
-        </Link>
+        </Link>}
         {TABS.slice(2).map((t) => (
           <TabCell key={t.key} href={t.href} label={t.label} icon={t.icon} active={isActive(t.href)} onPick={setPending} />
         ))}

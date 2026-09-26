@@ -12,6 +12,7 @@ import { AppBootScreen } from "@/components/layout/AppBootScreen";
 import { ToastProvider } from "@/components/ui/toast-provider";
 import { CommandPaletteProvider } from "@/components/layout/CommandPaletteProvider";
 import { ElayaWidget } from "@/components/elaya/ElayaWidget";
+import { hasElayaAccess } from "@/lib/utils/route-access";
 import { UsagePresence } from "@/components/layout/UsagePresence";
 import { SuggestionFeedbackProvider } from "@/components/suggestions/SuggestionFeedbackProvider";
 import { NotificationsProvider } from "@/components/layout/NotificationsProvider";
@@ -79,7 +80,7 @@ export default async function DashboardLayout({
       {/* Floating Elaya presence — bottom-right circular button → modal with the
           SAME ElayaChatShell as /elaya (it portals to document.body and hides
           itself on /elaya, so it's safe to mount once for every dashboard route). */}
-      <ElayaWidget />
+      {hasElayaAccess(profile) && <ElayaWidget />}
 
       {/* Active-time heartbeat (adoption tracking) — renders nothing; beats
           every 60s ONLY while the tab is visible AND recently interacted with.

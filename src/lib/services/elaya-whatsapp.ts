@@ -34,6 +34,7 @@ import {
   getActiveProfileByPhone,
   getActiveStaffFirstNames,
 } from '@/lib/services/profiles-service';
+import { hasElayaAccess } from '@/lib/utils/route-access';
 import { resolveLeadByPhone } from '@/lib/services/whatsapp-ingestion';
 import { sendElayaWhatsAppReply } from '@/lib/services/whatsapp-api';
 import { transcribeAudio } from '@/lib/services/transcription-service';
@@ -84,6 +85,10 @@ const REPLY_CAP_REACHED =
 const REPLY_UNAVAILABLE =
   'I could not reach my brain just now, so I cannot answer yet. Your message is saved: try again in a minute, and tell the tech team if it keeps happening.';
 const REPLY_EMPTY = 'I don’t have an answer for that one — try rephrasing?';
+// A staff number from a team Elaya is not switched on for (route-permissions.ts ELAYA_DOMAINS): one
+// plain line, and the message is still SWALLOWED here (return true) so it can never become a lead.
+const REPLY_NOT_ENABLED =
+  'Hi! Elaya is not switched on for your team yet. Your message has not gone anywhere; the tech team will let you know when she is.';
 const REPLY_WORKING = 'On it. This one needs a proper look, give me a minute.';
 
 /**
@@ -103,6 +108,11 @@ export async function tryHandleElayaWhatsAppMessage(
 
   const profile = await getActiveProfileByPhone(normalizedPhone);
   if (!profile) return false;
+
+  if (!hasElayaAccess(profile)) {
+    await sendElayaWhatsAppReply(normalizedPhone, REPLY_NOT_ENABLED, profile.id);
+    return true;
+  }
 
   try {
     await handleStaffMessage(profile, normalizedPhone, message);

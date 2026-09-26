@@ -1,6 +1,8 @@
 import type { UserRole, AppDomain } from '@/lib/types/database';
 import {
   ALWAYS_ALLOWED_PREFIXES,
+  ELAYA_DOMAINS,
+  ELAYA_ROUTE_PREFIX,
   DOMAIN_NAV_HIDDEN,
   DOMAIN_ROUTE_MAP,
   FOUNDER_NAV_PREFIXES,
@@ -12,6 +14,20 @@ type RouteProfile = { role: UserRole; domain: AppDomain };
 
 const startsWithAny = (pathname: string, prefixes: readonly string[]): boolean =>
   prefixes.some((prefix) => pathname.startsWith(prefix));
+
+/**
+ * THE "may this person use Elaya at all" predicate (2026-09-26): admin and founder, the tech workbench,
+ * and every domain in ELAYA_DOMAINS. Pure and client-safe; every Elaya door asks it (the page and nav,
+ * the floating button, the dashboard widget, /api/elaya/chat, the WhatsApp staff gate, the MCP
+ * connector). backend/app/brain/principal.py applies the same rule. It says nothing about WHAT the
+ * person sees inside: that stays with the tool layer and the queendom / domain gates.
+ */
+export function hasElayaAccess(profile: RouteProfile): boolean {
+  if (profile.role === 'admin' || profile.role === 'founder') return true;
+  if (profile.role === 'guest') return false;
+  if (isWorkbenchProfile(profile)) return true;
+  return ELAYA_DOMAINS.includes(profile.domain);
+}
 
 /** True for a member of a workbench domain (WORKBENCH_DOMAINS — tech, for now). */
 export function isWorkbenchProfile(profile: RouteProfile): boolean {
@@ -34,6 +50,9 @@ export function canAccessRoute(profile: RouteProfile, pathname: string): boolean
   if (profile.role === 'admin' || profile.role === 'founder') return true;
 
   if (isWorkbenchProfile(profile)) return !startsWithAny(pathname, WORKBENCH_BLOCKED_PREFIXES);
+
+  // Elaya is for the teams in ELAYA_DOMAINS (2026-09-26); the same predicate guards every other door.
+  if (pathname.startsWith(ELAYA_ROUTE_PREFIX)) return hasElayaAccess(profile);
 
   if (startsWithAny(pathname, ALWAYS_ALLOWED_PREFIXES)) return true;
 

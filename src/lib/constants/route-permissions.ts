@@ -4,12 +4,27 @@ import { GIA_DOMAINS } from '@/lib/constants/domains';
 /** Routes all authenticated users can always reach, regardless of domain. */
 // /helpdesk is the Call Intelligence library — visible to all roles/domains
 // by spec (docs/modules/call-intelligence.md §9); read-only, RLS-gated writes.
-// /elaya is Elaya's chat surface — all roles by spec (docs/modules/elaya.md);
-// what Elaya can ACCESS is enforced per-principal in the tool layer, not here.
+// /elaya left this list 2026-09-26: Elaya is for the teams whose data she holds (ELAYA_DOMAINS
+// below); canAccessRoute asks hasElayaAccess for it. What Elaya can ACCESS once inside is still
+// enforced per-principal in the tool layer, never here.
 // /notes is the per-user Notes section (all roles by spec, docs/modules/elaya.md —
 // Feature 3): a personal surface scoped to the owner by RLS, like /profile. Notes are
 // CONTEXT Elaya reads, never permission — so being able to reach the page grants nothing.
-export const ALWAYS_ALLOWED_PREFIXES: string[] = ['/dashboard', '/profile', '/helpdesk', '/elaya', '/notes'];
+export const ALWAYS_ALLOWED_PREFIXES: string[] = ['/dashboard', '/profile', '/helpdesk', '/notes'];
+
+/**
+ * ELAYA_DOMAINS — the teams Elaya is switched on for (the founder's call, 2026-09-26): the Gia sales
+ * domains (leads, deals, campaigns, escalations) and the concierge floor (members, groups, Freshdesk,
+ * Sia tickets, vendors). Finance, marketing, tech, business and house wait until they have their own
+ * tools and clean data: with only tasks and notes in reach, the model drifted toward promising things it
+ * could not do (the 2026-09-26 audit). Admin and founder always pass; so does the tech workbench.
+ * ONE list, read by every door: the /elaya page and nav (canAccessRoute), the floating button and the
+ * dashboard widget, the chat route, the WhatsApp staff gate, the MCP connector, and BOTH brains'
+ * principal resolvers (backend/app/brain/principal.py mirrors it). Opening a domain = one entry here
+ * + the Python mirror.
+ */
+export const ELAYA_DOMAINS: readonly AppDomain[] = ['concierge', ...GIA_DOMAINS];
+export const ELAYA_ROUTE_PREFIX = '/elaya';
 
 /**
  * The founder's sidebar (2026-09-16). VISIBILITY ONLY — the founder still bypasses

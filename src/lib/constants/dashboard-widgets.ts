@@ -3,6 +3,7 @@
 
 import type { UserRole, AppDomain } from '@/lib/types/database';
 import { GIA_DOMAINS } from '@/lib/constants/domains';
+import { ELAYA_DOMAINS } from '@/lib/constants/route-permissions';
 
 export type WidgetSize = 'sm' | 'md' | 'lg' | 'xl';
 
@@ -158,7 +159,8 @@ export const DASHBOARD_WIDGETS: WidgetDefinition[] = [
     label:       'Elaya',
     description: 'Elaya’s seat on your dashboard — greeting now, the full Elaya layer arrives here.',
     roles:       ['agent', 'manager', 'admin', 'founder'],
-    domains:     '*',
+    // The teams Elaya is switched on for (route-permissions.ts ELAYA_DOMAINS, 2026-09-26).
+    domains:     [...ELAYA_DOMAINS],
     defaultSize: 'md',
     colSpan:     1,
     defaultGrid: { w: 6, h: 11, minW: 4, minH: 8 },
@@ -309,7 +311,7 @@ export function defaultGridFor(role: UserRole, domain: AppDomain): GridPlacement
   const base = DEFAULT_GRID_BY_ROLE[role] ?? [];
   if (role === 'admin' || role === 'founder') return base.map((p) => ({ ...p }));
   if ((GIA_DOMAINS as readonly string[]).includes(domain)) return base.map((p) => ({ ...p }));
-  return NON_GIA_GRID.filter((p) => WIDGET_MAP[p.widgetId]?.roles.includes(role)).map((p) => ({ ...p }));
+  return NON_GIA_GRID.filter((p) => { const def = WIDGET_MAP[p.widgetId]; return def ? widgetAllowedFor(def, role, domain) : false; }).map((p) => ({ ...p }));
 }
 
 export const DEFAULT_LAYOUT_BY_ROLE: Record<UserRole, string[]> = {

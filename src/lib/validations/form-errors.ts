@@ -10,6 +10,7 @@ export const formErrors = {
   invalidCredentials:   "The email or password you entered is incorrect.",
   accountDeactivated:   "Your account has been deactivated. Please contact your administrator.",
   generic:              "Something went wrong. Please try again.",
+  elayaNotEnabled:      "Elaya is not switched on for your team yet.",
   rateLimited:          "Too many attempts. Please wait a moment before trying again.",
 
   // Password reset

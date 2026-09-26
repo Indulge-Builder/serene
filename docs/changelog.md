@@ -243,6 +243,31 @@ staff, and the teach-elaya trigger over its back button. Nine shared changes cle
 
 ---
 
+## 2026-09-26 — Elaya is for Gia and Sia teams only, for now (ELAYA_DOMAINS)
+
+The founder's call after the company-wide audit: the data that makes Elaya worth using is Gia's
+(leads, deals, campaigns, escalations) and Sia's (members, groups, Freshdesk, tickets, vendors).
+Finance, marketing, tech, business and house hold only tasks, notes and the subscriptions tracker,
+and with so little in reach the model drifted toward promising things it could not do. So Elaya is
+switched on for admin and founder, every Gia domain and the concierge floor, and for nobody else
+until their tools and clean data exist.
+
+**One list, every door.** `ELAYA_DOMAINS` in `constants/route-permissions.ts` (concierge + the Gia
+domains) and `hasElayaAccess(profile)` in `utils/route-access.ts` (admin/founder always, the tech
+workbench, then the list; guests never). The same predicate guards: the /elaya page and the nav
+(`canAccessRoute`; /elaya left ALWAYS_ALLOWED_PREFIXES), the floating Elaya button in the dashboard
+layout, the dashboard Elaya widget (its `domains` is the list; `defaultGridFor` now asks
+`widgetAllowedFor` for the non-Gia grid too), `/api/elaya/chat` (403 with the copy
+`formErrors.elayaNotEnabled`), the WhatsApp staff gate (one plain line back and the message is still
+swallowed, so a finance teammate texting Elaya can never become a lead), the MCP connector (`allowed`
+needs the role in the audience AND Elaya on for the team), the mobile Elaya knob and /m/elaya, and the
+Python brain's principal resolver (`has_elaya_access` in `backend/app/brain/principal.py`, the
+mirror: no principal, no turn, whichever channel reached it). Verified by rendering both predicates
+for twelve role/domain pairs: they agree on every one. Opening a domain later = one entry in the
+list + the Python mirror.
+
+---
+
 ## 2026-09-26 — Elaya for the whole company: the authorization audit, three sessionless reads fixed, a reach line that says what a person CAN do
 
 With 73 accounts across nine domains, the founder asked for two things at once: a genie in

@@ -16,6 +16,21 @@ from dataclasses import dataclass
 from app.core import supa
 from app.tools.registry import TOOLSET_BY_ROLE
 
+# The teams Elaya is switched on for (2026-09-26) — mirrors src/lib/constants/route-permissions.ts
+# ELAYA_DOMAINS: the Gia sales domains and the concierge floor. Admin and founder always pass, and so
+# does the tech workbench. A domain outside the list gets no principal, so no turn, whatever channel
+# reached this brain (Node refuses at its doors first; this is the second lock).
+ELAYA_DOMAINS = frozenset({"concierge", "onboarding", "house", "shop", "legacy"})
+_WORKBENCH_DOMAINS = frozenset({"tech"})
+
+
+def has_elaya_access(role: str, domain: str) -> bool:
+    if role in ("admin", "founder"):
+        return True
+    if role == "guest":
+        return False
+    return domain in _WORKBENCH_DOMAINS or domain in ELAYA_DOMAINS
+
 
 @dataclass(frozen=True)
 class StaffPrincipal:
@@ -37,6 +52,8 @@ async def resolve_staff_principal(user_id: str) -> StaffPrincipal | None:
     if profile is None or not profile.get("is_active", False):
         return None
     role = profile["role"]
+    if not has_elaya_access(role, profile["domain"]):
+        return None
     return StaffPrincipal(
         user_id=profile["id"],
         role=role,

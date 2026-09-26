@@ -14,6 +14,7 @@
 
 import { NextResponse } from 'next/server';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
+import { hasElayaAccess } from '@/lib/utils/route-access';
 import { resolveStaffPrincipal } from '@/lib/elaya/principal';
 import { runElayaTurn } from '@/lib/elaya/brain';
 import { learnFromTurn } from '@/lib/elaya/memory';
@@ -66,6 +67,10 @@ export async function POST(request: Request) {
   const profile = await getCurrentProfile();
   if (!profile || !profile.is_active) {
     return NextResponse.json({ error: formErrors.unauthorized }, { status: 401 });
+  }
+  // Elaya is for the teams in ELAYA_DOMAINS (2026-09-26): the same predicate as the page and the nav.
+  if (!hasElayaAccess(profile)) {
+    return NextResponse.json({ error: formErrors.elayaNotEnabled }, { status: 403 });
   }
 
   // Burst limit keyed on the VERIFIED profile id (not the spoofable x-forwarded-for):
