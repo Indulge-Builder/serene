@@ -11,6 +11,7 @@ import { toISTMidnight } from "@/lib/utils/ist";
 import { FD_GROUP_AGENT_WINDOW_DAYS, FD_STATUS_LABELS, FRESHDESK_LIST_PAGE_SIZE, FD_SYNC_KEYS, fdStatusLabel, fdComparable } from "@/lib/constants/freshdesk";
 import { freshdeskDb } from "@/lib/services/freshdesk-sync";
 import { signFreshdeskAttachments } from "@/lib/services/freshdesk-media";
+import { getReadingsForFreshdeskConversations } from "@/lib/services/media-readings-service";
 import type {
   FdAgentRow,
   FdContactRow,
@@ -215,9 +216,15 @@ export async function getFreshdeskTicketDetail(id: number): Promise<FdTicketDeta
   ]);
 
   // 0197: every stored file gets a one-hour signed link; the rows carry it as signed_url.
-  const conversations = await signFreshdeskAttachments(
+  const signedConversations = await signFreshdeskAttachments(
     mapRows<FdConversationRow, FdConversationRow>(convs.data, (r) => ({ ...r, attachments: Array.isArray(r.attachments) ? r.attachments : [] })),
   );
+  // 0246: what the eyes read in each file rides the attachment as reading_summary (the strip shows it under the file).
+  const readings = await getReadingsForFreshdeskConversations(signedConversations.filter((c) => c.attachments.length).map((c) => c.id));
+  const conversations = signedConversations.map((c) => ({
+    ...c,
+    attachments: c.attachments.map((a, i) => { const r = readings.get(`${c.id}:${i + 1}`); return r?.status === "done" && r.summary ? { ...a, reading_summary: r.summary } : a; }),
+  }));
   const [signedTicket] = await signFreshdeskAttachments([{ ...t, attachments: Array.isArray(t.attachments) ? t.attachments : [] }]);
   const userIds = Array.from(new Set(conversations.map((c) => c.user_id).filter((u): u is number => u != null)));
   const agentNames: Record<number, string> = {};

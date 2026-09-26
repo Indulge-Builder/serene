@@ -40,6 +40,9 @@ import type { Json } from "@/lib/types/database";
 
 const LOG = "[ticket-intake]";
 const sia = () => createAdminClient().schema("sia");
+// The 0246 view is not in the generated types until the next regen; one loose handle for it (the profiler's posture).
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const siaRead = (): { from: (t: string) => any } => sia() as unknown as { from: (t: string) => any };
 
 type Msg = { id: string; wa_message_id: string; sender_jid: string; text: string; wa_timestamp: string };
 type DueGroup = { group_jid: string; member_id: string; queendom_id: string | null; cursor_at: string; newest_at: string; fail_count: number | null };
@@ -306,10 +309,11 @@ export async function runIntakeSweep(opts: IntakeSweepOptions): Promise<{ groups
   const readGroup = async (g: DueGroup): Promise<void> => {
     if (stop || sent >= maxBursts || Date.now() >= deadline) return;
     const after = opts.since ?? g.cursor_at;
-    const cols = "id, wa_message_id, sender_jid, text, wa_timestamp";
+    // wag_messages_read (0246): a photo of a product with its reading IS a request; an unread file stays NULL and is skipped as before.
+    const cols = "id, wa_message_id, sender_jid, text:text_read, wa_timestamp";
     const [{ data: fresh, error: mErr }, { data: before }] = await Promise.all([
-      sia().from("wag_messages").select(cols).eq("chat_jid", g.group_jid).eq("is_revoked", false).not("text", "is", null).gt("wa_timestamp", after).order("wa_timestamp", { ascending: true }).limit(INTAKE_FETCH_LIMIT),
-      sia().from("wag_messages").select(cols).eq("chat_jid", g.group_jid).eq("is_revoked", false).not("text", "is", null).lte("wa_timestamp", after).order("wa_timestamp", { ascending: false }).limit(INTAKE_CONTEXT_MESSAGES),
+      siaRead().from("wag_messages_read").select(cols).eq("chat_jid", g.group_jid).eq("is_revoked", false).not("text_read", "is", null).gt("wa_timestamp", after).order("wa_timestamp", { ascending: true }).limit(INTAKE_FETCH_LIMIT),
+      siaRead().from("wag_messages_read").select(cols).eq("chat_jid", g.group_jid).eq("is_revoked", false).not("text_read", "is", null).lte("wa_timestamp", after).order("wa_timestamp", { ascending: false }).limit(INTAKE_CONTEXT_MESSAGES),
     ]);
     if (mErr) { console.warn(`${LOG} messages read failed`, g.group_jid, mErr.message); return; }
     const msgs = ((fresh ?? []) as Msg[]).filter((m) => m.text.trim().length > 0);

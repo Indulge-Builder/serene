@@ -280,6 +280,8 @@ export type FdAttachment = {
   store_error?: string;
   /** Filled by the read path: a one-hour signed link, never persisted. */
   signed_url?: string | null;
+  /** Filled by the read path (0246): what Serene read in the file, one line; never persisted here. */
+  reading_summary?: string | null;
 };
 
 export type FdApiTicket = {

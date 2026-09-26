@@ -29,6 +29,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { resolveLlmForJob } from '@/lib/elaya/registry';
+import { createRateGate as createSharedRateGate, isRateLimited, retryAfterMs } from '@/lib/elaya/rate-gate';
 import { maskPii } from '@/lib/elaya/pii';
 import { getPiiMaskingDepth, getDeepReadSpendCapUsd } from '@/lib/services/llm-providers-service';
 import { runElayaQuery, getElayaCatalog, ELAYA_EXPORT_MAX_ROWS } from '@/lib/services/elaya-query-service';
@@ -55,7 +56,6 @@ import {
 const LOG = '[elaya-deep-read]';
 const WA_PART_CHARS = 4000;
 const LETTERS = 'ABCDEFGHIJKLMNOP';
-const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 const inr = (usd: number) => `₹${Math.round(usd * DEEP_READ_USD_TO_INR).toLocaleString('en-IN')}`;
 const n = (x: number) => x.toLocaleString('en-IN');
 
@@ -313,51 +313,9 @@ function rowText(row: Row, plan: DeepReadPlan): string {
 }
 
 // ── The rate gate ────────────────────────────────────────────────────────────
-// The provider's "slow down" (429) or "overloaded" (529) pauses EVERY worker, not just the one that
-// heard it, for the provider's retry-after or a doubling pause; a good reply halves the pause back.
-// A rate limit never fails a batch on its own: the batch waits and asks again, up to
-// DEEP_READ_RATE_RETRIES times, inside the run's deadline. Live Elaya chats share the account, so
-// a job that keeps hammering would take the founders' own replies down with it.
-
-function createRateGate() {
-  let pausedUntil = 0;
-  let pauseMs = DEEP_READ_RATE_PAUSE_MS;
-  let hits = 0;
-  return {
-    async wait(deadline: number) {
-      const d = Math.min(pausedUntil, deadline) - Date.now();
-      if (d > 0) await sleep(d);
-    },
-    hit(retryAfterMs?: number) {
-      const ms = Math.max(retryAfterMs ?? 0, pauseMs);
-      pausedUntil = Math.max(pausedUntil, Date.now() + ms);
-      pauseMs = Math.min(pauseMs * 2, DEEP_READ_RATE_PAUSE_MAX_MS);
-      hits++;
-    },
-    ok() { pauseMs = Math.max(DEEP_READ_RATE_PAUSE_MS, Math.floor(pauseMs / 2)); },
-    get hits() { return hits; },
-  };
-}
-
-function errStatus(e: unknown): number | null {
-  const s = (e as { status?: unknown } | null)?.status;
-  return typeof s === 'number' ? s : null;
-}
-
-function isRateLimited(e: unknown): boolean {
-  const s = errStatus(e);
-  if (s === 429 || s === 529 || s === 503) return true;
-  return /rate.?limit|overloaded|too many requests/i.test(e instanceof Error ? e.message : String(e));
-}
-
-function retryAfterMs(e: unknown): number | undefined {
-  const h = (e as { headers?: unknown } | null)?.headers;
-  let v: unknown;
-  if (h && typeof (h as { get?: unknown }).get === 'function') v = (h as { get: (k: string) => string | null }).get('retry-after');
-  else if (h && typeof h === 'object') v = (h as Record<string, unknown>)['retry-after'];
-  const x = Number(v);
-  return Number.isFinite(x) && x > 0 ? x * 1000 : undefined;
-}
+// Shared with the media reader since 0246: lib/elaya/rate-gate.ts (one copy, R-04).
+const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
+const createRateGate = () => createSharedRateGate({ pauseMs: DEEP_READ_RATE_PAUSE_MS, pauseMaxMs: DEEP_READ_RATE_PAUSE_MAX_MS });
 
 // ── The judge ────────────────────────────────────────────────────────────────
 

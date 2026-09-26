@@ -12,7 +12,7 @@
 // text, footer time/markers → floating reaction chips on the bubble corner.
 
 import { m as motion } from "framer-motion";
-import { Ban, Forward, Pencil } from "lucide-react";
+import { Ban, Eye, Forward, Pencil } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { formatDate } from "@/lib/utils/dates";
@@ -278,6 +278,17 @@ export function SiaMessageBubble({
                     senderJid={m.sender_jid}
                     media={m.media}
                   />
+                  {m.reading?.status === "done" && m.reading.summary && (
+                    // What Serene read in the file (0246): one quiet line, the same words every text reader sees.
+                    <div
+                      className="type-caption flex items-start gap-1.5 mt-1"
+                      style={{ color: "var(--theme-text-tertiary)" }}
+                      title={m.reading.sensitive ? "Sensitive: described only, never transcribed" : "What Serene read in this file"}
+                    >
+                      <Eye className="w-3 h-3 shrink-0 mt-0.5" strokeWidth={1.5} />
+                      <span>{m.reading.summary}</span>
+                    </div>
+                  )}
                 </div>
               )}
 

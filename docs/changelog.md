@@ -96,6 +96,57 @@ Website-armed Trigger.dev runs fire again (21 SLA timers in the last 24 hours), 
 
 ---
 
+## 2026-09-27 — Elaya's eyes, steps 0 to 2: every stored image, PDF and voice note gets read once (0246)
+
+Why: no model reader in Serene ever looked at a file. The profiler, the intake, the ticket draft,
+the member 360 and the briefing filtered on "text is not null", so a member's photo of a product,
+a bill or a boarding pass was invisible, and 28,038 Sia images (43% without a caption), 3,402
+documents, 974 voice notes and 47,279 stored Freshdesk files sat unread. Plan:
+`docs/architecture/media-understanding-plan.md`.
+
+- **Migration 0246** (`20260927000246_media_readings.sql`): `public.media_readings`, one row per
+  stored file (source, path, kind, status, attempts, class, sensitive, summary, description,
+  extracted text, fields, cost, prompt version, context); RLS with admin/founder SELECT, service
+  role writes. `sia.wag_messages_read`: the fold in SQL, `text_read` = the caption plus the
+  reading line, or NULL until the file is read. `elaya_read.media_readings` for the analyst door
+  (summary, class, fields; never the words of a sensitive file). The queue in SQL:
+  `media_enqueue_sia` / `media_enqueue_freshdesk` (an anti-join, newest first), `media_claim`
+  (queued to reading, live lane or backlog, FOR UPDATE SKIP LOCKED), `media_release_stale`,
+  `media_redo_groups`. Settings rows `media_reading_enabled` (OFF), `media_reading_backlog_enabled`
+  (OFF), `media_reading_daily_cap_usd` (15). The private `elaya-turns` bucket for step 4.
+- **The reader** (`services/media-reader.ts`): one routing-tier call per image or PDF through
+  the provider's file part, answered in plain-text fields (CLASS / SENSITIVE / CONFIDENCE /
+  LANGUAGE / SUMMARY / DESCRIPTION / FIELDS / TEXT), never JSON. Voice notes go to Deepgram
+  through `transcribeAudio`, no model. The privacy law twice: the prompt says a card, an ID or a
+  statement is described and never transcribed, and the parser nulls the words again when it
+  finds a card, PAN, Aadhaar or passport shape. Phones and emails in kept text pass `maskPii`.
+  Video and office files are `skipped` with a reason (step 3).
+- **The service** (`services/media-readings-service.ts`): `runMediaSweep` (enqueue, then the
+  live lane with the whole daily cap, then the backlog up to 80% of it; four reads side by side
+  behind the shared rate gate; a second reasoning-tier read only for bills, bookings, itineraries,
+  forms and app screenshots under 0.6 confidence; attempts count, dead at 3), `runMediaRedo` (the
+  past: member conversations where an informative reading landed after the profiler passed are
+  re-read through `profileWindow`, same prompt, same vault, same dedup; readings marked
+  `reprofiled_at`), `getReadingsForSiaMessages` / `getReadingsForFreshdeskConversations`,
+  `foldReadingLine` (the Node twin of the view's CASE), `getMediaSpendToday`. Captions are masked
+  with the profiler's vault before the model sees them.
+- **The folds**: the profiler and the intake read `sia.wag_messages_read` (`text:text_read`), so
+  a read file is a message and an unread one is skipped exactly as before; Elaya's member
+  messages carry the reading line beside the caption (or "[image, not read yet]"); the Sia page
+  shows one quiet line with an eye under a read file; Freshdesk attachments carry
+  `reading_summary` (the strip shows it under an image, in a chip's tooltip) and Elaya's Freshdesk
+  ticket tool lists `file_readings` per note.
+- **Shared pieces** (R-04): the deep read's rate gate moved to `lib/elaya/rate-gate.ts` and is
+  used by both; the Sia S3 client moved to `services/sia-media-store.ts` (the Sia page and the
+  reader download through it). The profiler's Trigger.dev queue is named and shared with
+  `media-redo` so two readings of one member never race.
+- **Trigger.dev**: `media-reader` every 5 minutes (gated by the enabled row), `media-redo` at :07
+  and :37 on the profiler's queue. Settings getters in `llm-providers-service.ts`.
+
+Not applied, not switched on. Next: apply 0246, run the bench on 60 real files with the founder,
+switch the live lane on, then the backlog; step 3 (video frames), step 4 (live eyes on both
+channels and the paperclip), the settings panel, and the vendor extractor reading the table first.
+
 ## 2026-09-26 — Plan: Elaya's eyes (reading images, files, voice and video)
 
 Why: every model reader in Serene reads text only. Production holds 28,038 unread Sia images (43%

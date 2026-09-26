@@ -177,3 +177,36 @@ export async function getDeepReadSpendCapUsd(): Promise<number> {
     return DEEP_READ_SPEND_CAP_DEFAULT_USD;
   }
 }
+
+// ─── Elaya's eyes (0246) ─────────────────────────────────────────────────────
+
+/** The media reader's live lane (row `media_reading_enabled`). OFF unless exactly `true`. */
+export async function getMediaReadingEnabled(): Promise<boolean> {
+  try { return (await getSettingValue('media_reading_enabled')) === true; } catch { return false; }
+}
+
+/** The backlog lane (row `media_reading_backlog_enabled`): the history, read only under the daily cap. OFF unless exactly `true`. */
+export async function getMediaBacklogEnabled(): Promise<boolean> {
+  try { return (await getSettingValue('media_reading_backlog_enabled')) === true; } catch { return false; }
+}
+
+/** The day's spend ceiling for the reader (row `media_reading_daily_cap_usd`); missing or malformed = the default in constants/media.ts. */
+export async function getMediaDailyCapUsd(): Promise<number> {
+  const { MEDIA_DAILY_CAP_DEFAULT_USD } = await import('@/lib/constants/media');
+  try {
+    const v = await getSettingValue('media_reading_daily_cap_usd');
+    return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : MEDIA_DAILY_CAP_DEFAULT_USD;
+  } catch { return MEDIA_DAILY_CAP_DEFAULT_USD; }
+}
+
+/** Which classes get a second, dearer read below which confidence (row `media_reading_escalate`); the default in constants/media.ts otherwise. */
+export async function getMediaEscalateRule(): Promise<{ classes: import('@/lib/constants/media').MediaClass[]; below_confidence: number }> {
+  const { MEDIA_ESCALATE_DEFAULT, MEDIA_CLASSES } = await import('@/lib/constants/media');
+  try {
+    const v = await getSettingValue('media_reading_escalate') as { classes?: unknown; below_confidence?: unknown } | null;
+    if (!v || typeof v !== 'object') return MEDIA_ESCALATE_DEFAULT;
+    const classes = Array.isArray(v.classes) ? v.classes.filter((c): c is import('@/lib/constants/media').MediaClass => typeof c === 'string' && (MEDIA_CLASSES.values as readonly string[]).includes(c)) : MEDIA_ESCALATE_DEFAULT.classes;
+    const below = typeof v.below_confidence === 'number' && v.below_confidence >= 0 && v.below_confidence <= 1 ? v.below_confidence : MEDIA_ESCALATE_DEFAULT.below_confidence;
+    return { classes, below_confidence: below };
+  } catch { return MEDIA_ESCALATE_DEFAULT; }
+}

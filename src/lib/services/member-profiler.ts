@@ -566,7 +566,8 @@ export async function runProfilerSweep(opts: SweepOptions): Promise<{ groups: nu
   const readGroup = async (g: (typeof groups)[number]): Promise<void> => {
     if (stop || sent >= maxWindows || Date.now() >= deadline) return;
     const after = opts.startAt ?? g.cursor_at;
-    let q = sia().from("wag_messages").select("id, sender_jid, text, type, wa_timestamp").eq("chat_jid", g.group_jid).eq("is_revoked", false).not("text", "is", null).order("wa_timestamp", { ascending: true }).limit(PROFILER_FETCH_LIMIT);
+    // wag_messages_read (0246): a file the eyes have read stands in as text; an unread one stays NULL and is skipped as before.
+    let q = sia().from("wag_messages_read").select("id, sender_jid, text:text_read, type, wa_timestamp").eq("chat_jid", g.group_jid).eq("is_revoked", false).not("text_read", "is", null).order("wa_timestamp", { ascending: true }).limit(PROFILER_FETCH_LIMIT);
     if (after) q = q.gt("wa_timestamp", after);
     const { data: rows, error: mErr } = await q;
     if (mErr) { console.warn(`${LOG} messages read failed`, g.group_jid, mErr.message); return; }
@@ -648,7 +649,7 @@ export async function profileGroupNow(groupJid: string, memberId: string, opts: 
     if (!cursor || cursor < lookbackFloor) return done("skipped", "backlog deeper than the flush window; the sweep reads it in order");
     if (cursor >= opts.untilAt) return done("skipped", "already read");
 
-    const { data: rows, error } = await sia().from("wag_messages").select("id, sender_jid, text, type, wa_timestamp").eq("chat_jid", groupJid).eq("is_revoked", false).not("text", "is", null)
+    const { data: rows, error } = await sia().from("wag_messages_read").select("id, sender_jid, text:text_read, type, wa_timestamp").eq("chat_jid", groupJid).eq("is_revoked", false).not("text_read", "is", null)
       .gt("wa_timestamp", cursor).lte("wa_timestamp", opts.untilAt).order("wa_timestamp", { ascending: true }).limit(PROFILER_FETCH_LIMIT);
     if (error) return done("failed", `messages read failed: ${error.message}`);
     if ((rows ?? []).length >= PROFILER_FETCH_LIMIT) return done("skipped", "more than one page unread; the sweep reads it in order");

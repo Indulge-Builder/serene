@@ -14,12 +14,13 @@
  * minute schedule, and a run that starts long after its minute leaves at once.
  */
 import { schedules } from "@trigger.dev/sdk/v3";
+import { profilerQueue } from "./media-reader";
 
 export const memberProfilerTask = schedules.task({
   id: "member-profiler",
   cron: { pattern: "*/10 * * * *" },
   maxDuration: 590,
-  queue: { concurrencyLimit: 1 },
+  queue: profilerQueue, // shared with media-redo (0246): two readings of one member never race
   run: async (payload) => {
     const lateMs = Date.now() - new Date(payload.timestamp).getTime();
     if (lateMs > 9 * 60_000) return { skipped: "stale", lateSeconds: Math.round(lateMs / 1000) };

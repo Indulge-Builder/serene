@@ -55,6 +55,8 @@ import { rankVendorsForRequest, getVendorDetail, resolveMergedVendorId } from '@
 import { hasVendorActionAccess } from '@/lib/utils/route-access';
 import { listTicketsForElaya, getTicketByRefForElaya } from '@/lib/services/tickets-service';
 import { getSiaGroupForMember, getSiaGroups, getSiaMessages, searchSiaMessages, getSiaSenderRoles, type SiaGroupKind } from '@/lib/services/sia-service';
+import { foldReadingLine, getReadingsForFreshdeskConversations } from '@/lib/services/media-readings-service';
+import type { MediaReadingBrief } from '@/lib/types/media';
 import { getSiaViewerScope, getQueendomGroupJids, pinnedFreshdeskGroup, pinnedGroupFilter, type SiaViewerScope } from '@/lib/services/sia-access';
 import {
   getFreshdeskOverview,
@@ -465,7 +467,7 @@ const MESSAGE_TEXT_CAP = 500;
 const STAFF_ROLES = new Set(['genie', 'bishop', 'queen', 'founder', 'watcher']);
 
 async function shapeMessages(
-  rows: { sender_jid: string; sender_name: string | null; type: string; text: string | null; wa_timestamp: string; is_revoked: boolean }[],
+  rows: { sender_jid: string; sender_name: string | null; type: string; text: string | null; wa_timestamp: string; is_revoked: boolean; media?: unknown; reading?: MediaReadingBrief | null }[],
 ): Promise<MemberMessage[]> {
   const roles = await getSiaSenderRoles(rows.map((r) => r.sender_jid));
   return rows.map((r) => {
@@ -474,7 +476,9 @@ async function shapeMessages(
     const from: MemberMessage['from'] =
       who?.role === 'member' ? 'member'
         : (who && (who.is_staff || STAFF_ROLES.has(who.role))) || /\bindulge\b/i.test(r.sender_name ?? '') ? 'staff' : 'other';
-    const text = r.text && r.text.length > MESSAGE_TEXT_CAP ? r.text.slice(0, MESSAGE_TEXT_CAP) + '…' : r.text;
+    // A file the eyes have read (0246) stands beside its caption; an unread one says so, so the model never thinks the message was empty.
+    const withFile = r.media ? [r.text, foldReadingLine(r.type, r.reading ?? null, { withText: true })].filter(Boolean).join('\n') : r.text;
+    const text = withFile && withFile.length > MESSAGE_TEXT_CAP ? withFile.slice(0, MESSAGE_TEXT_CAP) + '…' : withFile;
     return { at: r.wa_timestamp, from, name: r.sender_name, type: r.type, text, deleted: r.is_revoked };
   });
 }
@@ -967,6 +971,12 @@ export async function getFreshdeskTicketFor(principal: StaffPrincipal, id: numbe
   if (pin.pinned && (d.ticket.group_id == null || !pin.groupIds.includes(d.ticket.group_id))) return { ok: false as const, reason: 'not_found' as const };
   const t = d.ticket;
   const notes = d.conversations.slice(-FD_THREAD_NOTES);
+  // What the eyes read in each note's files (0246): a line per file, never the words of a sensitive one.
+  const readings = await getReadingsForFreshdeskConversations(notes.filter((c) => c.attachments.length).map((c) => c.id));
+  const filesOf = (c: (typeof notes)[number]) => c.attachments.map((a, i) => {
+    const r = readings.get(`${c.id}:${i + 1}`);
+    return r?.status === 'done' && r.summary ? `${a.name ?? 'file'}: ${r.summary}` : `${a.name ?? 'file'} (not read yet)`;
+  });
   return {
     ok: true as const,
     ticket: {
@@ -998,6 +1008,7 @@ export async function getFreshdeskTicketFor(principal: StaffPrincipal, id: numbe
       private_note: c.private,
       text: clip(c.body_text, FD_THREAD_TEXT_CAP),
       files: c.attachments.length,
+      ...(c.attachments.length ? { file_readings: filesOf(c) } : {}),
     })),
     movements: d.changes.slice(-12).map((m) => ({ at: m.fd_updated_at ?? m.observed_at, field: m.field, from: m.old_value, to: m.new_value })),
   };

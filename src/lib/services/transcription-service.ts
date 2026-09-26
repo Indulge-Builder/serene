@@ -8,7 +8,8 @@
 // API terms. Audio is transcribed in-memory and discarded — never written to disk,
 // Storage, or the DB. Never log audio content or transcripts here.
 
-import "server-only";
+// No `server-only` guard since 2026-09-27: the media reader (0246) calls transcribeAudio from Trigger.dev, where
+// that package throws at import. The A-15 rule still holds: never import this from a 'use client' file.
 
 const DEEPGRAM_API_URL = "https://api.deepgram.com/v1/listen";
 const DEEPGRAM_MODEL = "nova-2";

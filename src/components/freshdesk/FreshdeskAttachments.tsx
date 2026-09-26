@@ -3,7 +3,7 @@
 // not copied yet shows its name only, with the reason on hover. Links are one-hour signed
 // urls minted by the read path; nothing here talks to storage. Server-component-safe.
 
-import { Paperclip, ImageOff } from 'lucide-react';
+import { Eye, Paperclip, ImageOff } from 'lucide-react';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { fdAttachmentKind } from '@/lib/constants/freshdesk';
 import { formatBytes } from '@/lib/utils/numbers';
@@ -29,11 +29,19 @@ export function FreshdeskAttachments({ attachments }: { attachments: FdAttachmen
             if (kind === 'image') {
               // The file name rides the tooltip; the img alt carries it for screen readers.
               return (
-                <Tooltip key={key} label={a.name ?? ''} side="top" disabled={!a.name}>
-                  <a href={a.signed_url ?? undefined} target="_blank" rel="noreferrer" style={{ display: 'block', lineHeight: 0 }}>
-                    <img src={a.signed_url ?? undefined} alt={a.name ?? 'image'} loading="lazy" style={{ maxHeight: 180, maxWidth: 260, borderRadius: 'var(--radius-md)', border: '1px solid var(--theme-paper-border)', objectFit: 'cover' }} />
-                  </a>
-                </Tooltip>
+                <div key={key} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-1)', maxWidth: 260 }}>
+                  <Tooltip label={a.name ?? ''} side="top" disabled={!a.name}>
+                    <a href={a.signed_url ?? undefined} target="_blank" rel="noreferrer" style={{ display: 'block', lineHeight: 0 }}>
+                      <img src={a.signed_url ?? undefined} alt={a.reading_summary ?? a.name ?? 'image'} loading="lazy" style={{ maxHeight: 180, maxWidth: 260, borderRadius: 'var(--radius-md)', border: '1px solid var(--theme-paper-border)', objectFit: 'cover' }} />
+                    </a>
+                  </Tooltip>
+                  {a.reading_summary && (
+                    // What Serene read in the file (0246): the same one line every text reader sees.
+                    <span className="type-caption" style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-1)', color: 'var(--theme-text-tertiary)' }}>
+                      <Eye style={{ width: '0.75rem', height: '0.75rem', strokeWidth: 1.5, flexShrink: 0, marginTop: 2 }} />{a.reading_summary}
+                    </span>
+                  )}
+                </div>
               );
             }
             if (kind === 'video') {
@@ -47,11 +55,12 @@ export function FreshdeskAttachments({ attachments }: { attachments: FdAttachmen
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
           {files.map((a, i) => {
             const label = `${a.name ?? 'attachment'}${a.size ? ` · ${formatBytes(a.size)}` : ''}`;
+            const tip = a.reading_summary ? `${a.name ?? 'attachment'} · ${a.reading_summary}` : (a.name ?? '');
             const reason = a.store_error ? `Not copied yet: ${a.store_error}` : 'Not copied yet';
             // The chip truncates at 260px — the tooltip carries the full name; the
             // "not copied" reason is spoken too (sr-only), never hover-only.
             return a.signed_url ? (
-              <Tooltip key={a.storage_path ?? `${a.id ?? i}`} label={a.name ?? ''} side="top" disabled={!a.name}>
+              <Tooltip key={a.storage_path ?? `${a.id ?? i}`} label={tip} side="top" disabled={!tip}>
                 <a href={a.signed_url} target="_blank" rel="noreferrer" style={{ ...CHIP, color: 'var(--neu-accent-deep)' }}>
                   <Paperclip style={{ width: '0.75rem', height: '0.75rem', strokeWidth: 1.5, flexShrink: 0 }} />{label}
                 </a>

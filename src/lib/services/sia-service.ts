@@ -2,7 +2,10 @@ import "server-only";
 import { readFile, stat } from "node:fs/promises";
 import { memberDb } from "@/lib/supabase/schemas";
 import path from "node:path";
-import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
+import { GetObjectCommand } from "@aws-sdk/client-s3";
+import { parseS3Path, siaS3 } from "@/lib/services/sia-media-store";
+import { getReadingsForSiaMessages } from "@/lib/services/media-readings-service";
+import type { MediaReadingBrief } from "@/lib/types/media";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -71,6 +74,8 @@ export type SiaMessageRow = {
   edit_of_wa_message_id: string | null;
   /** Present when a wag_media row exists for this message. */
   media: SiaMediaInfo | null;
+  /** What Serene read in the file (0246), when a reading exists; null = not read yet or no file. */
+  reading: MediaReadingBrief | null;
   /** Aggregated reaction chips ({emoji, count}), empty when none. */
   reactions: { emoji: string; count: number }[];
   /** Resolved preview of the quoted (replied-to) message, when captured. */
@@ -512,16 +517,8 @@ const MEDIA_SIGNED_URL_TTL_SECONDS = 900; // 15 min — outlives any open viewer
 // direnv exports .env.local into the shell, and AWS_ACCESS_KEY_ID there would
 // hijack the operator's own AWS CLI with this read-only media identity. Falls
 // back to the default provider chain (task role / instance profile) when unset.
-let s3Member: S3Client | null = null;
-function s3(): S3Client {
-  const keyId = process.env.SIA_S3_ACCESS_KEY_ID;
-  const secret = process.env.SIA_S3_SECRET_ACCESS_KEY;
-  s3Member ??= new S3Client({
-    region: process.env.SIA_S3_REGION ?? "ap-south-1",
-    ...(keyId && secret ? { credentials: { accessKeyId: keyId, secretAccessKey: secret } } : {}),
-  });
-  return s3Member;
-}
+// The S3 client and path parser live in sia-media-store.ts (shared with the media reader, 0246).
+const s3 = siaS3;
 
 export type SiaMediaPayload = {
   dataUrl: string;
@@ -563,12 +560,9 @@ export async function getSiaMediaPayload(
   }
 
   // ── S3 mode (the Fargate watcher, Sia W1): presign a short-lived GET ──
-  if (row.storage_path.startsWith("s3://")) {
-    const rest = row.storage_path.slice("s3://".length);
-    const slash = rest.indexOf("/");
-    const bucket = rest.slice(0, slash);
-    const key = rest.slice(slash + 1);
-    if (!bucket || !key) return { payload: null, reason: "not_found" };
+  const s3Loc = parseS3Path(row.storage_path);
+  if (s3Loc) {
+    const { bucket, key } = s3Loc;
     try {
       const filename = key.split("/").pop() ?? "file";
       const [url, downloadUrl] = await Promise.all([
@@ -796,10 +790,11 @@ async function enrichMessages(
   const jids = new Set(rows.map((r) => r.sender_jid));
   for (const q of quotedByWaId.values()) jids.add(q.sender_jid);
 
-  const [nameByJid, mediaByWaId, reactionsByWaId] = await Promise.all([
+  const [nameByJid, mediaByWaId, reactionsByWaId, readingByWaId] = await Promise.all([
     fetchContactNames(db, [...jids]),
     fetchMediaRows(db, groupJid, mediaIds),
     fetchReactionAggregates(db, groupJid, allIds),
+    getReadingsForSiaMessages(groupJid, mediaIds),
   ]);
 
   return rows.map((r) => {
@@ -808,6 +803,7 @@ async function enrichMessages(
       ...r,
       sender_name: nameByJid.get(r.sender_jid) ?? null,
       media: mediaByWaId.get(r.wa_message_id) ?? null,
+      reading: readingByWaId.get(r.wa_message_id) ?? null,
       reactions: reactionsByWaId.get(r.wa_message_id) ?? [],
       quoted: q
         ? { sender_name: nameByJid.get(q.sender_jid) ?? null, text: q.text, type: q.type }

@@ -1,6 +1,6 @@
 # Elaya's eyes: reading images, files, voice and video
 
-Written 2026-09-26. Status: **PLAN, nothing built.** Decisions the founder must make are marked
+Written 2026-09-26. Status: **steps 0 to 2 built 2026-09-27 (migration 0246, the reader, the service, the sweep, the redo pass, the folds; changelog of that date), migration not applied, switch OFF; step 3 (video), step 4 (live eyes), step 5 (panel + bench review) not started.** Decisions the founder must make are marked
 **DECIDE**.
 
 ## 1. The problem in one paragraph
