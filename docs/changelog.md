@@ -142,6 +142,7 @@ as an `agent` vendor in the existing book and ledger, the thread on the ticket t
 disclosure filter that shows the genie what is sent and what is held back, Elaya draft-then-approve
 tools, a `/hands` page over SplitWorkspace, a four-level trust ladder and spend caps in settings.
 The same shape takes the next agent (Meta's Muse) as one more vendor row. Eight decisions listed.
+Revised the same day from the founder's nine-day Instinct export (section 3a): Instinct cannot call or WhatsApp anyone and reaches vendors by browser and a connected Gmail; it never touches money in India (a UPI QR the human scans, about nine minutes), so the identity is a mailbox plus an Indulge UPI phone, not a card, and the thread gets a PAY step; it keeps standing rules, so a one-time rulebook fixes its reply frame (DONE / NEED / OPTIONS / FAILED / WAITING); Meta's Muse connector platform is the reverse door (members' agents calling Indulge). The export PDF is git-ignored.
 
 ---
 

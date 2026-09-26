@@ -111,3 +111,6 @@ ok.md
 # local-only: generated UI previews and a reference copy of another app
 /output/
 /indulge-app-example/
+
+# Founder chat exports (personal data; never committed)
+Instinct Chat Export*.pdf
