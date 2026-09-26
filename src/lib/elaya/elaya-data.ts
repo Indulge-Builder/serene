@@ -757,7 +757,7 @@ export async function getMemberProfileFor(principal: StaffPrincipal, memberId: s
       membership_start: m.membership_start, membership_end: m.membership_end, queendom: d.queendom?.name ?? null,
       identity_status: m.identity_status, whatsapp_group: brief.group?.subject ?? null,
     },
-    team: { queen: d.team.queen?.full_name ?? null, bishops: d.team.bishops.map((b) => b.full_name), joker: d.team.joker?.full_name ?? null, genies: d.team.genies.map((g) => g.full_name) },
+    team: { queen: d.team.queen?.full_name ?? null, bishop: d.team.bishop?.full_name ?? null, joker: d.team.joker?.full_name ?? null, genies: d.team.genies.map((g) => g.full_name) },
     facts,
     facts_shown: shown.length,
     facts_total: d.facts.length,
