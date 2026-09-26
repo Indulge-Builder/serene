@@ -12,6 +12,19 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-26 — Freshdesk for a queen: no Queendom filter, only her team in the Agent list
+
+A queen on /freshdesk was offered a Queendom filter, though the server already pins her to
+her own queendom's group, and an Agent list of all 48 Freshdesk agents in the company.
+
+- The Queendom filter is gone for a pinned viewer (`FreshdeskFilters showGroup`). Admin,
+  founder and the tech workbench keep it.
+- The Agent list offers only the people who work her queendom: everyone assigned a ticket in
+  its Freshdesk group in the last 90 days (`getGroupAgentIds` in freshdesk-service.ts,
+  `FD_GROUP_AGENT_WINDOW_DAYS`). Freshdesk's group membership is not in the mirror (the groups
+  list has no agent_ids), so the work is the fact. Checked on production data: 10, 12 and 11
+  people for the three queendoms, each the right team. A failed read keeps the full list.
+
 ## 2026-09-26 — Members: the list orders by who is active, and every member gets Serene's judgement (0241)
 
 The founder's ask: order the Members list by the members we are actually serving, most active on

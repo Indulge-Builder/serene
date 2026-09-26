@@ -8,7 +8,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { memberDb } from "@/lib/supabase/schemas";
 import { mapRows } from "@/lib/utils/rows";
 import { toISTMidnight } from "@/lib/utils/ist";
-import { FD_STATUS_LABELS, FRESHDESK_LIST_PAGE_SIZE, FD_SYNC_KEYS, fdStatusLabel, fdComparable } from "@/lib/constants/freshdesk";
+import { FD_GROUP_AGENT_WINDOW_DAYS, FD_STATUS_LABELS, FRESHDESK_LIST_PAGE_SIZE, FD_SYNC_KEYS, fdStatusLabel, fdComparable } from "@/lib/constants/freshdesk";
 import { freshdeskDb } from "@/lib/services/freshdesk-sync";
 import { signFreshdeskAttachments } from "@/lib/services/freshdesk-media";
 import type {
@@ -36,6 +36,34 @@ export type FdFilterVocab = {
   statuses: { id: number; label: string }[];
   categories: string[];
 };
+
+/**
+ * The agents who work one Freshdesk group: everyone assigned a ticket there in the last
+ * FD_GROUP_AGENT_WINDOW_DAYS (constants/freshdesk.ts says why the work, not a roster). Reads
+ * only responder_id over the (group_id, fd_created_at) index, paged past PostgREST's 1,000-row
+ * cap; ~1,100 rows a queendom today. A failed read returns null, so the caller keeps the full
+ * list rather than offering nobody.
+ */
+export async function getGroupAgentIds(groupId: number): Promise<Set<number> | null> {
+  const since = new Date(Date.now() - FD_GROUP_AGENT_WINDOW_DAYS * 86_400_000).toISOString();
+  const db = freshdeskDb();
+  const ids = new Set<number>();
+  const PAGE = 1000;
+  for (let from = 0; from < PAGE * 20; from += PAGE) {
+    const { data, error } = await db.from("tickets").select("responder_id")
+      .eq("group_id", groupId).gte("fd_created_at", since).not("responder_id", "is", null)
+      .order("fd_created_at", { ascending: false }).order("id", { ascending: false })
+      .range(from, from + PAGE - 1);
+    if (error) {
+      console.error("[freshdesk-service] group agents read failed", groupId, error.message);
+      return null;
+    }
+    const rows = mapRows<{ responder_id: number }, number>(data, (r) => Number(r.responder_id));
+    for (const id of rows) ids.add(id);
+    if (rows.length < PAGE) break;
+  }
+  return ids;
+}
 
 async function getNameMaps(): Promise<{ groups: Map<number, string>; agents: Map<number, string> }> {
   const db = freshdeskDb();

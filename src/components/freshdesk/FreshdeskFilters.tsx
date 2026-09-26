@@ -3,6 +3,7 @@
 // FreshdeskFilters — the /freshdesk filter strip. Composes <FilterBar> + useUrlFilters
 // (the DealsFilters shape): search, Status (multi), Queendom (group), Agent, Category,
 // Priority, and the created-date range with presets. Immediate-commit, URL-driven.
+// showGroup=false for a queendom-pinned viewer: the server pins the group, so no Queendom filter.
 
 import { FilterBar } from '@/components/ui/FilterBar';
 import { FilterDropdown } from '@/components/ui/FilterDropdown';
@@ -10,12 +11,12 @@ import { useUrlFilters, useMultiSelectUrlParam } from '@/hooks/useUrlFilters';
 import { FD_PRIORITY_LABELS } from '@/lib/constants/freshdesk';
 import type { FdFilterVocab } from '@/lib/services/freshdesk-service';
 
-export function FreshdeskFilters({ vocab }: { vocab: FdFilterVocab }) {
+export function FreshdeskFilters({ vocab, showGroup = true }: { vocab: FdFilterVocab; showGroup?: boolean }) {
   const url = useUrlFilters({ resetKeys: ['page'] });
   const { params, push } = url;
   const [statuses, setStatuses] = useMultiSelectUrlParam<string>(url, 'status');
 
-  const group = params.get('group');
+  const group = showGroup ? params.get('group') : null;
   const agent = params.get('agent');
   const category = params.get('category');
   const priority = params.get('priority');
@@ -61,14 +62,16 @@ export function FreshdeskFilters({ vocab }: { vocab: FdFilterVocab }) {
         multi
         menuPortal
       />
-      <FilterDropdown
-        label="Queendom"
-        items={vocab.groups.map((g) => ({ id: String(g.id), label: g.name }))}
-        selected={group ? [group] : []}
-        onChange={(next) => push({ group: next[0] ?? null })}
-        multi={false}
-        menuPortal
-      />
+      {showGroup && (
+        <FilterDropdown
+          label="Queendom"
+          items={vocab.groups.map((g) => ({ id: String(g.id), label: g.name }))}
+          selected={group ? [group] : []}
+          onChange={(next) => push({ group: next[0] ?? null })}
+          multi={false}
+          menuPortal
+        />
+      )}
       <FilterDropdown
         label="Agent"
         items={vocab.agents.map((a) => ({ id: String(a.id), label: a.name }))}

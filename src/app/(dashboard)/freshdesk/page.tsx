@@ -7,6 +7,7 @@ import {
   getFreshdeskMemberScope,
   getFreshdeskFilterVocab,
   getFreshdeskOverview,
+  getGroupAgentIds,
   hasFreshdeskFilters,
   listFreshdeskTickets,
 } from '@/lib/services/freshdesk-service';
@@ -82,12 +83,14 @@ export default async function FreshdeskPage({ searchParams }: { searchParams: Pr
   const asked = parseFilters(resolved);
   const memberOk = asked.member ? await canViewMember(viewer, asked.member) : true;
   const filters: FdTicketListFilters = { ...asked, member: memberOk ? asked.member : null, ...(pin.pinned ? { group: pin.groupId } : {}) };
-  const [fullVocab, scope] = await Promise.all([
+  const [fullVocab, scope, groupAgents] = await Promise.all([
     getFreshdeskFilterVocab(),
     filters.member ? getFreshdeskMemberScope(filters.member) : Promise.resolve(null),
+    pin.pinned && pin.groupId != null ? getGroupAgentIds(pin.groupId) : Promise.resolve(null),
   ]);
-  // A pinned viewer's group filter offers their own group only.
-  const vocab = pin.pinned ? { ...fullVocab, groups: fullVocab.groups.filter((g) => g.id === pin.groupId) } : fullVocab;
+  // A pinned viewer has no Queendom filter (the pin decides it) and their Agent filter offers
+  // only the people who work their queendom's tickets.
+  const vocab = groupAgents ? { ...fullVocab, agents: fullVocab.agents.filter((a) => groupAgents.has(a.id)) } : fullVocab;
   // The strip depends on every filter except the page number: paging must not re-count.
   const overviewKey = `overview:${JSON.stringify({ ...filters, page: 1 })}`;
 
@@ -105,7 +108,7 @@ export default async function FreshdeskPage({ searchParams }: { searchParams: Pr
       </Suspense>
 
       <div className="mb-4">
-        <FreshdeskFilters vocab={vocab} />
+        <FreshdeskFilters vocab={vocab} showGroup={!pin.pinned} />
       </div>
 
       {filters.member && (

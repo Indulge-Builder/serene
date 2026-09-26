@@ -10,6 +10,13 @@ export const FRESHDESK_PATH = "/freshdesk";
 /** The /freshdesk list page size (server-filtered, keyset-free offset paging is fine at 55k rows). */
 export const FRESHDESK_LIST_PAGE_SIZE = 50;
 
+/**
+ * Who "works" a Freshdesk group: the agents assigned a ticket there in this many days. The
+ * mirror has no group membership (Freshdesk's groups list omits agent_ids), so the work is the
+ * fact. A queendom-pinned viewer's Agent filter offers only these people.
+ */
+export const FD_GROUP_AGENT_WINDOW_DAYS = 90;
+
 /** Freshdesk status id → agent-facing label. 9000 is the AI-agent parking status. */
 export const FD_STATUS_LABELS: Record<number, string> = {
   2: "Open",
