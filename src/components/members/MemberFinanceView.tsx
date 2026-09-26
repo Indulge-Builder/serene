@@ -11,12 +11,12 @@ import { StatTile } from '@/components/ui/StatTile';
 import { formatDate } from '@/lib/utils/dates';
 import { formatCount, formatCurrencyCompact } from '@/lib/utils/numbers';
 import { CLIENTS_PATH } from '@/lib/constants/sia-roles';
+import { isMoneyEventKind } from '@/lib/constants/member-facets';
 import type { MemberDetail } from '@/lib/types/member';
 
 const SHELL: React.CSSProperties = { background: 'var(--theme-paper)', border: '1px solid var(--theme-paper-border)', borderRadius: 'var(--neu-radius-card)', boxShadow: 'var(--shadow-1)', overflow: 'hidden' };
 const BODY: React.CSSProperties = { padding: 'var(--space-4) var(--space-6) var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' };
 
-const MONEY_KINDS = new Set(['payment', 'invoice', 'renewal']);
 
 function daysLeft(end: string | null): number | null {
   if (!end) return null;
@@ -26,7 +26,7 @@ function daysLeft(end: string | null): number | null {
 export function MemberFinanceView({ detail }: { detail: MemberDetail }) {
   const c = detail.member;
   const left = daysLeft(c.membership_end);
-  const movements = detail.events.filter((e) => MONEY_KINDS.has(e.kind));
+  const movements = detail.events.filter((e) => isMoneyEventKind(e.kind));
   const expired = c.membership_status === 'Expired';
 
   return (

@@ -57,7 +57,7 @@ export async function getSiaGroupsAction(): Promise<ActionResult<SiaGroupRow[]>>
   try {
     const groups = await getSiaGroups();
     if (auth.scope.kind === "all") return { data: groups, error: null };
-    const mine = await getQueendomGroupJids(auth.scope.queendomId);
+    const mine = await getQueendomGroupJids(auth.scope.queendomIds);
     return { data: groups.filter((g) => mine.has(g.group_jid)), error: null };
   } catch (err) {
     console.error("[sia-action] getSiaGroups failed:", err);
@@ -153,7 +153,7 @@ export async function searchSiaMessagesAction(
     const hits = await searchSiaMessages(query, groupJid);
     // A search across groups is cut down to the viewer's own queendom before it leaves the server.
     if (auth.scope.kind === "all" || groupJid !== undefined) return { data: hits, error: null };
-    const mine = await getQueendomGroupJids(auth.scope.queendomId);
+    const mine = await getQueendomGroupJids(auth.scope.queendomIds);
     return { data: hits.filter((h) => mine.has(h.group_jid)), error: null };
   } catch (err) {
     console.error("[sia-action] searchSiaMessages failed:", err);

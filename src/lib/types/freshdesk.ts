@@ -432,6 +432,9 @@ export type FdTicketListFilters = {
   search: string | null;
   status: number[];
   group: number | null;
+  /** The viewer's reach when it spans several groups (the Joker head: every queendom's group).
+   *  A scope, not a pick: set by the page from the viewer, never from the URL. */
+  groupIn?: number[] | null;
   agent: number | null;
   category: string | null;
   priority: number | null;

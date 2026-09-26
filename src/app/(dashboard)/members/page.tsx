@@ -12,7 +12,8 @@ import { PageControls } from '@/components/layout/PageControls';
 import { Pagination } from '@/components/ui/Pagination';
 import { CLIENTS_LIST_PAGE_SIZE } from '@/lib/constants/sia-roles';
 import { canAccessRoute } from '@/lib/utils/route-access';
-import { CLIENTS_PATH } from '@/lib/constants/sia-roles';
+import { CLIENTS_PATH, isCompanyWideSeat } from '@/lib/constants/sia-roles';
+import { canSeeMemberFinance } from '@/lib/elaya/access';
 import type { MemberListFilters } from '@/lib/types/member';
 import type { MemberTier } from '@/lib/constants/member-facets';
 
@@ -64,6 +65,9 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
   const filters = parseFilters(resolved);
   const queendoms = await getQueendoms();
   const privileged = profile.role === 'admin' || profile.role === 'founder';
+  // The Joker head (0244) works every queendom: the Queendom filter and the new member's queendom
+  // pick are theirs too (RLS already scopes the list to members who belong to a queendom).
+  const everyQueendom = privileged || isCompanyWideSeat(profile);
 
   return (
     <main className="flex-1 p-4 sm:p-6 lg:p-8">
@@ -72,13 +76,13 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
           Members<span className="page-title-dot">.</span>
         </h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-          <AddMemberButton queendoms={queendoms} defaultQueendomId={profile.queendom_id ?? null} canPickQueendom={privileged} />
+          <AddMemberButton queendoms={queendoms} defaultQueendomId={profile.queendom_id ?? null} canPickQueendom={everyQueendom} canSeeMoney={canSeeMemberFinance(profile)} />
           {TOP_BAR_ENABLED && <PageControls isPrivileged={false} />}
         </div>
       </div>
 
       <div className="px-5 py-4 mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)">
-        <MembersFilters queendoms={privileged ? queendoms : queendoms.filter((q) => q.id === profile.queendom_id)} />
+        <MembersFilters queendoms={everyQueendom ? queendoms : queendoms.filter((q) => q.id === profile.queendom_id)} />
       </div>
 
       <Suspense key={JSON.stringify(filters)} fallback={<MembersTableSkeleton />}>

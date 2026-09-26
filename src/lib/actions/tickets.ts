@@ -17,7 +17,7 @@ import { canAccessMember } from "@/lib/elaya/access";
 import { TICKETS_PATH } from "@/lib/constants/tickets";
 import { recordDraftReviewCore } from "@/lib/services/draft-reviews";
 import { diffDraft, changedFieldNames, type DraftComparable } from "@/lib/utils/draft-diff";
-import { CLIENTS_PATH } from "@/lib/constants/sia-roles";
+import { CLIENTS_PATH, isCompanyWideSeat } from "@/lib/constants/sia-roles";
 import { draftTicketFromMessages } from "@/lib/services/ticket-creator";
 import { getIntakeProposal, resolveIntakeProposal } from "@/lib/services/intake-service";
 import { reviewTicketVendorCore, searchVendorsForTicket, setTicketVendorCore, suggestVendorsForTicket, type TicketVendorOption } from "@/lib/services/ticket-vendor";
@@ -300,8 +300,9 @@ export async function listBoardTicketsAction(input: { queendom_id: string | null
   const auth = await requireProfile();
   if (!auth.ok) return auth.result;
   const q = typeof input?.queendom_id === "string" && /^[0-9a-f-]{36}$/i.test(input.queendom_id) ? input.queendom_id : null;
-  const privileged = auth.profile.role === "admin" || auth.profile.role === "founder";
-  const scope = privileged ? q : (auth.profile.queendom_id ?? null);
+  // Admin, founder and the Joker head (0244) pick a queendom or see them all; a seat sees its own.
+  const everyQueendom = auth.profile.role === "admin" || auth.profile.role === "founder" || isCompanyWideSeat(auth.profile);
+  const scope = everyQueendom ? q : (auth.profile.queendom_id ?? null);
   return { data: await listBoardTickets(scope), error: null };
 }
 

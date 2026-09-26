@@ -15,6 +15,7 @@ import { TicketBoard } from '@/components/tickets/TicketBoard';
 import { TOP_BAR_ENABLED } from '@/lib/constants/feature-flags';
 import { PageControls } from '@/components/layout/PageControls';
 import { TICKETS_PATH } from '@/lib/constants/tickets';
+import { isCompanyWideSeat } from '@/lib/constants/sia-roles';
 
 export const metadata = { title: 'Ticket board' };
 
@@ -25,12 +26,13 @@ export default async function TicketBoardPage({ searchParams }: { searchParams: 
   if (!profile) redirect('/login');
   if (!canAccessRoute(profile, TICKETS_PATH)) redirect('/dashboard');
   const sp = await searchParams;
-  const privileged = profile.role === 'admin' || profile.role === 'founder';
+  // Admin, founder and the Joker head (0244) pick a queendom or see them all; a seat sees its own.
+  const everyQueendom = profile.role === 'admin' || profile.role === 'founder' || isCompanyWideSeat(profile);
   const picked = typeof sp.queendom === 'string' && /^[0-9a-f-]{36}$/i.test(sp.queendom) ? sp.queendom : null;
-  const queendomId = privileged ? picked : (profile.queendom_id ?? null);
+  const queendomId = everyQueendom ? picked : (profile.queendom_id ?? null);
 
   const [queendoms, staff, settings, tickets] = await Promise.all([
-    getQueendoms(), listQueendomStaff(privileged ? null : (profile.queendom_id ?? null)), getTicketSettings(), listBoardTickets(queendomId),
+    getQueendoms(), listQueendomStaff(everyQueendom ? null : (profile.queendom_id ?? null)), getTicketSettings(), listBoardTickets(queendomId),
   ]);
 
   return (
@@ -46,7 +48,7 @@ export default async function TicketBoardPage({ searchParams }: { searchParams: 
           {TOP_BAR_ENABLED && <PageControls isPrivileged={false} />}
         </div>
       </div>
-      <div className="px-5 py-4 mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)"><TicketsFilters queendoms={privileged ? queendoms : queendoms.filter((q) => q.id === profile.queendom_id)} staff={staff} tags={settings.tags} labels={settings.statusLabels} /></div>
+      <div className="px-5 py-4 mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)"><TicketsFilters queendoms={everyQueendom ? queendoms : queendoms.filter((q) => q.id === profile.queendom_id)} staff={staff} tags={settings.tags} labels={settings.statusLabels} /></div>
       <TicketBoard initial={tickets} queendomId={queendomId} labels={settings.statusLabels} />
     </main>
   );

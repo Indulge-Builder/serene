@@ -10,7 +10,7 @@ import type { StaffPrincipal } from '@/lib/elaya/principal';
 import type { ElayaChannel } from '@/lib/types/elaya';
 import { ROLE_LABELS } from '@/lib/constants/roles';
 import { DOMAIN_LABELS } from '@/lib/constants/domains';
-import { QUEENDOM_DOMAIN, SIA_ROLES, type SiaRole } from '@/lib/constants/sia-roles';
+import { QUEENDOM_DOMAIN, SIA_ROLES, isCompanyWideSeat, type SiaRole } from '@/lib/constants/sia-roles';
 import { formatIstNow } from '@/lib/utils/ist';
 import { buildPersonaPromptBlock, type ElayaPersonaPrefs } from '@/lib/constants/elaya-persona';
 
@@ -40,6 +40,10 @@ function scopeHint(principal: StaffPrincipal): string {
   // A concierge seat (2026-09-25): one queendom, nothing else. The gates that make it true live in
   // the tools (canAccessMember, getSiaViewerScope).
   if (principal.domain === QUEENDOM_DOMAIN && principal.role !== 'admin' && principal.role !== 'founder') {
+    // The Joker head (0244): every queendom like a queen, but not the vault and not members' money.
+    if (isCompanyWideSeat({ domain: principal.domain, sia_role: principal.siaRole })) {
+      return 'Your reach: this user is the Joker head on the concierge floor, one seat above every queendom. They see every queendom: its members, those members\' WhatsApp groups, its Freshdesk tickets and its Sia tickets; vendors are shared across the whole floor; tasks and notes are their own and their team\'s. They cannot open a member\'s saved cards or IDs and cannot see a member\'s money (invoices, payments, balances, deal amounts), and they see no leads or deals, no company money, no database. A member or group you cannot find does not exist or belongs to no queendom: say so plainly, never guess, and never name a member or a group you did not get from a tool.';
+    }
     if (!principal.siaRole || !principal.queendomId) {
       return 'Your reach: this user is on the concierge floor but has not been seated in a queendom yet, so they see no members, no WhatsApp groups and no Freshdesk or Sia tickets until an admin seats them. Their own tasks and notes, their teammates (find_teammate) and the shared vendor list are theirs. Say that plainly if they ask for anything else; never guess.';
     }

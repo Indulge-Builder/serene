@@ -1,6 +1,7 @@
 import { redirect, notFound } from 'next/navigation';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
-import { getMemberDetail, getQueendoms } from '@/lib/services/members-service';
+import { getMemberDetail, getQueendoms, withoutMemberMoney } from '@/lib/services/members-service';
+import { canSeeMemberFinance, canUseMemberVault } from '@/lib/elaya/access';
 import { logMemberAccess } from '@/lib/services/member-mutations';
 import { canAccessRoute } from '@/lib/utils/route-access';
 import { BackButton } from '@/components/ui/BackButton';
@@ -17,7 +18,7 @@ import { MemberVaultCard } from '@/components/members/MemberVaultCard';
 import { MemberAssessmentCard } from '@/components/members/MemberAssessmentCard';
 import type { MemberAssessment, MemberPulse } from '@/lib/types/member';
 import { listVaultItems } from '@/lib/services/member-vault';
-import { CLIENTS_PATH } from '@/lib/constants/sia-roles';
+import { CLIENTS_PATH, isCompanyWideSeat } from '@/lib/constants/sia-roles';
 import { ESSENTIAL_FACETS, PREFERENCE_FACETS } from '@/lib/constants/member-facets';
 
 export const metadata = { title: 'Member' };
@@ -34,13 +35,19 @@ export default async function MemberPage({ params, searchParams }: Props) {
   const backHref = rawFrom?.startsWith(CLIENTS_PATH) ? rawFrom : CLIENTS_PATH;
 
   // RLS decides: a member outside the caller's queendom reads as missing.
-  const [detail, queendoms] = await Promise.all([getMemberDetail(id), getQueendoms()]);
-  if (!detail) notFound();
+  const [fullDetail, queendoms] = await Promise.all([getMemberDetail(id), getQueendoms()]);
+  if (!fullDetail) notFound();
   // The vault list is read only once RLS has let the member through: it uses the admin client.
-  const vault = await listVaultItems(detail.member.id);
+  const vault = await listVaultItems(fullDetail.member.id);
   await logMemberAccess(id, profile.id, 'members_page');
 
   const privileged = profile.role === 'admin' || profile.role === 'founder';
+  // Money leaves the page on the server for a viewer the finance gate refuses (the Joker head),
+  // so the figures are not even in the page data.
+  const canSeeMoney = canSeeMemberFinance(profile);
+  const detail = canSeeMoney ? fullDetail : withoutMemberMoney(fullDetail);
+  // The Joker head (0244) edits members in every queendom, so they may move one between them.
+  const canPickQueendom = privileged || isCompanyWideSeat(profile);
 
   return (
     <main className="flex-1 p-4 sm:p-6 lg:p-8">
@@ -52,7 +59,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
       </div>
 
       <div className="serene-dossier-grid" style={{ marginBottom: 'var(--space-6)', alignItems: 'start' }}>
-        <MemberIdentityCard detail={detail} queendoms={queendoms} canPickQueendom={privileged} />
+        <MemberIdentityCard detail={detail} queendoms={queendoms} canPickQueendom={canPickQueendom} canSeeMoney={canSeeMoney} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
           <MemberHealthCard clientId={detail.member.id} health={detail.health} />
           <MemberWhatsAppCard clientId={detail.member.id} group={detail.group} canLink={privileged} />
@@ -79,9 +86,9 @@ export default async function MemberPage({ params, searchParams }: Props) {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 'var(--space-6)' }}>
         <MemberPeopleCard clientId={detail.member.id} people={detail.people} />
-        <MemberVaultCard memberId={detail.member.id} items={vault} canDelete={privileged} />
+        <MemberVaultCard memberId={detail.member.id} items={vault} canDelete={privileged} canUse={canUseMemberVault(profile)} />
         <MemberAppCard detail={detail} />
-        <MemberMoneyCard detail={detail} />
+        {canSeeMoney && <MemberMoneyCard detail={detail} />}
         <MemberRelationsCard detail={detail} />
         <MemberAnticipationsCard detail={detail} />
         <MemberNarrativeCard detail={detail} />

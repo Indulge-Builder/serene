@@ -93,6 +93,13 @@ export const CLIENT_EVENT_KINDS = [
 ] as const;
 export type MemberEventKind = (typeof CLIENT_EVENT_KINDS)[number];
 
+/** The member events that carry money: the Money card, the finance page and the "no money"
+ *  strip for the Joker head (withoutMemberMoney) all read this one list. */
+export const MONEY_EVENT_KINDS = ["payment", "invoice", "renewal"] as const satisfies readonly MemberEventKind[];
+export function isMoneyEventKind(kind: string): boolean {
+  return (MONEY_EVENT_KINDS as readonly string[]).includes(kind);
+}
+
 export const RELATION_ENTITY_KINDS = ["person", "vendor", "place", "venue", "brand", "interest", "member"] as const;
 export const RELATION_KINDS = [
   "spouse", "child", "staff", "uses", "prefers", "avoids", "visits", "lives_in", "travels_to", "knows", "collects", "follows",

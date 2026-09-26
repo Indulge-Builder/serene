@@ -12,6 +12,55 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-26 — The Joker head: one seat that works every queendom (0244)
+
+Why: the concierge floor has one Joker head who oversees the jokers and must reach every
+queendom's members, WhatsApp groups and tickets. Until now a position always named exactly one
+queendom. Decided on 2026-09-26: the reach of a queen, in every queendom; the vault as a list only;
+no members' money; no ticket alerts. Not admin: no settings, no Books, no founders' tools.
+
+- **The seat** (`lib/constants/sia-roles.ts`): `joker_head` ("Joker head", platform role
+  manager, so the head can hand tasks to jokers), `COMPANY_WIDE_SEATS`, `seatNeedsQueendom()`,
+  and `isCompanyWideSeat(p)`, THE reach test. It keys on the seat in the concierge domain, never
+  on an empty queendom: every account outside concierge has an empty queendom, and an unseated
+  concierge account must keep seeing nothing.
+- **Migration 0244** (`20260926000244_joker_head.sql`): the new `sia_role` value; every position
+  names a queendom except the Joker head; one active Joker head; `can_access_member_queendom()`
+  lets the active Joker head reach every queendom (a member or ticket with no queendom stays
+  admin/founder only). Every member, Sia ticket and intake policy calls that function, so no
+  policy changed. Tested on a throwaway Postgres built to the 0194/0201/0202 state: the CHECKs, the
+  index, the gate for admin, queen, genie, head, unseated, outsider and an inactive head, and a
+  second run. **Not applied yet: apply together with 0243**, which stops anyone making themselves
+  the head through the API.
+- **Sia and Freshdesk** (`sia-access.ts`): the queendom scope holds lists (`queendomIds`,
+  `freshdeskGroupIds`), one queendom for a seat, every active one for the head. The head sees the
+  member groups of every queendom and the three queendom Freshdesk groups (a Group filter picks
+  one, or all together), never the internal or unlinked groups, the other Freshdesk groups, or the
+  Sia console. Freshdesk counts a reach of several groups group by group and adds them up
+  (`groupIn`, `overviewAcrossGroups`), because the overview RPC takes one group.
+  `pinnedGroupFilter()` is the one pick rule for the page and Elaya.
+- **Members and tickets**: `canAccessMember` passes the head for any member in a queendom; the
+  members, tickets and board pages give the head the queendom filter and pick like a founder; a new
+  member needs a queendom ("Choose the queendom this member belongs to.").
+- **Vault, list only**: `canUseMemberVault()` refuses add and reveal for the head (actions and
+  card); the list with the last four digits still shows.
+- **No money**: `canSeeMemberFinance()` is false for the head, so the finance page, Elaya's
+  `get_member_finance` and the money part of `get_member_360` are refused, and deal amounts are
+  taken out of the 360. On the member page `withoutMemberMoney()` removes the membership amount and
+  the payment, invoice and renewal events on the server, so no figure reaches the browser; the
+  Money card, the Amount row and the "See finance" link hide, and the edit form leaves the amount
+  out of the save. The three copies of the money event list are now one: `MONEY_EVENT_KINDS`.
+- **No alerts**: nothing to change. The sentinel and intake pick recipients per queendom seat, and
+  the head has no queendom.
+- **Elaya**: the member, ticket and list readers in `elaya-data.ts` read the seat through
+  `seatedPrincipal()`; the scope hint has a Joker head line, byte for byte the same in `persona.ts`
+  and `backend/app/brain/persona.py` (checked by extracting both strings and by running the real
+  Python function; the other hints are unchanged). The Python brain needs a redeploy for its line.
+- **Admin**: the account form offers "Joker head" and hides the queendom picker for it; the
+  Queendoms card on the Team page shows "Joker head · every queendom" above the tiles; the head is
+  tagged a joker in WhatsApp contacts (`sia-staff-link.ts`). "Seat taken" now reads "That seat
+  already has an active holder."
+
 ## 2026-09-26 — Security: nobody can change their own seat or queendom (0243)
 
 Why: found while mapping the queendom boundary for a company-wide "Joker head" seat. The

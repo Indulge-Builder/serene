@@ -55,7 +55,7 @@ import { rankVendorsForRequest, getVendorDetail, resolveMergedVendorId } from '@
 import { hasVendorActionAccess } from '@/lib/utils/route-access';
 import { listTicketsForElaya, getTicketByRefForElaya } from '@/lib/services/tickets-service';
 import { getSiaGroupForMember, getSiaGroups, getSiaMessages, searchSiaMessages, getSiaSenderRoles, type SiaGroupKind } from '@/lib/services/sia-service';
-import { getSiaViewerScope, getQueendomGroupJids, pinnedFreshdeskGroup, type SiaViewerScope } from '@/lib/services/sia-access';
+import { getSiaViewerScope, getQueendomGroupJids, pinnedFreshdeskGroup, pinnedGroupFilter, type SiaViewerScope } from '@/lib/services/sia-access';
 import {
   getFreshdeskOverview,
   getFreshdeskFilterVocab,
@@ -65,6 +65,7 @@ import {
 import { FD_TERMINAL_STATUSES, fdPriorityLabel, fdStatusLabel } from '@/lib/constants/freshdesk';
 import type { FdTicketListFilters } from '@/lib/types/freshdesk';
 import { canAccessMember, canSeeMemberFinance } from '@/lib/elaya/access';
+import { isCompanyWideSeat } from '@/lib/constants/sia-roles';
 import { getMemberDetailAsAdmin } from '@/lib/services/members-service';
 import { getMemberFinance, getBooksOverview } from '@/lib/services/zoho-service';
 import { runElayaQuery, logElayaQuery, getElayaCatalog, ELAYA_EXPORT_MAX_ROWS } from '@/lib/services/elaya-query-service';
@@ -397,12 +398,22 @@ export async function principalQueendom(principal: StaffPrincipal): Promise<{ qu
   return { queendom_id: row?.queendom_id ?? null, sia_role: row?.sia_role ?? null };
 }
 
+/** The principal as the member gates read it (canAccessMember, canSeeMemberFinance): the seat and
+ *  queendom re-read from the profile, the domain from the principal. Never model-supplied. */
+async function seatedPrincipal(principal: StaffPrincipal) {
+  const seat = await principalQueendom(principal);
+  return { role: principal.role, domain: principal.domain, sia_role: seat.sia_role, queendom_id: seat.queendom_id };
+}
+
 export async function listTicketsFor(principal: StaffPrincipal, opts: { mine?: boolean; status?: TicketStatus[]; search?: string | null; limit?: number }) {
-  const { queendom_id } = await principalQueendom(principal);
+  const seat = await seatedPrincipal(principal);
   const privileged = principal.role === 'admin' || principal.role === 'founder';
-  if (!privileged && !queendom_id) return [];
+  // The Joker head (0244): every queendom's tickets, never one that belongs to no queendom.
+  const head = isCompanyWideSeat(seat);
+  if (!privileged && !head && !seat.queendom_id) return [];
   return listTicketsForElaya({
-    queendomId: privileged ? null : queendom_id,
+    queendomId: privileged || head ? null : seat.queendom_id,
+    withQueendomOnly: head,
     assigneeId: opts.mine ? principal.userId : null,
     statuses: opts.status ?? [],
     search: opts.search ?? null,
@@ -413,8 +424,7 @@ export async function listTicketsFor(principal: StaffPrincipal, opts: { mine?: b
 export async function getTicketFor(principal: StaffPrincipal, ref: string) {
   const t = await getTicketByRefForElaya(ref);
   if (!t) return null;
-  const { queendom_id } = await principalQueendom(principal);
-  return canAccessMember({ role: principal.role, queendom_id }, t.ticket.queendom_id) ? t : null;
+  return canAccessMember(await seatedPrincipal(principal), t.ticket.queendom_id) ? t : null;
 }
 
 // ─────────────────────────────────────────────
@@ -492,8 +502,8 @@ export async function findMembersScopedFor(
     .order('full_name')
     .limit(limit);
   const rows = (data ?? []) as MemberBrief[];
-  const { queendom_id } = await principalQueendom(principal);
-  const hits = rows.filter((c) => canAccessMember({ role: principal.role, queendom_id }, c.queendom_id));
+  const seat = await seatedPrincipal(principal);
+  const hits = rows.filter((c) => canAccessMember(seat, c.queendom_id));
   return { hits, outsideSeat: rows.length - hits.length };
 }
 
@@ -525,8 +535,11 @@ const MEMBER_LIST_COMPANY_KEYS = ['company', 'company_and_designation', 'identit
 
 export async function listMembersFor(principal: StaffPrincipal, f: MemberListFilters) {
   const admin = createAdminClient();
-  const scopeAll = principal.role === 'admin' || principal.role === 'founder';
-  const { queendom_id } = await principalQueendom(principal);
+  const seat = await seatedPrincipal(principal);
+  // The Joker head (0244) lists every queendom like a founder, but never a member with no queendom.
+  const head = isCompanyWideSeat(seat);
+  const scopeAll = principal.role === 'admin' || principal.role === 'founder' || head;
+  const { queendom_id } = seat;
   if (!scopeAll && !queendom_id) return { denied: true as const, reason: 'no_seat' as const };
 
   const { data: qs } = await admin.schema('sia').from('queendoms').select('id, name');
@@ -542,6 +555,7 @@ export async function listMembersFor(principal: StaffPrincipal, f: MemberListFil
   const status = f.status?.trim() || 'Active';
 
   let q = memberDb(admin).from('members').select(CLIENT_BRIEF_SELECT).order('full_name').limit(MEMBER_LIST_SCAN);
+  if (head) q = q.not('queendom_id', 'is', null);
   if (!scopeAll) q = q.eq('queendom_id', queendom_id as string);
   else if (wantQueendom) q = q.eq('queendom_id', wantQueendom);
   if (status.toLowerCase() !== 'any') q = q.ilike('membership_status', status);
@@ -609,8 +623,7 @@ export async function getMemberBriefFor(
   const { data } = await memberDb(createAdminClient()).from('members').select(CLIENT_BRIEF_SELECT).eq('id', clientId).maybeSingle();
   const member = data as MemberBrief | null;
   if (!member) return null;
-  const { queendom_id } = await principalQueendom(principal);
-  if (!canAccessMember({ role: principal.role, queendom_id }, member.queendom_id)) return null;
+  if (!canAccessMember(await seatedPrincipal(principal), member.queendom_id)) return null;
   return { member, group: await getSiaGroupForMember(clientId) };
 }
 
@@ -773,7 +786,7 @@ export async function getMemberProfileFor(principal: StaffPrincipal, memberId: s
 
 /** The member's money, live from Zoho Books (1-minute Redis copy). Same gate as the finance page. */
 export async function getMemberFinanceFor(principal: StaffPrincipal, memberId: string) {
-  if (!canSeeMemberFinance({ role: principal.role })) return { denied: true as const };
+  if (!canSeeMemberFinance(await seatedPrincipal(principal))) return { denied: true as const };
   const brief = await getMemberBriefFor(principal, memberId);
   if (!brief) return null;
   const { data } = await memberDb(createAdminClient()).from('members').select('zoho_customer_id, membership_amount_inr').eq('id', memberId).maybeSingle();
@@ -841,7 +854,7 @@ async function freshdeskFiltersFor(principal: StaffPrincipal, ask: FreshdeskAsk)
   const scope = await siaScopeFor(principal);
   if (!scope) return { ok: false, reason: 'no_access' };
   const pin = pinnedFreshdeskGroup(scope);
-  if (pin.pinned && pin.groupId == null) return { ok: false, reason: 'no_group' };
+  if (pin.pinned && pin.groupIds.length === 0) return { ok: false, reason: 'no_group' };
 
   const vocab = await getFreshdeskFilterVocab();
   const applied: Record<string, string> = {};
@@ -859,8 +872,14 @@ async function freshdeskFiltersFor(principal: StaffPrincipal, ask: FreshdeskAsk)
     applied.status = 'every status except Resolved and Closed';
   }
   if (pin.pinned) {
-    filters.group = pin.groupId;
-    applied.group = vocab.groups.find((g) => g.id === pin.groupId)?.name ?? 'your queendom';
+    // Pinned: the asked group only when it is one of theirs (the Joker head has every queendom's
+    // group), otherwise all of theirs. Another queendom's group is never an error, just not theirs.
+    const own = vocab.groups.filter((g) => pin.groupIds.includes(g.id));
+    const picked = ask.group ? pickByName(own, (x) => x.name, ask.group) : null;
+    Object.assign(filters, pinnedGroupFilter(pin.groupIds, picked?.id ?? null));
+    applied.group = filters.group != null
+      ? (vocab.groups.find((g) => g.id === filters.group)?.name ?? 'your queendom')
+      : 'every queendom';
   } else if (ask.group) {
     const g = pickByName(vocab.groups, (x) => x.name, ask.group);
     if (!g) return { ok: false, reason: 'unknown', field: 'group', asked: ask.group, choices: vocab.groups.map((x) => x.name) };
@@ -945,7 +964,7 @@ export async function getFreshdeskTicketFor(principal: StaffPrincipal, id: numbe
   if (!d) return { ok: false as const, reason: 'not_found' as const };
   const pin = pinnedFreshdeskGroup(scope);
   // A pinned viewer learns nothing about another queendom's ticket, not even that it exists.
-  if (pin.pinned && d.ticket.group_id !== pin.groupId) return { ok: false as const, reason: 'not_found' as const };
+  if (pin.pinned && (d.ticket.group_id == null || !pin.groupIds.includes(d.ticket.group_id))) return { ok: false as const, reason: 'not_found' as const };
   const t = d.ticket;
   const notes = d.conversations.slice(-FD_THREAD_NOTES);
   return {
@@ -1042,7 +1061,7 @@ type VisibleGroup = Awaited<ReturnType<typeof getSiaGroups>>[number];
 async function visibleSiaGroups(scope: SiaViewerScope): Promise<VisibleGroup[]> {
   const groups = await getSiaGroups();
   if (scope.kind === 'all') return groups;
-  const mine = await getQueendomGroupJids(scope.queendomId);
+  const mine = await getQueendomGroupJids(scope.queendomIds);
   return groups.filter((g) => mine.has(g.group_jid));
 }
 
@@ -1142,7 +1161,7 @@ export async function searchSiaMessagesFor(principal: StaffPrincipal, query: str
   if (words.length === 0) return { ok: true as const, hits: [], searched_for: [] };
   let hits = await searchSiaMessages(query, groupJid, words);
   if (scope.kind === 'queendom' && !groupJid) {
-    const mine = await getQueendomGroupJids(scope.queendomId);
+    const mine = await getQueendomGroupJids(scope.queendomIds);
     hits = hits.filter((h) => mine.has(h.group_jid));
   }
   // The same sieve as the member search: a hit must hold at least one of the words as a whole word,
@@ -1271,6 +1290,11 @@ export async function getMember360For(principal: StaffPrincipal, ref: string): P
   const lastIsAck = Boolean(last && isOnlyAcknowledgement([last.text ?? '']));
   const waitingOnUs = Boolean(last && last.from !== 'staff' && !lastIsAck && lastMember && (!lastStaff || lastStaff.at < lastMember.at));
   const x = extras.ok ? (extras.rows[0] ?? {}) : {};
+  // Whoever the finance gate refuses (the Joker head) sees the deals but not their amounts.
+  const moneyDenied = Boolean(money && 'denied' in money);
+  const deals = moneyDenied && Array.isArray(x.deals)
+    ? (x.deals as Record<string, unknown>[]).map((d) => Object.fromEntries(Object.entries(d).filter(([k]) => k !== 'deal_amount')))
+    : (x.deals ?? []);
 
   const data: Record<string, unknown> = {
     as_of: new Date().toISOString(),
@@ -1298,7 +1322,7 @@ export async function getMember360For(principal: StaffPrincipal, ref: string): P
     timeline: profile.timeline,
     observations: profile.observations,
     vendor_jobs: { total: Number(x.vendor_jobs_total ?? 0), latest: x.vendor_jobs ?? [] },
-    deals: x.deals ?? [],
+    deals,
     money: !money ? null : 'denied' in money ? 'not visible to your role'
       : 'totals' in money ? { linked: true, currency: 'INR', totals: money.totals, unpaid_invoices: (money.unpaid_invoices ?? []).slice(0, 6), latest_payments: (money.latest_payments ?? []).slice(0, 4), fetched_at: money.fetched_at }
       : money,

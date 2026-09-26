@@ -4,6 +4,7 @@
 // only the label, the kind, the last four digits and an expiry; a secret is shown after the
 // person says why, for VAULT_REVEAL_SECONDS, and that reveal is on record. Adding encrypts in
 // the app before anything is stored. Removing is admin and founder, behind a ConfirmDialog.
+// `canUse` false (the Joker head, 2026-09-26): the list only, no Open and no Add.
 
 import { FormSelect } from '@/components/ui/FormSelect';
 import { Input, Textarea } from '@/components/ui/Field';
@@ -26,7 +27,7 @@ const SHELL: React.CSSProperties = { background: 'var(--theme-paper)', border: '
 const BODY: React.CSSProperties = { padding: 'var(--space-4) var(--space-6) var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' };
 
 
-function Row({ item, memberId, canDelete }: { item: MemberVaultItem; memberId: string; canDelete: boolean }) {
+function Row({ item, memberId, canDelete, canUse }: { item: MemberVaultItem; memberId: string; canDelete: boolean; canUse: boolean }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   // No autofocus on a phone: the keyboard would cover the opening sheet.
@@ -63,9 +64,9 @@ function Row({ item, memberId, canDelete }: { item: MemberVaultItem; memberId: s
           <span style={{ fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', color: 'var(--theme-text-primary)' }}>{item.label}</span>
           <span style={{ fontSize: 'var(--text-xs)', color: 'var(--theme-text-secondary)' }}>{meta}</span>
         </div>
-        {secret === null && !asking && (
+        {secret === null && !asking && (canUse || canDelete) && (
           <div style={{ display: 'flex', gap: 'var(--space-2)', flexShrink: 0 }}>
-            <Button size="xs" variant="ghost" disabled={pending} onClick={() => setAsking('reveal')}>Open</Button>
+            {canUse && <Button size="xs" variant="ghost" disabled={pending} onClick={() => setAsking('reveal')}>Open</Button>}
             {canDelete && <Button size="xs" variant="ghost" disabled={pending} onClick={() => setAsking('delete')}>Remove</Button>}
           </div>
         )}
@@ -101,7 +102,7 @@ function Row({ item, memberId, canDelete }: { item: MemberVaultItem; memberId: s
   );
 }
 
-export function MemberVaultCard({ memberId, items, canDelete }: { memberId: string; items: MemberVaultItem[]; canDelete: boolean }) {
+export function MemberVaultCard({ memberId, items, canDelete, canUse = true }: { memberId: string; items: MemberVaultItem[]; canDelete: boolean; canUse?: boolean }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [adding, setAdding] = useState(false);
@@ -119,11 +120,15 @@ export function MemberVaultCard({ memberId, items, canDelete }: { memberId: stri
     <div style={SHELL}>
       <CardHeader icon={KeyRound} label="Cards & documents" right={<span style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--neu-header-ink)' }}>{items.length}</span>} />
       <div style={BODY}>
-        <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>Encrypted. Every open is on record with your name and reason. Never shown to Elaya.</p>
+        <p style={{ margin: 0, fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>
+          {canUse
+            ? 'Encrypted. Every open is on record with your name and reason. Never shown to Elaya.'
+            : 'Encrypted. Your seat sees the list only: opening and adding stay with the queendom\'s own team.'}
+        </p>
         {items.length === 0
           ? <EmptyState variant="inline" title="Nothing on file." />
-          : <ul style={{ margin: 0, padding: 0 }}>{items.map((it) => <Row key={it.id} item={it} memberId={memberId} canDelete={canDelete} />)}</ul>}
-        {adding ? (
+          : <ul style={{ margin: 0, padding: 0 }}>{items.map((it) => <Row key={it.id} item={it} memberId={memberId} canDelete={canDelete} canUse={canUse} />)}</ul>}
+        {!canUse ? null : adding ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
             <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
               <FormSelect aria-label="Secret type" style={{ width: 'auto' }} value={form.kind} onValueChange={(nextValue) => setForm({ ...form, kind: nextValue as MemberVaultKind })}>

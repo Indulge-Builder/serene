@@ -28,7 +28,7 @@ export default async function SiaPage({ searchParams }: { searchParams: Promise<
   const [allGroups, params, mine] = await Promise.all([
     getSiaGroups(),
     searchParams,
-    scope.kind === "queendom" ? getQueendomGroupJids(scope.queendomId) : Promise.resolve(null),
+    scope.kind === "queendom" ? getQueendomGroupJids(scope.queendomIds) : Promise.resolve(null),
   ]);
   const groups = mine ? allGroups.filter((g) => mine.has(g.group_jid)) : allGroups;
 

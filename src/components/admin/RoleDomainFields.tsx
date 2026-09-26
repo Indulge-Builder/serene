@@ -6,10 +6,11 @@
  *
  *   domain      "where do you sit"           picked first — it decides what the Role select offers
  *   role        "what can you do"            the platform role (routes + RLS key on it)
- *   position    "what is your job in the team" (queen / bishop / genie / joker) — only for a
- *               domain listed in DOMAIN_POSITIONS; picking one DERIVES the platform role
+ *   position    "what is your job in the team" (queen / bishop / genie / joker / joker head) —
+ *               only for a domain listed in DOMAIN_POSITIONS; picking one DERIVES the platform role
  *               (SIA_ROLE_PLATFORM_ROLE) and locks it, so a genie can never be created as a manager
- *   queendom    "which team"                 required with a position, blank otherwise
+ *   queendom    "which team"                 required with a position, blank otherwise (and blank
+ *               for the Joker head, who sits above every queendom)
  *
  * The <form> receives exactly four fields: role, domain, sia_role, queendom_id — the same
  * names the Zod schemas read (domain and queendom_id ride FormSelect's hidden input, 2026-09-25;
@@ -21,7 +22,7 @@ import { Field } from "@/components/ui/Field";
 import { FormSelect } from "@/components/ui/FormSelect";
 import { USER_ROLES, ROLE_LABELS } from "@/lib/constants/roles";
 import { APP_DOMAINS, DOMAIN_LABELS } from "@/lib/constants/domains";
-import { SIA_ROLES, SIA_ROLE_PLATFORM_ROLE, positionsForDomain, isSiaRole, type SiaRole } from "@/lib/constants/sia-roles";
+import { SIA_ROLES, SIA_ROLE_PLATFORM_ROLE, positionsForDomain, isSiaRole, seatNeedsQueendom, type SiaRole } from "@/lib/constants/sia-roles";
 import type { QueendomSummary } from "@/lib/types/member";
 import type { UserRole, AppDomain } from "@/lib/types/database";
 
@@ -59,6 +60,8 @@ export function RoleDomainFields({ queendoms, defaults, idPrefix = "" }: Props) 
   const positions = positionsForDomain(domain);
   const position  = pick.kind === "position" ? pick.value : null;
   const role: UserRole = position ? SIA_ROLE_PLATFORM_ROLE[position] : (pick as { value: UserRole }).value;
+  // A company-wide seat (the Joker head) sits above the queendoms: no queendom to pick.
+  const needsQueendom = seatNeedsQueendom(position);
   const id = (s: string) => `${idPrefix}${s}`;
 
   function onDomain(next: AppDomain) {
@@ -76,7 +79,7 @@ export function RoleDomainFields({ queendoms, defaults, idPrefix = "" }: Props) 
       {/* The four values the action reads. role + sia_role are derived here, never typed. */}
       <input type="hidden" name="role" value={role} />
       <input type="hidden" name="sia_role" value={position ?? ""} />
-      {!position && <input type="hidden" name="queendom_id" value="" />}
+      {!needsQueendom && <input type="hidden" name="queendom_id" value="" />}
 
       <div className="serene-form-row">
         <Field label="Domain" htmlFor={id("domain")} required>
@@ -91,7 +94,7 @@ export function RoleDomainFields({ queendoms, defaults, idPrefix = "" }: Props) 
           label={positions.length ? "Position" : "Role"}
           htmlFor={id("role")}
           required
-          hint={position ? `Access level: ${ROLE_LABELS[role]} (set by the position)` : undefined}
+          hint={position ? `Access level: ${ROLE_LABELS[role]} (set by the position)${needsQueendom ? "" : ". Reaches every queendom."}` : undefined}
         >
           <FormSelect id={id("role")} value={encode(pick)} onValueChange={(next) => setPick(decode(next))}>
             {positions.length > 0 && (
@@ -110,7 +113,7 @@ export function RoleDomainFields({ queendoms, defaults, idPrefix = "" }: Props) 
         </Field>
       </div>
 
-      {position && (
+      {needsQueendom && (
         <Field label="Queendom" htmlFor={id("queendom")} required hint="The team this person works in. Queen and Joker are one seat each; a queendom can have several Bishops and Genies.">
           <FormSelect id={id("queendom")} name="queendom_id" value={queendomId} onValueChange={setQueendomId}>
             <option value="" disabled>Choose a queendom</option>

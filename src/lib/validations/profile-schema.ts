@@ -5,7 +5,7 @@ import { THEME_ENUM } from "@/lib/constants/themes";
 import { ICON_ENUM } from "@/lib/constants/app-icons";
 import { APPEARANCE_ENUM } from "@/lib/constants/appearance";
 import { uuidField } from "@/lib/validations/fields";
-import { SIA_ROLES, SIA_ROLE_PLATFORM_ROLE, positionsForDomain, type SiaRole } from "@/lib/constants/sia-roles";
+import { SIA_ROLES, SIA_ROLE_PLATFORM_ROLE, positionsForDomain, seatNeedsQueendom, type SiaRole } from "@/lib/constants/sia-roles";
 
 const userRoleEnum = USER_ROLES as [string, ...string[]];
 const appDomainEnum = APP_DOMAINS as [string, ...string[]];
@@ -14,7 +14,8 @@ const appDomainEnum = APP_DOMAINS as [string, ...string[]];
 // sia_role + queendom_id ride beside role + domain on every account-shaping schema. Both are
 // optional and blank outside a domain that has positions; when a position is given the
 // platform role MUST be the one it maps to (a genie is never a manager by accident) and the
-// queendom is required. The 0201 CHECKs are the database mirror of the same three rules.
+// queendom is required, except for a company-wide seat (the Joker head, 0244), which never has
+// one. The 0201 / 0244 CHECKs are the database mirror of the same rules.
 const emptyToNull = (v: unknown) => (v === "" || v === undefined ? null : v);
 const siaRoleField = z.preprocess(emptyToNull, z.enum(SIA_ROLES.values as unknown as [string, ...string[]], { message: "sia_role_invalid" }).nullable());
 const queendomField = z.preprocess(emptyToNull, uuidField("queendom_invalid").nullable());
@@ -30,11 +31,17 @@ function checkPosition(
   }
   if (v.sia_role) {
     if (!positions.includes(v.sia_role)) { ctx.addIssue({ code: "custom", message: "sia_role_invalid", path: ["sia_role"] }); return; }
-    if (!v.queendom_id) { ctx.addIssue({ code: "custom", message: "queendom_required", path: ["queendom_id"] }); return; }
+    if (seatNeedsQueendom(v.sia_role) && !v.queendom_id) { ctx.addIssue({ code: "custom", message: "queendom_required", path: ["queendom_id"] }); return; }
     if (SIA_ROLE_PLATFORM_ROLE[v.sia_role as SiaRole] !== v.role) {
       ctx.addIssue({ code: "custom", message: "sia_role_platform_mismatch", path: ["role"] });
     }
   }
+}
+
+/** A company-wide seat has no queendom: a stale pick left in the form is dropped, not refused
+ *  (the database would refuse it). */
+function dropQueendomForCompanyWideSeat<T extends { sia_role: string | null; queendom_id: string | null }>(v: T): T {
+  return v.sia_role && !seatNeedsQueendom(v.sia_role) ? { ...v, queendom_id: null } : v;
 }
 
 export const createUserSchema = z.object({
@@ -71,7 +78,7 @@ export const createUserSchema = z.object({
     .or(z.literal(""))
     .transform((v) => v || null),
   ...positionFields,
-}).superRefine(checkPosition);
+}).superRefine(checkPosition).transform(dropQueendomForCompanyWideSeat);
 
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 
@@ -126,7 +133,7 @@ export const updateAuthorizationSchema = z.object({
   role: z.enum(userRoleEnum as [string, ...string[]]),
   domain: z.enum(appDomainEnum as [string, ...string[]]),
   ...positionFields,
-}).superRefine(checkPosition);
+}).superRefine(checkPosition).transform(dropQueendomForCompanyWideSeat);
 
 export type UpdateAuthorizationInput = z.infer<typeof updateAuthorizationSchema>;
 
@@ -161,7 +168,7 @@ export const inviteUserSchema = z.object({
     .or(z.literal(""))
     .transform((v) => v || null),
   ...positionFields,
-}).superRefine(checkPosition);
+}).superRefine(checkPosition).transform(dropQueendomForCompanyWideSeat);
 
 export type InviteUserInput = z.infer<typeof inviteUserSchema>;
 

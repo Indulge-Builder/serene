@@ -142,6 +142,7 @@ function applyTicketFilters(q: TicketSelect, filters: FdTicketListFilters, withS
   let out = q.eq("deleted", false).eq("spam", false);
   if (withStatus && filters.status.length) out = out.in("status", filters.status);
   if (filters.group != null) out = out.eq("group_id", filters.group);
+  else if (filters.groupIn?.length) out = out.in("group_id", filters.groupIn);
   if (filters.agent != null) out = out.eq("responder_id", filters.agent);
   if (filters.category) out = out.eq("category", filters.category);
   if (filters.priority != null) out = out.eq("priority", filters.priority);
@@ -282,7 +283,13 @@ export async function getFreshdeskSyncHealth(): Promise<FdSyncHealth> {
  */
 export async function getFreshdeskOverview(filters: FdTicketListFilters): Promise<FdOverview> {
   const todayStart = toISTMidnight(new Date()).toISOString();
-  const [counts, sync] = await Promise.all([overviewViaRpc(filters, todayStart), getFreshdeskSyncHealth()]);
+  // A reach of several groups (the Joker head) is counted group by group and added up: the RPC
+  // takes one group, and without one it would count every group, the others' included.
+  const spansGroups = filters.group == null && Boolean(filters.groupIn?.length);
+  const [counts, sync] = await Promise.all([
+    spansGroups ? overviewAcrossGroups(filters, todayStart) : overviewViaRpc(filters, todayStart),
+    getFreshdeskSyncHealth(),
+  ]);
   const c = counts ?? (await overviewViaHeadCounts(filters, todayStart));
 
   return {
@@ -319,6 +326,25 @@ async function overviewViaRpc(filters: FdTicketListFilters, todayStart: string):
     return null;
   }
   return (data as FdOverviewRpcResult | null) ?? null;
+}
+
+/** One RPC call per group in `groupIn`, summed (the groups do not overlap, so the sums are
+ *  exact). Any call failing falls back to the head counts, which apply `groupIn` themselves. */
+async function overviewAcrossGroups(filters: FdTicketListFilters, todayStart: string): Promise<FdOverviewRpcResult | null> {
+  const parts = await Promise.all((filters.groupIn ?? []).map((g) => overviewViaRpc({ ...filters, group: g, groupIn: null }, todayStart)));
+  if (parts.some((part) => part == null)) return null;
+  const byStatus = new Map<number, number>();
+  const sum: FdOverviewRpcResult = { by_status: [], total: 0, open: 0, created_today: 0, resolved_today: 0, escalated_open: 0 };
+  for (const part of parts as FdOverviewRpcResult[]) {
+    for (const s of part.by_status) byStatus.set(s.status, (byStatus.get(s.status) ?? 0) + Number(s.count));
+    sum.total += Number(part.total);
+    sum.open += Number(part.open);
+    sum.created_today += Number(part.created_today);
+    sum.resolved_today += Number(part.resolved_today);
+    sum.escalated_open += Number(part.escalated_open);
+  }
+  sum.by_status = [...byStatus.entries()].map(([status, count]) => ({ status, count }));
+  return sum;
 }
 
 /** The pre-0196 shape: thirteen parallel HEAD counts through the shared predicate. */

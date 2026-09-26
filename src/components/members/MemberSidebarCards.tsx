@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Smartphone, Landmark, Network, CalendarClock, BookOpen } from 'lucide-react';
 import { RevealId } from '@/components/ui/RevealId';
 import { memberFinancePath } from '@/lib/constants/sia-roles';
+import { isMoneyEventKind } from '@/lib/constants/member-facets';
 import { CardHeader } from '@/components/leads/CardHeader';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { InfoRow } from '@/components/ui/InfoRow';
@@ -33,7 +34,7 @@ export function MemberAppCard({ detail }: { detail: MemberDetail }) {
 
 export function MemberMoneyCard({ detail }: { detail: MemberDetail }) {
   const c = detail.member;
-  const money = detail.events.filter((e) => e.kind === 'payment' || e.kind === 'invoice' || e.kind === 'renewal');
+  const money = detail.events.filter((e) => isMoneyEventKind(e.kind));
   return (
     <div style={SHELL}>
       <CardHeader icon={Landmark} label="Money" />

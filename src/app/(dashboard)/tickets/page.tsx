@@ -17,6 +17,7 @@ import { PageControls } from '@/components/layout/PageControls';
 import { canAccessRoute } from '@/lib/utils/route-access';
 import { TICKETS_PATH, TICKETS_LIST_PAGE_SIZE, TICKET_STATUSES, TICKET_CATEGORIES, type TicketStatus, type TicketCategory, TICKETS_BOARD_PATH } from '@/lib/constants/tickets';
 import type { TicketListFilters } from '@/lib/types/ticket';
+import { isCompanyWideSeat } from '@/lib/constants/sia-roles';
 
 export const metadata = { title: 'Tickets' };
 
@@ -55,8 +56,11 @@ export default async function TicketsPage({ searchParams }: { searchParams: Prom
   if (!canAccessRoute(profile, TICKETS_PATH)) redirect('/dashboard');
   const filters = parseFilters(await searchParams);
   const privileged = profile.role === 'admin' || profile.role === 'founder';
+  // The Joker head (0244) works every queendom's tickets: the queendom filter and the staff list
+  // span them all (RLS already keeps out a ticket that belongs to no queendom).
+  const everyQueendom = privileged || isCompanyWideSeat(profile);
   // The cards load WITH the page (0219 cards are one indexed read): the strip is there on first paint and nothing below it moves.
-  const [queendoms, staff, settings, intake] = await Promise.all([getQueendoms(), listQueendomStaff(privileged ? null : (profile.queendom_id ?? null)), getTicketSettings(), listOpenIntakeProposals()]);
+  const [queendoms, staff, settings, intake] = await Promise.all([getQueendoms(), listQueendomStaff(everyQueendom ? null : (profile.queendom_id ?? null)), getTicketSettings(), listOpenIntakeProposals()]);
   return (
     <main className="flex-1 p-4 sm:p-6 lg:p-8">
       <div className="flex items-center justify-between gap-4 mb-6">
@@ -72,7 +76,7 @@ export default async function TicketsPage({ searchParams }: { searchParams: Prom
         </div>
       </div>
       <IntakeProposals proposals={intake.proposals} total={intake.total} statsSlot={privileged ? <Suspense fallback={<IntakeStatsLine stats={null} />}><IntakeStatsAsync /></Suspense> : null} />
-      <div className="px-5 py-4 mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)"><TicketsFilters queendoms={privileged ? queendoms : queendoms.filter((q) => q.id === profile.queendom_id)} staff={staff} tags={settings.tags} labels={settings.statusLabels} /></div>
+      <div className="px-5 py-4 mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)"><TicketsFilters queendoms={everyQueendom ? queendoms : queendoms.filter((q) => q.id === profile.queendom_id)} staff={staff} tags={settings.tags} labels={settings.statusLabels} /></div>
       <Suspense key={JSON.stringify(filters)} fallback={<TicketsTableSkeleton />}>
         <TicketsAsync filters={filters} callerId={profile.id} />
       </Suspense>

@@ -60,7 +60,9 @@ function SystemRow({ icon, label, id, idLabel, action, href, hint }: { icon: Luc
   );
 }
 
-export function MemberIdentityCard({ detail, queendoms, canPickQueendom }: { detail: MemberDetail; queendoms: QueendomSummary[]; canPickQueendom: boolean }) {
+/** `canSeeMoney` false (the Joker head): no amount, no finance link; the page has already
+ *  taken the figures out of `detail`, this only drops the rows that would read "—". */
+export function MemberIdentityCard({ detail, queendoms, canPickQueendom, canSeeMoney = true }: { detail: MemberDetail; queendoms: QueendomSummary[]; canPickQueendom: boolean; canSeeMoney?: boolean }) {
   const [editing, setEditing] = useState(false);
   const { member: c, queendom, team, group } = detail;
   const expired = c.membership_status === 'Expired';
@@ -110,15 +112,15 @@ export function MemberIdentityCard({ detail, queendoms, canPickQueendom }: { det
           />
         )}
         <InfoRow label="Membership" value={`${c.membership_start ? formatDate(c.membership_start, 'd MMM yyyy') : '—'} to ${c.membership_end ? formatDate(c.membership_end, 'd MMM yyyy') : '—'}`} />
-        <InfoRow label="Amount" value={c.membership_amount_inr != null ? formatCurrency(Number(c.membership_amount_inr)) : '—'} divider />
+        {canSeeMoney && <InfoRow label="Amount" value={c.membership_amount_inr != null ? formatCurrency(Number(c.membership_amount_inr)) : '—'} divider />}
 
         <LinkRow icon={MessageCircle} label="WhatsApp group" value={group ? (group.subject ?? group.group_jid) : (c.wa_invite_link ? 'Invite link saved, group not matched' : null)} href={group ? siaGroupHref(group.group_jid) : undefined} hint="Not linked" />
         <SystemRow icon={Ticket} label="Freshdesk" id={c.freshdesk_contact_id} idLabel="Freshdesk contact id" action="See tickets" href={`${FRESHDESK_PATH}?member=${c.id}`} hint="No contact id" />
-        <SystemRow icon={Landmark} label="Zoho customer" id={c.zoho_customer_id} idLabel="Zoho customer id" action="See finance" href={memberFinancePath(c.id)} hint="No customer id" />
+        {canSeeMoney && <SystemRow icon={Landmark} label="Zoho customer" id={c.zoho_customer_id} idLabel="Zoho customer id" action="See finance" href={memberFinancePath(c.id)} hint="No customer id" />}
         <SystemRow icon={Smartphone} label="App member" id={c.app_member_id} idLabel="App member id" action="Linked" hint="No app account" />
       </div>
       {editing && (
-        <MemberFormModal open={editing} onClose={() => setEditing(false)} queendoms={queendoms} defaultQueendomId={c.queendom_id} canPickQueendom={canPickQueendom} member={c} />
+        <MemberFormModal open={editing} onClose={() => setEditing(false)} queendoms={queendoms} defaultQueendomId={c.queendom_id} canPickQueendom={canPickQueendom} canSeeMoney={canSeeMoney} member={c} />
       )}
     </div>
   );

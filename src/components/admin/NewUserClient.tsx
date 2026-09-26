@@ -66,7 +66,7 @@ export function NewUserClient({ queendoms }: { queendoms: QueendomSummary[] }) {
                 <ReferenceItem
                   icon={<ShieldCheck style={iconStyle} />}
                   title="Role & domain"
-                  description="Domain controls what they can see. A Concierge position (Queen, Bishop, Genie, Joker) sets the access level itself and needs a queendom. Both are audited."
+                  description="Domain controls what they can see. A Concierge position (Queen, Bishop, Genie, Joker, Joker head) sets the access level itself; each needs a queendom except the Joker head, who works every queendom. Both are audited."
                 />
               </>
             ) : (
@@ -79,7 +79,7 @@ export function NewUserClient({ queendoms }: { queendoms: QueendomSummary[] }) {
                 <ReferenceItem
                   icon={<ShieldCheck style={iconStyle} />}
                   title="Role & domain"
-                  description="Domain controls what they can see. A Concierge position (Queen, Bishop, Genie, Joker) sets the access level itself and needs a queendom. Both are audited."
+                  description="Domain controls what they can see. A Concierge position (Queen, Bishop, Genie, Joker, Joker head) sets the access level itself; each needs a queendom except the Joker head, who works every queendom. Both are audited."
                 />
               </>
             )}

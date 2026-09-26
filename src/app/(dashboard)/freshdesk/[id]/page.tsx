@@ -21,7 +21,7 @@ type Props = {
 export default async function FreshdeskTicketPage({ params, searchParams }: Props) {
   const profile = await getCurrentProfile();
   if (!profile) redirect('/login');
-  // Same scope as the list (sia-access.ts): a queendom viewer opens only their own group's tickets.
+  // Same scope as the list (sia-access.ts): a queendom viewer opens only their own groups' tickets.
   const viewer = await getSiaViewerScope(profile);
   if (!viewer) redirect('/dashboard');
   const pin = pinnedFreshdeskGroup(viewer);
@@ -39,7 +39,7 @@ export default async function FreshdeskTicketPage({ params, searchParams }: Prop
   ]);
   if (!detail) notFound();
   // Not theirs reads as not there: a ticket number must not confirm that another queendom's ticket exists.
-  if (pin.pinned && (pin.groupId == null || detail.ticket.group_id !== pin.groupId)) notFound();
+  if (pin.pinned && (detail.ticket.group_id == null || !pin.groupIds.includes(detail.ticket.group_id))) notFound();
   const groupNames: Record<number, string> = {};
   mapRows<{ id: number; name: string }, void>(groups.data, (g) => { groupNames[g.id] = g.name; });
 

@@ -18,8 +18,11 @@ type Person = { id: string; full_name: string; phone: string | null; role: strin
 
 const POSITION_ROLES = new Set(["genie", "bishop", "queen", "joker"]);
 
-/** The participant role a linked profile implies; null = leave the row's role alone. */
+/** The participant role a linked profile implies; null = leave the row's role alone. The Joker head
+ *  (0244) is tagged a joker: the wag_contacts CHECK has no head value, and to the groups they are
+ *  staff like any joker. */
 function roleFor(p: Person): string | null {
+  if (p.sia_role === "joker_head") return "joker";
   if (p.sia_role && POSITION_ROLES.has(p.sia_role)) return p.sia_role;
   if (p.role === "founder") return "founder";
   return null;

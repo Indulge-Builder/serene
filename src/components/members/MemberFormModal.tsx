@@ -36,10 +36,13 @@ type Props = {
   /** The caller's own queendom (a Sia member); admin/founder pass null and pick. */
   defaultQueendomId: string | null;
   canPickQueendom: boolean;
+  /** False for a viewer the finance gate refuses (the Joker head): no Amount field, and the
+   *  amount is left out of the save so an edit never blanks it. */
+  canSeeMoney?: boolean;
   member?: MemberRow;
 };
 
-export function MemberFormModal({ open, onClose, queendoms, defaultQueendomId, canPickQueendom, member }: Props) {
+export function MemberFormModal({ open, onClose, queendoms, defaultQueendomId, canPickQueendom, canSeeMoney = true, member }: Props) {
   const router = useRouter();
   const [pending, start] = useTransition();
   // No autofocus on a phone: the keyboard would cover the opening sheet.
@@ -74,7 +77,7 @@ export function MemberFormModal({ open, onClose, queendoms, defaultQueendomId, c
         membership_status: form.membership_status || null,
         membership_start: form.membership_start || null,
         membership_end: form.membership_end || null,
-        membership_amount_inr: form.membership_amount_inr ? Number(form.membership_amount_inr) : null,
+        ...(canSeeMoney ? { membership_amount_inr: form.membership_amount_inr ? Number(form.membership_amount_inr) : null } : {}),
       };
       const res = member
         ? await updateMemberAction({
@@ -130,7 +133,7 @@ export function MemberFormModal({ open, onClose, queendoms, defaultQueendomId, c
         </label>
         <label><Label>Membership start</Label><DatePicker style={{ width: '100%' }} placeholder="Pick a date" value={parseIsoDate(form.membership_start)} onChange={(d) => setForm((f) => ({ ...f, membership_start: toIsoDate(d) }))} /></label>
         <label><Label>Membership end</Label><DatePicker style={{ width: '100%' }} placeholder="Pick a date" value={parseIsoDate(form.membership_end)} onChange={(d) => setForm((f) => ({ ...f, membership_end: toIsoDate(d) }))} /></label>
-        <label><Label>Amount (INR)</Label><Input style={{ width: '100%' }} inputMode="numeric" value={form.membership_amount_inr} onChange={set('membership_amount_inr')} placeholder="400000" /></label>
+        {canSeeMoney && <label><Label>Amount (INR)</Label><Input style={{ width: '100%' }} inputMode="numeric" value={form.membership_amount_inr} onChange={set('membership_amount_inr')} placeholder="400000" /></label>}
         {!member && (
           <>
             <label><Label>Email</Label><Input type="email" inputMode="email" style={{ width: '100%' }} value={form.email} onChange={set('email')} placeholder="name@example.com" /></label>

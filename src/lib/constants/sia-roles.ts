@@ -3,7 +3,9 @@
 // A queendom is the unit: one queen > bishops > genies, plus one joker (the creative arm). These
 // are `profiles.sia_role` values; they sit BESIDE `profiles.role` (the platform role that
 // authorises routes) — a bishop is a `manager`, a genie an `agent`, in `domain = concierge`.
-// Decided with the founder 2026-09-15 (member-ticket-plan.md 7.0).
+// Decided with the founder 2026-09-15 (member-ticket-plan.md 7.0). Above the queendoms sits one
+// company-wide seat, the Joker head (0244, 2026-09-26): no queendom of their own, the reach of a
+// queen in every queendom, but not the vault's secrets and not members' money.
 
 import { defineEnum } from "@/lib/constants/define-enum";
 import type { AppDomain } from "@/lib/types/database";
@@ -13,6 +15,7 @@ export const SIA_ROLES = defineEnum([
   { id: "bishop", label: "Bishop" },
   { id: "genie",  label: "Genie" },
   { id: "joker",  label: "Joker" },
+  { id: "joker_head", label: "Joker head" },
 ] as const);
 export type SiaRole = (typeof SIA_ROLES.values)[number];
 
@@ -22,6 +25,8 @@ export const SIA_ROLE_PLATFORM_ROLE: Record<SiaRole, "manager" | "agent"> = {
   bishop: "manager",
   genie:  "agent",
   joker:  "agent",
+  // A manager so the head can hand tasks to the jokers (assigning to someone else is manager+).
+  joker_head: "manager",
 };
 
 /** The single seats of a queendom: exactly one active holder each (0201 partial unique indexes).
@@ -47,6 +52,28 @@ export function isSiaRole(v: unknown): v is SiaRole {
 }
 /** The one domain whose positions live in a queendom today (the 0201 CHECK mirrors this). */
 export const QUEENDOM_DOMAIN: AppDomain = "concierge";
+
+/** Seats held ONCE across the whole company and tied to no queendom (0244: one active holder,
+ *  queendom_id NULL). Today only the Joker head. */
+export const COMPANY_WIDE_SEATS = ["joker_head"] as const satisfies readonly SiaRole[];
+
+/** Does this position sit inside one queendom? True for queen / bishop / genie / joker; false
+ *  for a company-wide seat. The forms ask for a queendom only when true; the 0244 CHECK
+ *  (profiles_sia_role_needs_queendom) is the database mirror. */
+export function seatNeedsQueendom(siaRole: string | null | undefined): boolean {
+  return isSiaRole(siaRole) && !(COMPANY_WIDE_SEATS as readonly string[]).includes(siaRole);
+}
+
+/**
+ * THE company-wide reach test (0244): an active concierge account in the Joker head seat reaches
+ * every queendom the way a queen reaches hers, without being admin. The SQL twin is the extra
+ * branch in can_access_member_queendom(). Keyed on the SEAT, never on a null queendom_id: every
+ * account outside concierge has a null queendom, and an unseated concierge account must keep
+ * seeing nothing. `is_active` absent = the caller only handles live sessions.
+ */
+export function isCompanyWideSeat(p: { domain?: string | null; sia_role?: string | null; is_active?: boolean | null }): boolean {
+  return p.domain === QUEENDOM_DOMAIN && p.sia_role === "joker_head" && p.is_active !== false;
+}
 
 /** The three queendoms seeded by 0194; slugs are the join key the import scripts use. */
 export const QUEENDOM_SLUGS = ["anishqa", "ananyshree", "sanika"] as const;

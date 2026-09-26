@@ -250,11 +250,13 @@ export async function getTicketHelp(clientId: string, category: string, excludeT
 
 export type ElayaTicketSummary = Pick<TicketRow, "id" | "ticket_no" | "title" | "status" | "priority" | "category" | "sub_category" | "requested_for" | "resolve_due_at" | "first_response_due_at" | "first_responded_at" | "updated_at" | "created_at" | "tags"> & { member_name: string; assignee_name: string | null; queendom_name: string | null };
 
-export async function listTicketsForElaya(scope: { queendomId: string | null; assigneeId: string | null; statuses: TicketStatus[]; search: string | null; limit: number }): Promise<ElayaTicketSummary[]> {
+/** `withQueendomOnly`: the Joker head reads every queendom but never a ticket that belongs to none. */
+export async function listTicketsForElaya(scope: { queendomId: string | null; withQueendomOnly?: boolean; assigneeId: string | null; statuses: TicketStatus[]; search: string | null; limit: number }): Promise<ElayaTicketSummary[]> {
   const db = ticketsAdminDb();
   let q = db.from("tickets").select("*");
   q = scope.statuses.length ? q.in("status", scope.statuses) : q.in("status", [...TICKET_ACTIVE_STATUSES, "proposed"]);
   if (scope.queendomId) q = q.eq("queendom_id", scope.queendomId);
+  else if (scope.withQueendomOnly) q = q.not("queendom_id", "is", null);
   if (scope.assigneeId) q = q.eq("assignee_id", scope.assigneeId);
   if (scope.search) { const t = searchToken(scope.search); if (t) q = q.or(`title.ilike.%${t}%,ticket_no.ilike.%${t}%`); }
   const { data } = await q.order("updated_at", { ascending: false }).limit(Math.min(scope.limit, 50));

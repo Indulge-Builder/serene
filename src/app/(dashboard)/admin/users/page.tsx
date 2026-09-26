@@ -69,7 +69,11 @@ export default async function AdminUsersPage({ searchParams }: Props) {
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)", marginBottom: "var(--space-5)" }}>
-        <QueendomRosterCard roster={roster} from={listHref} />
+        <QueendomRosterCard
+          roster={roster}
+          jokerHead={users.find((u) => u.sia_role === "joker_head" && u.is_active) ?? users.find((u) => u.sia_role === "joker_head") ?? null}
+          from={listHref}
+        />
         <DomainRosterCard users={users} from={listHref} />
       </div>
 

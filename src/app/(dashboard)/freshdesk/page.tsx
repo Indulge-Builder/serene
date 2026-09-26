@@ -2,7 +2,7 @@ import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import type { SearchParams } from 'next/dist/server/request/search-params';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
-import { canViewMember, getSiaViewerScope, pinnedFreshdeskGroup } from '@/lib/services/sia-access';
+import { canViewMember, getSiaViewerScope, pinnedFreshdeskGroup, pinnedGroupFilter } from '@/lib/services/sia-access';
 import {
   getFreshdeskMemberScope,
   getFreshdeskFilterVocab,
@@ -76,25 +76,35 @@ export default async function FreshdeskPage({ searchParams }: { searchParams: Pr
   if (!profile) redirect('/login');
   // Who may be here is one answer from one place (sia-access.ts): admin/founder (+ the tech
   // workbench) see every ticket; a seated concierge teammate is PINNED to their own queendom's
-  // Freshdesk group, here on the server, whatever the URL says (2026-09-18, plan decision 6).
+  // Freshdesk group, here on the server, whatever the URL says (2026-09-18, plan decision 6), and
+  // the Joker head to every queendom's group (0244), one of them at a time or all together.
   // The tables are service_role only (0193), so this page gate is the trust boundary.
   const viewer = await getSiaViewerScope(profile);
   if (!viewer) redirect('/dashboard');
   const pin = pinnedFreshdeskGroup(viewer);
-  if (pin.pinned && pin.groupId == null) redirect('/dashboard');
+  if (pin.pinned && pin.groupIds.length === 0) redirect('/dashboard');
 
   const resolved = await searchParams;
   const asked = parseFilters(resolved);
   const memberOk = asked.member ? await canViewMember(viewer, asked.member) : true;
-  const filters: FdTicketListFilters = { ...asked, member: memberOk ? asked.member : null, ...(pin.pinned ? { group: pin.groupId } : {}) };
-  const [fullVocab, scope, groupAgents] = await Promise.all([
+  const filters: FdTicketListFilters = { ...asked, member: memberOk ? asked.member : null, ...(pin.pinned ? pinnedGroupFilter(pin.groupIds, asked.group) : {}) };
+  const [fullVocab, scope, groupAgentSets] = await Promise.all([
     getFreshdeskFilterVocab(),
     filters.member ? getFreshdeskMemberScope(filters.member) : Promise.resolve(null),
-    pin.pinned && pin.groupId != null ? getGroupAgentIds(pin.groupId) : Promise.resolve(null),
+    pin.pinned ? Promise.all(pin.groupIds.map((g) => getGroupAgentIds(g))) : Promise.resolve(null),
   ]);
-  // A pinned viewer has no Queendom filter (the pin decides it) and their Agent filter offers
-  // only the people who work their queendom's tickets.
-  const vocab = groupAgents ? { ...fullVocab, agents: fullVocab.agents.filter((a) => groupAgents.has(a.id)) } : fullVocab;
+  // A pinned viewer's Group filter offers only their own groups (shown only when there is more
+  // than one: the Joker head), and their Agent filter only the people who work those tickets.
+  const groupAgents = groupAgentSets && groupAgentSets.every(Boolean)
+    ? new Set(groupAgentSets.flatMap((set) => [...(set as Set<number>)]))
+    : null;
+  const vocab = pin.pinned
+    ? {
+        ...fullVocab,
+        groups: fullVocab.groups.filter((g) => pin.groupIds.includes(g.id)),
+        agents: groupAgents ? fullVocab.agents.filter((a) => groupAgents.has(a.id)) : fullVocab.agents,
+      }
+    : fullVocab;
   // The strip depends on every filter except the page number: paging must not re-count.
   const overviewKey = `overview:${JSON.stringify({ ...filters, page: 1 })}`;
 
@@ -115,7 +125,7 @@ export default async function FreshdeskPage({ searchParams }: { searchParams: Pr
       </Suspense>
 
       <div className="px-5 py-4 mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)">
-        <FreshdeskFilters vocab={vocab} showGroup={!pin.pinned} />
+        <FreshdeskFilters vocab={vocab} showGroup={!pin.pinned || pin.groupIds.length > 1} />
       </div>
 
       {filters.member && (

@@ -12,7 +12,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { mapRows } from "@/lib/utils/rows";
 import type { AssessmentRisk } from "@/lib/constants/member-assessment";
-import { computeHealthScore, CLIENT_FACETS, type HealthBase, type MemberFacet, type MemberTier } from "@/lib/constants/member-facets";
+import { computeHealthScore, CLIENT_FACETS, isMoneyEventKind, type HealthBase, type MemberFacet, type MemberTier } from "@/lib/constants/member-facets";
 import { CLIENTS_LIST_PAGE_SIZE } from "@/lib/constants/sia-roles";
 import { getFreshdeskTicketsForMember } from "@/lib/services/freshdesk-service";
 import { getSiaGroupForMember } from "@/lib/services/sia-service";
@@ -251,6 +251,20 @@ function collapseAgreeingFacts(facts: MemberFactView[]): MemberFactView[] {
 export async function memberQueendom(clientId: string): Promise<{ exists: boolean; queendom_id: string | null }> {
   const { data } = await memberDb(createAdminClient()).from("members").select("queendom_id").eq("id", clientId).maybeSingle();
   return data ? { exists: true, queendom_id: (data as { queendom_id: string | null }).queendom_id } : { exists: false, queendom_id: null };
+}
+
+/**
+ * The member with every money figure taken out, for a viewer the finance gate refuses (the Joker
+ * head, 2026-09-26): the membership amount and the payment, invoice and renewal events go,
+ * nothing else changes. Applied on the SERVER before anything reaches a client component or a
+ * model, so the figures are not in the page data either.
+ */
+export function withoutMemberMoney(detail: MemberDetail): MemberDetail {
+  return {
+    ...detail,
+    member: { ...detail.member, membership_amount_inr: null },
+    events: detail.events.filter((e) => !isMoneyEventKind(e.kind)),
+  };
 }
 
 export async function getMemberDetail(clientId: string): Promise<MemberDetail | null> {

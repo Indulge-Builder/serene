@@ -10,8 +10,8 @@ import { revalidatePath } from "next/cache";
 import { requireProfile, actorFromProfile } from "@/lib/actions/_auth";
 import { parseActionInput } from "@/lib/actions/_validation";
 import { formErrors } from "@/lib/validations/form-errors";
-import { canAccessMember } from "@/lib/elaya/access";
-import { CLIENTS_PATH } from "@/lib/constants/sia-roles";
+import { canAccessMember, canUseMemberVault } from "@/lib/elaya/access";
+import { CLIENTS_PATH, isCompanyWideSeat } from "@/lib/constants/sia-roles";
 import { searchMembersForPicker, memberQueendom } from "@/lib/services/members-service";
 import { addVaultItemCore, revealVaultItemCore, deleteVaultItemCore } from "@/lib/services/member-vault";
 import { startMemberAssessment } from "@/trigger/member-assessment";
@@ -45,8 +45,10 @@ export async function createMemberAction(input: unknown): Promise<ActionResult<M
   if (!parsed.ok) return { data: null, error: parsed.error };
   const auth = await requireProfile();
   if (!auth.ok) return auth.result;
-  // A new member lands in the caller's queendom unless admin/founder chose one.
+  // A new member lands in the caller's queendom unless admin/founder chose one. The Joker head
+  // has no queendom of their own, so they must pick one.
   const queendomId = parsed.data.queendom_id ?? auth.profile.queendom_id ?? null;
+  if (!queendomId && isCompanyWideSeat(auth.profile)) return { data: null, error: formErrors.memberQueendomRequired };
   if (!canAccessMember(auth.profile, queendomId)) return { data: null, error: formErrors.unauthorized };
   const res = await createMemberCore({ ...parsed.data, queendom_id: queendomId }, actorFromProfile(auth.profile));
   if (res.error) return { data: null, error: res.error };
@@ -172,12 +174,14 @@ export async function searchMembersAction(input: unknown): Promise<ActionResult<
 // ─── The vault (0236): card and identity-document details ────────────────────
 // The same gate as every member write (the queendom). Every reveal carries a reason and is on
 // record; removing is admin and founder. The secret goes back to the browser once, for one look.
+// The Joker head sees the list only: no add, no reveal (canUseMemberVault, 2026-09-26).
 
 export async function addMemberVaultItemAction(input: unknown): Promise<ActionResult<MemberVaultItem>> {
   const parsed = parseActionInput(AddMemberVaultItemSchema, input);
   if (!parsed.ok) return { data: null, error: parsed.error };
   const g = await gate(parsed.data.member_id);
   if (!g.ok) return g.result;
+  if (!canUseMemberVault(g.profile)) return { data: null, error: formErrors.unauthorized };
   const res = await addVaultItemCore({ member_id: parsed.data.member_id, kind: parsed.data.kind, label: parsed.data.label, secret: parsed.data.secret, expires_on: parsed.data.expires }, g.profile.id);
   if (res.error !== null) return { data: null, error: res.error === "already stored" ? "That item is already stored." : res.error };
   revalidatePath(`${CLIENTS_PATH}/${parsed.data.member_id}`);
@@ -189,6 +193,7 @@ export async function revealMemberVaultItemAction(input: unknown): Promise<Actio
   if (!parsed.ok) return { data: null, error: parsed.error };
   const g = await gate(parsed.data.member_id);
   if (!g.ok) return g.result;
+  if (!canUseMemberVault(g.profile)) return { data: null, error: formErrors.unauthorized };
   const res = await revealVaultItemCore(parsed.data.item_id, parsed.data.member_id, g.profile.id, parsed.data.reason);
   if (res.error !== null) return { data: null, error: res.error };
   return { data: res.data, error: null };

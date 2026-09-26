@@ -60,7 +60,7 @@ _IST_MONTHS = [
 ]
 
 
-_SEAT_LABELS = {"queen": "Queen", "bishop": "Bishop", "genie": "Genie", "joker": "Joker"}
+_SEAT_LABELS = {"queen": "Queen", "bishop": "Bishop", "genie": "Genie", "joker": "Joker", "joker_head": "Joker head"}
 
 
 _SUBSCRIPTION_DOMAINS = ("finance", "tech")  # mirrors elaya-data.ts SUBSCRIPTION_DOMAINS
@@ -73,6 +73,17 @@ def _scope_hint(principal) -> str:
     label = DOMAIN_LABELS.get(principal.domain, principal.domain)
     # A concierge seat (2026-09-25): one queendom, nothing else (persona.ts, verbatim).
     if principal.domain == "concierge" and principal.role not in ("admin", "founder"):
+        # The Joker head (0244): every queendom like a queen, but not the vault and not members' money.
+        if getattr(principal, "sia_role", None) == "joker_head":
+            return (
+                "Your reach: this user is the Joker head on the concierge floor, one seat above every queendom. They see "
+                "every queendom: its members, those members' WhatsApp groups, its Freshdesk tickets and its Sia tickets; "
+                "vendors are shared across the whole floor; tasks and notes are their own and their team's. They cannot "
+                "open a member's saved cards or IDs and cannot see a member's money (invoices, payments, balances, deal "
+                "amounts), and they see no leads or deals, no company money, no database. A member or group you cannot find "
+                "does not exist or belongs to no queendom: say so plainly, never guess, and never name a member or a group "
+                "you did not get from a tool."
+            )
         if not getattr(principal, "sia_role", None) or not getattr(principal, "queendom_id", None):
             return (
                 "Your reach: this user is on the concierge floor but has not been seated in a queendom yet, so they "

@@ -7,7 +7,7 @@ import { MotionButton, MOTION_BUTTON_DEFAULTS } from '@/components/ui/MotionButt
 import { MemberFormModal } from './MemberFormModal';
 import type { QueendomSummary } from '@/lib/types/member';
 
-export function AddMemberButton({ queendoms, defaultQueendomId, canPickQueendom }: { queendoms: QueendomSummary[]; defaultQueendomId: string | null; canPickQueendom: boolean }) {
+export function AddMemberButton({ queendoms, defaultQueendomId, canPickQueendom, canSeeMoney = true }: { queendoms: QueendomSummary[]; defaultQueendomId: string | null; canPickQueendom: boolean; canSeeMoney?: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -15,7 +15,7 @@ export function AddMemberButton({ queendoms, defaultQueendomId, canPickQueendom 
         <UserPlus style={{ width: '1rem', height: '1rem', strokeWidth: 1.5 }} />
         New member
       </MotionButton>
-      {open && <MemberFormModal open={open} onClose={() => setOpen(false)} queendoms={queendoms} defaultQueendomId={defaultQueendomId} canPickQueendom={canPickQueendom} />}
+      {open && <MemberFormModal open={open} onClose={() => setOpen(false)} queendoms={queendoms} defaultQueendomId={defaultQueendomId} canPickQueendom={canPickQueendom} canSeeMoney={canSeeMoney} />}
     </>
   );
 }

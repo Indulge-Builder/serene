@@ -12,7 +12,7 @@ import { uuidField } from "@/lib/validations/fields";
 import { formErrors } from "@/lib/validations/form-errors";
 import { invalidateBooksOverview, invalidateMemberFinance } from "@/lib/services/zoho-service";
 import { memberQueendom } from "@/lib/services/members-service";
-import { canAccessMember } from "@/lib/elaya/access";
+import { canAccessMember, canSeeMemberFinance } from "@/lib/elaya/access";
 import { ZOHO_BOOKS_PATH } from "@/lib/constants/zoho";
 import { memberFinancePath } from "@/lib/constants/sia-roles";
 import type { ActionResult } from "@/lib/types";
@@ -36,7 +36,7 @@ export async function refreshMemberFinanceAction(input: unknown): Promise<Action
   const auth = await requireProfile();
   if (!auth.ok) return auth.result;
   const q = await memberQueendom(parsed.data.member_id);
-  if (!q.exists || !canAccessMember(auth.profile, q.queendom_id)) return { data: null, error: formErrors.unauthorized };
+  if (!q.exists || !canAccessMember(auth.profile, q.queendom_id) || !canSeeMemberFinance(auth.profile)) return { data: null, error: formErrors.unauthorized };
   await invalidateMemberFinance(parsed.data.zoho_customer_id);
   revalidatePath(memberFinancePath(parsed.data.member_id));
   return { data: { ok: true }, error: null };
