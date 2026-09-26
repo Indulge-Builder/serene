@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation';
 import { Plus, Trash2, Play, Wand2 } from 'lucide-react';
 import { SectionCard } from '@/components/ui/SectionCard';
 import { Button } from '@/components/ui/Button';
+import { Toggle } from '@/components/ui/Toggle';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { ChatMarkdown } from '@/components/ui/ChatMarkdown';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -124,9 +125,7 @@ export function ElayaPlaybooksPanel({ initialPlaybooks, conversationId }: { init
                 placeholder={"1. Check whether a time frame was given in the recent messages. If not, cover today in full, and the last 3 and 7 days in brief.\n2. Only that queendom: its Freshdesk group, its members' groups.\n3. Lead with what needs attention..."} />
             </label>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontSize: 'var(--text-sm)', color: 'var(--theme-text-secondary)' }}>
-                <input type="checkbox" checked={draft.active} onChange={(e) => setDraft({ ...draft, active: e.target.checked })} /> Active
-              </label>
+              <Toggle size="sm" label="Active" checked={draft.active} onChange={(active) => setDraft({ ...draft, active })} />
               <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
                 {draft.id && (
                   <Button size="sm" variant="ghost" iconLeft={Trash2} onClick={() => setConfirmDelete(initialPlaybooks.find((p) => p.id === draft.id) ?? null)} disabled={pending}>Delete</Button>

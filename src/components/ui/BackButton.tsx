@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { m as motion } from "framer-motion";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { FAST_DURATION, SLOW_DURATION, EASE_OUT_EXPO, EASE_OUT_SOFT } from "@/lib/constants/motion";
 
 export interface BackButtonProps {
@@ -25,10 +26,10 @@ const MotionLink = motion.create(Link);
 
 export function BackButton({ href, label }: BackButtonProps) {
   return (
+    <Tooltip label={label} side="bottom">
     <MotionLink
       href={href}
       aria-label={label}
-      title={label}
       className="serene-icon-travel-back-hover"
       initial={{ opacity: 0, x: -6 }}
       animate={{ opacity: 1, x: 0 }}
@@ -67,5 +68,6 @@ export function BackButton({ href, label }: BackButtonProps) {
         />
       </span>
     </MotionLink>
+    </Tooltip>
   );
 }

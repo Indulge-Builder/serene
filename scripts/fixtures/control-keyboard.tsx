@@ -9,11 +9,13 @@ import { Dialog } from '../../src/components/ui/Dialog';
 import { ConfirmDialog } from '../../src/components/ui/ConfirmDialog';
 import { Calendar } from '../../src/components/ui/Calendar';
 import { SelectionButton } from '../../src/components/ui/SelectionButton';
+import { FormSelect } from '../../src/components/ui/FormSelect';
 import { Field, Input } from '../../src/components/ui/Field';
 import { Tooltip } from '../../src/components/ui/Tooltip';
 import { Table } from '../../src/components/ui/Table';
 
 function Fixture() {
+  const [formChoice, setFormChoice] = useState('');
   const [fieldValue, setFieldValue] = useState('');
   const [fieldBlurs, setFieldBlurs] = useState(0);
   const [pendingDialog, setPendingDialog] = useState(false);
@@ -54,6 +56,8 @@ function Fixture() {
     </Dialog>
     <output id="modal-state">{JSON.stringify({ dialog, confirm, radio, date: date.getDate(), month: date.getMonth() })}</output>
     <section id="field-contract"><Field label="Email" htmlFor="fixture-email" hint="Work address" error={fieldValue.includes('@') ? undefined : 'Enter an email address'}><Input type="email" value={fieldValue} onChange={event => setFieldValue(event.target.value)} onBlur={() => setFieldBlurs(value => value + 1)} /></Field><output id="field-state">{JSON.stringify({fieldValue, fieldBlurs})}</output></section>
+    <section id="form-select"><Field label="Assigned genie" htmlFor="fixture-genie" hint="Choose the owner" error={formChoice ? undefined : 'Pick an owner'}><FormSelect value={formChoice} onValueChange={setFormChoice}><option value="">Unassigned</option><><option value="ada">Ada</option><option value="away" disabled>Absent</option><option value="grace">Grace{' (genie)'}</option></></FormSelect></Field><output id="form-choice">{formChoice}</output></section>
+    <section id="disabled-form-select"><FormSelect disabled aria-label="Unavailable owner" value="ada" onValueChange={setFormChoice}><option value="ada">Ada</option></FormSelect></section>
     <section id="disabled-filter"><FilterDropdown disabled label="Unavailable" items={items} selected={[]} onChange={setSingle} /></section>
     <section id="required-filter"><FilterDropdown clearable={false} ariaLabel="Required domain" label="Domain" items={items} selected={['one']} onChange={setSingle} /></section>
     <section id="refresh-table"><Table loading columns={[{id:'name',header:'Name',cell:()=>'Existing record'}]} rows={[{id:'retained'}]} rowKey={row=>row.id} /></section>

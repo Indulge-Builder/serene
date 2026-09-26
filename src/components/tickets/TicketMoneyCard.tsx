@@ -1,6 +1,8 @@
 'use client';
 
 // TicketMoneyCard — quote, cost, price and payment status on the ticket (Zoho stays the ledger).
+import { FormSelect } from '@/components/ui/FormSelect';
+import { Input } from '@/components/ui/Field';
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Landmark } from 'lucide-react';
@@ -11,7 +13,7 @@ import { toast } from '@/lib/toast';
 import { updateTicketMoneyAction } from '@/lib/actions/tickets';
 import type { TicketRow } from '@/lib/types/ticket';
 
-const FIELD: React.CSSProperties = { width: '100%', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--theme-paper-border)', background: 'var(--theme-paper)', color: 'var(--theme-text-primary)', fontSize: 'var(--text-sm)', fontFamily: 'inherit', boxSizing: 'border-box' };
+
 const inr = (v: unknown) => (typeof v === 'number' ? `₹${v.toLocaleString('en-IN')}` : '—');
 
 export function TicketMoneyCard({ ticket }: { ticket: TicketRow }) {
@@ -38,11 +40,11 @@ export function TicketMoneyCard({ ticket }: { ticket: TicketRow }) {
           </>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 'var(--space-3)' }}>
-            <label><span className="label-micro" style={{ color: 'var(--theme-text-tertiary)' }}>Quote (INR)</span><input style={FIELD} inputMode="numeric" value={form.quote_inr} onChange={(e) => setForm({ ...form, quote_inr: e.target.value })} /></label>
-            <label><span className="label-micro" style={{ color: 'var(--theme-text-tertiary)' }}>Cost (INR)</span><input style={FIELD} inputMode="numeric" value={form.cost_inr} onChange={(e) => setForm({ ...form, cost_inr: e.target.value })} /></label>
-            <label><span className="label-micro" style={{ color: 'var(--theme-text-tertiary)' }}>Price (INR)</span><input style={FIELD} inputMode="numeric" value={form.price_inr} onChange={(e) => setForm({ ...form, price_inr: e.target.value })} /></label>
-            <label><span className="label-micro" style={{ color: 'var(--theme-text-tertiary)' }}>Payment</span><select style={FIELD} value={form.payment_status} onChange={(e) => setForm({ ...form, payment_status: e.target.value as typeof form.payment_status })}><option value="not_started">Not started</option><option value="requested">Requested</option><option value="paid">Paid</option><option value="waived">Waived</option></select></label>
-            <label><span className="label-micro" style={{ color: 'var(--theme-text-tertiary)' }}>Invoice no</span><input style={FIELD} value={form.invoice_no} onChange={(e) => setForm({ ...form, invoice_no: e.target.value })} /></label>
+            <label><span className="label-micro" style={{ color: 'var(--theme-text-tertiary)' }}>Quote (INR)</span><Input style={{ width: '100%' }} inputMode="numeric" value={form.quote_inr} onChange={(e) => setForm({ ...form, quote_inr: e.target.value })} /></label>
+            <label><span className="label-micro" style={{ color: 'var(--theme-text-tertiary)' }}>Cost (INR)</span><Input style={{ width: '100%' }} inputMode="numeric" value={form.cost_inr} onChange={(e) => setForm({ ...form, cost_inr: e.target.value })} /></label>
+            <label><span className="label-micro" style={{ color: 'var(--theme-text-tertiary)' }}>Price (INR)</span><Input style={{ width: '100%' }} inputMode="numeric" value={form.price_inr} onChange={(e) => setForm({ ...form, price_inr: e.target.value })} /></label>
+            <label><span className="label-micro" style={{ color: 'var(--theme-text-tertiary)' }}>Payment</span><FormSelect style={{ width: '100%' }} value={form.payment_status} onValueChange={(nextValue) => setForm({ ...form, payment_status: nextValue as typeof form.payment_status })}><option value="not_started">Not started</option><option value="requested">Requested</option><option value="paid">Paid</option><option value="waived">Waived</option></FormSelect></label>
+            <label><span className="label-micro" style={{ color: 'var(--theme-text-tertiary)' }}>Invoice no</span><Input style={{ width: '100%' }} value={form.invoice_no} onChange={(e) => setForm({ ...form, invoice_no: e.target.value })} /></label>
             <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end' }}><Button size="sm" onClick={save} loading={pending}>Save</Button></div>
           </div>
         )}

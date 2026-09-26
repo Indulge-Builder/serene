@@ -19,6 +19,8 @@ import { VendorVerifyBanner } from '@/components/vendors/VendorVerifyBanner';
 import { VENDORS_PATH } from '@/lib/constants/vendors';
 import { formatDate } from '@/lib/utils/dates';
 
+export const metadata = { title: 'Vendor' };
+
 type Props = {
   params: Promise<{ id: string }>;
   searchParams: Promise<{ from?: string }>;
@@ -66,12 +68,13 @@ export default async function VendorPage({ params, searchParams }: Props) {
         style={{
           display: 'flex',
           alignItems: 'center',
+          flexWrap: 'wrap',
           gap: 'var(--space-4)',
           marginBottom: 'var(--space-8)',
         }}
       >
         <BackButton href={backHref} label="Back" />
-        <h1 className="type-page-title m-0">
+        <h1 className="type-page-title m-0" style={{ minWidth: 0, flex: '1 1 200px' }}>
           {detail.vendor.name}
           <span className="page-title-dot">.</span>
         </h1>

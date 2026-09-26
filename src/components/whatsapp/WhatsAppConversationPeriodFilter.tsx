@@ -2,6 +2,7 @@
 
 import { SelectionButton } from '@/components/ui/SelectionButton';
 import { Button } from '@/components/ui/Button';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { m as motion, AnimatePresence } from "framer-motion";
@@ -131,19 +132,20 @@ export function WhatsAppConversationPeriodFilter() {
 
   return (
     <div style={{ position: "relative" }} ref={popoverRef}>
+      {/* wrap="block": no line box inside the anchor, so the popover's top offset holds. */}
+      <Tooltip label="Filter by last message" side="bottom" wrap="block">
       <Button
         variant="control" size="sm" iconOnly
         type="button"
         onClick={() => setOpen((v) => !v)}
-        title="Filter by last message"
         aria-label="Filter conversations by period"
         aria-expanded={open}
+        // The size-sm box, 40px on coarse pointers (it was a 26px target).
+        className="serene-touch"
         style={{
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          width: "26px",
-          height: "26px",
         }}
       >
         <SlidersHorizontal
@@ -156,6 +158,7 @@ export function WhatsAppConversationPeriodFilter() {
           strokeWidth={1.5}
         />
       </Button>
+      </Tooltip>
 
       <AnimatePresence>
         {open && (

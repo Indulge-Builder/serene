@@ -25,13 +25,14 @@ export function EditDeleteActions({
 }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexShrink: 0 }}>
-      <Button variant="control" size="sm" type="button" iconLeft={Pencil} onClick={onEdit} aria-label={`Edit ${subject}`}>
+      <Button variant="control" size="sm" type="button" className="serene-touch" iconLeft={Pencil} onClick={onEdit} aria-label={`Edit ${subject}`}>
         Edit
       </Button>
       <Button
         variant="ghost-danger"
         size="sm"
         type="button"
+        className="serene-touch"
         iconLeft={Trash2}
         onClick={onDelete}
         loading={deleting}

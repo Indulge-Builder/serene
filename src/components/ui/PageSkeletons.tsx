@@ -144,6 +144,7 @@ export function FilterBarSkeleton({
 
 export interface SkeletonCardProps {
   style?: React.CSSProperties;
+  className?: string;
   children: React.ReactNode;
 }
 
@@ -152,9 +153,10 @@ export interface SkeletonCardProps {
  * `--shadow-1`, flex row with `--space-4` gap and `--space-4/5` padding.
  * Override layout via `style` (e.g. `padding: 0, display: 'block'` for grids).
  */
-export function SkeletonCard({ style, children }: SkeletonCardProps) {
+export function SkeletonCard({ style, className, children }: SkeletonCardProps) {
   return (
     <div
+      className={className}
       style={{
         display:      'flex',
         alignItems:   'center',

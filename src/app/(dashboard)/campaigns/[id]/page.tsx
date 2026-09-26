@@ -21,6 +21,8 @@ import { CampaignMetricsStripSkeleton } from '@/components/campaigns/CampaignMet
 import { CampaignAdPanel } from '@/components/campaigns/CampaignAdPanel';
 import { BackButton } from '@/components/ui/BackButton';
 
+export const metadata = { title: 'Campaign' };
+
 // ─────────────────────────────────────────────
 // Metrics strip — async inner component (own Suspense boundary)
 // ─────────────────────────────────────────────

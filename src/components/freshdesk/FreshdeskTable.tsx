@@ -4,6 +4,7 @@
 // server filtered; zero sorting or filtering here (the LeadsTable rule). Row click opens
 // the ticket dossier with ?from= so Back returns to this exact view (the VendorRow pattern).
 
+import Link from 'next/link';
 import { memo, useCallback, useState } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { Ticket } from 'lucide-react';
@@ -100,11 +101,15 @@ const TicketRow = memo(function TicketRow({ t }: { t: FdTicketListItem }) {
         {t.id}
       </td>
       <td style={{ ...CELL, ...rowCell, minWidth: 260 }}>
-        <span
+        {/* A real link, so a keyboard can open the ticket; the row click stays for the mouse. */}
+        <Link
+          href={href}
+          onClick={(e) => e.stopPropagation()}
           style={{
             display: 'block',
             fontWeight: 'var(--weight-medium)',
             color: 'var(--theme-text-primary)',
+            textDecoration: 'none',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
@@ -112,7 +117,7 @@ const TicketRow = memo(function TicketRow({ t }: { t: FdTicketListItem }) {
           }}
         >
           {t.subject || '(no subject)'}
-        </span>
+        </Link>
         <span style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)', marginTop: 1 }}>
           {t.requester_name ?? '—'}
           {t.is_escalated && (

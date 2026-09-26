@@ -3,6 +3,8 @@
 // MemberPeopleCard — the humans under a membership (a couple is one member with two names;
 // children, parents, the driver, the house manager). Add and remove inline.
 
+import { FormSelect } from '@/components/ui/FormSelect';
+import { Input } from '@/components/ui/Field';
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { UsersRound, X } from 'lucide-react';
@@ -67,14 +69,14 @@ export function MemberPeopleCard({ clientId, people }: { clientId: string; peopl
         {adding && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', paddingTop: 'var(--space-2)', borderTop: '1px solid var(--theme-paper-border)' }}>
             <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-              <input className="serene-input neu-input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Name" style={{ flex: '1 1 160px' }} autoFocus />
-              <select className="serene-input neu-input" value={form.relation} onChange={(e) => setForm({ ...form, relation: e.target.value as (typeof RELATIONS)[number] })} style={{ width: 120 }}>
+              <Input className="serene-input neu-input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Name" style={{ flex: '1 1 160px' }} autoFocus />
+              <FormSelect aria-label="Relationship"  value={form.relation} onValueChange={(nextValue) => setForm({ ...form, relation: nextValue as (typeof RELATIONS)[number] })} style={{ width: 120 }}>
                 {RELATIONS.map((r) => <option key={r} value={r}>{r}</option>)}
-              </select>
+              </FormSelect>
             </div>
             <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-              <input className="serene-input neu-input" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+91 …" style={{ flex: '1 1 140px' }} />
-              <input className="serene-input neu-input" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="note (age, role)" style={{ flex: '2 1 160px' }} maxLength={300} />
+              <Input className="serene-input neu-input" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+91 …" style={{ flex: '1 1 140px' }} />
+              <Input className="serene-input neu-input" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} placeholder="note (age, role)" style={{ flex: '2 1 160px' }} maxLength={300} />
             </div>
             <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
               <Button variant="ghost" size="xs" onClick={() => setAdding(false)}>Cancel</Button>

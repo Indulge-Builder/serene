@@ -8,7 +8,10 @@ import { useState, useEffect, useTransition, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, type LucideIcon } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
-import { Input, Textarea, Select } from "@/components/ui/Field";
+import { Input, Textarea } from "@/components/ui/Field";
+import { DatePicker } from "@/components/ui/DatePicker";
+import { parseIsoDate, toIsoDate } from "@/lib/utils/dates";
+import { FormSelect } from "@/components/ui/FormSelect";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/hooks/useToast";
@@ -101,6 +104,7 @@ export function LogTopupModal({ open, onClose, subscription, onSaved }: Props) {
 
   return (
     <Modal
+      error={saveError ? <Alert tone="danger">{saveError}</Alert> : undefined}
       open={open}
       pending={isPending || uploading}
       onClose={handleClose}
@@ -127,7 +131,7 @@ export function LogTopupModal({ open, onClose, subscription, onSaved }: Props) {
     >
       <form id="log-topup-form" onSubmit={event => { event.preventDefault(); handleSubmit(); }} aria-busy={isPending || uploading} style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
         {/* Amount + currency + INR */}
-        <div style={{ display: "flex", gap: "var(--space-3)" }}>
+        <div className="serene-form-row" style={{ gap: "var(--space-3)" }}>
           <div style={{ flex: 1.4 }}>
             <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="top-amount">
               Amount
@@ -152,10 +156,10 @@ export function LogTopupModal({ open, onClose, subscription, onSaved }: Props) {
             <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="top-currency">
               Currency
             </label>
-            <Select
+            <FormSelect
               id="top-currency"
               value={currency}
-              onChange={(e) => setCurrency(e.target.value as SubscriptionCurrency)}
+              onValueChange={(next) => setCurrency(next as SubscriptionCurrency)}
               disabled={isPending}
             >
               {SUBSCRIPTION_CURRENCY_OPTIONS.map((o) => (
@@ -163,11 +167,11 @@ export function LogTopupModal({ open, onClose, subscription, onSaved }: Props) {
                   {o.label}
                 </option>
               ))}
-            </Select>
+            </FormSelect>
           </div>
         </div>
 
-        <div style={{ display: "flex", gap: "var(--space-3)" }}>
+        <div className="serene-form-row" style={{ gap: "var(--space-3)" }}>
           <div style={{ flex: 1 }}>
             <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="top-inr">
               Paid (INR)
@@ -192,11 +196,12 @@ export function LogTopupModal({ open, onClose, subscription, onSaved }: Props) {
             <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="top-date">
               Top-up Date
             </label>
-            <Input
+            <DatePicker
               id="top-date"
-              type="date"
-              value={toppedUpAt}
-              onChange={(e) => setToppedUpAt(e.target.value)}
+              style={{ width: "100%" }}
+              placeholder="Pick a date"
+              value={parseIsoDate(toppedUpAt)}
+              onChange={(d) => setToppedUpAt(toIsoDate(d))}
               disabled={isPending}
             />
           </div>
@@ -233,7 +238,6 @@ export function LogTopupModal({ open, onClose, subscription, onSaved }: Props) {
             style={{ resize: "vertical" }}
           />
         </div>
-        {saveError && <Alert tone="danger">{saveError}</Alert>}
       </form>
     </Modal>
   );

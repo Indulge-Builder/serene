@@ -3,10 +3,9 @@
 import { useState, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { m as motion, AnimatePresence }             from 'framer-motion';
-import { Avatar }                              from '@/components/ui/Avatar';
 import { getAgentDetailMetricsAction, getAgentFirstTouchScorecardAction } from '@/lib/actions/performance';
-import { formatCompact, formatCurrency, formatCurrencyCompact } from '@/lib/utils/numbers';
-import { StatAtom, STAT_PALETTES }             from '@/components/performance/StatAtom';
+import { formatCurrency } from '@/lib/utils/numbers';
+import { AgentIdentityHeader, AgentStatRow }   from '@/components/performance/AgentIdentity';
 import { PipelineBar }                          from '@/components/performance/PipelineBar';
 import { FirstTouchScorecard }                 from '@/components/performance/FirstTouchScorecard';
 import { AgentCallsDrillModal }                from '@/components/performance/AgentCallsDrillModal';
@@ -14,7 +13,6 @@ import { AgentLeadsDrillModal }                from '@/components/performance/Ag
 import { AgentDealsDrillModal }                from '@/components/performance/AgentDealsDrillModal';
 import { AgentFirstTouchDrillModal }           from '@/components/performance/AgentFirstTouchDrillModal';
 import { AgentLeadsPredicateDrillModal, type DrillPredicate } from '@/components/performance/AgentLeadsPredicateDrillModal';
-import { DOMAIN_LABELS }                       from '@/lib/constants/domains';
 import type { FirstTouchBucketId }             from '@/lib/constants/performance';
 import { ENTER_DURATION, FAST_DURATION, PAGE_DURATION, EASE_OUT_EXPO, EASE_IN_OUT } from '@/lib/constants/motion';
 import type { AgentRosterRow, AgentDetailMetrics } from '@/lib/types/index';
@@ -246,141 +244,15 @@ export function AgentDetailPanel({ agent, domain, period, customFrom, customTo }
         pointerEvents:  isRefetching ? 'none' : undefined,
       }}
     >
-      {/* ── Identity zone ──────────────────────────────────────────── */}
-      <motion.div
-        initial={{ opacity: 0, y: 6 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: ENTER_DURATION, ease: EASE_OUT_EXPO }}
-        style={{
-          background:   'var(--theme-paper)',
-          border:       '1px solid var(--theme-paper-border)',
-          borderRadius: 'var(--radius-lg)',
-          padding:      'var(--space-5) var(--space-6)',
-          boxShadow:    'var(--shadow-1)',
-          display:      'flex',
-          alignItems:   'center',
-          gap:          'var(--space-5)',
-        }}
-      >
-        {/* Avatar with accent ring when selected */}
-        <div style={{ position: 'relative', flexShrink: 0 }}>
-          <Avatar
-            src={agent.avatar_url}
-            name={agent.full_name}
-            size="lg"
-            selected
-          />
-          {/* Live indicator pip */}
-          <span
-            aria-hidden="true"
-            style={{
-              position:     'absolute',
-              bottom:       '2px',
-              right:        '2px',
-              width:        '10px',
-              height:       '10px',
-              borderRadius: 'var(--radius-full)',
-              background:   'var(--color-success)',
-              border:       '2px solid var(--theme-paper)',
-              display:      'block',
-            }}
-          />
-        </div>
-
-        {/* Name + domain */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <h2
-            style={{
-              fontFamily:   'var(--font-serif)',
-              fontSize:     'var(--text-2xl)',
-              fontWeight:   'var(--weight-light)',
-              color:        'var(--theme-text-primary)',
-              margin:       '0 0 var(--space-2) 0',
-              lineHeight:   '1.1',
-              letterSpacing: '-0.01em',
-              whiteSpace:   'nowrap',
-              overflow:     'hidden',
-              textOverflow: 'ellipsis',
-            }}
-          >
-            {agent.full_name}
-          </h2>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-            <span
-              style={{
-                display:      'inline-flex',
-                alignItems:   'center',
-                padding:      '2px 10px',
-                borderRadius: 'var(--radius-full)',
-                background:   'var(--theme-accent-surface)',
-                border:       '1px solid color-mix(in srgb, var(--theme-accent) 22%, transparent)',
-                color:        "var(--neu-accent-deep)",
-                fontFamily:   'var(--font-sans)',
-                fontSize:     'var(--text-xs)',
-                fontWeight:   'var(--weight-medium)',
-                letterSpacing: '0.04em',
-              }}
-            >
-              {domain
-                ? DOMAIN_LABELS[domain as keyof typeof DOMAIN_LABELS]
-                : DOMAIN_LABELS[agent.domain as keyof typeof DOMAIN_LABELS]}
-            </span>
-            {/* Total leads context */}
-            <span
-              style={{
-                fontFamily: 'var(--font-mono)',
-                fontSize:   'var(--text-xs)',
-                color:      'var(--theme-text-tertiary)',
-              }}
-            >
-              {agent.totalLeads} lead{agent.totalLeads !== 1 ? 's' : ''}
-            </span>
-          </div>
-        </div>
-
-      </motion.div>
-
-      {/* ── Stats row — 4 semantic cards in one line ─────────────── */}
-      <AnimatePresence mode="wait">
-        {metrics ? (
-          <motion.div
-            key="metrics"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: FAST_DURATION }}
-            style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)' }}
-          >
-            <StatAtom label="Total Calls" value={formatCompact(metrics.totalCallsMade)}     paletteIndex={0} delay={0}   onClick={() => setDrill('calls')} />
-            <StatAtom label="Leads"       value={formatCompact(metrics.totalLeads)}         paletteIndex={1} delay={40}  onClick={() => setDrill('leads')} />
-            <StatAtom label="Won"         value={formatCompact(metrics.leadsWon)}           paletteIndex={2} delay={80}  onClick={() => setDrill('deals')} />
-            <StatAtom label="Revenue"     value={formatCurrencyCompact(metrics.totalDealAmount)} paletteIndex={3} delay={120} onClick={() => setDrill('deals')} />
-          </motion.div>
-        ) : (
-          <motion.div
-            key="metrics-skel"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: FAST_DURATION }}
-            style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)' }}
-          >
-            {STAT_PALETTES.map((p, i) => (
-              <div
-                key={i}
-                style={{
-                  flex:         '1 1 140px',
-                  height:       '68px',
-                  borderRadius: 'var(--radius-lg)',
-                  background:   p.bg,
-                  border:       '1px solid var(--neu-edge)',
-                  opacity:      0.5,
-                }}
-              />
-            ))}
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* ── Identity + the four period stats (shared with the founder deck) ── */}
+      <AgentIdentityHeader agent={agent} domain={domain} />
+      <AgentStatRow
+        calls={metrics ? metrics.totalCallsMade : null}
+        leads={metrics ? metrics.totalLeads : agent.totalLeads}
+        won={metrics ? metrics.leadsWon : agent.leadsWon}
+        revenue={metrics ? metrics.totalDealAmount : agent.totalDealAmount}
+        onDrill={setDrill}
+      />
 
       {/* ── Deal type breakdown (conditional) ─────────────────────── */}
       <AnimatePresence>

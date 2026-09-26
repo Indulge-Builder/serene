@@ -39,8 +39,16 @@
    ================================================================ */
 
 :root {
-  /* Tonal gradient rail → ivory workspace → porcelain cards. */
-  --neu-canvas:        #ECEBED;
+  /* Tonal gradient rail → ivory workspace → porcelain cards.
+     ONE warm family (2026-09-25): every neutral below sits on the cards' hue
+     (OKLCH h ≈ 85). The quiet-surfaces pass had moved the canvas, the well, the
+     inputs, the tracks, the hairlines and the shadow colour to violet greys
+     (h ≈ 310). Next to the warm cards they read as a purple tint on every
+     inset, in every theme, since no theme touches them. Each warm twin keeps
+     its violet original's lightness, so depth and contrast are unchanged.
+     The canvas is NEU_CANVAS_LIGHT (lib/constants/appearance.ts), the icon
+     plate and the OS splash: keep the three identical. */
+  --neu-canvas:        #ECE8E1;
   --neu-sidebar:       #EFEEED;
   /* One hue, two broad washes. Pigment strength stays low so each theme
      feels distinct without turning the rail into a saturated colour panel.
@@ -53,14 +61,14 @@
   --neu-workspace:     #F6F3ED;
   --neu-surface:       #FAF8F3;
   --neu-surface-high:  #FCFAF6;
-  --neu-well:          #EAE8EC;
-  --neu-sidebar-ink:   #58545E;
+  --neu-well:          #EBE9E3;
+  --neu-sidebar-ink:   #5A564C;
 
   /* Warm contact shadows; highlights stay inside the material, never bloom. */
-  --neu-dark:   116 108 122;
+  --neu-dark:   117 111 99;
   --neu-light:  255 250 240;
-  --neu-edge:   rgba(116, 108, 122, 0.14);
-  --neu-edge-strong: rgba(116, 108, 122, 0.24);
+  --neu-edge:   rgba(117, 111, 99, 0.14);
+  --neu-edge-strong: rgba(117, 111, 99, 0.24);
   --neu-shadow-shell: inset 0 1px 0 rgb(var(--neu-light) / 0.45);
 
   --neu-shadow-raised-sm:
@@ -86,10 +94,10 @@
     inset 0 2px 3px rgb(var(--neu-dark) / 0.22);
 
   /* Fields are shallow, matte recesses; buttons retain the raised treatment. */
-  --neu-input-bg: linear-gradient(180deg, #ECEAED, #F4F2F4);
-  --neu-input-edge: rgba(116, 108, 122, 0.20);
+  --neu-input-bg: linear-gradient(180deg, #EDEBE5, #F5F3EE);
+  --neu-input-edge: rgba(117, 111, 99, 0.20);
   --neu-shadow-input: inset 0 1px 2px rgb(var(--neu-dark) / 0.10);
-  --neu-track-bg: linear-gradient(180deg, #E3E0E6, #EEECF0);
+  --neu-track-bg: linear-gradient(180deg, #E4E1DB, #EFEDE8);
   --neu-shadow-track: inset 0 1px 3px rgb(var(--neu-dark) / 0.14);
   --neu-tab-active-bg: linear-gradient(180deg, #FAF8F3, #F4F0E8);
   --neu-shadow-tab-active: var(--neu-shadow-raised-sm);
@@ -235,8 +243,11 @@
 
   /* Quiet section wash: a small theme tint on the neutral header surface.
      Header identity stays visible without competing with selected controls. */
-  --neu-header-wash: color-mix(in srgb, var(--neu-accent) 6%, var(--neu-section-bg));
-  --neu-header-edge: var(--neu-edge);
+  --neu-header-wash: color-mix(in srgb, var(--neu-accent) 14%, var(--neu-section-bg));
+  --neu-header-top: color-mix(in srgb, var(--neu-accent) 9%, var(--neu-section-bg));
+  --neu-header-surface: linear-gradient(160deg, var(--neu-header-top), var(--neu-header-wash));
+  --neu-header-highlight: inset 0 1px 0 rgb(var(--neu-light) / 0.35);
+  --neu-header-edge: color-mix(in srgb, var(--neu-accent) 12%, var(--neu-edge));
 
   /* Header TEXT vocabulary (2026-08-10). The wash and the label can never be the
      same tone: full --theme-accent on the 22% accent wash measured 1.6–2.0:1, and
@@ -248,6 +259,7 @@
      strip never reads monochrome. Tune header TEXT here only, as with the wash. */
   --neu-header-ink:  color-mix(in srgb, var(--theme-accent-fg) 82%, var(--neu-header-wash));
   --neu-header-icon: var(--theme-accent-muted);
+  --neu-header-description: var(--theme-text-secondary);
 
   /* THE focus colour (2026-09-25): a third pastel accent, two thirds its deep ink.
      The pastel alone measured ~2:1 on ivory (below the 3:1 focus bar); the deep ink
@@ -320,14 +332,16 @@
 
 [data-neu="dark"] {
   --neu-canvas:        #28241C;
-  --neu-sidebar:       #27262D;
+  --neu-sidebar:       #2A2721;   /* warm charcoal, the canvas family (was a violet #27262D) */
   --neu-sidebar-pigment: color-mix(in srgb, var(--theme-accent) 12%, var(--neu-sidebar));
   --neu-sidebar-wash: color-mix(in srgb, var(--theme-accent) 6%, var(--neu-sidebar));
   --neu-workspace:     #2D2920;
   --neu-sidebar-ink:   #C1B7A7;
   --neu-shadow-shell: inset 0 1px 0 rgb(var(--neu-light) / 0.04);
   --neu-surface:       #332E25;
-  --neu-surface-high:  #332E24;
+  /* A real step above the card (2026-09-25): it was #332E24, one RGB step from
+     the card, so chat bubbles and every raised well vanished in dark mode. */
+  --neu-surface-high:  #3B3529;
   --neu-well:          #221E17;
 
   --neu-dark:   0 0 0;
@@ -384,14 +398,22 @@
      move to the LIGHT end of the hue instead: label at accent-deep (5.0–5.4:1),
      icon at the lifted accent (4.2–4.8:1, clears its 3:1 graphic bar). The wash
      itself needs no override — it derives from --neu-accent/--neu-surface. */
+  --neu-header-highlight: inset 0 1px 0 rgb(var(--neu-light) / 0.05);
   --neu-header-ink:  var(--neu-accent-deep);
   --neu-header-icon: var(--neu-accent);
+  --neu-header-description: color-mix(in srgb, var(--neu-text-secondary) 92%, white);
 
   --neu-text-primary:   #E8E0D4;
   --neu-text-secondary: #B9AF9F;
-  --neu-text-tertiary:  #A39A88;
+  --neu-text-tertiary:  #ABA18F;
   --neu-text-disabled:  #55503F;
   --neu-on-accent-soft: #FDF9F0;
+  /* The deep pastels lift LIGHT in dark mode, so the ink on a success /
+     warning / danger fill is the charcoal, never the warm white (the Revive
+     lead confirm measured 1.3:1 before this, 2026-09-25). */
+  --color-success-fg:     var(--neu-canvas);
+  --color-warning-fg:     var(--neu-canvas);
+  --color-danger-fg:      var(--neu-canvas);
 
   --neu-glyph-disc: #221E17;
   --neu-chart-grid: rgba(255, 240, 214, 0.10);
@@ -857,11 +879,35 @@
   color: var(--neu-accent-deep);
 }
 
-/* Scrollbars — warm putty thumbs on the cream material */
+/* Scrollbars — warm putty thumbs on the cream material. EVERY scroll area
+   (2026-09-25): the page workspace, modal bodies, dropdown menus and the chat
+   rails used to show the operating system's thick grey bar because only
+   `.scrollable` was styled. Chrome 121+ honours scrollbar-width/color and
+   ignores the ::-webkit rules, which stay for older WebKit. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--neu-dark) / 0.30) transparent;
+}
+*::-webkit-scrollbar       { width: 6px; height: 6px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: rgb(var(--neu-dark) / 0.30);
+  border-radius: var(--radius-full);
+}
+*::-webkit-scrollbar-thumb:hover { background: rgb(var(--neu-dark) / 0.48); }
 .scrollable,
 .sidebar-scrollable {
   scrollbar-color: rgb(var(--neu-dark) / 0.30) transparent;
 }
+
+/* Native controls that slip past the primitives take the theme's deep ink
+   instead of the browser's blue (2026-09-25). The shared Checkbox, Toggle and
+   the pickers are still THE way; this is the safety net. */
+:root { accent-color: var(--neu-accent-deep); }
+/* A number field is a field, not a spinner: the OS arrows are gone. */
+input[type="number"] { appearance: textfield; -moz-appearance: textfield; }
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .scrollable::-webkit-scrollbar-thumb,
 .sidebar-scrollable::-webkit-scrollbar-thumb {
   background: rgb(var(--neu-dark) / 0.30);
@@ -1037,6 +1083,17 @@
   .serene-action, .serene-filter-trigger, .serene-compact-field {
     min-height: 44px;
     min-width: 44px;
+  }
+  /* A choice row (menu option, chip, tile) is a finger target too (mobile audit
+     2026-09-26). Height only: a chip may stay narrow. */
+  .serene-selection { min-height: 44px; }
+  /* Text entry never drops below 16px on a touch screen: iOS Safari zooms the
+     whole page on focus of any smaller field and leaves it zoomed. The
+     !important is deliberate: several composers set their size inline. */
+  :where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"], [type="file"], [type="hidden"]),
+         textarea, select, .serene-field-control, .serene-input, .serene-input-auth,
+         .serene-message-bar-input, .serene-compact-field, .neu-input, [contenteditable="true"]) {
+    font-size: max(1rem, 1em) !important;
   }
 }
 

@@ -65,6 +65,7 @@ export function Toggle({
         role="switch"
         aria-checked={checked}
         type="button"
+        className={size === 'sm' ? 'serene-touch-hit' : undefined}
         onClick={() => !disabled && onChange(!checked)}
         disabled={disabled}
         style={{

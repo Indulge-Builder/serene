@@ -128,7 +128,10 @@ export function usePortalAnchor<TTrigger extends HTMLElement = HTMLButtonElement
     if (!open) return;
     const frame = requestAnimationFrame(() => {
       const panel = panelRef.current;
-      if (panel && !panel.contains(document.activeElement)) {
+      // On a touch screen a focused input raises the keyboard over the panel;
+      // the finger picks, so nothing is focused for it (mobile audit 2026-09-26).
+      const touch = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
+      if (panel && !touch && !panel.contains(document.activeElement)) {
         panel.querySelector<HTMLElement>('input:not(:disabled),[aria-selected="true"],[aria-checked="true"],button:not(:disabled),[tabindex="0"]')?.focus({ preventScroll: true });
       }
     });

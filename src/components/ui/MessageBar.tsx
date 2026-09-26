@@ -9,6 +9,7 @@ import {
 } from "react";
 import { Send } from "lucide-react";
 import { SeedMandala } from "./SeedMandala";
+import { useMediaQuery, MQ } from "@/hooks/useMediaQuery";
 
 const SEND_SIZE    = 32;
 const LINE_HEIGHT  = 20;
@@ -24,7 +25,16 @@ export interface MessageBarProps {
   loading?:     boolean;
   maxLength?:   number;
   maxHeight?:   number;
+  /** Extra key handling. A bare Enter on a touch device never reaches it (see `sendOnEnter`). */
   onKeyDown?:   (e: React.KeyboardEvent<HTMLTextAreaElement>) => void;
+  /**
+   * The Enter decision lives HERE (mobile audit 2026-09-26). `true`: on a fine
+   * pointer Enter sends and Shift+Enter inserts a newline; on a touch device
+   * (no Shift on a phone keyboard) Enter always inserts a newline and the send
+   * knob sends. `false` (default): Enter is left to `onKeyDown` / the browser
+   * on a fine pointer, and still swallowed into a newline on touch.
+   */
+  sendOnEnter?: boolean;
   /** `default` — standalone composer (WhatsApp page). `nested` — inset inside a card. */
   variant?:     "default" | "nested";
   /** Optional control rendered before the textarea (e.g. a dictation mic). Additive — consumers that omit it are unchanged. */
@@ -43,6 +53,7 @@ export const MessageBar = forwardRef<HTMLTextAreaElement, MessageBarProps>(
       maxLength,
       maxHeight = 96,
       onKeyDown,
+      sendOnEnter = false,
       variant = "default",
       leadingSlot,
     },
@@ -50,9 +61,23 @@ export const MessageBar = forwardRef<HTMLTextAreaElement, MessageBarProps>(
   ) {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     useImperativeHandle(ref, () => textareaRef.current as HTMLTextAreaElement);
+    const isTouch = useMediaQuery(MQ.touch);
 
     const canSend = value.trim().length > 0 && !disabled && !loading;
     const isNested = variant === "nested";
+
+    function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+      const bareEnter = e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey;
+      // Touch: Enter is a newline, full stop. The consumer's Enter branch is
+      // never called, so a caller that sends on Enter cannot undo the rule.
+      if (isTouch && bareEnter) return;
+      if (sendOnEnter && bareEnter) {
+        e.preventDefault();
+        if (canSend) onSend();
+        return;
+      }
+      onKeyDown?.(e);
+    }
 
     useEffect(() => {
       const el = textareaRef.current;
@@ -113,7 +138,10 @@ export const MessageBar = forwardRef<HTMLTextAreaElement, MessageBarProps>(
             className="serene-message-bar-input"
             value={value}
             onChange={handleChange}
-            onKeyDown={onKeyDown}
+            onKeyDown={handleKeyDown}
+            // The virtual keyboard's action key: "return" on touch (Enter is a
+            // newline there); "send" only where Enter sends.
+            enterKeyHint={isTouch ? "enter" : "send"}
             placeholder={placeholder}
             rows={1}
             disabled={disabled}
@@ -144,7 +172,7 @@ export const MessageBar = forwardRef<HTMLTextAreaElement, MessageBarProps>(
             onClick={onSend}
             disabled={!canSend}
             aria-label="Send message"
-            className="serene-pressable serene-icon-lift-hover"
+            className="serene-pressable serene-icon-lift-hover serene-touch"
             style={{
               width:          `${SEND_SIZE}px`,
               height:         `${SEND_SIZE}px`,

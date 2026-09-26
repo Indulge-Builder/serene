@@ -71,6 +71,7 @@ export function CreateLeadTaskModal({
       onClose={handleClose}
       title="Create follow-up task"
       maxWidth="max-w-md"
+      error={error ? <FieldError message={error} /> : undefined}
       footer={
         <>
           <Button variant="ghost" onClick={handleClose} disabled={isPending}>
@@ -141,8 +142,6 @@ export function CreateLeadTaskModal({
           />
         </div>
 
-        {/* Inline error */}
-        <FieldError message={error} />
       </div>
     </Modal>
   );

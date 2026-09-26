@@ -15,6 +15,8 @@ import { LeadsTableAsync } from '@/components/leads/LeadsTableAsync';
 import { LeadsTableSkeleton } from '@/components/leads/LeadsTableSkeleton';
 import { AddLeadButton } from '@/components/leads/AddLeadButton';
 
+export const metadata = { title: 'Leads' };
+
 // ─────────────────────────────────────────────
 // Parse raw searchParams into a typed LeadFilters object
 // ─────────────────────────────────────────────

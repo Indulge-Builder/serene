@@ -13,8 +13,13 @@
 import { SelectionButton } from '@/components/ui/SelectionButton';
 import { ConversationRailRow } from '@/components/ui/ConversationRailRow';
 import { SplitWorkspace, SplitRail, SplitRailHeader, SplitRailList, SplitPane } from '@/components/ui/SplitWorkspace';
+import { Tooltip } from '@/components/ui/Tooltip';
+import { PageControls } from '@/components/layout/PageControls';
+import { TOP_BAR_ENABLED } from '@/lib/constants/feature-flags';
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { MessagesSquare, Settings2 } from "lucide-react";
+import { SIA_GROUP_PARAM, SIA_PATH, siaGroupHref } from "@/lib/constants/sia-roles";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useDebounce } from "@/hooks/useDebounce";
@@ -54,6 +59,69 @@ export function SiaWorkspace({ groups: initialGroups, initialGroupJid = null, in
   const debouncedRailSearch = useDebounce(railSearch, 200);
 
   const selected = groups.find((g) => g.group_jid === selectedJid) ?? null;
+
+  // ── Back closes the chat, not the page (mobile audit 2026-09-26) ──
+  // Below md a chat open is a history entry: opening pushes ?group=<jid>
+  // (siaGroupHref, THE deep link) through the native pushState that Next's
+  // router integrates (no server round trip for the page's hundreds of
+  // groups), hardware Back pops it and the URL effect closes the pane. Focus
+  // returns to the row that opened it. Desktop stays React state only.
+  const searchParams = useSearchParams();
+  const urlGroupJid = searchParams.get(SIA_GROUP_PARAM);
+  const pushedEntry = useRef(false);
+  const returnFocusJid = useRef<string | null>(null);
+
+  const openGroup = useCallback(
+    (jid: string) => {
+      setSelectedJid(jid);
+      if (isMobile && urlGroupJid !== jid) {
+        window.history.pushState(null, "", siaGroupHref(jid));
+        pushedEntry.current = true;
+      }
+    },
+    [isMobile, urlGroupJid],
+  );
+
+  const closeChat = useCallback(() => {
+    returnFocusJid.current = selectedJid;
+    setSelectedJid(null);
+    if (!urlGroupJid) return;
+    if (pushedEntry.current) {
+      pushedEntry.current = false;
+      window.history.back();
+    } else {
+      // Arrived by deep link: nothing of ours to pop, so just drop the param.
+      window.history.replaceState(null, "", SIA_PATH);
+    }
+  }, [selectedJid, urlGroupJid]);
+
+  // The URL is the truth on a phone: hardware Back (or Forward) moves it, the pane follows.
+  useEffect(() => {
+    if (!isMobile) return;
+    if (urlGroupJid === null) {
+      setSelectedJid((current) => {
+        if (current !== null) returnFocusJid.current = current;
+        return null;
+      });
+      pushedEntry.current = false;
+    } else if (groups.some((g) => g.group_jid === urlGroupJid)) {
+      setSelectedJid(urlGroupJid);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlGroupJid, isMobile]);
+
+  // Once the rail is back, put the keyboard focus on the row that was open.
+  useEffect(() => {
+    if (selectedJid !== null || !returnFocusJid.current) return;
+    const jid = returnFocusJid.current;
+    returnFocusJid.current = null;
+    requestAnimationFrame(() => {
+      const row = document.querySelector<HTMLElement>(`[data-sia-jid="${CSS.escape(jid)}"]`);
+      if (!row) return;
+      row.focus({ preventScroll: true });
+      row.scrollIntoView({ block: "nearest" });
+    });
+  }, [selectedJid]);
 
   // Arrived by deep link (/sia?group=…): the chat is already open; bring its rail row into view
   // too (the rail holds hundreds of groups). Once, on mount.
@@ -148,29 +216,34 @@ export function SiaWorkspace({ groups: initialGroups, initialGroupJid = null, in
   const showRail = !isMobile || !selected;
   const showChat = !isMobile || !!selected;
 
+  // The gear's status dot is aria-hidden: the watcher state is spoken through
+  // the button's name and shown on its tooltip.
+  const watcherStatus =
+    health === null
+      ? null
+      : health.live
+        ? "watcher live"
+        : health.watcherState === "pairing"
+          ? "waiting to be paired"
+          : health.watcherState === "connecting"
+            ? "connecting"
+            : "watcher offline";
+  const consoleLabel = watcherStatus ? `Sia console — ${watcherStatus}` : "Sia console";
+
   return (
     <div className="flex-1 min-h-0 flex flex-col">
-      {/* ── Page header: title left, the console gear right ── */}
+      {/* ── Page header: title left; the console gear and the bell right ── */}
       <div className="flex items-center justify-between gap-4 mb-6">
         <h1 className="type-page-title m-0">
           Sia<span className="page-title-dot">.</span>
         </h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
         {canManage && (
+        <Tooltip label={consoleLabel} side="bottom">
         <button
           type="button"
           onClick={() => setConsoleOpen(true)}
-          aria-label="Open the Sia console"
-          title={
-            health === null
-              ? "Sia console"
-              : health.live
-                ? "Sia console — watcher live"
-                : health.watcherState === "pairing"
-                  ? "Sia console — waiting to be paired"
-                  : health.watcherState === "connecting"
-                    ? "Sia console — connecting"
-                    : "Sia console — watcher offline"
-          }
+          aria-label={watcherStatus ? `Open the Sia console — ${watcherStatus}` : "Open the Sia console"}
           className="serene-pressable serene-icon-rotate-hover relative shrink-0 w-9 h-9 rounded-full border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1) flex items-center justify-center text-(--theme-text-secondary)"
           style={{ cursor: "pointer" }}
         >
@@ -194,7 +267,10 @@ export function SiaWorkspace({ groups: initialGroups, initialGroupJid = null, in
             />
           )}
         </button>
+        </Tooltip>
         )}
+        {TOP_BAR_ENABLED && <PageControls isPrivileged={false} />}
+        </div>
       </div>
 
       {groups.length === 0 ? (
@@ -230,7 +306,8 @@ export function SiaWorkspace({ groups: initialGroups, initialGroupJid = null, in
                         key={f}
                         type="button"
                         onClick={() => setFilter(f)}
-                        className="serene-pressable type-caption rounded-full border-0 shrink-0"
+                        // serene-touch: a 40px floor on coarse pointers (the chips were 22px tall).
+                        className="serene-pressable serene-touch type-caption rounded-full border-0 shrink-0"
                         style={{
                           padding: "3px 11px",
                         }}
@@ -259,7 +336,7 @@ export function SiaWorkspace({ groups: initialGroups, initialGroupJid = null, in
                       group={g}
                       index={i}
                       selected={selectedJid === g.group_jid}
-                      onSelect={() => setSelectedJid(g.group_jid)}
+                      onSelect={() => openGroup(g.group_jid)}
                     />
                   ))
                 )}
@@ -275,7 +352,7 @@ export function SiaWorkspace({ groups: initialGroups, initialGroupJid = null, in
                   key={selected.group_jid}
                   group={selected}
                   isMobile={isMobile}
-                  onBack={() => setSelectedJid(null)}
+                  onBack={closeChat}
                   onLiveMessages={handleLiveMessages}
                   onPatchGroup={patchGroup}
                   canManage={canManage}
@@ -327,11 +404,15 @@ function RailRow({
       meta={group.last_message_at ? formatRelativeTime(group.last_message_at) : null}
       metaMarker={
         group.group_kind === "unmapped" ? (
-          <span
-            aria-hidden
-            title="Unmapped"
-            style={{ width: "6px", height: "6px", borderRadius: "var(--radius-full)", background: "var(--color-warning)", display: "inline-block" }}
-          />
+          <>
+            <Tooltip label="Unmapped" side="top">
+              <span
+                aria-hidden
+                style={{ width: "6px", height: "6px", borderRadius: "var(--radius-full)", background: "var(--color-warning)", display: "inline-block" }}
+              />
+            </Tooltip>
+            <span className="sr-only">Unmapped</span>
+          </>
         ) : undefined
       }
       preview={<RailPreview group={group} />}

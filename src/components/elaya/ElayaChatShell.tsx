@@ -9,7 +9,7 @@
 
 import { Button } from '@/components/ui/Button';
 import { useEffect, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import { X, ArrowDown, MessageSquarePlus } from 'lucide-react';
 import { ElayaGlyphDisc } from '@/components/ui/elaya-glyph';
 import { MessageBar } from '@/components/ui/MessageBar';
 import { DictationButton } from '@/components/ui/DictationButton';
@@ -17,6 +17,9 @@ import { useToast } from '@/hooks/useToast';
 import { scrollToBottom } from '@/lib/utils/scroll';
 import { formErrors } from '@/lib/validations/form-errors';
 import { ElayaIdentityCard } from '@/components/elaya/ElayaIdentityCard';
+import { SelectionButton } from '@/components/ui/SelectionButton';
+import { useOptionalSuggestionFeedback } from '@/components/suggestions/SuggestionFeedbackProvider';
+import { getElayaStarters } from '@/lib/constants/elaya';
 import type { ElayaViewer } from '@/lib/constants/elaya';
 import { ElayaFeedbackCard } from '@/components/elaya/ElayaFeedbackCard';
 import { ElayaMessageBubble, type ElayaUiMessage } from '@/components/elaya/ElayaMessageBubble';
@@ -85,9 +88,31 @@ export function ElayaChatShell({
     composerRef.current?.focus();
   }
 
-  useEffect(() => {
+  // Follow the reply only while the reader is at the bottom (2026-09-25). It
+  // used to scroll on every streamed token, so nobody could scroll up while
+  // she answered. A reader who scrolled up gets a "New reply" pill instead.
+  const stickRef = useRef(true);
+  const [unseenReply, setUnseenReply] = useState(false);
+  const NEAR_BOTTOM_PX = 96;
+  const readerNearBottom = () => {
+    const el = scrollRef.current;
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
+  };
+  const onTranscriptScroll = () => {
+    stickRef.current = readerNearBottom();
+    if (stickRef.current) setUnseenReply(false);
+  };
+  const jumpToLatest = () => {
     if (scrollRef.current) scrollToBottom(scrollRef.current);
-  }, [messages, toolStatus]);
+    stickRef.current = true;
+    setUnseenReply(false);
+  };
+  useEffect(() => {
+    if (!scrollRef.current) return;
+    if (stickRef.current) scrollToBottom(scrollRef.current);
+    else if (isStreaming) setUnseenReply(true);
+  }, [messages, toolStatus, isStreaming]);
 
   const capReached = remaining <= 0;
   // First-token wait — the assistant bubble exists but has nothing to say yet.
@@ -99,6 +124,14 @@ export function ElayaChatShell({
     setInput(prompt);
     composerRef.current?.focus();
   }
+
+  // Below lg the page has no sidebar column (mobile audit 2026-09-26: the
+  // flex-fill grid squeezed the identity card into a 48px strip). The starters
+  // become a chip row above the composer and feedback an icon in the header;
+  // both render only in page mode, and only below lg.
+  const feedback = useOptionalSuggestionFeedback();
+  const phoneStarters = getElayaStarters(viewer ?? null);
+  const showPhoneStarters = messages.length === 0 && !isStreaming && !capReached;
 
   async function send() {
     const content = input.trim();
@@ -116,6 +149,8 @@ export function ElayaChatShell({
     setInput('');
     setIsStreaming(true);
     setToolStatus(null);
+    stickRef.current = true;
+    setUnseenReply(false);
 
     const appendDelta = (text: string) =>
       setMessages((prev) =>
@@ -233,6 +268,19 @@ export function ElayaChatShell({
               <ElayaStatusText text={statusLine ?? 'With you'} />
             </span>
           </div>
+          {!chatOnly && feedback && (
+            <Button
+              variant="ghost"
+              iconOnly size="sm"
+              type="button"
+              onClick={feedback.openComposer}
+              aria-label="Send feedback"
+              className="serene-pressable serene-touch lg:hidden"
+              style={{ marginLeft: 'auto', flexShrink: 0 }}
+            >
+              <MessageSquarePlus style={{ width: 16, height: 16, strokeWidth: 1.5 }} aria-hidden="true" />
+            </Button>
+          )}
           {capReached && (
             <span
               className={onClose ? '' : 'ml-auto'}
@@ -269,10 +317,15 @@ export function ElayaChatShell({
           )}
         </div>
 
-        {/* Transcript — centered reading column so messages never sprawl. */}
+        {/* Transcript — centered reading column so messages never sprawl. It sits
+            on the well (2026-09-25), like the WhatsApp and Sia panes, so her
+            raised bubbles read as bubbles in both modes. */}
+        <div className="relative flex-1 min-h-0 flex flex-col">
         <div
           ref={scrollRef}
+          onScroll={onTranscriptScroll}
           className="flex-1 min-h-0 overflow-y-auto px-5 py-5 sm:px-6"
+          style={{ background: 'var(--theme-paper-subtle)', overscrollBehavior: 'contain' }}
           role="log"
           aria-live="polite"
           aria-label="Conversation with Elaya"
@@ -312,6 +365,14 @@ export function ElayaChatShell({
             )}
           </div>
         </div>
+        {unseenReply && (
+          <div className="absolute inset-x-0 flex justify-center pointer-events-none" style={{ bottom: 'var(--space-3)' }}>
+            <Button variant="control" size="sm" type="button" onClick={jumpToLatest} iconLeft={ArrowDown} className="pointer-events-auto">
+              New reply
+            </Button>
+          </div>
+        )}
+        </div>
 
         {/* Composer — same centered reading column as the transcript. */}
         <div
@@ -322,6 +383,30 @@ export function ElayaChatShell({
           }}
         >
           <div className="mx-auto w-full" style={{ maxWidth: '46rem' }}>
+            {!chatOnly && showPhoneStarters && (
+              <div
+                className="flex lg:hidden overflow-x-auto"
+                style={{ gap: 'var(--space-2)', marginBottom: 'var(--space-3)', scrollbarWidth: 'none' }}
+                aria-label="Ask her"
+              >
+                {phoneStarters.map((prompt) => (
+                  <SelectionButton
+                    appearance="choice"
+                    key={prompt}
+                    onClick={() => handlePromptSelect(prompt)}
+                    className="serene-pressable shrink-0"
+                    style={{
+                      borderRadius: 'var(--radius-full)',
+                      padding: 'var(--space-2) var(--space-3)',
+                      fontSize: 'var(--text-xs)',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {prompt}
+                  </SelectionButton>
+                ))}
+              </div>
+            )}
             {capReached ? (
               <p
                 className="italic m-0"
@@ -339,12 +424,7 @@ export function ElayaChatShell({
                 value={input}
                 onChange={setInput}
                 onSend={() => void send()}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    void send();
-                  }
-                }}
+                sendOnEnter
                 loading={isStreaming}
                 maxLength={4000}
                 placeholder="Ask Elaya"
@@ -368,7 +448,7 @@ export function ElayaChatShell({
           the grid collapses to one column on mobile. Omitted in the floating
           widget (chat-only) — there the chat fills the modal. */}
       {!chatOnly && (
-        <div className="flex flex-col" style={{ gap: 'var(--space-6)', minHeight: 0 }}>
+        <div className="hidden lg:flex flex-col" style={{ gap: 'var(--space-6)', minHeight: 0 }}>
           <ElayaFeedbackCard />
           <ElayaIdentityCard busy={isStreaming || capReached} onPromptSelect={handlePromptSelect} viewer={viewer ?? null} />
         </div>

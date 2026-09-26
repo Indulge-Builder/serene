@@ -9,6 +9,8 @@ import { useRouter } from "next/navigation";
 import { CheckCircle2, type LucideIcon } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Input, Textarea } from "@/components/ui/Field";
+import { DatePicker } from "@/components/ui/DatePicker";
+import { parseIsoDate, toIsoDate } from "@/lib/utils/dates";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/hooks/useToast";
@@ -100,6 +102,7 @@ export function RecordPaymentModal({ open, onClose, subscription, onSaved }: Pro
 
   return (
     <Modal
+      error={saveError ? <Alert tone="danger">{saveError}</Alert> : undefined}
       open={open}
       pending={isPending || uploading}
       onClose={handleClose}
@@ -126,7 +129,7 @@ export function RecordPaymentModal({ open, onClose, subscription, onSaved }: Pro
     >
       <form id="record-payment-form" onSubmit={event => { event.preventDefault(); handleSubmit(); }} aria-busy={isPending || uploading} style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
         {/* Rate (original currency) + INR */}
-        <div style={{ display: "flex", gap: "var(--space-3)" }}>
+        <div className="serene-form-row" style={{ gap: "var(--space-3)" }}>
           <div style={{ flex: 1 }}>
             <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="pay-rate">
               Rate ({subscription.currency})
@@ -173,16 +176,17 @@ export function RecordPaymentModal({ open, onClose, subscription, onSaved }: Pro
         </p>
 
         {/* Due date + Paid date */}
-        <div style={{ display: "flex", gap: "var(--space-3)" }}>
+        <div className="serene-form-row" style={{ gap: "var(--space-3)" }}>
           <div style={{ flex: 1 }}>
             <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="pay-due">
               Due Date
             </label>
-            <Input
+            <DatePicker
               id="pay-due"
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
+              style={{ width: "100%" }}
+              placeholder="Pick a date"
+              value={parseIsoDate(dueDate)}
+              onChange={(d) => setDueDate(toIsoDate(d))}
               disabled={isPending}
             />
           </div>
@@ -190,11 +194,12 @@ export function RecordPaymentModal({ open, onClose, subscription, onSaved }: Pro
             <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="pay-paid">
               Paid Date
             </label>
-            <Input
+            <DatePicker
               id="pay-paid"
-              type="date"
-              value={paidAt}
-              onChange={(e) => setPaidAt(e.target.value)}
+              style={{ width: "100%" }}
+              placeholder="Pick a date"
+              value={parseIsoDate(paidAt)}
+              onChange={(d) => setPaidAt(toIsoDate(d))}
               disabled={isPending}
             />
           </div>
@@ -228,7 +233,6 @@ export function RecordPaymentModal({ open, onClose, subscription, onSaved }: Pro
             style={{ resize: "vertical" }}
           />
         </div>
-        {saveError && <Alert tone="danger">{saveError}</Alert>}
       </form>
     </Modal>
   );

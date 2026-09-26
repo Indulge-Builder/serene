@@ -28,6 +28,7 @@ import { Button } from '@/components/ui/Button';
 import { CollapseReveal } from '@/components/ui/CollapseReveal';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { MotionRow } from '@/components/ui/RowMotion';
+import { Tooltip } from '@/components/ui/Tooltip';
 import type { TaskDotMeta } from '@/components/ui/Calendar';
 import { DatePicker } from '@/components/ui/DatePicker';
 import {
@@ -255,6 +256,9 @@ export function MyTasksCalendarView({
   const [quickDueAt,         setQuickDueAt]         = useState<Date | null>(null);
   const [quickAssignee,      setQuickAssignee]      = useState<AssignableUser | null>(null);
   const [showAssigneePicker, setShowAssigneePicker] = useState(false);
+  // The quick-add picker button shows only an avatar — the name rides its
+  // tooltip and its aria-label.
+  const quickAssigneeName = quickAssignee?.full_name ?? `${currentUserName} (you)`;
   // Agents are pre-fetched by TasksAsync (SSR) and passed as initialAgents.
   // No mount-time action call needed.
   const assignableUsers: AssignableUser[] = initialAgents;
@@ -591,8 +595,11 @@ export function MyTasksCalendarView({
       style={{ gap: 'var(--space-5)' }}
     >
 
-      {/* ── Left: Calendar panel — full-width above the list <md, 280px sticky column md+ */}
-      <div className="w-full md:w-70 md:sticky" style={{
+      {/* ── Left: Calendar panel — 280px sticky column md+. Below md it comes
+          AFTER the list (order-2): today's tasks are what a phone opens for,
+          not a month grid, a summary strip and a quick-add above the fold
+          (mobile audit 2026-09-26). */}
+      <div className="w-full md:w-70 md:sticky order-2 md:order-none" style={{
         flexShrink: 0, top: 'var(--space-4)',
         display: 'flex', flexDirection: 'column', gap: 'var(--space-3)',
       }}>
@@ -694,13 +701,13 @@ export function MyTasksCalendarView({
                   aria-label="Due date" style={{ flexShrink: 0 }}
                 />
                 {['manager', 'admin', 'founder'].includes(callerRole) && (
+                  <Tooltip label={quickAssigneeName} side="top">
                   <Button
                     variant="control"
                     size="sm"
                     type="button"
                     onClick={() => setShowAssigneePicker(true)}
-                    aria-label="Pick assignee"
-                    title={quickAssignee?.full_name ?? `${currentUserName} (you)`}
+                    aria-label={`Pick assignee, currently ${quickAssigneeName}`}
                     style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 'var(--space-7)', height: 'var(--space-7)', flexShrink: 0 }}
                   >
                     <Avatar
@@ -709,6 +716,7 @@ export function MyTasksCalendarView({
                       style={{ width: 18, height: 18, minWidth: 18 }}
                     />
                   </Button>
+                  </Tooltip>
                 )}
                 <Button
                   variant="primary"
@@ -952,7 +960,10 @@ const CalendarTaskRow = memo(function CalendarTaskRow({
           </>
         )}
         {task.assigned_to && task.assigned_to !== currentUserId && (
-          <div title="Assigned to someone else" style={{
+          // wrap="block": a block wrapper keeps min-width:auto, so the lead link
+          // beside it (flex 1 1 auto) can never squeeze this box out of its 20px.
+          <Tooltip label="Assigned to someone else" side="top" wrap="block">
+          <div style={{
             width: 'var(--space-5)', height: 'var(--space-5)',
             borderRadius: 'var(--radius-xs)',
             background: 'var(--theme-accent-surface)',
@@ -960,7 +971,9 @@ const CalendarTaskRow = memo(function CalendarTaskRow({
             display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
           }}>
             <User style={{ width: 10, height: 10, strokeWidth: 1.5, color: "var(--neu-accent-deep)" }} />
+            <span className="sr-only">Assigned to someone else</span>
           </div>
+          </Tooltip>
         )}
       </div>
 
@@ -981,6 +994,7 @@ const CalendarTaskRow = memo(function CalendarTaskRow({
         type="button"
         onClick={() => onOpen(task)}
         aria-label="Open task details"
+        className="serene-touch-hit"
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 'var(--space-6)', height: 'var(--space-6)', flexShrink: 0 }}
       >
         <ArrowRight style={{ width: 12, height: 12, strokeWidth: 1.5 }} />

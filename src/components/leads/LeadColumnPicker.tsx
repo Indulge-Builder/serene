@@ -6,6 +6,7 @@
 import { useModalScope } from '@/hooks/useModalFocus';
 import { usePopoverKeyboard } from '@/hooks/usePopoverKeyboard';
 import { Button } from '@/components/ui/Button';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { useRef, useEffect, useLayoutEffect, useCallback, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { m as motion, AnimatePresence } from 'framer-motion';
@@ -57,6 +58,7 @@ function ColumnCheckbox({
     <motion.button
       type="button"
       role="checkbox"
+      className="serene-touch-hit"
       aria-checked={checked}
       aria-label={checked ? `Hide ${label} column` : `Show ${label} column`}
       onClick={(e) => {
@@ -163,6 +165,7 @@ function SortableColumnRow({
       ) : (
         <span
           data-drag-handle
+          className="serene-touch-hit"
           aria-label={`Reorder ${col.label}`}
           {...attributes}
           {...listeners}
@@ -197,16 +200,18 @@ function SortableColumnRow({
 
       {/* Checkbox / lock icon */}
       {col.locked ? (
-        <span
-          title="This column is always visible"
-          style={{
-            display:    'flex',
-            alignItems: 'center',
-            color:      'var(--theme-text-tertiary)',
-          }}
-        >
-          <Lock style={{ width: '0.75rem', height: '0.75rem', strokeWidth: 1.5 }} />
-        </span>
+        <Tooltip label="This column is always visible" side="top">
+          <span
+            style={{
+              display:    'flex',
+              alignItems: 'center',
+              color:      'var(--theme-text-tertiary)',
+            }}
+          >
+            <Lock style={{ width: '0.75rem', height: '0.75rem', strokeWidth: 1.5 }} />
+            <span className="sr-only">This column is always visible</span>
+          </span>
+        </Tooltip>
       ) : (
         <ColumnCheckbox checked={isVisible} onToggle={onToggle} label={col.label} />
       )}

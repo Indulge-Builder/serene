@@ -4,6 +4,7 @@ import { useCallback } from "react";
 import { RefreshCcw } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { BarChart } from "@/components/ui/charts/BarChart";
 import type { BarChartSeries } from "@/components/ui/charts/BarChart";
 import { getLeadsByCampaignAction } from "@/lib/actions/dashboard";
@@ -137,11 +138,13 @@ export function ManagerCampaignWidget({
         >
           Campaign Performance<span className="page-title-dot">.</span>
         </p>
+        <Tooltip label="Refresh" side="bottom">
         <Button
           variant="ghost"
           onClick={handleRefresh}
           loading={isPending}
-          title="Refresh"
+          aria-label="Refresh"
+          className="serene-touch"
           style={{
             width: 28,
             height: 28,
@@ -152,6 +155,7 @@ export function ManagerCampaignWidget({
           iconLeft={RefreshCcw}
           size="xs"
         />
+        </Tooltip>
       </div>
 
       {/* Chart — fills remaining space */}

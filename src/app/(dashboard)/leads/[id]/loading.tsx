@@ -25,23 +25,39 @@ export default function LeadDossierLoading() {
         </div>
       </div>
 
-      {/* Status action strip */}
+      {/* Status action strip — the StatusActionPanel shape: one row on md+, on a phone the
+          pill + Called row with the stage actions in an equal-width row below (mobile audit
+          2026-09-26: the skeleton was one row with a different radius). */}
       <div
         style={{
           display:      'flex',
-          alignItems:   'center',
+          flexDirection: 'column',
           gap:          'var(--space-3)',
           padding:      'var(--space-4) var(--space-5)',
           background:   'var(--theme-paper)',
           border:       '1px solid var(--theme-paper-border)',
-          borderRadius: 'var(--radius-lg)',
+          borderRadius: 'var(--neu-radius-card)',
           boxShadow:    'var(--shadow-1)',
         }}
       >
-        <Shimmer w={90} h={26} r="var(--radius-full)" />
-        {[96, 110, 84].map((w, i) => (
-          <Shimmer key={i} w={w} h={34} delay={i * 40} style={{ flexShrink: 0 }} />
-        ))}
+        <div className="hidden md:flex" style={{ alignItems: 'center', gap: 'var(--space-3)' }}>
+          <Shimmer w={90} h={26} r="var(--radius-full)" />
+          {[96, 110, 84].map((w, i) => (
+            <Shimmer key={i} w={w} h={34} delay={i * 40} style={{ flexShrink: 0 }} />
+          ))}
+          <div style={{ flex: 1 }} />
+          <Shimmer w={84} h={34} delay={120} style={{ flexShrink: 0 }} />
+        </div>
+        <div className="md:hidden" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+          <Shimmer w={90} h={26} r="var(--radius-full)" />
+          <div style={{ flex: 1 }} />
+          <Shimmer w={84} h={34} style={{ flexShrink: 0 }} />
+        </div>
+        <div className="md:hidden" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 'var(--space-2)' }}>
+          {[0, 1, 2].map((i) => (
+            <Shimmer key={i} w="100%" h={34} delay={i * 40} />
+          ))}
+        </div>
       </div>
 
       {/* Two-column layout — mirrors page.tsx (.serene-dossier-grid collapse below lg) */}

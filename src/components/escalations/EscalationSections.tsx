@@ -139,7 +139,6 @@ function RecipientChips({
         return (
           <span
             key={role}
-            title={isSelf ? "You were alerted" : `${label} alerted`}
             style={{
               display:      "inline-flex",
               alignItems:   "center",

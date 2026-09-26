@@ -12,8 +12,12 @@ import { VendorsTable } from '@/components/vendors/VendorsTable';
 import { VendorReviewQueue } from '@/components/vendors/VendorReviewQueue';
 import { VendorsTableSkeleton } from '@/components/vendors/VendorsTableSkeleton';
 import { Pagination } from '@/components/ui/Pagination';
+import { TOP_BAR_ENABLED } from '@/lib/constants/feature-flags';
+import { PageControls } from '@/components/layout/PageControls';
 import { VENDOR_LIST_PAGE_SIZE, VENDORS_PATH } from '@/lib/constants/vendors';
 import type { VendorListFilters } from '@/lib/services/vendors-service';
+
+export const metadata = { title: 'Vendors' };
 
 function parseFilters(searchParams: Awaited<SearchParams>): VendorListFilters {
   function getString(key: string): string | null {
@@ -87,9 +91,10 @@ export default async function VendorsPage({
           }}
         >
           <Search style={{ width: '1rem', height: '1rem', strokeWidth: 1.5 }} />
-          Find a vendor
+          <span className="max-md:sr-only">Find a vendor</span>
         </Link>
           <AddVendorButton categoriesInUse={categories} />
+          {TOP_BAR_ENABLED && <PageControls isPrivileged={false} />}
         </div>
       </div>
 
@@ -98,7 +103,7 @@ export default async function VendorsPage({
           filter bar because it is a to-do, not a view of the table. */}
       <VendorReviewQueue items={review.items} totalCount={review.totalCount} />
 
-      <div className="mb-4">
+      <div className="px-5 py-4 mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)">
         <VendorsFilters categories={categories} />
       </div>
 

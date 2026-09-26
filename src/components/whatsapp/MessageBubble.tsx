@@ -4,7 +4,7 @@ import { Check, CheckCheck, X, FileText, ImageIcon, Video, Mic } from "lucide-re
 import { renderWaText } from "@/components/ui/WaText";
 import { m as motion } from "framer-motion";
 import { Avatar } from "@/components/ui/Avatar";
-import { formatRelativeTime } from "@/lib/utils/dates";
+import { formatDate } from "@/lib/utils/dates";
 import { EASE_OUT_EXPO } from "@/lib/constants/motion";
 import type { WhatsAppMessage } from "@/lib/types/whatsapp";
 
@@ -98,7 +98,9 @@ function MediaPlaceholder({ message }: { message: WhatsAppMessage }) {
           loading="lazy"
           style={{
             display:      "block",
-            maxWidth:     "240px",
+            // The media never widens the bubble (mobile audit 2026-09-26): the
+            // bubble carries the px cap, the picture fills what it is given.
+            maxWidth:     "100%",
             maxHeight:    "240px",
             width:        "auto",
             height:       "auto",
@@ -114,7 +116,7 @@ function MediaPlaceholder({ message }: { message: WhatsAppMessage }) {
         preload="metadata"
         style={{
           display:      "block",
-          maxWidth:     "240px",
+          maxWidth:     "100%",
           maxHeight:    "240px",
           borderRadius: "var(--radius-sm)",
         }}
@@ -346,7 +348,8 @@ export function MessageBubble({ message, isOptimistic = false, entrance = false 
               color:      "var(--theme-text-tertiary)",
             }}
           >
-            {formatRelativeTime(message.created_at)}
+            {/* Clock time, the same footer as the Sia and Elaya bubbles (mobile audit 2026-09-26). */}
+            {formatDate(message.created_at, "h:mm a")}
           </span>
           {isOutbound && <DeliveryIcon status={message.status} />}
         </div>

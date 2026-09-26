@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { Suspense } from "react";
 import { redirect, notFound } from "next/navigation";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
@@ -14,6 +15,16 @@ import { OversightSkeleton } from "../OversightSkeleton";
 import { AgentBreakdownGrid } from "@/components/oversight/AgentBreakdownGrid";
 import { OversightTeamRail } from "@/components/oversight/OversightRail";
 import type { AppDomain } from "@/lib/types/database";
+
+// The tab carries the team's name from the constant map — no read the page does not already do.
+export async function generateMetadata({ params }: { params: Promise<{ domain: string }> }): Promise<Metadata> {
+  try {
+    const raw = decodeURIComponent((await params).domain);
+    return { title: isAppDomain(raw) ? DOMAIN_LABELS[raw as AppDomain] : "Team" };
+  } catch {
+    return { title: "Team" };
+  }
+}
 
 // ─────────────────────────────────────────────
 // /oversight/[domain] — Tier 2 (Team detail). Per-agent cards + the live team

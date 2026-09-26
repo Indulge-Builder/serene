@@ -4,6 +4,7 @@
 // one strip. Every change is one action → one RPC → one event. The status menu offers only
 // the moves the state machine allows.
 
+import { FormSelect } from '@/components/ui/FormSelect';
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
@@ -16,7 +17,6 @@ import { TICKET_PRIORITIES, TICKET_REASSIGN_REASONS, TICKET_RESOLUTIONS, TICKET_
 import { TicketStatusPill, PriorityDot } from './TicketStatusPill';
 import type { StaffOption, TicketRow } from '@/lib/types/ticket';
 
-const SELECT: React.CSSProperties = { padding: '6px var(--space-3)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--theme-paper-border)', background: 'var(--theme-paper)', color: 'var(--theme-text-primary)', fontSize: 'var(--text-sm)', fontFamily: 'inherit' };
 
 export function TicketHeaderControls({ ticket, staff, canApprove, labels, vendorName = null }: { ticket: TicketRow; staff: StaffOption[]; canApprove: boolean; labels?: Record<string, string>; /** The vendor on the ticket, for the review asked right after resolving. */ vendorName?: string | null }) {
   const lab = (s: TicketStatus) => labels?.[s] ?? TICKET_STATUSES.labels[s];
@@ -59,42 +59,42 @@ export function TicketHeaderControls({ ticket, staff, canApprove, labels, vendor
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-3)', alignItems: 'center' }}>
       <TicketStatusPill status={ticket.status} />
-      <select style={SELECT} value="" disabled={pending || moves.length === 0} onChange={(e) => {
-        const to = e.target.value as TicketStatus; if (!to) return;
+      <FormSelect aria-label="Move ticket" fullWidth={false} value="" disabled={pending || moves.length === 0} onValueChange={(nextValue) => {
+        const to = nextValue as TicketStatus; if (!to) return;
         if (to === 'resolved' || to === 'closed' || to === 'dropped') setClosing(to); else move(to);
       }}>
         <option value="">Move to…</option>
         {moves.map((m) => <option key={m} value={m}>{lab(m)}</option>)}
-      </select>
+      </FormSelect>
       {closing && (
         <span style={{ display: 'inline-flex', gap: 'var(--space-2)', alignItems: 'center' }}>
-          <select style={SELECT} value={resolution} onChange={(e) => setResolution(e.target.value)}>
+          <FormSelect aria-label="Resolution" fullWidth={false} value={resolution} onValueChange={(nextValue) => setResolution(nextValue)}>
             {TICKET_RESOLUTIONS.options.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-          </select>
+          </FormSelect>
           <Button size="xs" onClick={() => move(closing, resolution)} loading={pending}>{lab(closing)}</Button>
           <Button size="xs" variant="ghost" onClick={() => setClosing(null)}>Cancel</Button>
         </span>
       )}
 
-      <span style={{ width: 1, height: 20, background: 'var(--theme-paper-border)' }} />
+      <span className="max-md:hidden" style={{ width: 1, height: 20, background: 'var(--theme-paper-border)' }} />
       <PriorityDot priority={ticket.priority} approved={Boolean(ticket.priority_approved_at)} />
-      <select style={SELECT} value={ticket.priority} disabled={pending} onChange={(e) => priority(e.target.value as TicketPriority, canApprove)}>
+      <FormSelect aria-label="Priority" fullWidth={false} value={ticket.priority} disabled={pending} onValueChange={(nextValue) => priority(nextValue as TicketPriority, canApprove)}>
         {TICKET_PRIORITIES.options.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-      </select>
+      </FormSelect>
       {canApprove && !ticket.priority_approved_at && (
         <Button size="xs" onClick={() => priority(ticket.priority, true)} loading={pending}>Approve priority</Button>
       )}
 
-      <span style={{ width: 1, height: 20, background: 'var(--theme-paper-border)' }} />
+      <span className="max-md:hidden" style={{ width: 1, height: 20, background: 'var(--theme-paper-border)' }} />
       {reassign ? (
         <span style={{ display: 'inline-flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap' }}>
-          <select style={SELECT} value={reassign.to} onChange={(e) => setReassign({ ...reassign, to: e.target.value })}>
+          <FormSelect aria-label="Assign to" fullWidth={false} value={reassign.to} onValueChange={(nextValue) => setReassign({ ...reassign, to: nextValue })}>
             <option value="">Unassigned</option>{staff.map((s) => <option key={s.id} value={s.id}>{s.full_name}</option>)}
-          </select>
+          </FormSelect>
           {ticket.assignee_id && (
-            <select style={SELECT} value={reassign.reason} onChange={(e) => setReassign({ ...reassign, reason: e.target.value })}>
+            <FormSelect aria-label="Reassignment reason" fullWidth={false} value={reassign.reason} onValueChange={(nextValue) => setReassign({ ...reassign, reason: nextValue })}>
               {TICKET_REASSIGN_REASONS.options.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-            </select>
+            </FormSelect>
           )}
           <Button size="xs" onClick={() => assign(reassign.to, ticket.assignee_id ? reassign.reason : undefined)} loading={pending}>Save</Button>
           <Button size="xs" variant="ghost" onClick={() => setReassign(null)}>Cancel</Button>

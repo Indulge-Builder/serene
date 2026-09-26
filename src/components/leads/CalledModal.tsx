@@ -194,6 +194,11 @@ export function CalledModal({ open, leadId, onClose }: Props) {
       onClose={onClose}
       title={modalTitle}
       maxWidth="max-w-lg"
+      error={error ? (
+        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-danger-text)', margin: 0 }}>
+          {error}
+        </p>
+      ) : undefined}
       footer={
         <div style={{ display: 'flex', gap: 'var(--space-3)', width: '100%', justifyContent: 'flex-end' }}>
           <Button
@@ -229,6 +234,7 @@ export function CalledModal({ open, leadId, onClose }: Props) {
             aria-labelledby="call-outcome-label"
           >
             <FilterDropdown
+              menuPortal
               disabled={isPending}
               ariaLabel={`Call outcome: ${outcomeLabel}`}
               label={outcomeLabel}
@@ -344,12 +350,6 @@ export function CalledModal({ open, leadId, onClose }: Props) {
           </div>
         </div>
 
-        {/* Error */}
-        {error && (
-          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--color-danger-text)', margin: 0 }}>
-            {error}
-          </p>
-        )}
       </div>
     </Modal>
   );

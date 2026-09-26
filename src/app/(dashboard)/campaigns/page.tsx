@@ -12,6 +12,8 @@ import { CampaignFilters as CampaignFiltersBar } from '@/components/campaigns/Ca
 import { CampaignListAsync } from '@/components/campaigns/CampaignListAsync';
 import { CampaignListSkeleton } from '@/components/campaigns/CampaignListSkeleton';
 
+export const metadata = { title: 'Campaigns' };
+
 // ─────────────────────────────────────────────
 // Parse raw searchParams into CampaignFilters
 // ─────────────────────────────────────────────

@@ -5,6 +5,8 @@ import { WhatsAppShell } from "@/components/whatsapp/WhatsAppShell";
 import { WHATSAPP_CONVERSATIONS_PAGE_SIZE } from "@/lib/constants/whatsapp";
 import { parseWhatsAppPeriodFromSearchParams } from "@/lib/utils/whatsapp-period";
 
+export const metadata = { title: "WhatsApp" };
+
 type PageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 };

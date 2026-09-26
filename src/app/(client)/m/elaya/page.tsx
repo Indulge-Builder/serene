@@ -3,7 +3,7 @@ import { getCurrentProfile } from '@/lib/services/profiles-service';
 import { resolveElayaChatSeed } from '@/lib/services/elaya-service';
 import { ElayaChatScreen } from '@/components/mobile/screens/ElayaChatScreen';
 
-export const metadata = { title: 'Elaya · Serene' };
+export const metadata = { title: 'Elaya' };
 
 /**
  * The Elaya knob (mobile-ops §10) — the REAL brain. RSC resolves the same

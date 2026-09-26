@@ -18,6 +18,16 @@
 > rendered by `scripts/pad-app-icons.mjs`. This supersedes the older bare italic inline empty
 > line, the `brand` watermark composition and the old boot wordmark with its tagline.
 
+> **Neutrals are one warm family — 2026-09-25:** every neutral sits on the cards' warm hue
+> (OKLCH h ≈ 85): the canvas, the inset well (`--theme-paper-subtle`), the field and track fills,
+> the hairlines, the shadow colour, the sidebar ink and the dark sidebar. A cool or violet grey
+> beside the warm cards reads as a purple tint that no theme can change. The 2026-09-22 material
+> pass had moved those nine tokens to violet greys (h ≈ 310) while its note promised warm
+> shadows; they are warm again, each at its old lightness, so depth and contrast are unchanged.
+> Theme colour stays in accents and the header washes; an inset never takes it. `--neu-canvas`
+> equals `NEU_CANVAS_LIGHT` and the icon plate (#ECE8E1), so the launch screen, the browser bar,
+> the boot screen and the icon match.
+
 > **Focus and state — 2026-09-25:** one focus colour (`--neu-focus-edge`); text fields
 > draw a hugging frame, actions a 2px keyboard outline; applied and open states never
 > draw a ring. See [control-system.md](./control-system.md#focus-and-state-without-rings--2026-09-25).

@@ -8,6 +8,8 @@ import { getIntakeProposal } from '@/lib/services/intake-service';
 import { canAccessRoute } from '@/lib/utils/route-access';
 import { TICKETS_PATH } from '@/lib/constants/tickets';
 
+export const metadata = { title: 'New ticket' };
+
 export default async function NewTicketPage({ searchParams }: { searchParams: Promise<{ member?: string; proposal?: string }> }) {
   const profile = await getCurrentProfile();
   if (!profile) redirect('/login');

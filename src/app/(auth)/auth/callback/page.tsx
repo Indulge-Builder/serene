@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { AuthCallbackClient } from "./callback-client";
 
 export const metadata: Metadata = {
-  title: "Signing you in — Serene",
+  title: "Signing you in",
 };
 
 // THE auth-link landing page (invite magic links, and any flow whose link returns

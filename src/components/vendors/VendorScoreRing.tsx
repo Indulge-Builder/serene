@@ -20,12 +20,19 @@ export function VendorScoreRing({
   size?: number;
   stroke?: number;
 }) {
+  // Below 60px (a ranked row) there is no room for "of 10" inside the ring: the
+  // number alone, and the full reading for assistive tech and on hover.
+  const compact = size < 60;
+  const reading = score == null ? 'No score yet' : `Score ${score.toFixed(1)} of ${SCORE_MAX}`;
   const r = size / 2 - stroke / 2 - 2;
   const circumference = 2 * Math.PI * r;
   const pct = score == null ? 0 : Math.max(0, Math.min(1, score / SCORE_MAX));
 
   return (
-    <div style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}>
+    <div
+      style={{ position: 'relative', width: size, height: size, flexShrink: 0 }}
+      {...(compact ? { role: 'img', 'aria-label': reading, title: reading } : {})}
+    >
       <svg
         width={size}
         height={size}
@@ -69,7 +76,7 @@ export function VendorScoreRing({
             fontFamily: 'var(--font-mono)',
             fontVariantNumeric: 'tabular-nums',
             fontWeight: 'var(--weight-semibold)',
-            fontSize: size >= 96 ? 'var(--text-xl)' : 'var(--text-lg)',
+            fontSize: size >= 96 ? 'var(--text-xl)' : compact ? 'var(--text-sm)' : 'var(--text-lg)',
             lineHeight: 1,
             letterSpacing: 'var(--tracking-tight)',
             color: score == null ? 'var(--theme-text-tertiary)' : 'var(--neu-accent-deep)',
@@ -77,12 +84,14 @@ export function VendorScoreRing({
         >
           {score == null ? '—' : score.toFixed(1)}
         </span>
-        <span
-          className="label-micro"
-          style={{ color: 'var(--theme-text-tertiary)', marginTop: 'var(--space-1)' }}
-        >
-          {score == null ? 'No score' : `of ${SCORE_MAX}`}
-        </span>
+        {!compact && (
+          <span
+            className="label-micro"
+            style={{ color: 'var(--theme-text-tertiary)', marginTop: 'var(--space-1)' }}
+          >
+            {score == null ? 'No score' : `of ${SCORE_MAX}`}
+          </span>
+        )}
       </div>
     </div>
   );

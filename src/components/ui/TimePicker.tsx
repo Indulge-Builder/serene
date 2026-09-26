@@ -825,7 +825,7 @@ export function TimePicker({
           minWidth: 88,
           // Compact field uses the shared inset material.
           background: "var(--neu-input-bg)",
-          border: `1px solid ${focused || open ? "var(--neu-accent-deep)" : "var(--neu-input-edge)"}`,
+          border: `1px solid ${focused || open ? "var(--neu-focus-edge)" : "var(--neu-input-edge)"}`,
           borderRadius: "var(--radius-md)",
           fontSize: "var(--text-sm)",
           fontFamily: "var(--font-sans)",
@@ -836,7 +836,7 @@ export function TimePicker({
           cursor: disabled ? "not-allowed" : "pointer",
           opacity: disabled ? 0.5 : 1,
           boxShadow: focused || open
-            ? "0 0 0 1px var(--theme-accent), var(--neu-shadow-input)"
+            ? "0 0 0 1px var(--neu-focus-edge), var(--neu-shadow-input)"
             : "var(--neu-shadow-input)",
           transition: "var(--transition-hover)",
           outline: "none",

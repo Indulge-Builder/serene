@@ -18,6 +18,8 @@
  * armed after the change.
  */
 
+import { FormSelect } from '@/components/ui/FormSelect';
+import { Input } from '@/components/ui/Field';
 import { useState, useTransition } from "react";
 import { Plus, X, Clock, ArrowRight, SlidersHorizontal } from "lucide-react";
 import { AnimatePresence } from "framer-motion";
@@ -27,6 +29,7 @@ import { isCadenceCode } from "@/lib/constants/sla";
 import { createSlaPolicyAction, updateSlaPolicyAction } from "@/lib/actions/sla-policies";
 import { formatDuration } from "@/lib/utils/dates";
 import { Toggle } from "@/components/ui/Toggle";
+import { Checkbox } from "@/components/ui/Checkbox";
 import { Button } from "@/components/ui/Button";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { CollapseReveal } from "@/components/ui/CollapseReveal";
@@ -468,6 +471,7 @@ function StepRow({
     <div
       style={{
         display:      "flex",
+        flexWrap:     "wrap",
         alignItems:   "center",
         gap:          "var(--space-3)",
         padding:      "var(--space-4) var(--space-5)",
@@ -501,7 +505,7 @@ function StepRow({
             <span style={{ fontSize: "var(--text-sm)", color: "var(--theme-text-secondary)" }}>
               After
             </span>
-            <input
+            <Input
               type="number"
               min={0}
               max={43200}
@@ -514,17 +518,7 @@ function StepRow({
                 if (e.key === "Enter") (e.target as HTMLInputElement).blur();
               }}
               className="serene-input"
-              style={{
-                width:        "62px",
-                padding:      "3px 6px",
-                borderRadius: "var(--radius-sm)",
-                border:       "1px solid var(--theme-paper-border)",
-                background:   "var(--theme-paper)",
-                fontFamily:   "var(--font-mono)",
-                fontSize:     "var(--text-sm)",
-                color:        "var(--theme-text-primary)",
-                textAlign:    "right",
-              }}
+              style={{ width:        "62px" }}
             />
             <span
               style={{
@@ -626,12 +620,10 @@ function AdvancedRow({
                 cursor:     pending ? "not-allowed" : "pointer",
               }}
             >
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={checked}
                 disabled={pending}
                 onChange={() => onToggleChannel(channel)}
-                style={{ accentColor: "var(--theme-accent)" }}
               />
               {channel === "in_app" ? "In-app" : "WhatsApp"}
             </label>
@@ -650,26 +642,17 @@ function AdvancedRow({
         }}
       >
         Counts during
-        <select
+        <FormSelect
           value={p.hours_mode}
           disabled={pending}
           aria-label="When the wait is counted"
-          onChange={(e) => onHoursModeChange(e.target.value as SlaHoursMode)}
-          style={{
-            padding:      "3px 6px",
-            borderRadius: "var(--radius-sm)",
-            border:       "1px solid var(--theme-paper-border)",
-            background:   "var(--theme-paper)",
-            fontFamily:   "var(--font-sans)",
-            fontSize:     "var(--text-xs)",
-            color:        "var(--theme-text-primary)",
-            cursor:       pending ? "not-allowed" : "pointer",
-          }}
+          onValueChange={(nextValue) => onHoursModeChange(nextValue as SlaHoursMode)}
+
         >
           {HOURS_MODE_OPTIONS.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
-        </select>
+        </FormSelect>
       </label>
     </div>
   );
@@ -753,17 +736,6 @@ function CreateRuleForm({
     color:         "var(--theme-text-tertiary)",
   };
 
-  const control: React.CSSProperties = {
-    width:        "100%",
-    padding:      "6px 8px",
-    borderRadius: "var(--radius-sm)",
-    border:       "1px solid var(--theme-paper-border)",
-    background:   "var(--theme-paper)",
-    fontFamily:   "var(--font-sans)",
-    fontSize:     "var(--text-xs)",
-    color:        "var(--theme-text-primary)",
-  };
-
   return (
     <div
       style={{
@@ -794,53 +766,53 @@ function CreateRuleForm({
       >
         <div>
           <label style={fieldLabel} htmlFor="new-rule-kind">Watch for</label>
-          <select
+          <FormSelect
             id="new-rule-kind"
             value={kind}
             disabled={creating}
-            onChange={(e) => changeKind(e.target.value as SlaTriggerKind)}
-            style={control}
+            onValueChange={(nextValue) => changeKind(nextValue as SlaTriggerKind)}
+            style={{ width:        "100%" }}
           >
             {TRIGGER_KIND_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
-          </select>
+          </FormSelect>
         </div>
 
         <div>
           <label style={fieldLabel} htmlFor="new-rule-value">When it’s</label>
-          <select
+          <FormSelect
             id="new-rule-value"
             value={value}
             disabled={creating}
-            onChange={(e) => setValue(e.target.value)}
-            style={control}
+            onValueChange={(nextValue) => setValue(nextValue)}
+            style={{ width:        "100%" }}
           >
             {valueOptions.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
-          </select>
+          </FormSelect>
         </div>
 
         <div>
           <label style={fieldLabel} htmlFor="new-rule-recipient">Then notify</label>
-          <select
+          <FormSelect
             id="new-rule-recipient"
             value={recipient}
             disabled={creating}
-            onChange={(e) => setRecipient(e.target.value as SlaRecipientRole)}
-            style={control}
+            onValueChange={(nextValue) => setRecipient(nextValue as SlaRecipientRole)}
+            style={{ width:        "100%" }}
           >
             {RECIPIENT_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
-          </select>
+          </FormSelect>
         </div>
 
         {showThreshold && (
           <div>
             <label style={fieldLabel} htmlFor="new-rule-threshold">Wait (minutes)</label>
-            <input
+            <Input
               id="new-rule-threshold"
               type="number"
               min={0}
@@ -849,24 +821,24 @@ function CreateRuleForm({
               disabled={creating}
               onChange={(e) => setThreshold(e.target.value)}
               className="serene-input"
-              style={{ ...control, fontFamily: "var(--font-mono)" }}
+              style={{ width:        "100%" }}
             />
           </div>
         )}
 
         <div>
           <label style={fieldLabel} htmlFor="new-rule-hours">Counts during</label>
-          <select
+          <FormSelect
             id="new-rule-hours"
             value={hoursMode}
             disabled={creating}
-            onChange={(e) => setHoursMode(e.target.value as SlaHoursMode)}
-            style={control}
+            onValueChange={(nextValue) => setHoursMode(nextValue as SlaHoursMode)}
+            style={{ width:        "100%" }}
           >
             {HOURS_MODE_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
-          </select>
+          </FormSelect>
         </div>
 
         <div>
@@ -887,12 +859,10 @@ function CreateRuleForm({
                     cursor:     creating ? "not-allowed" : "pointer",
                   }}
                 >
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={checked}
                     disabled={creating}
                     onChange={() => toggleChannel(channel)}
-                    style={{ accentColor: "var(--theme-accent)" }}
                   />
                   {channel === "in_app" ? "In-app" : "WhatsApp"}
                 </label>

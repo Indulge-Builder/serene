@@ -21,6 +21,8 @@ export interface SearchBarProps {
   className?: string;
   style?: React.CSSProperties;
   autoFocus?: boolean;
+  /** The phone keyboard's action key. Defaults to "search" (mobile audit 2026-09-26). */
+  enterKeyHint?: React.InputHTMLAttributes<HTMLInputElement>["enterKeyHint"];
   "aria-label"?: string;
   /** When true, focus keeps paper border and no focus ring (filter bars). */
   suppressFocusAccent?: boolean;
@@ -60,6 +62,7 @@ export function SearchBar({
   className,
   style,
   autoFocus,
+  enterKeyHint = "search",
   "aria-label": ariaLabel,
   suppressFocusAccent = false,
 }: SearchBarProps) {
@@ -115,6 +118,7 @@ export function SearchBar({
         placeholder={placeholder}
         disabled={disabled}
         autoFocus={autoFocus}
+        enterKeyHint={enterKeyHint}
         aria-label={ariaLabel ?? placeholder}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}

@@ -49,7 +49,7 @@ function DomainHeader({
               aria-label={DOMAIN_VERTICALS[d].label}
               aria-pressed={d === domain}
               onClick={() => onDomainChange(d)}
-              className="neu-m-touch-quiet rounded-full border-none p-0"
+              className="neu-m-touch-quiet serene-touch-hit rounded-full border-none p-0"
               style={{
                 width: d === domain ? 16 : 6,
                 height: 6,

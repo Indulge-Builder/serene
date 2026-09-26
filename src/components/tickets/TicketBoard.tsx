@@ -8,12 +8,15 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { DndContext, DragOverlay, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core';
+import { DndContext, DragOverlay, PointerSensor, TouchSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core';
+import { ArrowRightLeft } from 'lucide-react';
+import { useMediaQuery, MQ } from '@/hooks/useMediaQuery';
+import { FilterDropdown } from '@/components/ui/FilterDropdown';
 import { createClient } from '@/lib/supabase/client';
 import { toast } from '@/lib/toast';
 import { listBoardTicketsAction, moveTicketStatusAction } from '@/lib/actions/tickets';
 import { formatRelativeTime } from '@/lib/utils/dates';
-import { canTransition, TICKET_BOARD_STATUSES, TICKET_CATEGORIES, TICKET_STATUS_TONE, TICKETS_PATH, type TicketStatus } from '@/lib/constants/tickets';
+import { canTransition, TICKET_TRANSITIONS, TICKET_BOARD_STATUSES, TICKET_CATEGORIES, TICKET_STATUS_TONE, TICKETS_PATH, type TicketStatus } from '@/lib/constants/tickets';
 import { PriorityDot } from './TicketStatusPill';
 import type { TicketListItem } from '@/lib/types/ticket';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -27,8 +30,11 @@ function due(t: TicketListItem): { text: string; color: string } | null {
   return { text: `${late ? 'late' : 'due'} ${formatRelativeTime(d)}`, color: late ? 'var(--color-danger-text)' : 'var(--theme-text-tertiary)' };
 }
 
-function Card({ t, dragging = false }: { t: TicketListItem; dragging?: boolean }) {
+type MoveHandler = (t: TicketListItem, to: TicketStatus) => void;
+
+function Card({ t, dragging = false, labels, onMove }: { t: TicketListItem; dragging?: boolean; labels?: Record<string, string>; onMove?: MoveHandler }) {
   const d = due(t);
+  const nextStatuses = onMove ? TICKET_TRANSITIONS[t.status] ?? [] : [];
   return (
     <div style={{ background: 'var(--theme-paper)', border: '1px solid var(--theme-paper-border)', borderRadius: 'var(--radius-md)', boxShadow: dragging ? 'var(--shadow-3)' : 'var(--shadow-1)', padding: 'var(--space-3)', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', cursor: 'grab', opacity: dragging ? 0.95 : 1 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-2)', alignItems: 'baseline' }}>
@@ -46,20 +52,40 @@ function Card({ t, dragging = false }: { t: TicketListItem; dragging?: boolean }
         <span style={{ color: t.assignee_name ? 'var(--theme-text-tertiary)' : 'var(--color-warning-text)' }}>{t.assignee_name ?? 'unassigned'}</span>
         {d ? <span style={{ color: d.color }}>{d.text}</span> : <span style={{ color: 'var(--theme-text-tertiary)' }}>{formatRelativeTime(t.updated_at)}</span>}
       </div>
+      {onMove && nextStatuses.length > 0 && (
+        // The touch way to move a card (mobile audit 2026-09-26): a finger cannot drag and scroll
+        // at once, so on a coarse pointer each card carries the legal next statuses as a menu.
+        // Same handler as the drag; the state machine already trimmed the list.
+        <div onPointerDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()} style={{ display: 'flex' }}>
+          <FilterDropdown
+            label="Move to…"
+            icon={ArrowRightLeft}
+            items={nextStatuses.map((s) => ({ id: s, label: labels?.[s] ?? s }))}
+            selected={[]}
+            onChange={(sel) => { const to = sel[0] as TicketStatus | undefined; if (to) onMove(t, to); }}
+            hideCountBadge
+            menuPortal
+            className="serene-touch"
+            ariaLabel={`Move ${t.ticket_no} to another status`}
+          />
+        </div>
+      )}
     </div>
   );
 }
 
-function DraggableCard({ t }: { t: TicketListItem }) {
+function DraggableCard({ t, labels, onMove }: { t: TicketListItem; labels: Record<string, string>; onMove: MoveHandler | null }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: t.id, data: { status: t.status } });
+  // pan-x pan-y: the finger still scrolls the rail and the page; the TouchSensor's press delay
+  // is what turns a hold into a drag (touchAction: none made every card a scroll dead zone).
   return (
-    <div ref={setNodeRef} {...listeners} {...attributes} style={{ opacity: isDragging ? 0.35 : 1, touchAction: 'none' }}>
-      <Card t={t} />
+    <div ref={setNodeRef} {...listeners} {...attributes} style={{ opacity: isDragging ? 0.35 : 1, touchAction: 'pan-x pan-y' }}>
+      <Card t={t} labels={labels} onMove={onMove ?? undefined} />
     </div>
   );
 }
 
-function Column({ status, label, tickets, canDrop }: { status: TicketStatus; label: string; tickets: TicketListItem[]; canDrop: boolean | null }) {
+function Column({ status, label, tickets, canDrop, labels, onMove }: { status: TicketStatus; label: string; tickets: TicketListItem[]; canDrop: boolean | null; labels: Record<string, string>; onMove: MoveHandler | null }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
   const ring = isOver && canDrop === true ? 'var(--theme-accent)' : isOver && canDrop === false ? 'var(--color-danger)' : 'var(--theme-paper-border)';
   return (
@@ -69,7 +95,7 @@ function Column({ status, label, tickets, canDrop }: { status: TicketStatus; lab
         <span className="label-micro" style={{ color: 'var(--theme-text-secondary)' }}>{label}</span>
         <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>{tickets.length}</span>
       </header>
-      {tickets.map((t) => <DraggableCard key={t.id} t={t} />)}
+      {tickets.map((t) => <DraggableCard key={t.id} t={t} labels={labels} onMove={onMove} />)}
       {tickets.length === 0 && <EmptyState title="Nothing here." style={{ padding: 'var(--space-6) var(--space-2)' }} />}
     </section>
   );
@@ -83,7 +109,11 @@ export function TicketBoard({ initial, queendomId, labels }: { initial: TicketLi
   const [overStatus, setOverStatus] = useState<TicketStatus | null>(null);
   const [, start] = useTransition();
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
+  );
+  const isTouch = useMediaQuery(MQ.touch);
 
   useEffect(() => { setTickets(initial); }, [initial]);
 
@@ -112,11 +142,9 @@ export function TicketBoard({ initial, queendomId, labels }: { initial: TicketLi
     return m;
   }, [tickets]);
 
-  function onDragStart(e: DragStartEvent) { setActive(tickets.find((t) => t.id === e.active.id) ?? null); }
-  function onDragEnd(e: DragEndEvent) {
-    const t = active; setActive(null); setOverStatus(null);
-    const to = e.over?.id as TicketStatus | undefined;
-    if (!t || !to || to === t.status) return;
+  // THE move: the drag drop and the touch "Move to…" menu both land here.
+  const move = useCallback<MoveHandler>((t, to) => {
+    if (to === t.status) return;
     if (!canTransition(t.status, to)) { toast.warning(`A ticket cannot go from ${labels[t.status]} to ${labels[to]}.`); return; }
     // Optimistic: the card moves now; the server confirms or the board re-reads.
     setTickets((xs) => xs.map((x) => (x.id === t.id ? { ...x, status: to } : x)));
@@ -125,13 +153,21 @@ export function TicketBoard({ initial, queendomId, labels }: { initial: TicketLi
       if (r.error) { toast.danger(r.error); refresh(); return; }
       router.refresh();
     });
+  }, [labels, refresh, router]);
+
+  function onDragStart(e: DragStartEvent) { setActive(tickets.find((t) => t.id === e.active.id) ?? null); }
+  function onDragEnd(e: DragEndEvent) {
+    const t = active; setActive(null); setOverStatus(null);
+    const to = e.over?.id as TicketStatus | undefined;
+    if (!t || !to) return;
+    move(t, to);
   }
 
   return (
     <DndContext sensors={sensors} onDragStart={onDragStart} onDragOver={(e) => setOverStatus((e.over?.id as TicketStatus) ?? null)} onDragEnd={onDragEnd} onDragCancel={() => { setActive(null); setOverStatus(null); }}>
       <div className="serene-board serene-board--wide">
         {TICKET_BOARD_STATUSES.map((s) => (
-          <Column key={s} status={s} label={labels[s] ?? s} tickets={byStatus.get(s) ?? []} canDrop={active && overStatus === s ? canTransition(active.status, s) : null} />
+          <Column key={s} status={s} label={labels[s] ?? s} tickets={byStatus.get(s) ?? []} canDrop={active && overStatus === s ? canTransition(active.status, s) : null} labels={labels} onMove={isTouch ? move : null} />
         ))}
       </div>
       <DragOverlay>{active ? <div style={{ width: 240 }}><Card t={active} dragging /></div> : null}</DragOverlay>

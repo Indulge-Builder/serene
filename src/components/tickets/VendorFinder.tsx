@@ -28,7 +28,7 @@ export function VendorFinder({ ticketId, disabled, action = 'Use', onPick }: { t
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-      <input className="serene-input neu-input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name, or pick a suggestion" />
+      <input className="serene-input neu-input" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by name, or pick a suggestion" enterKeyHint="search" />
       {options === null
         ? <span style={{ fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>Looking…</span>
         : options.length === 0

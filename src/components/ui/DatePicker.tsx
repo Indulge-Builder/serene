@@ -7,6 +7,9 @@ import { createPortal } from 'react-dom';
 import { Calendar as CalendarIcon } from 'lucide-react';
 import { m as motion, AnimatePresence } from 'framer-motion';
 import { Calendar } from './Calendar';
+import { SelectionButton } from './SelectionButton';
+import { Button } from './Button';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { TimePickerWheelPanel, type Meridiem } from './TimePicker';
 import {
   DROPDOWN_VARIANTS,
@@ -29,9 +32,60 @@ export interface DatePickerProps {
    * showTime=false behaviour is identical to the legacy implementation.
    */
   showTime?: boolean;
+  /**
+   * 'month' (2026-09-25): a year stepper over a grid of the twelve months, for
+   * a card's expiry or an export month. The value is the FIRST of the month;
+   * the trigger reads "September 2026". showTime is ignored in this mode.
+   */
+  mode?: 'date' | 'month';
+  /** The trigger's id, so a <label htmlFor> names it like any field. */
+  id?: string;
   className?: string;
   style?: React.CSSProperties;
   'aria-label'?: string;
+}
+
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** The month grid: ‹ year › over 3 × 4 months; a pick commits the first of the month. */
+function MonthGrid({ value, onPick }: { value: Date | null; onPick: (d: Date) => void }) {
+  const [year, setYear] = useState(() => (value ?? new Date()).getFullYear());
+  const selected = value ? { y: value.getFullYear(), m: value.getMonth() } : null;
+  return (
+    <div style={{ width: PANEL_WIDTH_DATE_ONLY, padding: 'var(--space-4)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--space-2)' }}>
+        <Button variant="control" iconOnly size="sm" type="button" aria-label="Previous year" onClick={() => setYear((y) => y - 1)}>
+          <ChevronLeft style={{ width: 14, height: 14, strokeWidth: 1.5 }} aria-hidden="true" />
+        </Button>
+        <span aria-live="polite" style={{ fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', fontSize: 'var(--text-sm)', color: 'var(--theme-text-primary)' }}>
+          {year}
+        </span>
+        <Button variant="control" iconOnly size="sm" type="button" aria-label="Next year" onClick={() => setYear((y) => y + 1)}>
+          <ChevronRight style={{ width: 14, height: 14, strokeWidth: 1.5 }} aria-hidden="true" />
+        </Button>
+      </div>
+      <div role="listbox" aria-label={`Months of ${year}`} style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--space-1)' }}>
+        {MONTHS_SHORT.map((label, idx) => {
+          const active = selected?.y === year && selected.m === idx;
+          return (
+            <SelectionButton
+              key={label}
+              appearance="choice"
+              selected={active}
+              role="option"
+              aria-selected={active}
+              type="button"
+              onClick={() => onPick(new Date(year, idx, 1))}
+              className="serene-touch-hit"
+              style={{ padding: 'var(--space-2) 0', fontSize: 'var(--text-xs)', textAlign: 'center', letterSpacing: 'var(--tracking-wide)' }}
+            >
+              {label}
+            </SelectionButton>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 function to12Hour(d: Date): { hour: number; minute: number; meridiem: Meridiem } {
@@ -67,11 +121,15 @@ export function DatePicker({
   minDate,
   maxDate,
   disabled = false,
-  showTime = false,
+  showTime: showTimeProp = false,
+  mode = 'date',
+  id,
   className,
   style,
   'aria-label': ariaLabel,
 }: DatePickerProps) {
+  const monthMode = mode === 'month';
+  const showTime = showTimeProp && !monthMode;
   const modalScope = useModalScope();
   const [open, setOpen] = useState(false);
   const [focused, setFocused] = useState(false);
@@ -212,9 +270,11 @@ export function DatePicker({
   }
 
   const triggerLabel = value
-    ? (showTime
-        ? formatDate(value, 'dd MMM yyyy, h:mm a')
-        : formatDate(value, 'dd MMM yyyy'))
+    ? (monthMode
+        ? formatDate(value, 'MMMM yyyy')
+        : showTime
+          ? formatDate(value, 'dd MMM yyyy, h:mm a')
+          : formatDate(value, 'dd MMM yyyy'))
     : placeholder;
 
   const popover = (
@@ -225,7 +285,7 @@ export function DatePicker({
           data-modal-owner={modalScope}
           key="datepicker-popover"
           role="dialog"
-          aria-label="Calendar"
+          aria-label={monthMode ? 'Months' : 'Calendar'}
           variants={panelPos.flipUp ? DROPDOWN_VARIANTS_UP : DROPDOWN_VARIANTS}
           initial="hidden"
           animate="visible"
@@ -247,6 +307,11 @@ export function DatePicker({
             overflowY:    'auto',
           }}
         >
+          {monthMode ? (
+            <div data-datepicker-panel="true">
+              <MonthGrid value={value ?? null} onPick={(d) => { commit(d); setOpen(false); }} />
+            </div>
+          ) : (
           <div
             data-datepicker-panel="true"
             style={{
@@ -290,6 +355,7 @@ export function DatePicker({
               />
             )}
           </div>
+          )}
         </motion.div>
       )}
     </AnimatePresence>
@@ -304,9 +370,12 @@ export function DatePicker({
       {/* Trigger */}
       <button
         ref={triggerRef}
+        id={id}
         className="serene-compact-field"
         type="button"
-        aria-label={ariaLabel ?? 'Date picker'}
+        // Named by a <label htmlFor> or aria-label; the value is the button's own
+        // text, so it is read out either way.
+        aria-label={ariaLabel ? `${ariaLabel}: ${triggerLabel}` : (id ? undefined : 'Date picker')}
         aria-haspopup="dialog"
         aria-expanded={open}
         disabled={disabled}
@@ -324,7 +393,9 @@ export function DatePicker({
           padding:     'var(--space-2) var(--space-3)',
           // Compact field uses the shared inset material.
           background:  'var(--neu-input-bg)',
-          border:      `1px solid ${focused || open ? 'var(--theme-accent)' : 'var(--neu-input-edge)'}`,
+          // The field focus frame in the ONE focus colour (2026-09-25); it used
+          // to be the pastel accent at about 2:1.
+          border:      `1px solid ${focused || open ? 'var(--neu-focus-edge)' : 'var(--neu-input-edge)'}`,
           borderRadius:'var(--neu-radius-control)',
           fontSize:    'var(--text-sm)',
           fontFamily:  'var(--font-sans)',
@@ -332,7 +403,7 @@ export function DatePicker({
           cursor:      disabled ? 'not-allowed' : 'pointer',
           opacity:     disabled ? 0.5 : 1,
           boxShadow:   focused || open
-            ? '0 0 0 1px var(--theme-accent), var(--neu-shadow-input)'
+            ? '0 0 0 1px var(--neu-focus-edge), var(--neu-shadow-input)'
             : 'var(--neu-shadow-input)',
           transition:  'var(--transition-hover)',
           outline:     'none',

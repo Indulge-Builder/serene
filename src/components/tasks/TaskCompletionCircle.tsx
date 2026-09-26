@@ -57,7 +57,9 @@ export function TaskCompletionCircle({
       aria-label={checked ? 'Reopen task' : 'Mark complete'}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className={pulse ? 'serene-ring-pulse' : undefined}
+      // serene-touch-hit: the 24px circle keeps its size and grows an
+      // invisible 44px hit area on a coarse pointer (mobile audit 2026-09-26).
+      className={pulse ? 'serene-touch-hit serene-ring-pulse' : 'serene-touch-hit'}
       style={{
         width:        'var(--space-6)',
         height:       'var(--space-6)',

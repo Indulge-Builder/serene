@@ -388,6 +388,8 @@ export type ElayaSeedMessage = {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  /** When it was said; the mobile screen groups the transcript by day with it. */
+  createdAt?: string;
 };
 
 /** Everything ElayaChatShell needs to render — the four shell props. */
@@ -424,6 +426,7 @@ export async function resolveElayaChatSeed(profile: Profile): Promise<ElayaChatS
       id: row.id,
       role: row.role as 'user' | 'assistant',
       content: row.content,
+      createdAt: row.created_at,
     }));
 
   const now = new Date();

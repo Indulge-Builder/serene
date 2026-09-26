@@ -6,6 +6,8 @@ import { BackButton } from '@/components/ui/BackButton';
 import { FindVendorPanel } from '@/components/vendors/FindVendorPanel';
 import { VENDORS_PATH } from '@/lib/constants/vendors';
 
+export const metadata = { title: 'Find a vendor' };
+
 export default async function FindVendorPage() {
   const profile = await getCurrentProfile();
   if (!profile) redirect('/login');

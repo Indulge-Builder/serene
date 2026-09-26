@@ -44,8 +44,9 @@ export function AddLeadButton({ callerProfile, initialAgents = [] }: Props) {
         iconMotion="rotate"
         onClick={() => setOpen(true)}
         style={{ boxShadow: 'var(--shadow-accent-glow)', whiteSpace: 'nowrap' }}
+        aria-label="Add Lead"
       >
-        Add Lead
+        <span className="max-md:sr-only">Add Lead</span>
       </MotionButton>
 
       {mountModal && (

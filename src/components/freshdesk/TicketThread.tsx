@@ -58,7 +58,7 @@ export function TicketThread({
                   </span>
                 </div>
                 {text ? (
-                  <p style={{ margin: 0, whiteSpace: 'pre-wrap', fontSize: 'var(--text-sm)', lineHeight: 1.6, color: 'var(--theme-text-primary)' }}>{text}</p>
+                  <p style={{ margin: 0, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: 'var(--text-sm)', lineHeight: 1.6, color: 'var(--theme-text-primary)' }}>{text}</p>
                 ) : (
                   <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--theme-text-tertiary)', fontStyle: 'italic' }}>
                     {attachments.length ? 'Attachment only' : 'No text (an empty note)'}

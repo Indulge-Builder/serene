@@ -36,7 +36,7 @@ Identical across all three forms:
 
 ```tsx
 <div className="serene-auth-logo-medallion">
-  <Image src="/logo.webp" width={48} height={48} style={{ borderRadius: "var(--radius-sm)" }} />
+  <Image src="/logo-bg-removed.webp" width={48} height={48} style={{ borderRadius: "var(--radius-sm)" }} />
 </div>
 <h1  fontFamily: --font-serif, fontSize: --text-3xl, color: --theme-canvas-text, textAlign: center>Indulge OS</h1>
 ```

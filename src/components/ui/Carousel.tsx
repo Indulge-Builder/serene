@@ -1,8 +1,8 @@
 'use client';
 
 import { Button } from '@/components/ui/Button';
-import React, { useRef } from 'react';
-import { m as motion } from 'framer-motion';
+import React, { useLayoutEffect, useRef, useState } from 'react';
+import { m as motion, useMotionValue, animate, type PanInfo } from 'framer-motion';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { SPRING_CONFIG } from '@/lib/constants/motion';
 
@@ -11,10 +11,16 @@ import { SPRING_CONFIG } from '@/lib/constants/motion';
 //
 // Controlled: the parent owns the active `index` (so a founder deck can sync it
 // with a "currently viewed agent" selection). Renders a horizontal track of
-// full-width slides and translates it on a spring. Touch-swipe past a threshold
-// commits to the neighbour; arrow buttons + dots are the pointer affordances;
-// ←/→ move focus-driven navigation. Transform + opacity only (Never-Do list —
-// never animate width/height). Display-only (A-06), zero business logic.
+// full-width slides on a motion value and springs it to the active slide.
+//
+// The swipe follows the finger 1:1 (2026-09-25, Apple's fluid-interface rules:
+// direct manipulation, momentum projection, velocity hand-off). It used to
+// only lock the axis and jump after release. Now the track is dragged, the
+// ends rubber-band, and on release the landing slide is chosen from where the
+// flick would come to rest; the spring then starts at the finger's speed, so
+// there is no seam between the drag and the settle. One slide per gesture.
+// Arrow buttons + dots are the pointer affordances; ←/→ move focus-driven
+// navigation. Transform + opacity only (Never-Do list). Display-only (A-06).
 //
 // This is NOT AdCreativeCarousel (campaigns/) — that one is hard-coupled to the
 // video player and the AdCreative type and has no touch support. This primitive
@@ -43,10 +49,17 @@ export interface CarouselProps<T> {
   style?: React.CSSProperties;
 }
 
-/** Horizontal swipe must travel this fraction of the viewport width to commit. */
-const SWIPE_COMMIT_RATIO = 0.18;
-/** Below this absolute |Δx| we treat the gesture as a tap/scroll, never a swipe. */
+/** Below this |Δx| with no fling the gesture is a tap or a scroll, never a page. */
 const SWIPE_MIN_PX = 40;
+/** A release faster than this (px/s) pages even from a short drag. */
+const FLING_PX_PER_S = 300;
+/** Scroll-deceleration rate (Apple's normal scroll feel). */
+const DECELERATION = 0.998;
+
+/** Where a flick at this speed would come to rest (the standard exponential decay). */
+function project(velocityPxPerS: number): number {
+  return ((velocityPxPerS / 1000) * DECELERATION) / (1 - DECELERATION);
+}
 
 export function Carousel<T>({
   items,
@@ -64,10 +77,41 @@ export function Carousel<T>({
   const safeIndex = count > 0 ? Math.min(Math.max(index, 0), count - 1) : 0;
   const multiple = count > 1;
 
-  // Touch tracking — axis-locked so a vertical scroll inside a slide never
-  // triggers a horizontal page change.
-  const touch = useRef<{ x: number; y: number; locked: 'h' | 'v' | null } | null>(null);
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const [width, setWidth] = useState(0);
+  // The track's x, in px. Dragging writes it; the settle springs it.
+  const x = useMotionValue(0);
+  // The finger's release speed, handed to the spring that lands the next slide.
+  const releaseVelocity = useRef(0);
+  const prevWidth = useRef(0);
+
+  // The slide width. Measured before paint, so a deck opened on slide 3 never
+  // shows slide 1 first; re-measured on resize.
+  useLayoutEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const measure = () => setWidth(el.clientWidth);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Land on the active slide: a resize (or the first measure) jumps straight
+  // there; an index change springs from wherever the track is, at the speed
+  // the finger left it.
+  useLayoutEffect(() => {
+    if (width === 0) return;
+    const target = -safeIndex * width;
+    if (prevWidth.current !== width) {
+      prevWidth.current = width;
+      x.set(target);
+      return;
+    }
+    const controls = animate(x, target, { ...SPRING_CONFIG, velocity: releaseVelocity.current });
+    releaseVelocity.current = 0;
+    return () => controls.stop();
+  }, [safeIndex, width, x]);
 
   function go(delta: number) {
     if (!multiple) return;
@@ -75,33 +119,22 @@ export function Carousel<T>({
     if (next !== safeIndex) onIndexChange(next);
   }
 
-  function onTouchStart(e: React.TouchEvent) {
-    const t = e.touches[0];
-    if (!t) return;
-    touch.current = { x: t.clientX, y: t.clientY, locked: null };
-  }
-
-  function onTouchMove(e: React.TouchEvent) {
-    const start = touch.current;
-    const t = e.touches[0];
-    if (!start || !t) return;
-    const dx = t.clientX - start.x;
-    const dy = t.clientY - start.y;
-    if (start.locked === null && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
-      start.locked = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
+  function onDragEnd(_: unknown, info: PanInfo) {
+    if (!multiple || width === 0) return;
+    const velocity = info.velocity.x;
+    // Choose the slide nearest to where the flick would stop, not to the
+    // release point; a short, slow drag stays put.
+    const projected = x.get() + project(velocity);
+    let target = Math.round(-projected / width);
+    if (Math.abs(info.offset.x) < SWIPE_MIN_PX && Math.abs(velocity) < FLING_PX_PER_S) target = safeIndex;
+    // One slide per gesture, and never past the ends.
+    target = Math.min(Math.max(target, safeIndex - 1, 0), safeIndex + 1, count - 1);
+    releaseVelocity.current = velocity;
+    if (target !== safeIndex) {
+      onIndexChange(target);
+    } else {
+      animate(x, -safeIndex * width, { ...SPRING_CONFIG, velocity });
     }
-  }
-
-  function onTouchEnd(e: React.TouchEvent) {
-    const start = touch.current;
-    touch.current = null;
-    const t = e.changedTouches[0];
-    if (!start || !t || start.locked !== 'h') return;
-    const dx = t.clientX - start.x;
-    const width = viewportRef.current?.clientWidth ?? 0;
-    const threshold = Math.max(SWIPE_MIN_PX, width * SWIPE_COMMIT_RATIO);
-    if (Math.abs(dx) < threshold) return;
-    go(dx < 0 ? 1 : -1); // swipe left → next
   }
 
   function onKeyDown(e: React.KeyboardEvent) {
@@ -127,19 +160,24 @@ export function Carousel<T>({
         style={{ position: 'relative', flex: 1, minHeight: 0, overflow: 'hidden' }}
       >
         <motion.div
-          style={{ display: 'flex', height: '100%', width: '100%' }}
-          animate={{ x: `-${safeIndex * 100}%` }}
-          transition={SPRING_CONFIG}
-          // touchAction pan-y: the browser keeps vertical scrolling; we own the
-          // horizontal axis for the swipe gesture.
-          onTouchStart={onTouchStart}
-          onTouchMove={onTouchMove}
-          onTouchEnd={onTouchEnd}
+          style={{ display: 'flex', height: '100%', width: '100%', x }}
+          // The finger owns the horizontal axis; the browser keeps vertical
+          // scrolling inside a slide (touch-action pan-y on the slides).
+          drag={multiple ? 'x' : false}
+          dragDirectionLock
+          dragConstraints={{ left: -(count - 1) * width, right: 0 }}
+          // Progressive resistance past either end, a soft boundary, not a wall.
+          dragElastic={0.12}
+          // The settle is ours (projection + velocity hand-off above).
+          dragMomentum={false}
+          onDragEnd={onDragEnd}
         >
           {items.map((item, i) => (
             <div
               key={getKey ? getKey(item, i) : String(i)}
               aria-hidden={i !== safeIndex}
+              // Hidden slides are out of the tab order too, not only unread.
+              inert={i !== safeIndex}
               style={{
                 flex: '0 0 100%',
                 width: '100%',

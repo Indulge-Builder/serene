@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from '@/components/ui/Button';
+import { Tooltip } from '@/components/ui/Tooltip';
 import {
   useCallback,
   useEffect,
@@ -9,8 +10,11 @@ import {
   useState,
   useTransition,
 } from "react";
-import { ArrowLeft, Paperclip } from "lucide-react";
+import { ArrowDown, ArrowLeft, Paperclip } from "lucide-react";
+import { AnimatePresence } from "framer-motion";
+import { MotionButton } from "@/components/ui/MotionButton";
 import { Avatar } from "@/components/ui/Avatar";
+import { SPRING_CONFIG, FAST_DURATION, EASE_IN_OUT } from "@/lib/constants/motion";
 import { formatDate } from "@/lib/utils/dates";
 import { MessageBar } from "@/components/ui/MessageBar";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -43,6 +47,8 @@ interface ConversationPanelProps {
 }
 
 const MAX_CHARS = 4096;
+/** The Sia pane's near-bottom band: within it, an arrival scrolls the list; above it, a pill. */
+const NEAR_BOTTOM_PX = 140;
 const WARN_CHARS = 3000;
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -70,6 +76,11 @@ export function ConversationPanel({
   const [draft,          setDraft]          = useState("");
   const [isSending,      startSendTransition]     = useTransition();
   const [isUploading,    setIsUploading]          = useState(false);
+  // The near-bottom rule the Sia and Elaya panes already follow (mobile audit
+  // 2026-09-26): a reader who scrolled up is not yanked down by an arrival or a
+  // delivery tick; they get a pill instead. Our own send always follows.
+  const wasNearBottom = useRef(true);
+  const [unseen, setUnseen] = useState(0);
 
   // ── Seed / reset on conversation change ─────────────────────────────────────
 
@@ -81,12 +92,47 @@ export function ConversationPanel({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversation.id]);
 
-  // ── Auto-scroll to bottom on mount and new messages ─────────────────────────
+  // ── Scroll to bottom on mount; on a change only when the reader was near it ──
 
+  const lastMessageId = messages.at(-1)?.id ?? null;
+  const lastMessageIsOurs = messages.at(-1)?.direction === "outbound";
+  const seenBottomCount = useRef(0);
   useEffect(() => {
     const el = listRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [messages]);
+    if (!el) return;
+    const ownSend = lastMessageIsOurs && optimisticIds.current.size > 0;
+    if (wasNearBottom.current || ownSend) {
+      el.scrollTop = el.scrollHeight;
+      wasNearBottom.current = true;
+      seenBottomCount.current = messages.length;
+      setUnseen(0);
+      return;
+    }
+    // A new row arrived while scrolled up (a status tick changes no count).
+    if (messages.length > seenBottomCount.current) {
+      setUnseen(messages.length - seenBottomCount.current);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastMessageId, messages.length]);
+
+  const handleListScroll = useCallback(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const near = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
+    wasNearBottom.current = near;
+    if (near) {
+      seenBottomCount.current = messages.length;
+      setUnseen(0);
+    }
+  }, [messages.length]);
+
+  const jumpToLatest = useCallback(() => {
+    const el = listRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    wasNearBottom.current = true;
+    seenBottomCount.current = messages.length;
+    setUnseen(0);
+  }, [messages.length]);
 
   // ── Mark conversation read on open (fires once per conversation.id change) ──
 
@@ -239,13 +285,6 @@ export function ConversationPanel({
       }
     });
   }, [draft, isSending, conversation.id, conversation.lead_id, callerProfile]);
-
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  }
 
   // ── Attach / send media ──────────────────────────────────────────────────────
   // Validate client-side for instant feedback (the action re-validates), show an
@@ -432,12 +471,15 @@ export function ConversationPanel({
         </div>
       </div>
 
-      {/* ZONE B — Message list */}
+      {/* ZONE B — Message list (a relative frame so the new-messages pill can float over it) */}
+      <div style={{ position: "relative", flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
       <div
         ref={listRef}
         className="message-list"
+        onScroll={handleListScroll}
         style={{
           flex:                    1,
+          minHeight:               0,
           overflowY:               "auto",
           padding:                 "var(--space-5) var(--space-5)",
           display:                 "flex",
@@ -496,6 +538,28 @@ export function ConversationPanel({
         )}
       </div>
 
+        {/* New-messages pill — arrivals while scrolled up (the Sia pane's) */}
+        <AnimatePresence>
+          {unseen > 0 && (
+            <MotionButton
+              variant="control" size="sm"
+              key="wa-unseen"
+              type="button"
+              onClick={jumpToLatest}
+              initial={{ opacity: 0, y: 10, scale: 0.94 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 6, transition: { duration: FAST_DURATION, ease: EASE_IN_OUT } }}
+              transition={SPRING_CONFIG}
+              className="serene-pressable absolute left-1/2 -translate-x-1/2 rounded-full inline-flex items-center gap-1.5 border-0 type-caption"
+              style={{ bottom: "16px", padding: "5px 14px", zIndex: "var(--z-raised)" }}
+            >
+              <ArrowDown className="w-3.5 h-3.5" strokeWidth={2} />
+              {unseen} new {unseen === 1 ? "message" : "messages"}
+            </MotionButton>
+          )}
+        </AnimatePresence>
+      </div>
+
       {/* ZONE C — Composer. safe-area inset (DNA R-02): this is the
           viewport-bottom surface in single-pane mode on notched devices. */}
       <div
@@ -523,12 +587,13 @@ export function ConversationPanel({
           value={draft}
           onChange={setDraft}
           onSend={handleSend}
-          onKeyDown={handleKeyDown}
+          sendOnEnter
           loading={isSending}
           maxLength={MAX_CHARS}
           maxHeight={96}
           leadingSlot={
             <div style={{ display: "flex", alignItems: "center", gap: "var(--space-1)" }}>
+              <Tooltip label="Attach a file" side="top">
               <Button
                 variant="ghost"
                 iconOnly size="sm"
@@ -536,12 +601,12 @@ export function ConversationPanel({
                 onClick={handleAttachClick}
                 disabled={isUploading}
                 aria-label="Attach a file"
-                title="Attach a file"
-                className="serene-pressable"
+                className="serene-pressable serene-touch"
                 style={{ width:          "32px", height:         "32px", display:        "flex", alignItems:     "center", justifyContent: "center", flexShrink:     0 }}
               >
                 <Paperclip style={{ width: "18px", height: "18px", strokeWidth: 1.5 }} />
               </Button>
+              </Tooltip>
               <DictationButton
                 onTranscript={handleTranscript}
                 onError={(message) => toast.danger(message)}

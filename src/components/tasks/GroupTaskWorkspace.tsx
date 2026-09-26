@@ -34,6 +34,7 @@
  * - Completion circle on each row toggles completed ↔ to_do (optimistic).
  */
 
+import { FormSelect } from '@/components/ui/FormSelect';
 import { Button } from '@/components/ui/Button';
 import {
   useCallback,
@@ -55,7 +56,6 @@ import {
   User,
   ArrowRight,
   CalendarDays,
-  ChevronDown,
   Trash2, CheckSquare
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -98,6 +98,9 @@ import type {
 } from "@/lib/types/database";
 import { BASE_DURATION, EASE_OUT_EXPO } from "@/lib/constants/motion";
 import { EmptyState } from '@/components/ui/EmptyState';
+import { Tooltip } from '@/components/ui/Tooltip';
+import { Dialog } from '@/components/ui/Dialog';
+import { useMediaQuery, MQ } from '@/hooks/useMediaQuery';
 
 // Load-on-intent (perf audit G-1): SubTaskModal (1,672 lines) stays out of the
 // /tasks/[id] route chunk until a subtask is first opened (the call site
@@ -291,6 +294,14 @@ export function GroupTaskWorkspace({
   callerDomain,
 }: GroupTaskWorkspaceProps) {
   const router = useRouter();
+  // Below --bp-md a list row cannot hold badge, avatar, due, pill and arrow
+  // beside the title (~370px of fixed chrome on a 328px paper): the meta
+  // cluster drops to its own line (the GroupTasksTab row shape); the add
+  // panel is a Dialog sheet, not a fixed card the keyboard covers
+  // (mobile audit 2026-09-26). On a coarse pointer nothing auto-focuses —
+  // the keyboard must not throw itself over an opening sheet.
+  const isMobile = useMediaQuery(MQ.mobile);
+  const isTouch  = useMediaQuery(MQ.touch);
 
   // ── View toggle — default 'list', hydrated from localStorage after mount ──
   const [view, setView] = useState<WorkspaceView>("list");
@@ -509,8 +520,8 @@ export function GroupTaskWorkspace({
   }, [showAddPanel]);
 
   useEffect(() => {
-    if (showAddPanel) setTimeout(() => addTitleRef.current?.focus(), 50);
-  }, [showAddPanel]);
+    if (showAddPanel && !isTouch) setTimeout(() => addTitleRef.current?.focus(), 50);
+  }, [showAddPanel, isTouch]);
 
   const handleAddSubtask = useCallback(() => {
     if (isPending || !addTitle.trim()) {
@@ -563,6 +574,121 @@ export function GroupTaskWorkspace({
 
   // ── Sorted list for list view ─────────────────────────────────────────────
   const sortedSubtasks = sortSubtasks(subtasks);
+
+  // ── Add subtask panel body — the same fields in the floating card (md+)
+  // and the Dialog sheet (<md). The Save button sits in the assignee row on
+  // the desktop card and in the Dialog footer on the sheet.
+  const closeAddPanel = () => {
+    setShowAddPanel(false);
+    setAddTitle("");
+  };
+  const renderAddPanelFields = (withSave: boolean) => (
+    <>
+      {/* Title */}
+      <input
+        ref={addTitleRef}
+        type="text"
+        value={addTitle}
+        onChange={(e) => setAddTitle(e.target.value)}
+        onKeyDown={handleAddKeyDown}
+        placeholder="Subtask title…"
+        style={{
+          border: "1px solid var(--theme-paper-border)",
+          borderRadius: "var(--radius-sm)",
+          padding: "var(--space-2) var(--space-3)",
+          fontFamily: "var(--font-sans)",
+          fontSize: "var(--text-sm)",
+          color: "var(--theme-text-primary)",
+          background: "var(--theme-paper-subtle)",
+          outline: "none",
+          caretColor: "var(--theme-accent)",
+          width: "100%",
+        }}
+        onFocus={(e) => {
+          e.currentTarget.style.borderColor = "var(--theme-accent)";
+        }}
+        onBlur={(e) => {
+          e.currentTarget.style.borderColor =
+            "var(--theme-paper-border)";
+        }}
+      />
+
+      {/* Priority + Due date row */}
+      <div style={{ display: "flex", gap: "var(--space-2)" }}>
+        {/* Priority select */}
+        <div style={{ position: "relative", flex: 1 }}>
+          <FormSelect aria-label="Priority"
+            value={addPriority}
+            onValueChange={(nextValue) =>
+              setAddPriority(nextValue as TaskPriority)}
+            style={{ width: "100%" }}
+          >
+            {(["urgent", "high", "normal"] as TaskPriority[]).map(
+              (p) => (
+                <option key={p} value={p}>
+                  {PRIORITY_CONFIG[p].label}
+                </option>
+              ),
+            )}
+          </FormSelect>
+
+        </div>
+
+        {/* Due date */}
+        <div style={{ flex: 1 }}>
+          <DatePicker
+            value={addDueAt}
+            onChange={setAddDueAt}
+            showTime
+            placeholder="Due date"
+          />
+        </div>
+      </div>
+
+      {/* Assignee picker row */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--space-2)",
+        }}
+      >
+        <Button
+          variant="control"
+          size="sm"
+          type="button"
+          onClick={() => setShowAssigneePicker(true)}
+          aria-label="Pick assignee"
+          style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", flex: 1 }}
+        >
+          <User style={{ width: 12, height: 12, strokeWidth: 1.5 }} />
+          {addAssignee ? addAssignee.full_name : "Assign to…"}
+        </Button>
+        {withSave && (
+          <Button
+            variant="primary"
+            size="sm"
+            type="button"
+            onClick={handleAddSubtask}
+            disabled={isPending || !addTitle.trim() || !addAssignee}
+          >
+            {isPending ? "Adding…" : "Add"}
+          </Button>
+        )}
+      </div>
+    </>
+  );
+  const addSaveButton = (
+    <Button
+      variant="primary"
+      size="sm"
+      type="button"
+      onClick={handleAddSubtask}
+      disabled={isPending || !addTitle.trim() || !addAssignee}
+    >
+      {isPending ? "Adding…" : "Add"}
+    </Button>
+  );
 
   // ─── Render ────────────────────────────────────────────────────────────────
 
@@ -786,6 +912,7 @@ export function GroupTaskWorkspace({
                     style={{
                       display: "flex",
                       alignItems: "center",
+                      flexWrap: isMobile ? "wrap" : "nowrap",
                       gap: "var(--space-3)",
                       padding: "var(--space-3) var(--space-4)",
                       borderBottom:
@@ -842,6 +969,27 @@ export function GroupTaskWorkspace({
                       {subtask.title}
                     </span>
 
+                    {/* Meta cluster — badge, assignee, due, status. Mobile:
+                        its own wrapped line under the title (order pushes it
+                        past the arrow, which stays on the title line). */}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "var(--space-3)",
+                        flexShrink: 0,
+                        ...(isMobile
+                          ? {
+                              order: 5,
+                              flexBasis: "100%",
+                              minWidth: 0,
+                              flexWrap: "wrap" as const,
+                              rowGap: 6,
+                              paddingLeft: 36,
+                            }
+                          : null),
+                      }}
+                    >
                     {subtask.priority !== "normal" && (
                       <PriorityBadge priority={subtask.priority} />
                     )}
@@ -883,6 +1031,7 @@ export function GroupTaskWorkspace({
                       <TaskStatusIcon status={effectiveStatus} size={10} />
                       {TASK_STATUS_LABELS[effectiveStatus]}
                     </span>
+                    </div>
 
                     {/* Arrow */}
                     <Button
@@ -894,6 +1043,7 @@ export function GroupTaskWorkspace({
                         handleOpenModal(subtask);
                       }}
                       aria-label="Open subtask details"
+                      className="serene-touch-hit"
                       style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "24px", height: "24px", flexShrink: 0 }}
                     >
                       <ArrowRight
@@ -1114,17 +1264,23 @@ export function GroupTaskWorkspace({
                             >
                               <AssigneeChip assignee={subtask.assignee} />
 
-                              {/* Priority dot */}
-                              <span
-                                style={{
-                                  width: "6px",
-                                  height: "6px",
-                                  borderRadius: "var(--radius-full)",
-                                  background: pCfg.dot,
-                                  flexShrink: 0,
-                                }}
-                                title={pCfg.label}
-                              />
+                              {/* Priority dot: the words ride along for screen
+                                  readers and the tooltip says them on hover. */}
+                              <Tooltip label={`${pCfg.label} priority`} side="top">
+                                <span style={{ display: "inline-flex", alignItems: "center" }}>
+                                  <span
+                                    aria-hidden="true"
+                                    style={{
+                                      width: "6px",
+                                      height: "6px",
+                                      borderRadius: "var(--radius-full)",
+                                      background: pCfg.dot,
+                                      flexShrink: 0,
+                                    }}
+                                  />
+                                  <span className="sr-only">{pCfg.label} priority</span>
+                                </span>
+                              </Tooltip>
 
                               {/* Due chip */}
                               {subtask.due_at && (
@@ -1179,9 +1335,34 @@ export function GroupTaskWorkspace({
         </div>
       )}
 
-      {/* ── Add subtask floating button + panel ───────────────────────────── */}
+      {/* ── Add subtask: <md a Dialog bottom sheet (a fixed card at the
+          bottom edge sits under the keyboard); md+ the floating card by the
+          FAB ───────────────────────────────────────────────────────────── */}
+      {isMobile && (
+        <Dialog
+          open={showAddPanel}
+          onClose={closeAddPanel}
+          title="New subtask"
+          size="sm"
+          pending={isPending}
+          footer={
+            <>
+              <Button variant="ghost" type="button" onClick={closeAddPanel} disabled={isPending}>
+                Cancel
+              </Button>
+              {addSaveButton}
+            </>
+          }
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+            {renderAddPanelFields(false)}
+          </div>
+        </Dialog>
+      )}
+
       <div
-        className="fixed bottom-4 left-4 right-4 md:bottom-8 md:left-auto md:right-8"
+        // serene-above-elaya-fab lifts it over the Elaya button (globals.css).
+        className="serene-above-elaya-fab fixed bottom-4 left-4 right-4 md:bottom-8 md:left-auto md:right-8"
         style={{
           zIndex: "var(--z-raised)" as React.CSSProperties["zIndex"],
           display: "flex",
@@ -1192,7 +1373,7 @@ export function GroupTaskWorkspace({
         }}
       >
         <AnimatePresence>
-          {showAddPanel && (
+          {showAddPanel && !isMobile && (
             <motion.div
               key="add-panel"
               initial={{ opacity: 0, y: 8, scale: 0.97 }}
@@ -1235,135 +1416,14 @@ export function GroupTaskWorkspace({
                   variant="ghost"
                   iconOnly size="sm"
                   type="button"
-                  onClick={() => {
-                    setShowAddPanel(false);
-                    setAddTitle("");
-                  }}
+                  onClick={closeAddPanel}
                   style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "22px", height: "22px" }}
                 >
                   <X style={{ width: 12, height: 12, strokeWidth: 1.5 }} />
                 </Button>
               </div>
 
-              {/* Title */}
-              <input
-                ref={addTitleRef}
-                type="text"
-                value={addTitle}
-                onChange={(e) => setAddTitle(e.target.value)}
-                onKeyDown={handleAddKeyDown}
-                placeholder="Subtask title…"
-                style={{
-                  border: "1px solid var(--theme-paper-border)",
-                  borderRadius: "var(--radius-sm)",
-                  padding: "var(--space-2) var(--space-3)",
-                  fontFamily: "var(--font-sans)",
-                  fontSize: "var(--text-sm)",
-                  color: "var(--theme-text-primary)",
-                  background: "var(--theme-paper-subtle)",
-                  outline: "none",
-                  caretColor: "var(--theme-accent)",
-                  width: "100%",
-                }}
-                onFocus={(e) => {
-                  e.currentTarget.style.borderColor = "var(--theme-accent)";
-                }}
-                onBlur={(e) => {
-                  e.currentTarget.style.borderColor =
-                    "var(--theme-paper-border)";
-                }}
-              />
-
-              {/* Priority + Due date row */}
-              <div style={{ display: "flex", gap: "var(--space-2)" }}>
-                {/* Priority select */}
-                <div style={{ position: "relative", flex: 1 }}>
-                  <select
-                    value={addPriority}
-                    onChange={(e) =>
-                      setAddPriority(e.target.value as TaskPriority)
-                    }
-                    style={{
-                      appearance: "none",
-                      WebkitAppearance: "none",
-                      width: "100%",
-                      padding:
-                        "var(--space-2) var(--space-5) var(--space-2) var(--space-2)",
-                      borderRadius: "var(--radius-sm)",
-                      border: "1px solid var(--theme-paper-border)",
-                      background: "var(--theme-paper-subtle)",
-                      fontFamily: "var(--font-sans)",
-                      fontSize: "var(--text-xs)",
-                      color: "var(--theme-text-primary)",
-                      cursor: "pointer",
-                      outline: "none",
-                    }}
-                  >
-                    {(["urgent", "high", "normal"] as TaskPriority[]).map(
-                      (p) => (
-                        <option key={p} value={p}>
-                          {PRIORITY_CONFIG[p].label}
-                        </option>
-                      ),
-                    )}
-                  </select>
-                  <ChevronDown
-                    style={{
-                      position: "absolute",
-                      right: 6,
-                      top: "50%",
-                      transform: "translateY(-50%)",
-                      width: 10,
-                      height: 10,
-                      strokeWidth: 1.5,
-                      pointerEvents: "none",
-                      color: "var(--theme-text-tertiary)",
-                    }}
-                  />
-                </div>
-
-                {/* Due date */}
-                <div style={{ flex: 1 }}>
-                  <DatePicker
-                    value={addDueAt}
-                    onChange={setAddDueAt}
-                    showTime
-                    placeholder="Due date"
-                  />
-                </div>
-              </div>
-
-              {/* Assignee picker row */}
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "var(--space-2)",
-                }}
-              >
-                <Button
-                  variant="control"
-                  size="sm"
-                  type="button"
-                  onClick={() => setShowAssigneePicker(true)}
-                  aria-label="Pick assignee"
-                  style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", flex: 1 }}
-                >
-                  <User style={{ width: 12, height: 12, strokeWidth: 1.5 }} />
-                  {addAssignee ? addAssignee.full_name : "Assign to…"}
-                </Button>
-
-                {/* Save */}
-                <Button
-                  variant="primary"
-                  size="sm"
-                  type="button"
-                  onClick={handleAddSubtask}
-                  disabled={isPending || !addTitle.trim() || !addAssignee}
-                >
-                  {isPending ? "Adding…" : "Add"}
-                </Button>
-              </div>
+              {renderAddPanelFields(true)}
             </motion.div>
           )}
         </AnimatePresence>

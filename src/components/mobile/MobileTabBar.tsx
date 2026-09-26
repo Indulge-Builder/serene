@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useState } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { getMobileRooms } from '@/lib/constants/mobile-rooms';
 import { useMobileSession } from './MobileSessionProvider';
@@ -19,11 +20,12 @@ import { useMobileSession } from './MobileSessionProvider';
  * (−20). She is navigation, not a tab — no active state, ever.
  */
 
-function TabCell({ href, label, icon: Icon, active }: {
+function TabCell({ href, label, icon: Icon, active, onPick }: {
   href: string;
   label: string;
   icon: LucideIcon;
   active: boolean;
+  onPick: (href: string) => void;
 }) {
   return (
     <Link
@@ -31,6 +33,7 @@ function TabCell({ href, label, icon: Icon, active }: {
       aria-label={label}
       aria-current={active ? 'page' : undefined}
       className="neu-m-touch-quiet shrink-0"
+      onClick={() => onPick(href)}
     >
       {active ? (
         <span
@@ -56,8 +59,15 @@ export function MobileTabBar() {
   const pathname = usePathname();
   const { role } = useMobileSession();
   const TABS = getMobileRooms(role);
+  // The tile moves on the TAP (2026-09-25), not when the server answers: a
+  // room waits on its data, and until this the bar looked dead for that wait.
+  // The pending pick clears the moment the route lands.
+  const [pending, setPending] = useState<string | null>(null);
+  useEffect(() => { setPending(null); }, [pathname]);
   const isActive = (href: string) =>
-    href === '/m' ? pathname === '/m' : pathname.startsWith(href);
+    pending !== null
+      ? pending === href
+      : href === '/m' ? pathname === '/m' : pathname.startsWith(href);
 
   return (
     <nav
@@ -70,7 +80,7 @@ export function MobileTabBar() {
         style={{ boxShadow: 'var(--neu-shadow-raised-lg)' }}
       >
         {TABS.slice(0, 2).map((t) => (
-          <TabCell key={t.key} href={t.href} label={t.label} icon={t.icon} active={isActive(t.href)} />
+          <TabCell key={t.key} href={t.href} label={t.label} icon={t.icon} active={isActive(t.href)} onPick={setPending} />
         ))}
         <Link
           href="/m/elaya"
@@ -85,7 +95,7 @@ export function MobileTabBar() {
           ✦
         </Link>
         {TABS.slice(2).map((t) => (
-          <TabCell key={t.key} href={t.href} label={t.label} icon={t.icon} active={isActive(t.href)} />
+          <TabCell key={t.key} href={t.href} label={t.label} icon={t.icon} active={isActive(t.href)} onPick={setPending} />
         ))}
       </div>
     </nav>

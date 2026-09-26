@@ -30,7 +30,7 @@ export function Field({ label, htmlFor, hint, error, required = false, children 
   );
 }
 
-function useFieldAttributes(props: { id?: string; required?: boolean; 'aria-describedby'?: string; 'aria-invalid'?: ComponentPropsWithRef<'input'>['aria-invalid'] }) {
+export function useFieldAttributes(props: { id?: string; required?: boolean; 'aria-describedby'?: string; 'aria-invalid'?: ComponentPropsWithRef<'input'>['aria-invalid'] }) {
   const field = useContext(FieldContext);
   return {
     id: props.id ?? field?.id,

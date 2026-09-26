@@ -65,7 +65,7 @@ export function LeadTasksCard({ leadId, initialTasks }: LeadTasksCardProps) {
               type="button"
               onClick={() => setModalOpen(true)}
               aria-label="Add follow-up task"
-              className="serene-pressable serene-icon-rotate-hover"
+              className="serene-pressable serene-icon-rotate-hover serene-touch"
               style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 28, height: 28 }}
             >
               <Plus style={{ width: 14, height: 14, strokeWidth: 1.5 }} />

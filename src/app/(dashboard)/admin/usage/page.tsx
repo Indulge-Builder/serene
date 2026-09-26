@@ -6,6 +6,8 @@ import { TOP_BAR_ENABLED } from "@/lib/constants/feature-flags";
 import { PageControls } from "@/components/layout/PageControls";
 import { UsageDashboard } from "@/components/admin/usage/UsageDashboard";
 
+export const metadata = { title: "Usage" };
+
 /**
  * /admin/usage — adoption monitoring. Admin/founder only.
  *

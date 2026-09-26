@@ -10,7 +10,7 @@ import { BackButton } from "@/components/ui/BackButton";
 import { ElayaRequestsPanel } from "@/components/settings/ElayaRequestsPanel";
 import { TEACH_ELAYA_PATH } from "@/lib/constants/elaya";
 
-export const metadata = { title: "Elaya requests — Serene" };
+export const metadata = { title: "Elaya requests" };
 
 export default async function ElayaRequestsPage() {
   const profile = await getCurrentProfile();

@@ -6,9 +6,13 @@
 
 import { useState, useTransition, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { MQ, useMediaQuery } from "@/hooks/useMediaQuery";
 import { Save, Eye, EyeOff, type LucideIcon } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
-import { Input, Textarea, Select } from "@/components/ui/Field";
+import { Input, Textarea } from "@/components/ui/Field";
+import { DatePicker } from "@/components/ui/DatePicker";
+import { parseIsoDate, toIsoDate } from "@/lib/utils/dates";
+import { FormSelect } from "@/components/ui/FormSelect";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { FilterDropdown } from "@/components/ui/FilterDropdown";
@@ -59,6 +63,8 @@ export function AddEditSubscriptionModal({ open, onClose, subscription, toolOpti
   const [notes, setNotes] = useState(subscription?.notes ?? "");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  // No autofocus on a phone: the keyboard would cover the opening sheet.
+  const touch = useMediaQuery(MQ.touch);
 
   // Re-seed every field each time the modal OPENS.
   //
@@ -145,6 +151,7 @@ export function AddEditSubscriptionModal({ open, onClose, subscription, toolOpti
 
   return (
     <Modal
+      error={saveError ? <Alert tone="danger">{saveError}</Alert> : undefined}
       open={open}
       pending={isPending}
       onClose={handleClose}
@@ -187,7 +194,7 @@ export function AddEditSubscriptionModal({ open, onClose, subscription, toolOpti
             disabled={isPending}
             placeholder="e.g. Figma, AWS, Adobe Creative Cloud"
             maxLength={200}
-            autoFocus
+            autoFocus={!touch}
           />
         </div>
 
@@ -233,15 +240,15 @@ export function AddEditSubscriptionModal({ open, onClose, subscription, toolOpti
         </div>
 
         {/* Type + Currency */}
-        <div style={{ display: "flex", gap: "var(--space-3)" }}>
+        <div className="serene-form-row" style={{ gap: "var(--space-3)" }}>
           <div style={{ flex: 1 }}>
             <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="sub-type">
               Billing Type
             </label>
-            <Select
+            <FormSelect
               id="sub-type"
               value={type}
-              onChange={(e) => setType(e.target.value as SubscriptionType)}
+              onValueChange={(next) => setType(next as SubscriptionType)}
               disabled={isPending}
             >
               {SUBSCRIPTION_TYPE_OPTIONS.map((o) => (
@@ -249,16 +256,16 @@ export function AddEditSubscriptionModal({ open, onClose, subscription, toolOpti
                   {o.label}
                 </option>
               ))}
-            </Select>
+            </FormSelect>
           </div>
           <div style={{ flex: 1 }}>
             <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="sub-currency">
               Currency
             </label>
-            <Select
+            <FormSelect
               id="sub-currency"
               value={currency}
-              onChange={(e) => setCurrency(e.target.value as SubscriptionCurrency)}
+              onValueChange={(next) => setCurrency(next as SubscriptionCurrency)}
               disabled={isPending}
             >
               {SUBSCRIPTION_CURRENCY_OPTIONS.map((o) => (
@@ -266,12 +273,12 @@ export function AddEditSubscriptionModal({ open, onClose, subscription, toolOpti
                   {o.label}
                 </option>
               ))}
-            </Select>
+            </FormSelect>
           </div>
         </div>
 
         {/* Amount + due (conditional by type) */}
-        <div style={{ display: "flex", gap: "var(--space-3)" }}>
+        <div className="serene-form-row" style={{ gap: "var(--space-3)" }}>
           {!isTopUp && (
             <div style={{ flex: 1 }}>
               <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="sub-amount">
@@ -313,11 +320,12 @@ export function AddEditSubscriptionModal({ open, onClose, subscription, toolOpti
               <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="sub-due-date">
                 Due Date
               </label>
-              <Input
+              <DatePicker
                 id="sub-due-date"
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
+                style={{ width: "100%" }}
+                placeholder="Pick a date"
+                value={parseIsoDate(dueDate)}
+                onChange={(d) => setDueDate(toIsoDate(d))}
                 disabled={isPending}
               />
             </div>
@@ -330,7 +338,7 @@ export function AddEditSubscriptionModal({ open, onClose, subscription, toolOpti
         )}
 
         {/* Login + Password */}
-        <div style={{ display: "flex", gap: "var(--space-3)" }}>
+        <div className="serene-form-row" style={{ gap: "var(--space-3)" }}>
           <div style={{ flex: 1 }}>
             <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="sub-login">
               Login <span style={{ color: "var(--theme-text-tertiary)" }}>(optional)</span>
@@ -399,7 +407,6 @@ export function AddEditSubscriptionModal({ open, onClose, subscription, toolOpti
           />
         </div>
       </form>
-      {saveError && <Alert tone="danger" style={{ marginTop: "var(--space-4)" }}>{saveError}</Alert>}
     </Modal>
   );
 }

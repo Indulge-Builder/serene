@@ -1,4 +1,9 @@
 {
+  "src/app/global-error.tsx": {
+    "native": 1,
+    "animated": 0,
+    "reason": "Renders its own <html>/<body> with no app CSS; the one inline-styled button is the sanctioned no-stylesheet case (2026-09-25)."
+  },
   "src/components/dashboard/DashboardCanvas.tsx": {
     "native": 1,
     "animated": 0,
@@ -78,6 +83,11 @@
     "native": 1,
     "animated": 0,
     "reason": "Canonical completion tile primitive."
+  },
+  "src/components/ui/Checkbox.tsx": {
+    "native": 1,
+    "animated": 0,
+    "reason": "THE tick box primitive: a <button role=\"checkbox\"> whose fill and edge are the control state (2026-09-25)."
   },
   "src/components/ui/DatePicker.tsx": {
     "native": 1,

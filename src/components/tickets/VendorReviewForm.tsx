@@ -47,7 +47,7 @@ export function VendorReviewForm({ ticketId, vendorName, onDone }: { ticketId: s
                   aria-checked={on}
                   disabled={pending}
                   onClick={() => setRatings((r) => ({ ...r, [d]: on ? undefined : n }))}
-                  className="serene-pressable"
+                  className="serene-pressable serene-touch"
                   style={{
                     width: 32,
                     height: 32,

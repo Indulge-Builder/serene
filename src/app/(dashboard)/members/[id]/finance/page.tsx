@@ -18,6 +18,8 @@ import { getMemberFinance } from '@/lib/services/zoho-service';
 import { zohoOrgId } from '@/lib/services/zoho-api';
 import { CLIENTS_PATH } from '@/lib/constants/sia-roles';
 
+export const metadata = { title: 'Member finance' };
+
 type Props = { params: Promise<{ id: string }> };
 
 /** The live Zoho part streams in after the spine (four calls, a one-minute Redis copy). */

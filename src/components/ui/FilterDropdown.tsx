@@ -16,10 +16,16 @@ export interface FilterDropdownItem {
   id: string;
   label: string;
   icon?: LucideIcon;
+  disabled?: boolean;
+  /** Items with the same group sit under one micro heading (a form select's optgroup). */
+  group?: string;
 }
 
 export interface FilterDropdownProps {
   label: string;
+  triggerId?: string;
+  appearance?: 'filter' | 'field';
+  ariaRequired?: boolean;
   disabled?: boolean;
   clearable?: boolean;
   ariaLabel?: string;
@@ -58,6 +64,9 @@ const MAX_MENU_SCROLL_HEIGHT = 240;
 
 export function FilterDropdown({
   label,
+  triggerId,
+  appearance = 'filter',
+  ariaRequired,
   icon: TriggerIcon,
   items,
   selected,
@@ -84,6 +93,7 @@ export function FilterDropdown({
   const [menuPos, setMenuPos] = useState({ top: 0, left: 0, minWidth: 180 });
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef   = useRef<HTMLButtonElement>(null);
+  const typeahead = useRef({ text: '', at: 0 });
   const menuRef      = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -94,9 +104,10 @@ export function FilterDropdown({
   // attached to the trigger after selection/Escape, including portaled menus.
   useEffect(() => {
     if (!open) return;
+    typeahead.current = { text: '', at: 0 };
     const frame = requestAnimationFrame(() => {
-      const selectedOption = menuRef.current?.querySelector<HTMLButtonElement>('[role="option"][aria-selected="true"]');
-      (selectedOption ?? menuRef.current?.querySelector<HTMLButtonElement>('[role="option"]'))?.focus({ preventScroll: true });
+      const selectedOption = menuRef.current?.querySelector<HTMLButtonElement>('[role="option"][aria-selected="true"]:not(:disabled)');
+      (selectedOption ?? menuRef.current?.querySelector<HTMLButtonElement>('[role="option"]:not(:disabled)'))?.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(frame);
   }, [open]);
@@ -227,15 +238,27 @@ export function FilterDropdown({
         flexDirection:  'column',
       };
 
-  const menuItems = items.map((item) => {
+  const menuItems = items.map((item, itemIndex) => {
         const isSelected = selected.includes(item.id);
         const ItemIcon = item.icon;
-        return (
+        // A group heading before the first item of each group (optgroup).
+        const groupHeading = item.group && items[itemIndex - 1]?.group !== item.group ? (
+          <div
+            key={`group-${item.group}`}
+            role="presentation"
+            className="label-micro"
+            style={{ padding: 'var(--space-2) var(--space-3) var(--space-1)', marginTop: itemIndex > 0 ? 'var(--space-1)' : 0 }}
+          >
+            {item.group}
+          </div>
+        ) : null;
+        const option = (
           <SelectionButton
             appearance="option"
             selected={isSelected}
             key={item.id}
             type="button"
+            disabled={item.disabled}
             role="option"
             tabIndex={-1}
             aria-selected={isSelected}
@@ -284,6 +307,7 @@ export function FilterDropdown({
             )}
           </SelectionButton>
         );
+        return groupHeading ? <React.Fragment key={item.id}>{groupHeading}{option}</React.Fragment> : option;
   });
 
   const clearFooter = clearable && activeCount > 0 ? (
@@ -325,6 +349,7 @@ export function FilterDropdown({
       <div
         role="listbox"
         aria-invalid={invalid || undefined}
+        aria-required={ariaRequired || undefined}
         id={menuId}
         aria-label={label}
         aria-multiselectable={multi}
@@ -356,9 +381,19 @@ export function FilterDropdown({
               closeMenu();
               return;
             }
-            if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
-            const options = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="option"]'));
+            const options = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="option"]:not(:disabled)'));
             const index = options.indexOf(document.activeElement as HTMLButtonElement);
+            if (event.key.length === 1 && event.key !== ' ' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+              event.preventDefault();
+              const now = Date.now();
+              const text = (now - typeahead.current.at < 700 ? typeahead.current.text : '') + event.key.toLocaleLowerCase();
+              typeahead.current = { text, at: now };
+              const query = [...text].every(char => char === text[0]) ? text[0] : text;
+              const ordered = [...options.slice(index + 1), ...options.slice(0, index + 1)];
+              ordered.find(option => option.textContent?.trim().toLocaleLowerCase().startsWith(query))?.focus();
+              return;
+            }
+            if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
             const next = event.key === 'Home' ? 0 : event.key === 'End' ? options.length - 1
               : (index + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length;
             event.preventDefault();
@@ -398,6 +433,7 @@ export function FilterDropdown({
     >
       <button
         ref={triggerRef}
+        id={triggerId}
         disabled={disabled}
         data-invalid={invalid || undefined}
         aria-describedby={ariaDescribedBy}
@@ -412,7 +448,7 @@ export function FilterDropdown({
             setOpen(true);
           }
         }}
-        className="serene-filter-trigger"
+        className={appearance === 'field' ? "serene-field-control serene-select-trigger" : "serene-filter-trigger"}
         aria-label={ariaLabel ?? (iconOnly ? label : undefined)}
         title={iconOnly ? label : undefined}
         style={{
@@ -423,7 +459,7 @@ export function FilterDropdown({
           height:         '2.25rem',
           width:          iconOnly ? '2.25rem' : (fullWidth ? '100%' : undefined),
           padding:        iconOnly ? 0 : 'var(--space-1) var(--space-3)',
-          ...filterTriggerStyle(activeCount > 0),
+          ...(appearance === 'field' ? {} : filterTriggerStyle(activeCount > 0)),
           fontSize:       'var(--text-sm)',
           fontFamily:     'var(--font-sans)',
           fontWeight:     'var(--weight-medium)',
@@ -431,7 +467,7 @@ export function FilterDropdown({
           opacity:        disabled ? 0.6 : 1,
           transition:     'var(--transition-hover), border-color var(--duration-fast) var(--ease-in-out)',
           whiteSpace:     'nowrap',
-          outline:        'none',
+          outline:        appearance === 'field' ? undefined : 'none',
           minWidth:       fullWidth && !iconOnly ? 0 : undefined,
           justifyContent: iconOnly ? 'center' : (fullWidth ? 'space-between' : undefined),
         }}

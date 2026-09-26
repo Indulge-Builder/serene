@@ -70,7 +70,7 @@ export function MemberZohoCards({ clientId, zohoCustomerId, orgId, finance, fail
         <div style={TABLE_BODY}><ZohoInvoicesTable rows={finance.invoices} orgId={orgId} showCustomer={false} emptyTitle="No invoices in Zoho for this customer." previewRows={20} /></div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: 'var(--space-6)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(380px, 100%), 1fr))', gap: 'var(--space-6)' }}>
         <div style={SHELL}>
           <CardHeader icon={ReceiptIndianRupee} label="Payments" right={<span style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--neu-header-ink)' }}>{finance.payments.length}</span>} />
           <div style={TABLE_BODY}><ZohoPaymentsTable rows={finance.payments} orgId={orgId} showCustomer={false} emptyTitle="No payments recorded." previewRows={15} /></div>

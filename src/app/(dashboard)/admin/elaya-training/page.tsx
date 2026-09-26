@@ -4,6 +4,8 @@ import { hasManagerPageAccess } from "@/lib/utils/route-access";
 import { getAllTrainingAssets } from "@/lib/services/elaya-training-service";
 import { ElayaTrainingManager } from "@/components/admin/ElayaTrainingManager";
 
+export const metadata = { title: "Elaya training" };
+
 // /admin/elaya-training — manager / admin / founder (the locked write decision; managers
 // curate their domain's library). Agents bounce here (the server-side role gate IS the
 // authorization boundary; route reachability for Gia-domain managers is granted in

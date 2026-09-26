@@ -16,6 +16,8 @@ export interface ModalProps {
   children: React.ReactNode;
   /** Footer slot — for standard type. Elaya type enforces Approve / Dismiss only. */
   footer?: React.ReactNode;
+  /** A whole-form error, shown above the footer buttons (forwarded to Dialog). */
+  error?: React.ReactNode;
   size?: DialogSize;
   /** Hides the header close button (forwarded to Dialog). */
   hideCloseButton?: boolean;
@@ -50,6 +52,7 @@ export function Modal({
   description,
   children,
   footer,
+  error,
   size = 'md',
   hideCloseButton,
   bodyPadding,
@@ -98,6 +101,7 @@ export function Modal({
       bodyPadding={bodyPadding}
       maxWidth={maxWidth}
       footer={resolvedFooter}
+      error={error}
     >
       {children}
     </Dialog>

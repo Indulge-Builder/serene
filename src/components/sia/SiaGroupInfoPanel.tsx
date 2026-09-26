@@ -11,6 +11,7 @@
 
 import { SelectionButton } from '@/components/ui/SelectionButton';
 import { Button } from '@/components/ui/Button';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { m as motion } from "framer-motion";
 import { ChevronDown, Crown, MessagesSquare, UserRound, Users, X } from "lucide-react";
@@ -164,7 +165,7 @@ export function SiaGroupInfoPanel({
           type="button"
           onClick={onClose}
           aria-label="Close group info"
-          className="serene-pressable serene-icon-rotate-hover w-7 h-7 rounded-full flex items-center justify-center border-0 bg-transparent text-(--theme-text-secondary)"
+          className="serene-pressable serene-icon-rotate-hover serene-touch w-7 h-7 rounded-full flex items-center justify-center border-0 bg-transparent text-(--theme-text-secondary)"
         >
           <X className="w-4 h-4" strokeWidth={1.5} />
         </Button>
@@ -422,6 +423,8 @@ function MemberRow({
 }) {
   const display = member.staff_name ?? member.name;
   const isStaff = !!member.staff_name;
+  // Who on the Serene side this badge stands for — the pill on hover, spoken always.
+  const staffMeta = isStaff ? `${member.staff_name} · ${member.staff_role}` : null;
   const isWaAdmin = member.wa_role !== "member";
   const sideLabel = !isStaff && !former ? SIDE_LABEL[groupKind] : null;
 
@@ -462,19 +465,21 @@ function MemberRow({
       </div>
 
       <div className="flex items-center gap-1 shrink-0">
-        {isStaff && (
-          <span
-            title={`${member.staff_name} · ${member.staff_role}`}
-            className="type-caption rounded-full"
-            style={{
-              padding: "1px 9px",
-              background: "var(--theme-accent-surface)",
-              color: "var(--neu-accent-deep)",
-              fontWeight: "var(--weight-medium)",
-            }}
-          >
-            Indulge
-          </span>
+        {staffMeta && (
+          <Tooltip label={staffMeta} side="top">
+            <span
+              className="type-caption rounded-full"
+              style={{
+                padding: "1px 9px",
+                background: "var(--theme-accent-surface)",
+                color: "var(--neu-accent-deep)",
+                fontWeight: "var(--weight-medium)",
+              }}
+            >
+              Indulge
+              <span className="sr-only">{staffMeta}</span>
+            </span>
+          </Tooltip>
         )}
         {sideLabel && (
           <span

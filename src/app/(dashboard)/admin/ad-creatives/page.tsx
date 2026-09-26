@@ -6,6 +6,8 @@ import { getCampaignMetrics } from "@/lib/services/leads-service";
 import { AdCreativesManager } from "@/components/admin/AdCreativesManager";
 import type { CampaignFilters } from "@/lib/types/database";
 
+export const metadata = { title: "Ad creatives" };
+
 const EMPTY_FILTERS: CampaignFilters = {
   domain:    null,
   search:    null,

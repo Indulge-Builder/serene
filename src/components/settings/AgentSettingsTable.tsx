@@ -9,6 +9,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { TimePicker } from "@/components/ui/TimePicker";
 import { Toggle } from "@/components/ui/Toggle";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { FilterBar } from "@/components/ui/FilterBar";
 import { FilterDropdown } from "@/components/ui/FilterDropdown";
 import { useMediaQuery, MQ } from "@/hooks/useMediaQuery";
@@ -561,20 +562,25 @@ export function AgentSettingsTable({
               </div>
             );
 
-            // Clear shift
-            const clearButtonBlock = hasEither ? (
+            // Clear shift — icon-only, the tooltip names it on desktop. Below md it
+            // pushes itself to the row's end with marginLeft:auto, which a wrapper
+            // would swallow, so it stays unwrapped there (touch has no hover anyway).
+            const clearButton = (
               <Button
                 variant="danger"
                 size="xs"
                 onClick={() => handleClear(agent.id)}
                 disabled={isSaving}
-                title="Clear shift"
+                aria-label="Clear shift"
                 className="serene-touch"
                 style={{ width: 28, height: 28, padding: 0, justifyContent: "center", flexShrink: 0, marginLeft: isMobile ? "auto" : undefined }}
               >
                 <X size={12} strokeWidth={1.5} />
               </Button>
-            ) : null;
+            );
+            const clearButtonBlock = hasEither
+              ? (isMobile ? clearButton : <Tooltip label="Clear shift" side="top">{clearButton}</Tooltip>)
+              : null;
 
             return (
               <motion.div

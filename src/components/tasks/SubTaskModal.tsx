@@ -24,8 +24,10 @@
 import { MotionButton } from '@/components/ui/MotionButton';
 import { useRef as useModalPanelRef } from 'react';
 import { ModalScopeContext, useModalFocus } from '@/hooks/useModalFocus';
+import { useMediaQuery, MQ } from '@/hooks/useMediaQuery';
 import { SelectionButton } from '@/components/ui/SelectionButton';
 import { Button } from '@/components/ui/Button';
+import { Tooltip } from '@/components/ui/Tooltip';
 import {
   useEffect,
   useId,
@@ -44,11 +46,14 @@ import {
   User,
   Trash2,
   GripVertical,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 import {
   DndContext,
   closestCenter,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -142,6 +147,7 @@ function IconButton({
   children: React.ReactNode;
 }) {
   return (
+    <Tooltip label={label} side="bottom">
     <Button
       variant={variant === 'danger' ? 'danger' : variant === 'close' ? 'ghost' : 'control'}
       size="sm"
@@ -152,11 +158,11 @@ function IconButton({
       type="button"
       onClick={onClick}
       aria-label={label}
-      title={label}
       className={variant === "close" ? "serene-pressable serene-icon-rotate-hover serene-touch" : "serene-pressable serene-touch"}
     >
       {children}
     </Button>
+    </Tooltip>
   );
 }
 
@@ -287,15 +293,24 @@ function SortableChecklistItem({
   onToggle,
   onDelete,
   onTextChange,
+  onMoveUp,
+  onMoveDown,
 }: {
   item: ChecklistItem;
   editMode: boolean;
   onToggle: (id: string) => void;
   onDelete: (id: string) => void;
   onTextChange: (id: string, text: string) => void;
+  /** Touch reorder (mobile audit 2026-09-26): a 14px grip with a press delay
+   *  is not a reliable way to move a row with a finger, so on a coarse
+   *  pointer each row also carries Move up / Move down. Undefined = at the
+   *  edge (the button renders disabled). */
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: item.id });
+  const isTouch = useMediaQuery(MQ.touch);
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -318,6 +333,9 @@ function SortableChecklistItem({
         <span
           {...attributes}
           {...listeners}
+          // serene-touch-hit: the 14px grip keeps its size and grows an
+          // invisible 44px hit area on a coarse pointer.
+          className="serene-touch-hit"
           style={{
             display:     "flex",
             cursor:      "grab",
@@ -373,6 +391,37 @@ function SortableChecklistItem({
         </span>
       )}
 
+      {editMode && isTouch && (
+        <>
+          <Button
+            variant="ghost"
+            iconOnly
+            size="sm"
+            type="button"
+            className="serene-touch"
+            onClick={onMoveUp}
+            disabled={!onMoveUp}
+            aria-label="Move up"
+            style={{ display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+          >
+            <ChevronUp style={{ width: 14, height: 14, strokeWidth: 1.5 }} />
+          </Button>
+          <Button
+            variant="ghost"
+            iconOnly
+            size="sm"
+            type="button"
+            className="serene-touch"
+            onClick={onMoveDown}
+            disabled={!onMoveDown}
+            aria-label="Move down"
+            style={{ display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+          >
+            <ChevronDown style={{ width: 14, height: 14, strokeWidth: 1.5 }} />
+          </Button>
+        </>
+      )}
+
       {editMode && (
         <Button
           variant="ghost"
@@ -381,6 +430,7 @@ function SortableChecklistItem({
           type="button"
           onClick={() => onDelete(item.id)}
           aria-label="Remove item"
+          className="serene-touch-hit"
           style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "20px", height: "20px", flexShrink: 0 }}
         >
           <X style={{ width: 12, height: 12, strokeWidth: 2 }} />
@@ -446,6 +496,9 @@ export function SubTaskModal({
 
   const [, startTransition] = useTransition();
   const router = useRouter();
+  // Coarse pointer: no autoFocus (the keyboard must not throw itself over the
+  // opening sheet); the checklist reorders by press-and-hold or Move up/down.
+  const isTouch = useMediaQuery(MQ.touch);
 
   // Unique id for aria
   const titleId = useId();
@@ -674,9 +727,21 @@ export function SubTaskModal({
   }
 
   // ── DnD sensors ───────────────────────────────────────────────────────────
-  const sensors = useSensors(useSensor(PointerSensor, {
-    activationConstraint: { distance: 4 },
-  }));
+  // Mouse: a 4px drag. Touch: press-and-hold 200ms (a plain swipe on the
+  // grip scrolls the list, a hold picks the row up). MouseSensor + TouchSensor
+  // rather than PointerSensor beside TouchSensor: a PointerSensor also fires
+  // on touch pointerdown and would pick the row up on the first 4px, before
+  // the hold could ever apply (mobile audit 2026-09-26).
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
+  );
+
+  function moveEditItem(index: number, delta: number) {
+    const next = index + delta;
+    if (next < 0 || next >= editItems.length) return;
+    setEditItems(arrayMove(editItems, index, next));
+  }
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
@@ -732,10 +797,10 @@ export function SubTaskModal({
         style={{
           position:   "fixed",
           inset:      0,
-          // Neumorphic scrim — warm umber + 3px blur (mirrors ui/Dialog; the old
-          // canvas-72% formula assumed the retired dark canvas and no longer dims).
+          // Neumorphic scrim — warm umber (mirrors ui/Dialog; the old
+          // canvas-72% formula assumed the retired dark canvas and no longer
+          // dims). No backdrop-filter: not sanctioned on modal overlays (V-06).
           background: "var(--neu-scrim)",
-          backdropFilter: "blur(3px)",
           zIndex:     "var(--z-overlay)" as React.CSSProperties["zIndex"],
         }}
       />
@@ -751,28 +816,33 @@ export function SubTaskModal({
         exit={{ opacity: 0, scale: 0.97, y: 8 }}
         transition={{ duration: 0.22, ease: EASE_OUT_EXPO }}
         onClick={(e) => e.stopPropagation()}
-        className="left-0 lg:left-60"
+        // <md: the card docks to the bottom edge as a sheet (Dialog's <md
+        // treatment); md+: centred. This box is position: fixed with top and
+        // bottom pinned, so under the root viewport's interactiveWidget:
+        // resizes-content it SHRINKS with the keyboard — the card below is
+        // height: 100% of it (never a dvh box, which the keyboard ignores), so
+        // the remarks composer at the bottom of Zone B stays reachable while
+        // typing (mobile audit 2026-09-26).
+        className="left-0 lg:left-60 flex items-end justify-center md:items-center"
         style={{
           position:       "fixed",
           top:            0,
           right:          0,
           bottom:         0,
-          display:        "flex",
-          alignItems:     "center",
-          justifyContent: "center",
           zIndex:         "var(--z-modal)" as React.CSSProperties["zIndex"],
           pointerEvents:  "none",
         }}
       >
         <div
+          className={[
+            // <md: sheet — full width, top corners only, 90dvh ceiling, safe-area pad.
+            'max-md:w-full max-md:h-full max-md:max-h-[90dvh] max-md:rounded-t-xl max-md:rounded-b-none max-md:pb-[env(safe-area-inset-bottom)]',
+            // md+: the classic centred card.
+            'md:w-[95vw] md:max-w-[1100px] md:h-[90dvh] md:max-h-[820px] md:rounded-(--radius-lg)',
+          ].join(' ')}
           style={{
             pointerEvents: "auto",
-            width:         "95vw",
-            maxWidth:      "1100px",
-            height:        "90dvh",
-            maxHeight:     "820px",
             background:    "var(--theme-paper)",
-            borderRadius:  "var(--radius-lg)",
             boxShadow:     "var(--shadow-4)",
             border:        "1px solid var(--theme-paper-border)",
             overflow:      "hidden",
@@ -813,7 +883,7 @@ export function SubTaskModal({
               <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
                 {editMode ? (
                   <input
-                    autoFocus
+                    autoFocus={!isTouch}
                     value={editTitle}
                     onChange={(e) => setEditTitle(e.target.value)}
                     maxLength={255}
@@ -1284,7 +1354,7 @@ export function SubTaskModal({
                             items={editItems.map((i) => i.id)}
                             strategy={verticalListSortingStrategy}
                           >
-                            {editItems.map((item) => (
+                            {editItems.map((item, index) => (
                               <SortableChecklistItem
                                 key={item.id}
                                 item={item}
@@ -1292,6 +1362,8 @@ export function SubTaskModal({
                                 onToggle={handleEditItemToggle}
                                 onDelete={handleEditItemDelete}
                                 onTextChange={handleEditItemTextChange}
+                                onMoveUp={index > 0 ? () => moveEditItem(index, -1) : undefined}
+                                onMoveDown={index < editItems.length - 1 ? () => moveEditItem(index, 1) : undefined}
                               />
                             ))}
                           </SortableContext>

@@ -115,6 +115,7 @@ function YearMonthPicker({ year, month, onPick, onClose }: PickerProps) {
           type="button"
           onClick={onClose}
           aria-label="Close picker"
+          className="serene-touch"
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 26, height: 26 }}
         >
           <ChevronDown style={{ width: 13, height: 13, strokeWidth: 1.5 }} />
@@ -330,7 +331,7 @@ export function Calendar({
           type="button"
           onClick={() => navigate(-1)}
           aria-label="Previous month"
-          className="serene-touch"
+          className="serene-touch serene-touch-hit"
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28 }}
         >
           <ChevronLeft style={{ width: 13, height: 13, strokeWidth: 1.5 }} />
@@ -379,7 +380,7 @@ export function Calendar({
           type="button"
           onClick={() => navigate(1)}
           aria-label="Next month"
-          className="serene-touch"
+          className="serene-touch serene-touch-hit"
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28 }}
         >
           <ChevronRight style={{ width: 13, height: 13, strokeWidth: 1.5 }} />
@@ -444,6 +445,9 @@ export function Calendar({
               <button
                 key={date.toISOString()}
                 data-calendar-day={localDateKey(date)}
+                // A day cell stays its own ~33px (the 260px grid other pages
+                // depend on): a 44px halo here would land taps on the
+                // neighbouring day (mobile audit 2026-09-26).
                 tabIndex={tabDay && localDateKey(tabDay) === localDateKey(date) ? 0 : -1}
                 onFocus={() => setFocusedDay(localDateKey(date))}
                 onKeyDown={(event) => handleDayKey(event, date)}

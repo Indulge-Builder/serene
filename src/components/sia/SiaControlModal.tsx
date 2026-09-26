@@ -11,6 +11,7 @@ import { Circle, QrCode, RefreshCw } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { StatTile } from "@/components/ui/StatTile";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { Avatar } from "@/components/ui/Avatar";
@@ -338,11 +339,14 @@ export function SiaControlModal({
                 return (
                   <div
                     key={g.group_jid}
-                    className="flex items-center gap-3 py-2.5 border-b border-(--theme-paper-border)"
+                    // flex-wrap + the cluster's basis-full: below md the four
+                    // pills, avatar and toggle exceeded the sheet and the title
+                    // collapsed (mobile audit 2026-09-26); md+ is one row.
+                    className="flex flex-wrap items-center gap-3 py-2.5 border-b border-(--theme-paper-border)"
                     style={{ opacity: g.is_active ? 1 : 0.55 }}
                   >
                     <Avatar name={groupTitle(g)} size="sm" />
-                    <div className="min-w-0 flex-1">
+                    <div className="min-w-0 flex-1 basis-40">
                       <div className="type-body-sm font-(--weight-medium) text-(--theme-text-primary) truncate">
                         {groupTitle(g)}
                       </div>
@@ -351,17 +355,22 @@ export function SiaControlModal({
                       </div>
                     </div>
 
-                    <div className="shrink-0">
-                      <KindPillRow value={g.group_kind} disabled={saving} onPick={(k) => setKind(g.group_jid, k)} />
-                    </div>
+                    <div className="flex items-center gap-3 shrink-0 max-md:basis-full max-md:pl-11">
+                      <div className="shrink-0">
+                        <KindPillRow value={g.group_kind} disabled={saving} onPick={(k) => setKind(g.group_jid, k)} />
+                      </div>
 
-                    <div className="shrink-0 pl-1" title={g.is_active ? "Visible in the rail" : "Hidden from the rail"}>
-                      <Toggle
-                        checked={g.is_active}
-                        onChange={(next) => setVisible(g.group_jid, next)}
-                        size="sm"
-                        disabled={saving}
-                      />
+                      <div className="shrink-0 pl-1 max-md:ml-auto">
+                        <Tooltip label={g.is_active ? "Visible in the rail" : "Hidden from the rail"} side="top" wrap="block">
+                          <Toggle
+                            checked={g.is_active}
+                            onChange={(next) => setVisible(g.group_jid, next)}
+                            size="sm"
+                            disabled={saving}
+                          />
+                        </Tooltip>
+                        <span className="sr-only">{g.is_active ? "Visible in the rail" : "Hidden from the rail"}</span>
+                      </div>
                     </div>
                   </div>
                 );

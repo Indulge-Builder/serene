@@ -22,6 +22,56 @@ export function toUTC(date: Date | string): Date {
   return new Date(new Date(date).toISOString());
 }
 
+// ── Calendar text ↔ Date (2026-09-25) ────────────────────────────────────────
+// Forms hold calendar dates as the text the database stores ('YYYY-MM-DD',
+// 'YYYY-MM-DDTHH:mm' for a moment, 'YYYY-MM' for a month). The DatePicker
+// works in Date objects in the browser's own clock. These convert between the
+// two WITHOUT a timezone step: the calendar day the user picked is the calendar
+// day that is stored, wherever they are.
+
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+/** 'YYYY-MM-DD' → a local Date at midnight, or null for blank or malformed text. */
+export function parseIsoDate(value: string | null | undefined): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value ?? "");
+  if (!m) return null;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+/** A Date → 'YYYY-MM-DD' (the local calendar day); '' for null. */
+export function toIsoDate(date: Date | null | undefined): string {
+  if (!date) return "";
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
+/** 'YYYY-MM-DDTHH:mm' (the old datetime-local text) → a local Date, or null. */
+export function parseIsoDateTime(value: string | null | undefined): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(value ?? "");
+  if (!m) return null;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]));
+}
+
+/** A Date → 'YYYY-MM-DDTHH:mm' (local); '' for null. */
+export function toIsoDateTime(date: Date | null | undefined): string {
+  if (!date) return "";
+  return `${toIsoDate(date)}T${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+}
+
+/** 'YYYY-MM' → the first of that month as a local Date, or null. */
+export function parseIsoMonth(value: string | null | undefined): Date | null {
+  const m = /^(\d{4})-(\d{2})$/.exec(value ?? "");
+  if (!m) return null;
+  return new Date(Number(m[1]), Number(m[2]) - 1, 1);
+}
+
+/** A Date → 'YYYY-MM'; '' for null. */
+export function toIsoMonth(date: Date | null | undefined): string {
+  if (!date) return "";
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}`;
+}
+
 /**
  * Formats a timestamp as a relative string.
  * < 1m → "just now"

@@ -11,6 +11,7 @@
 // cell and the row-click navigation are its own anatomy (the LeadsTable
 // boundary in components/CLAUDE.md).
 
+import Link from 'next/link';
 import { memo, useCallback, useState } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { Building2 } from 'lucide-react';
@@ -120,15 +121,19 @@ const VendorRow = memo(function VendorRow({ item }: { item: VendorListItem }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
           <Avatar name={vendor.name} size="md" />
           <div style={{ minWidth: 0 }}>
-            <span
+            {/* A real link, so a keyboard can open the vendor; the row click stays for the mouse. */}
+            <Link
+              href={href}
+              onClick={(e) => e.stopPropagation()}
               style={{
                 display: 'block',
                 fontWeight: 'var(--weight-medium)',
                 color: 'var(--theme-text-primary)',
+                textDecoration: 'none',
               }}
             >
               {vendor.name}
-            </span>
+            </Link>
             {vendor.subcategory && (
               <span
                 style={{

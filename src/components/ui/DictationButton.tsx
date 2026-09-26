@@ -25,6 +25,7 @@
 import { Button } from '@/components/ui/Button';
 import { Mic, Square, X } from 'lucide-react';
 import { SeedMandala } from '@/components/ui/SeedMandala';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { transcribeAudioAction } from '@/lib/actions/transcription';
 import {
   useAudioRecorder,
@@ -148,27 +149,28 @@ export function DictationButton({
       )}
 
       {recorder.isRecording && (
+        <Tooltip label="Discard recording" side="top">
         <Button
           variant="ghost"
           iconOnly size="sm"
           type="button"
           onClick={recorder.cancel}
           aria-label="Discard recording"
-          title="Discard recording"
-          className="serene-pressable"
+          className={isComposer ? 'serene-pressable' : 'serene-pressable serene-touch'}
           style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: sq, height: sq, flexShrink: 0 }}
         >
           <X style={{ width: '0.85rem', height: '0.85rem', strokeWidth: 1.5 }} />
         </Button>
+        </Tooltip>
       )}
 
+      <Tooltip label={recorder.isRecording ? 'Stop & transcribe' : `Dictate ${what}`} side="top">
       <button
         type="button"
         onClick={recorder.isRecording ? recorder.stop : recorder.start}
         disabled={recorder.isRecording ? false : startBlocked}
         aria-label={recorder.isRecording ? 'Stop recording and transcribe' : `Dictate ${what}`}
-        title={recorder.isRecording ? 'Stop & transcribe' : `Dictate ${what}`}
-        className="serene-pressable"
+        className={isComposer ? 'serene-pressable' : 'serene-pressable serene-touch'}
         style={{
           display: 'inline-flex',
           alignItems: 'center',
@@ -202,6 +204,7 @@ export function DictationButton({
           <Mic style={{ width: isComposer ? '0.9rem' : '0.8rem', height: isComposer ? '0.9rem' : '0.8rem', strokeWidth: 1.5 }} />
         )}
       </button>
+      </Tooltip>
     </span>
   );
 }

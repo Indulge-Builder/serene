@@ -9,6 +9,7 @@ import { toast } from '@/lib/toast';
 import { tickChecklistAction } from '@/lib/actions/tickets';
 import type { TicketRow } from '@/lib/types/ticket';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { CheckTile } from '@/components/ui/CheckTile';
 
 export function TicketChecklistCard({ ticket }: { ticket: TicketRow }) {
   const router = useRouter();
@@ -21,11 +22,18 @@ export function TicketChecklistCard({ ticket }: { ticket: TicketRow }) {
       <ul style={{ margin: 0, padding: 'var(--space-3) var(--space-6) var(--space-4)', listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
         {list.map((item, i) => (
           <li key={i}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', fontSize: 'var(--text-sm)', cursor: 'pointer', color: item.done_at ? 'var(--theme-text-tertiary)' : 'var(--theme-text-primary)', textDecoration: item.done_at ? 'line-through' : 'none' }}>
-              <input type="checkbox" checked={Boolean(item.done_at)} disabled={pending} onChange={(e) => start(async () => {
-                const r = await tickChecklistAction({ ticket_id: ticket.id, index: i, done: e.target.checked });
-                if (r.error) toast.danger(r.error); else router.refresh();
-              })} />
+            {/* THE completion tile (ui/CheckTile); the words beside it toggle it too. */}
+            <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', fontSize: 'var(--text-sm)', cursor: pending ? 'wait' : 'pointer', color: item.done_at ? 'var(--theme-text-tertiary)' : 'var(--theme-text-primary)', textDecoration: item.done_at ? 'line-through' : 'none' }}>
+              <CheckTile
+                size={24}
+                checked={Boolean(item.done_at)}
+                disabled={pending}
+                aria-label={item.label}
+                onToggle={() => start(async () => {
+                  const r = await tickChecklistAction({ ticket_id: ticket.id, index: i, done: !item.done_at });
+                  if (r.error) toast.danger(r.error); else router.refresh();
+                })}
+              />
               {item.label}
             </label>
           </li>

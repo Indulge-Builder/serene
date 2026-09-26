@@ -9,6 +9,8 @@ import { PageControls } from '@/components/layout/PageControls';
 import { HelpdeskSearch } from '@/components/intelligence/HelpdeskSearch';
 import { AddSuggestionButton } from '@/components/intelligence/AddSuggestionButton';
 
+export const metadata = { title: 'Helpdesk' };
+
 // /helpdesk — Call Intelligence Surface B (docs/modules/call-intelligence.md §9).
 // Server Component: fetches the FULL library once (Redis 1hr → Supabase) and
 // hands it to <HelpdeskSearch> as initialData. All filtering is client-side —

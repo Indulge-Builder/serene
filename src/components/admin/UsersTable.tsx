@@ -1,9 +1,10 @@
 "use client";
 
+import { FormSelect } from '@/components/ui/FormSelect';
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { m as motion } from "framer-motion";
-import { Pencil, ChevronDown, Shield } from "lucide-react";
+import { Pencil, Shield } from "lucide-react";
 import type { Profile } from "@/lib/types/database";
 import { ROLE_LABELS, USER_ROLES } from "@/lib/constants/roles";
 import { SIA_ROLES, isSiaRole } from "@/lib/constants/sia-roles";
@@ -88,31 +89,31 @@ export function UsersTable({ users }: UsersTableProps) {
         }
       >
         <div style={{ position: "relative", flexShrink: 0 }}>
-          <select
+          <FormSelect aria-label="Role" fullWidth={false}
             value={roleFilter}
-            onChange={(e) => setRoleFilter(e.target.value)}
-            style={filterSelectStyle}
+            onValueChange={(nextValue) => setRoleFilter(nextValue)}
+
           >
             <option value="all">All roles</option>
             {USER_ROLES.map((r) => (
               <option key={r} value={r}>{ROLE_LABELS[r]}</option>
             ))}
-          </select>
-          <ChevronDown style={chevronStyle} />
+          </FormSelect>
+
         </div>
 
         <div style={{ position: "relative", flexShrink: 0 }}>
-          <select
+          <FormSelect aria-label="Domain" fullWidth={false}
             value={domainFilter}
-            onChange={(e) => setDomainFilter(e.target.value)}
-            style={filterSelectStyle}
+            onValueChange={(nextValue) => setDomainFilter(nextValue)}
+
           >
             <option value="all">All domains</option>
             {APP_DOMAINS.map((d) => (
               <option key={d} value={d}>{DOMAIN_LABELS[d]}</option>
             ))}
-          </select>
-          <ChevronDown style={chevronStyle} />
+          </FormSelect>
+
         </div>
       </FilterBar>
 
@@ -333,30 +334,3 @@ function getRolePillStyle(role: Profile["role"]): React.CSSProperties {
       };
   }
 }
-
-const filterSelectStyle: React.CSSProperties = {
-  padding:          "var(--space-2) var(--space-3)",
-  paddingRight:     "var(--space-8)",
-  background:       "var(--theme-paper-subtle)",
-  border:           "1px solid var(--theme-paper-border)",
-  borderRadius:     "var(--radius-sm)",
-  fontFamily:       "var(--font-sans)",
-  fontSize:         "var(--text-sm)",
-  color:            "var(--theme-text-primary)",
-  cursor:           "pointer",
-  outline:          "none",
-  appearance:       "none",
-  WebkitAppearance: "none",
-};
-
-const chevronStyle: React.CSSProperties = {
-  position:      "absolute",
-  right:         "var(--space-3)",
-  top:           "50%",
-  transform:     "translateY(-50%)",
-  width:         "12px",
-  height:        "12px",
-  strokeWidth:   1.5,
-  color:         "var(--theme-text-tertiary)",
-  pointerEvents: "none",
-};

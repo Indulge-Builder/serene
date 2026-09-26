@@ -1,8 +1,9 @@
 "use client";
 
+import { FormSelect } from '@/components/ui/FormSelect';
 import { UploadButton } from '@/components/ui/UploadButton';
 import { useEffect, useRef, useState } from "react";
-import { UploadCloud, Film, ChevronDown } from "lucide-react";
+import { UploadCloud, Film, } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/Button";
 import { LogoSpinner } from "@/components/ui/LogoSpinner";
@@ -41,26 +42,6 @@ const inputBase: React.CSSProperties = {
   outline:      "none",
 };
 
-const selectBase: React.CSSProperties = {
-  ...inputBase,
-  appearance:       "none",
-  WebkitAppearance: "none",
-  paddingRight:     "var(--space-8)",
-  cursor:           "pointer",
-};
-
-const chevronStyle: React.CSSProperties = {
-  position:      "absolute",
-  right:         "var(--space-3)",
-  top:           "50%",
-  transform:     "translateY(-50%)",
-  width:         "1rem",
-  height:        "1rem",
-  strokeWidth:   1.5,
-  pointerEvents: "none",
-  color:         "var(--theme-text-tertiary)",
-  flexShrink:    0,
-};
 
 export function AdCreativeFormModal({
   open,
@@ -183,6 +164,21 @@ export function AdCreativeFormModal({
       onClose={busy ? () => {} : onClose}
       title={editing ? "Edit Ad Creative" : "Add Ad Creative"}
       maxWidth="max-w-2xl"
+      error={error ? (
+        <p
+          style={{
+            fontSize: "var(--text-sm)",
+            color:    "var(--color-danger-text)",
+            background: "var(--color-danger-light)",
+            border:   "1px solid var(--color-danger)",
+            borderRadius: "var(--radius-md)",
+            padding:  "var(--space-3)",
+            margin:   0,
+          }}
+        >
+          {error}
+        </p>
+      ) : undefined}
       footer={
         <>
           <Button
@@ -207,21 +203,6 @@ export function AdCreativeFormModal({
       }
     >
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)" }}>
-        {error && (
-          <p
-            style={{
-              fontSize: "var(--text-sm)",
-              color:    "var(--color-danger-text)",
-              background: "var(--color-danger-light)",
-              border:   "1px solid var(--color-danger)",
-              borderRadius: "var(--radius-md)",
-              padding:  "var(--space-3)",
-              margin:   0,
-            }}
-          >
-            {error}
-          </p>
-        )}
 
         {/* Campaign */}
         <div>
@@ -229,12 +210,12 @@ export function AdCreativeFormModal({
             Campaign <span style={{ color: "var(--color-danger-text)" }}>*</span>
           </label>
           <div style={{ position: "relative" }}>
-            <select
+            <FormSelect
               id="ac-campaign"
               value={campaignKey}
-              onChange={(e) => setCampaignKey(e.target.value)}
+              onValueChange={(nextValue) => setCampaignKey(nextValue)}
               disabled={campaignLocked}
-              style={{ ...selectBase, cursor: campaignLocked ? "not-allowed" : "pointer", opacity: campaignLocked ? 0.6 : 1 }}
+              style={{ width:        "100%", height:       "2.5rem" }}
             >
               <option value="">Select a campaign…</option>
               {/* The pre-selected key (editing row, or a fresh inline create) may
@@ -245,8 +226,8 @@ export function AdCreativeFormModal({
               {campaignKeys.map((k) => (
                 <option key={k} value={k}>{k}</option>
               ))}
-            </select>
-            <ChevronDown style={chevronStyle} />
+            </FormSelect>
+
           </div>
           {editing && (
             <p style={{ fontSize: "var(--text-xs)", color: "var(--theme-text-tertiary)", margin: "var(--space-1) 0 0" }}>

@@ -32,10 +32,10 @@ import { SelectionButton } from '@/components/ui/SelectionButton';
 import { useState, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { m as motion } from 'framer-motion';
-import { Phone, Users, IndianRupee, Trophy, BarChart3, ListChecks } from 'lucide-react';
+import { BarChart3, ListChecks } from 'lucide-react';
 import { Dialog } from '@/components/ui/Dialog';
-import { Avatar } from '@/components/ui/Avatar';
 import { Carousel } from '@/components/ui/Carousel';
+import { AgentIdentityHeader, AgentStatRow } from '@/components/performance/AgentIdentity';
 import { PipelineBar } from '@/components/performance/PipelineBar';
 import { FirstTouchScorecard } from '@/components/performance/FirstTouchScorecard';
 import { AgentCallsDrillModal } from '@/components/performance/AgentCallsDrillModal';
@@ -44,7 +44,6 @@ import { AgentDealsDrillModal } from '@/components/performance/AgentDealsDrillMo
 import { AgentFirstTouchDrillModal } from '@/components/performance/AgentFirstTouchDrillModal';
 import { AgentLeadsPredicateDrillModal, type DrillPredicate } from '@/components/performance/AgentLeadsPredicateDrillModal';
 import { getAgentDetailMetricsAction, getAgentFirstTouchScorecardAction } from '@/lib/actions/performance';
-import { formatCount, formatCurrencyCompact } from '@/lib/utils/numbers';
 import { ENTER_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
 import { DOMAIN_LABELS } from '@/lib/constants/domains';
 import type { FirstTouchBucketId } from '@/lib/constants/performance';
@@ -305,62 +304,16 @@ function DeckAgentCard({
         width: '100%',
       }}
     >
-      {/* Identity + scorecards — avatar on the left, a 2×2 grid of four tap
-          targets on the right (Recent calls · Leads · Won · Revenue). The agent
-          name + domain live in the Dialog title bar, so the body leads straight
-          with the avatar and metrics. The left column stretches to the grid
-          height; the avatar is vertically centered in it (balanced space above
-          and below). */}
-      <div
-        style={{
-          display:    'flex',
-          alignItems: 'stretch',
-          gap:        'var(--space-4)',
-          width:      '100%',
-        }}
-      >
-        <div
-          style={{
-            display:        'flex',
-            flexDirection:  'column',
-            alignItems:     'center',
-            justifyContent: 'center',
-            flexShrink:     0,
-          }}
-        >
-          <Avatar src={agent.avatar_url} name={agent.full_name} size="xl" />
-        </div>
-
-        <div
-          className="grid grid-cols-2"
-          style={{ gap: 'var(--space-3)', flex: 1, minWidth: 0 }}
-        >
-          <DeckTile
-            icon={<Phone style={ICON} aria-hidden="true" />}
-            label="Recent calls"
-            value="View"
-            onClick={() => onDrill('calls')}
-          />
-          <DeckTile
-            icon={<Users style={ICON} aria-hidden="true" />}
-            label="Leads"
-            value={formatCount(agent.totalLeads)}
-            onClick={() => onDrill('leads')}
-          />
-          <DeckTile
-            icon={<Trophy style={ICON} aria-hidden="true" />}
-            label="Won"
-            value={formatCount(agent.leadsWon)}
-            onClick={() => onDrill('deals')}
-          />
-          <DeckTile
-            icon={<IndianRupee style={ICON} aria-hidden="true" />}
-            label="Revenue"
-            value={formatCurrencyCompact(agent.totalDealAmount)}
-            onClick={() => onDrill('deals')}
-          />
-        </div>
-      </div>
+      {/* The same identity row and four stats the manager panel draws (the
+          Dialog title already names the agent, so the name is left off). */}
+      <AgentIdentityHeader agent={agent} showName={false} />
+      <AgentStatRow
+        calls={breakdown?.status === 'ready' ? breakdown.metrics.totalCallsMade : null}
+        leads={agent.totalLeads}
+        won={agent.leadsWon}
+        revenue={agent.totalDealAmount}
+        onDrill={onDrill}
+      />
 
       {/* Breakdown — toggleable outcome <-> status, lazily fed on card open */}
       <DeckBreakdown breakdown={breakdown} mode={mode} onModeChange={onModeChange} onFirstTouch={onFirstTouch} onPredicate={onPredicate} />
@@ -520,70 +473,3 @@ function BreakdownTab({
   );
 }
 
-const ICON = { width: 16, height: 16, strokeWidth: 1.5, color: 'var(--theme-accent)' } as const;
-
-function DeckTile({
-  icon,
-  label,
-  value,
-  hint,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  hint?: string;
-  onClick: () => void;
-}) {
-  return (
-    <SelectionButton
-      appearance="row"
-      type="button"
-      onClick={onClick}
-      className="serene-pressable serene-touch"
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'flex-start',
-        gap: 'var(--space-2)',
-        padding: 'var(--space-4)',
-        textAlign: 'left',
-        minWidth: 0,
-      }}
-    >
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)', minWidth: 0, maxWidth: '100%' }}>
-        <span style={{ display: 'inline-flex', flexShrink: 0 }}>{icon}</span>
-        <span
-          style={{
-            fontFamily: 'var(--font-sans)',
-            fontSize: 'var(--text-2xs)',
-            fontWeight: 'var(--weight-medium)',
-            letterSpacing: '0.08em',
-            textTransform: 'uppercase',
-            color: 'var(--theme-text-tertiary)',
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            minWidth: 0,
-          }}
-        >
-          {label}
-        </span>
-      </span>
-      <span
-        style={{
-          fontFamily: 'var(--font-serif)',
-          fontSize: 'var(--text-2xl)',
-          fontWeight: 'var(--weight-light)',
-          color: 'var(--theme-text-primary)',
-          lineHeight: 1,
-        }}
-      >
-        {value}
-      </span>
-      <span style={{ fontSize: 'var(--text-2xs)', color: "var(--neu-accent-deep)" }}>
-        {hint ?? 'View details'}
-      </span>
-    </SelectionButton>
-  );
-}

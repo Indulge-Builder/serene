@@ -2,6 +2,7 @@
 // queendom or all (admin/founder). The same filter bar as the list; Realtime keeps it current.
 
 import Link from 'next/link';
+import { BackButton } from '@/components/ui/BackButton';
 import { redirect } from 'next/navigation';
 import type { SearchParams } from 'next/dist/server/request/search-params';
 import { List, Plus } from 'lucide-react';
@@ -11,7 +12,11 @@ import { listBoardTickets, listQueendomStaff, getTicketSettings } from '@/lib/se
 import { canAccessRoute } from '@/lib/utils/route-access';
 import { TicketsFilters } from '@/components/tickets/TicketsFilters';
 import { TicketBoard } from '@/components/tickets/TicketBoard';
+import { TOP_BAR_ENABLED } from '@/lib/constants/feature-flags';
+import { PageControls } from '@/components/layout/PageControls';
 import { TICKETS_PATH } from '@/lib/constants/tickets';
+
+export const metadata = { title: 'Ticket board' };
 
 const BTN: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)', padding: 'var(--space-2) var(--space-4)', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', whiteSpace: 'nowrap' };
 
@@ -31,13 +36,17 @@ export default async function TicketBoardPage({ searchParams }: { searchParams: 
   return (
     <main className="flex-1 p-4 sm:p-6 lg:p-8">
       <div className="flex items-center justify-between gap-4 mb-6">
-        <h1 className="type-page-title m-0">Board<span className="page-title-dot">.</span></h1>
+        <div className="flex items-center gap-4 min-w-0">
+          <BackButton href={TICKETS_PATH} label="Back to Tickets" />
+          <h1 className="type-page-title m-0">Board<span className="page-title-dot">.</span></h1>
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-          <Link href={TICKETS_PATH} className="serene-btn-secondary serene-pressable" style={BTN}><List style={{ width: '1rem', height: '1rem', strokeWidth: 1.5 }} /> List</Link>
-          <Link href={`${TICKETS_PATH}/new`} className="serene-btn-primary serene-pressable" style={BTN}><Plus style={{ width: '1rem', height: '1rem', strokeWidth: 1.5 }} /> New ticket</Link>
+          <Link href={TICKETS_PATH} className="serene-btn-secondary serene-pressable" style={BTN}><List style={{ width: '1rem', height: '1rem', strokeWidth: 1.5 }} /><span className="max-md:sr-only">List</span></Link>
+          <Link href={`${TICKETS_PATH}/new`} className="serene-btn-primary serene-pressable" style={BTN}><Plus style={{ width: '1rem', height: '1rem', strokeWidth: 1.5 }} /><span className="max-md:sr-only">New ticket</span></Link>
+          {TOP_BAR_ENABLED && <PageControls isPrivileged={false} />}
         </div>
       </div>
-      <div className="mb-4"><TicketsFilters queendoms={privileged ? queendoms : queendoms.filter((q) => q.id === profile.queendom_id)} staff={staff} tags={settings.tags} labels={settings.statusLabels} /></div>
+      <div className="px-5 py-4 mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)"><TicketsFilters queendoms={privileged ? queendoms : queendoms.filter((q) => q.id === profile.queendom_id)} staff={staff} tags={settings.tags} labels={settings.statusLabels} /></div>
       <TicketBoard initial={tickets} queendomId={queendomId} labels={settings.statusLabels} />
     </main>
   );

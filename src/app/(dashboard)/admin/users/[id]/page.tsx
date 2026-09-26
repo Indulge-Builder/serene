@@ -17,6 +17,8 @@ import { BackButton } from "@/components/ui/BackButton";
 import { ROLE_LABELS } from "@/lib/constants/roles";
 import { DOMAIN_LABELS } from "@/lib/constants/domains";
 
+export const metadata = { title: "Team member" };
+
 type Props = {
   params: Promise<{ id: string }>;
 };

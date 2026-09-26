@@ -7,7 +7,7 @@ import { getAgentRosterByDomain }     from "@/lib/services/agent-routing-service
 import { AgentSettingsTable }         from "@/components/settings/AgentSettingsTable";
 import { SettingsLinkCard }           from "@/components/settings/SettingsLinkCard";
 
-export const metadata = { title: "Settings — Serene" };
+export const metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
   const profile = await getCurrentProfile();

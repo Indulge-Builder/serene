@@ -1,9 +1,11 @@
 'use client';
 
-import { Field, Input, Select } from '@/components/ui/Field';
+import { Field, Input } from '@/components/ui/Field';
+import { FormSelect } from '@/components/ui/FormSelect';
 import { Alert } from '@/components/ui/Alert';
 import { SelectionButton } from '@/components/ui/SelectionButton';
 import { useState } from 'react';
+import { MQ, useMediaQuery } from '@/hooks/useMediaQuery';
 import { Trophy } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/modal';
@@ -37,6 +39,8 @@ type Props = {
 };
 
 export function WonDealModal({ open, leadId: _leadId, domain, isPending, error, onClose, onConfirm }: Props) {
+  // No autofocus on a phone: the keyboard would cover the opening sheet.
+  const touch = useMediaQuery(MQ.touch);
   const [duration, setDuration]     = useState<DealDuration | null>(null);
   const [category, setCategory]     = useState<DealCategory | null>(null);
   const [amountStr, setAmountStr]   = useState('');
@@ -136,16 +140,16 @@ export function WonDealModal({ open, leadId: _leadId, domain, isPending, error, 
         {/* Category — retail (shop) only */}
         {dealType === 'retail' && categories && (
           <Field htmlFor="deal-category" label="Product category" required>
-            <Select
+            <FormSelect aria-label="Category"
               value={category ?? ''}
-              onChange={(e) => { setCategory((e.target.value || null) as DealCategory | null); setLocalError(null); }}
+              onValueChange={(next) => { setCategory((next || null) as DealCategory | null); setLocalError(null); }}
               disabled={isPending}
             >
-              <option value="">— select —</option>
+              <option value="">Choose a category</option>
               {DEAL_CATEGORY_OPTIONS.filter((opt) => categories.includes(opt.id)).map((opt) => (
                 <option key={opt.id} value={opt.id}>{opt.label}</option>
               ))}
-            </Select>
+            </FormSelect>
           </Field>
         )}
 
@@ -218,7 +222,7 @@ export function WonDealModal({ open, leadId: _leadId, domain, isPending, error, 
               }}
               placeholder="0"
               disabled={isPending}
-              autoFocus
+              autoFocus={!touch}
               style={{ paddingLeft: 'calc(var(--space-3) + 1.25rem)' }}
             />
           </div>

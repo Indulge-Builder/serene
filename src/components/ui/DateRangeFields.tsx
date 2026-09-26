@@ -3,6 +3,7 @@
 import { Button } from '@/components/ui/Button';
 import { X } from 'lucide-react';
 import { DatePicker } from '@/components/ui/DatePicker';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { dateFromUrlParam, dateToUrlParam } from '@/lib/utils/filter-params';
 import { useMediaQuery, MQ } from '@/hooks/useMediaQuery';
 
@@ -53,6 +54,27 @@ export function DateRangeFields({
     ? { width: '100%' }
     : undefined;
 
+  // Icon-only on desktop (the tooltip names it); below md it carries a visible
+  // "Clear" label and aligns itself with alignSelf, so it stays unwrapped there.
+  const clearButton = (
+    <Button
+      variant="ghost"
+      iconOnly size="sm" aria-label="Clear dates"
+      type="button"
+      onClick={onClear}
+      style={{ display:        'inline-flex', alignItems:     'center', justifyContent: 'center', gap:            'var(--space-1)', height:         '2.25rem', flexShrink:     0, ...(isMobile
+          ? {
+              alignSelf:  'flex-end' as const,
+              fontSize:   'var(--text-xs)',
+              fontFamily: 'var(--font-sans)',
+            }
+          : { width: '2.25rem' }) }}
+    >
+      <X style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5, display: 'block' }} />
+      {isMobile && <span>Clear</span>}
+    </Button>
+  );
+
   return (
     <div
       style={{
@@ -102,25 +124,9 @@ export function DateRangeFields({
         />
       </div>
 
-      {rangeActive && (
-        <Button
-          variant="ghost"
-          iconOnly size="sm" aria-label="Clear dates"
-          type="button"
-          onClick={onClear}
-          title="Clear dates"
-          style={{ display:        'inline-flex', alignItems:     'center', justifyContent: 'center', gap:            'var(--space-1)', height:         '2.25rem', flexShrink:     0, ...(isMobile
-              ? {
-                  alignSelf:  'flex-end' as const,
-                  fontSize:   'var(--text-xs)',
-                  fontFamily: 'var(--font-sans)',
-                }
-              : { width: '2.25rem' }) }}
-        >
-          <X style={{ width: '0.875rem', height: '0.875rem', strokeWidth: 1.5, display: 'block' }} />
-          {isMobile && <span>Clear</span>}
-        </Button>
-      )}
+      {rangeActive && (isMobile ? clearButton : (
+        <Tooltip label="Clear dates" side="bottom">{clearButton}</Tooltip>
+      ))}
     </div>
   );
 }

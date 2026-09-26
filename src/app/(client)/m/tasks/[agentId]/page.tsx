@@ -5,7 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { AgentTasksQuerySchema } from '@/lib/validations/mobile-schema';
 import { AgentTasksScreen } from '@/components/mobile/screens/AgentTasksScreen';
 
-export const metadata = { title: 'Tasks · Serene' };
+export const metadata = { title: 'Tasks' };
 
 /**
  * Agent task detail (mobile-ops §7 Tasks room): light route reusing the

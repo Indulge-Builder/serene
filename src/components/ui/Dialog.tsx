@@ -26,6 +26,12 @@ export interface DialogProps {
   description?: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
+  /**
+   * A server or validation error for the whole form. Rendered ABOVE the footer
+   * buttons, never as the last child of the scrolling body (where a phone
+   * never sees it after Save). Mobile audit 2026-09-26.
+   */
+  error?: React.ReactNode;
   size?: DialogSize;
   /** Hides the header close button */
   hideCloseButton?: boolean;
@@ -57,6 +63,7 @@ export function Dialog({
   description,
   children,
   footer,
+  error,
   size = 'md',
   hideCloseButton = false,
   bodyPadding = true,
@@ -240,19 +247,25 @@ export function Dialog({
               </div>
 
               {/* Footer — same <md gutter tightening as the body */}
-              {footer && (
+              {(footer || error) && (
                 <div
                   className="max-md:px-4!"
                   style={{
                     display:        'flex',
-                    justifyContent: 'flex-end',
+                    flexDirection:  'column',
                     gap:            'var(--space-3)',
                     padding:        'var(--space-4) var(--space-6)',
                     borderTop:      '1px solid var(--theme-paper-border)',
                     flexShrink:     0,
                   }}
                 >
-                  {footer}
+                  {error && <div role="alert">{error}</div>}
+                  {footer && (
+                    // Wraps on a narrow sheet so a three-button footer never clips.
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
+                      {footer}
+                    </div>
+                  )}
                 </div>
               )}
             </motion.div>

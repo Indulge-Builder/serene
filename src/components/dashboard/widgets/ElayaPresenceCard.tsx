@@ -17,10 +17,11 @@ import type { WidgetProps } from "../DashboardWidgetSlot";
  * seed-resolve + shell + breathing-glyph logic lives in EmbeddedElayaChat — the
  * SAME body the floating ElayaWidget composes (R-01). No chat code lives here.
  *
- * MOBILE-ONLY overlay: a small "Send feedback" trigger floats in the card's
- * top-right corner below md, opening the shared suggestion composer
- * (SuggestionFeedbackProvider). On desktop the Sidebar "Send feedback" item is
- * the entry, so the overlay is hidden there to keep the chat header clean.
+ * MOBILE-ONLY header row: below md the card carries its own slim top row with
+ * a "Send feedback" control, opening the shared suggestion composer
+ * (SuggestionFeedbackProvider). It used to float over the chat header, where
+ * "Daily limit reached" renders (mobile audit 2026-09-26). On desktop the
+ * Sidebar "Send feedback" item is the entry, so the row is not rendered.
  */
 export function ElayaPresenceCard(_props: WidgetProps) {
   const { openComposer } = useSuggestionFeedback();
@@ -40,28 +41,30 @@ export function ElayaPresenceCard(_props: WidgetProps) {
       }}
     >
       {isMobile && (
-        <Button
-          variant="ghost"
-          iconOnly size="sm"
-          type="button"
-          aria-label="Send feedback"
-          title="Send feedback"
-          className="serene-pressable serene-touch"
-          onClick={openComposer}
+        <div
           style={{
-            position: "absolute",
-            top: "var(--space-3)",
-            right: "var(--space-3)",
-            zIndex: 1,
             display: "flex",
             alignItems: "center",
-            justifyContent: "center",
-            width: "32px",
-            height: "32px",
+            justifyContent: "space-between",
+            gap: "var(--space-2)",
+            padding: "var(--space-1) var(--space-2) var(--space-1) var(--space-4)",
+            flexShrink: 0,
+            borderBottom: "1px solid var(--theme-paper-border)",
           }}
         >
-          <MessageSquarePlus style={{ width: "16px", height: "16px", strokeWidth: 1.5 }} />
-        </Button>
+          <span className="label-micro" style={{ color: "var(--theme-text-tertiary)" }}>Elaya</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            type="button"
+            aria-label="Send feedback"
+            className="serene-pressable serene-touch"
+            onClick={openComposer}
+            iconLeft={MessageSquarePlus}
+          >
+            Send feedback
+          </Button>
+        </div>
       )}
 
       <EmbeddedElayaChat />

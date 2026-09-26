@@ -108,7 +108,7 @@ export function LeadActivityLog({ activities }: Props) {
             style={{
               marginLeft:   'auto',
               fontFamily:   'var(--font-mono)',
-              fontSize:     'var(--text-2xs)',
+              fontSize:     'var(--text-xs)',
               color:        'var(--theme-text-tertiary)',
             }}
           >
@@ -219,7 +219,7 @@ export function LeadActivityLog({ activities }: Props) {
                     <span
                       style={{
                         fontFamily: 'var(--font-mono)',
-                        fontSize:   'var(--text-2xs)',
+                        fontSize:   'var(--text-xs)',
                         color:      'var(--theme-text-tertiary)',
                       }}
                     >
@@ -228,11 +228,11 @@ export function LeadActivityLog({ activities }: Props) {
 
                     {act.actor?.full_name && (
                       <>
-                        <span style={{ color: 'var(--theme-text-tertiary)', fontSize: 'var(--text-2xs)' }}>·</span>
+                        <span style={{ color: 'var(--theme-text-tertiary)', fontSize: 'var(--text-xs)' }}>·</span>
                         <span
                           style={{
                             fontFamily: 'var(--font-sans)',
-                            fontSize:   'var(--text-2xs)',
+                            fontSize:   'var(--text-xs)',
                             color:      'var(--theme-text-secondary)',
                           }}
                         >

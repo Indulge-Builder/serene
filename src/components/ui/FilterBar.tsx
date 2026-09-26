@@ -13,7 +13,6 @@ import {
   matchDateRangePreset,
 } from '@/lib/constants/date-range-presets';
 import { usePortalAnchor } from '@/hooks/usePortalAnchor';
-import { useMediaQuery, MQ } from '@/hooks/useMediaQuery';
 
 type FilterBarDateRange = {
   /** URL-param-formatted date strings (see lib/utils/filter-params). */
@@ -158,10 +157,13 @@ export function FilterBar({
 }: FilterBarProps) {
   const range    = usePortalAnchor();
   const presets  = usePortalAnchor({ estimatedWidth: 200, estimatedHeight: 340 });
-  const isMobile = useMediaQuery(MQ.mobile);
-
-  // Below md every bar runs as a single scrolling row (see layout prop doc).
-  const isScroll      = layout === 'scroll' || isMobile;
+  // Below md every bar runs as a single scrolling row (see layout prop doc). The
+  // wrap layout gets there with `max-md:` utilities on the same nodes, never a
+  // media-query hook: useMediaQuery is false on the server and first paint, so a
+  // hook-driven switch painted the wrapped bar and snapped to the row after
+  // hydration (mobile audit 2026-09-26).
+  const isScroll      = layout === 'scroll';
+  const mobileScroll  = !isScroll;
   const rangeVariant  = dateRange?.trigger ?? 'badge';
   const rangeActive   = !!(dateRange?.from || dateRange?.to);
 
@@ -173,6 +175,7 @@ export function FilterBar({
 
   return (
     <div
+      className={mobileScroll ? 'max-md:flex-nowrap! max-md:overflow-x-auto! max-md:gap-(--space-2)! max-md:py-(--space-2)! max-md:-my-(--space-2)! max-md:[scrollbar-width:none]!' : undefined}
       style={{
         display:    'flex',
         alignItems: 'center',
@@ -233,6 +236,7 @@ export function FilterBar({
           size={searchSize}
           aria-label={searchAriaLabel}
           suppressFocusAccent={suppressSearchFocusAccent}
+          className={mobileScroll ? 'max-md:min-w-[160px]!' : undefined}
           style={isScroll ? { minWidth: '160px', ...searchStyle } : searchStyle}
         />
       )}
@@ -372,6 +376,7 @@ export function FilterBar({
           single-row scroll layout it simply trails the rest. */}
       {tabSlot && (
         <div
+          className={mobileScroll ? 'max-md:ml-0!' : undefined}
           style={{
             flexShrink: 0,
             ...(isScroll ? null : { marginLeft: 'auto' }),

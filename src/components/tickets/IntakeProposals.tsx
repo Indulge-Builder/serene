@@ -20,7 +20,7 @@ import { INTAKE_DISMISS_REASONS, INTAKE_STRIP_FIRST, INTAKE_SURE_CONFIDENCE, typ
 import type { IntakeProposal, IntakeStats } from '@/lib/types/intake';
 
 const SHELL: React.CSSProperties = { background: 'var(--theme-paper)', border: '1px solid var(--theme-paper-border)', borderRadius: 'var(--neu-radius-card)', boxShadow: 'var(--shadow-1)', overflow: 'hidden' };
-const CHIP: React.CSSProperties = { fontSize: 'var(--text-2xs)', padding: '2px var(--space-2)', borderRadius: 'var(--radius-full)', background: 'var(--theme-paper-subtle)', color: 'var(--theme-text-secondary)', whiteSpace: 'nowrap' };
+const CHIP: React.CSSProperties = { fontSize: 'var(--text-xs)', padding: '2px var(--space-2)', borderRadius: 'var(--radius-full)', background: 'var(--theme-paper-subtle)', color: 'var(--theme-text-secondary)', whiteSpace: 'nowrap' };
 
 function pct(n: number, of: number): string { return of > 0 ? `${Math.round((n / of) * 100)}%` : '—'; }
 
@@ -72,7 +72,7 @@ function Card({ p, onGone, grouped }: { p: IntakeProposal; onGone: (id: string) 
         {p.kind === 'request' && p.draft.category && <span style={CHIP}>{TICKET_CATEGORIES.labels[p.draft.category] ?? p.draft.category}</span>}
         {p.kind === 'request' && p.draft.priority && <span style={CHIP}>{TICKET_PRIORITIES.labels[p.draft.priority]}</span>}
         {(p.tone === 'frustrated' || p.tone === 'angry') && <span style={{ ...CHIP, background: 'var(--color-warning-light)', color: 'var(--color-warning-text)' }}>{p.tone}</span>}
-        <span style={{ marginLeft: 'auto', fontSize: 'var(--text-2xs)', color: 'var(--theme-text-tertiary)' }}>{formatRelativeTime(p.last_message_at)}</span>
+        <span style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)', whiteSpace: 'nowrap' }}>{formatRelativeTime(p.last_message_at)}</span>
       </div>
       <span style={{ fontSize: 'var(--text-sm)', color: 'var(--theme-text-primary)' }}>{p.kind === 'request' ? (p.draft.title || p.summary) : p.summary}</span>
       {first && <span style={{ fontSize: 'var(--text-xs)', color: 'var(--theme-text-secondary)', whiteSpace: 'pre-wrap' }}>“{first.text.slice(0, 220)}{first.text.length > 220 ? '…' : ''}”{p.messages.length > 1 ? `  +${p.messages.length - 1} more` : ''}</span>}

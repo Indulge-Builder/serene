@@ -5,7 +5,7 @@ import { mobileMonthRange } from '@/lib/services/mobile-service';
 import { getDomainTaskSummary } from '@/lib/services/tasks-service';
 import { TasksRoom } from '@/components/mobile/rooms/TasksRoom';
 
-export const metadata = { title: 'Tasks · Serene' };
+export const metadata = { title: 'Tasks' };
 
 /**
  * Tasks room (mobile-ops §3). RSC seeds the first swipeable domain via

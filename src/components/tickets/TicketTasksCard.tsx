@@ -4,9 +4,12 @@
 // off (title, who, priority, due). The task is a normal personal task (reminders,
 // notifications, My Tasks) linked back here through task_ticket_meta.
 
+import { FormSelect } from '@/components/ui/FormSelect';
+import { Input } from '@/components/ui/Field';
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { MQ, useMediaQuery } from '@/hooks/useMediaQuery';
 import { ListTodo, Plus } from 'lucide-react';
 import { CardHeader } from '@/components/leads/CardHeader';
 import { Button } from '@/components/ui/Button';
@@ -19,10 +22,12 @@ import type { TicketDetail, StaffOption } from '@/lib/types/ticket';
 import type { TaskPriority } from '@/lib/types/database';
 
 const SHELL: React.CSSProperties = { background: 'var(--theme-paper)', border: '1px solid var(--theme-paper-border)', borderRadius: 'var(--neu-radius-card)', boxShadow: 'var(--shadow-1)', overflow: 'hidden' };
-const SELECT: React.CSSProperties = { padding: '6px var(--space-3)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--theme-paper-border)', background: 'var(--theme-paper)', color: 'var(--theme-text-primary)', fontSize: 'var(--text-sm)', fontFamily: 'inherit' };
+
 
 export function TicketTasksCard({ ticketId, tasks, staff, defaultAssignee }: { ticketId: string; tasks: TicketDetail['tasks']; staff: StaffOption[]; defaultAssignee: string | null }) {
   const router = useRouter();
+  // No autofocus on a phone: the keyboard would cover the opening sheet.
+  const touch = useMediaQuery(MQ.touch);
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [assignee, setAssignee] = useState<string>(defaultAssignee ?? '');
@@ -54,12 +59,12 @@ export function TicketTasksCard({ ticketId, tasks, staff, defaultAssignee }: { t
       <div style={{ padding: 'var(--space-4) var(--space-6) var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
         {open && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', paddingBottom: 'var(--space-4)', borderBottom: '1px solid var(--theme-paper-border)' }}>
-            <input className="serene-input neu-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What needs doing" maxLength={255} autoFocus onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} />
+            <Input className="serene-input neu-input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="What needs doing" maxLength={255} autoFocus={!touch} onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} />
             <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap', alignItems: 'center' }}>
-              <select style={SELECT} value={assignee} onChange={(e) => setAssignee(e.target.value)}>
+              <FormSelect aria-label="Assignee" fullWidth={false} value={assignee} onValueChange={(nextValue) => setAssignee(nextValue)}>
                 <option value="">Me</option>
                 {staff.map((s) => <option key={s.id} value={s.id}>{s.full_name}</option>)}
-              </select>
+              </FormSelect>
               <PriorityChipRow value={priority} onChange={setPriority} variant="dot" deselectNonNormal />
             </div>
             <DueDateField optional preset={preset} onPresetChange={setPreset} date={date} onDateChange={setDate} />

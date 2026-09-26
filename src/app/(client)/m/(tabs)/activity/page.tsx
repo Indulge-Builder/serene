@@ -4,7 +4,7 @@ import { getMobileDomains } from '@/lib/constants/mobile-rooms';
 import { getActivityFeed } from '@/lib/services/activity-service';
 import { ActivityRoom } from '@/components/mobile/rooms/ActivityRoom';
 
-export const metadata = { title: 'Activity · Serene' };
+export const metadata = { title: 'Activity' };
 
 /**
  * Activity room (mobile-ops §3/§8). RSC seeds the first domain's feed

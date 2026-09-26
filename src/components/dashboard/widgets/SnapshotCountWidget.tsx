@@ -5,6 +5,7 @@ import { m as motion } from "framer-motion";
 import { type LucideIcon } from "lucide-react";
 import { ENTER_DURATION, EASE_OUT_EXPO } from "@/lib/constants/motion";
 import { useWidgetDensityTier } from "@/hooks/useWidgetDensity";
+import { useMediaQuery, MQ } from "@/hooks/useMediaQuery";
 import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
 
 const MotionLink = motion.create(Link);
@@ -45,6 +46,10 @@ export function SnapshotCountWidget({
 }) {
   const tier = useWidgetDensityTier();
   const isCompact = tier === "compact";
+  // A title tooltip never shows on a touch screen (mobile audit 2026-09-26): on a coarse
+  // pointer the hint is a visible tertiary line, even in the compact cell.
+  const isTouch = useMediaQuery(MQ.touch);
+  const showHint = Boolean(hint) && (!isCompact || isTouch);
   const isZero = count <= 0;
   const numberColor = isZero ? "var(--theme-text-secondary)" : positiveColor;
 
@@ -52,7 +57,7 @@ export function SnapshotCountWidget({
     <MotionLink
       href={href}
       aria-label={`${count} — ${label}`}
-      title={hint}
+      title={isTouch ? undefined : hint}
       className="serene-stat-tile"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -98,7 +103,7 @@ export function SnapshotCountWidget({
           <AnimatedNumber value={String(count)} />
         </span>
 
-        {!isCompact && hint && (
+        {showHint && (
           <span style={{ fontFamily: "var(--font-sans)", fontSize: "var(--text-xs)", color: "var(--theme-text-tertiary)", lineHeight: 1.4 }}>
             {hint}
           </span>

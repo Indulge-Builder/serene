@@ -195,6 +195,25 @@ export function VendorAdminActions({ vendor, history, suggested = [] }: Props) {
         title="Merge another vendor in"
         description={`Everything from the vendor you pick moves onto ${vendor.name}, and that row disappears.`}
         size="md"
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setMergeOpen(false);
+                setPicked(null);
+                setQuery('');
+                setResults(null);
+              }}
+              disabled={pending}
+            >
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={doMerge} disabled={!picked || pending} loading={pending}>
+              {picked ? `Merge ${picked.name} in` : 'Merge in'}
+            </Button>
+          </>
+        }
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
@@ -222,6 +241,7 @@ export function VendorAdminActions({ vendor, history, suggested = [] }: Props) {
                   setPicked(null);
                 }}
                 placeholder="Name, alias, phone or a contact's name"
+                enterKeyHint="search"
                 autoFocus
                 disabled={pending}
               />
@@ -352,23 +372,6 @@ export function VendorAdminActions({ vendor, history, suggested = [] }: Props) {
             </p>
           )}
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)' }}>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                      setMergeOpen(false);
-                      setPicked(null);
-                      setQuery('');
-                      setResults(null);
-                  }}
-              disabled={pending}
-            >
-              Cancel
-            </Button>
-            <Button variant="primary" onClick={doMerge} disabled={!picked || pending} loading={pending}>
-              {picked ? `Merge ${picked.name} in` : 'Merge in'}
-            </Button>
-          </div>
         </div>
       </Dialog>
 

@@ -7,6 +7,8 @@ import { getErroredPayloads } from '@/lib/services/leads-service';
 import { ErrorLogTable } from '@/components/error-log/ErrorLogTable';
 import { ErrorLogTableSkeleton } from '@/components/error-log/ErrorLogTableSkeleton';
 
+export const metadata = { title: 'Error log' };
+
 export default async function ErrorLogPage() {
   const profile = await getCurrentProfile();
 
@@ -18,7 +20,7 @@ export default async function ErrorLogPage() {
   const rows = await getErroredPayloads();
 
   return (
-    <main style={{ flex: 1, padding: 'var(--space-8)' }}>
+    <main className="flex-1 p-4 sm:p-6 lg:p-8">
       {/* Page header */}
       <div
         style={{

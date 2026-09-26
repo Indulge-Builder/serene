@@ -19,6 +19,25 @@ try {
   await send('Page.navigate', {url: new URL('../output/control-keyboard.html', import.meta.url).href});
   for (let i = 0; i < 50; i++) { await pause(); if (await evaluate('!!document.querySelector("#state")')) break; }
   assert.ok(await evaluate('!!document.querySelector("#state")'), 'fixture mounted');
+  await focus('#fixture-genie');
+  assert.equal(await evaluate('document.activeElement.getAttribute("aria-describedby")'), 'fixture-genie-hint fixture-genie-error fixture-genie-value');
+  await key('ArrowDown');
+  assert.equal(await evaluate('document.activeElement.textContent'), 'Unassigned', 'empty value remains an explicit selectable option');
+  await key('ArrowDown');
+  assert.equal(await evaluate('document.activeElement.textContent'), 'Ada');
+  await key('ArrowDown');
+  assert.equal(await evaluate('document.activeElement.textContent'), 'Grace (genie)', 'field options skip unavailable choices');
+  await key('a', 'KeyA', 65);
+  assert.equal(await evaluate('document.activeElement.textContent'), 'Ada', 'typeahead finds an enabled choice');
+  await key('Enter', 'Enter', 13);
+  assert.equal(await evaluate('document.querySelector("#form-choice").textContent'), 'ada', 'field emits the selected scalar value');
+  assert.equal(await evaluate('document.activeElement.id'), 'fixture-genie');
+  assert.equal(await evaluate('document.activeElement.getAttribute("aria-describedby")'), 'fixture-genie-hint fixture-genie-value', 'resolved error is removed from the description');
+  await key('ArrowDown');
+  await key('Home');
+  await key('Enter', 'Enter', 13);
+  assert.equal(await evaluate('document.querySelector("#form-choice").textContent'), '', 'explicit empty choice can reset a field');
+  assert.equal(await evaluate('document.querySelector("#disabled-form-select button").disabled'), true);
   await focus('[role="tab"]');
   await key('ArrowRight');
   assert.equal(await evaluate('document.activeElement.textContent'), 'Last', 'tabs skip disabled items');

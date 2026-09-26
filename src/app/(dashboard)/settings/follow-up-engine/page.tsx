@@ -7,7 +7,7 @@ import { BackButton }          from "@/components/ui/BackButton";
 import { EmptyState }          from "@/components/ui/EmptyState";
 import { Timer } from 'lucide-react';
 
-export const metadata = { title: "Follow-up Engine — Serene" };
+export const metadata = { title: "Follow-up engine" };
 
 export default async function FollowUpEnginePage() {
   const profile = await getCurrentProfile();

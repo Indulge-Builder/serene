@@ -17,6 +17,7 @@ import { AnimatePresence } from "framer-motion";
 import { ChevronDown } from "lucide-react";
 import { StatTile } from "@/components/ui/StatTile";
 import { CollapseReveal } from "@/components/ui/CollapseReveal";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { BudgetTable } from "@/components/budget/BudgetTable";
 import { BudgetSectionHeader } from "@/components/budget/BudgetSectionHeader";
 import { formatCurrency, formatCurrencyCompact } from "@/lib/utils/numbers";
@@ -73,6 +74,8 @@ export function AccountReportSection({ report }: { report: AccountReport }) {
                     Recharged/Spent/Balance columns out of vertical alignment
                     across the stacked blocks. */}
                 <div style={{ flex: "0 0 180px", minWidth: 0 }}>
+                  {/* The name truncates at 180px — the full account name rides the pill. */}
+                  <Tooltip label={block.label} side="top" wrap="block">
                   <p
                     style={{
                       fontFamily:   "var(--font-sans)",
@@ -84,10 +87,10 @@ export function AccountReportSection({ report }: { report: AccountReport }) {
                       overflow:     "hidden",
                       textOverflow: "ellipsis",
                     }}
-                    title={block.label}
                   >
                     {block.label}
                   </p>
+                  </Tooltip>
                   <p
                     style={{
                       fontFamily: "var(--font-sans)",

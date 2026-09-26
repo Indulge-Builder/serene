@@ -4,7 +4,7 @@ import { getMobileDomains } from '@/lib/constants/mobile-rooms';
 import { getMobileBudgetData } from '@/lib/services/mobile-service';
 import { BudgetRoom } from '@/components/mobile/rooms/BudgetRoom';
 
-export const metadata = { title: 'Budget · Serene' };
+export const metadata = { title: 'Budget' };
 
 /**
  * Budget room (mobile-ops §3). RSC seeds the first swipeable domain;

@@ -3,7 +3,7 @@ import { LoginForm } from "./login-form";
 import { safeReturnPath } from "@/lib/utils/return-path";
 
 export const metadata: Metadata = {
-  title: "Sign In — Serene",
+  title: "Sign in",
 };
 
 export default async function LoginPage({

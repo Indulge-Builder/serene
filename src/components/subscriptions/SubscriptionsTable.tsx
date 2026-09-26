@@ -293,6 +293,7 @@ function RowMenu({
         iconOnly
         ref={anchor.triggerRef}
         type="button"
+        className="serene-touch"
         aria-label="Row actions"
         aria-haspopup="menu"
         aria-expanded={anchor.open}

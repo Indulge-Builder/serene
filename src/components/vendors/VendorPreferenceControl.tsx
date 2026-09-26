@@ -19,7 +19,9 @@
 // must stay level with the identity card beside it.
 
 import { SelectionButton } from '@/components/ui/SelectionButton';
-import { useRef, useState, useTransition } from 'react';
+import { Tooltip } from '@/components/ui/Tooltip';
+import { useEffect, useRef, useState, useTransition } from 'react';
+import { FieldSaveFeedback } from '@/components/ui/InlineEdit';
 import { ThumbsUp, ThumbsDown, type LucideIcon } from 'lucide-react';
 import { toast } from '@/lib/toast';
 import { setAgentPreferenceAction, removeAgentPreferenceAction } from '@/lib/actions/vendors';
@@ -50,6 +52,15 @@ export function VendorPreferenceControl({
   const [note, setNote] = useState(mine?.note ?? '');
   const savedNote = useRef(mine?.note ?? '');
   const [, startTransition] = useTransition();
+  // The note saves on blur, which is invisible on a phone (mobile audit 2026-09-26): a
+  // mandala while saving, a check for two seconds after (the InlineEdit feedback).
+  const [noteSaving, setNoteSaving] = useState(false);
+  const [noteSaved, setNoteSaved] = useState(false);
+  useEffect(() => {
+    if (!noteSaved) return;
+    const t = setTimeout(() => setNoteSaved(false), 2000);
+    return () => clearTimeout(t);
+  }, [noteSaved]);
 
   function apply(next: PreferenceStance | null) {
     const previous = stance;
@@ -68,10 +79,13 @@ export function VendorPreferenceControl({
   function saveNote() {
     const trimmed = note.trim();
     if (!stance || trimmed === savedNote.current) return;
+    setNoteSaving(true);
+    setNoteSaved(false);
     startTransition(async () => {
       const res = await setAgentPreferenceAction({ vendor_id: vendorId, stance, note: trimmed || null });
+      setNoteSaving(false);
       if (res.error) toast.danger(res.error);
-      else savedNote.current = trimmed;
+      else { savedNote.current = trimmed; setNoteSaved(true); }
     });
   }
 
@@ -121,6 +135,7 @@ export function VendorPreferenceControl({
       </div>
 
       {stance && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', marginTop: 'var(--space-3)' }}>
         <input
           value={note}
           onChange={(e) => setNote(e.target.value)}
@@ -135,7 +150,8 @@ export function VendorPreferenceControl({
           aria-label="Why"
           maxLength={500}
           style={{
-            marginTop: 'var(--space-3)',
+            flex: 1,
+            minWidth: 0,
             width: '100%',
             padding: 'var(--space-2) var(--space-3)',
             borderRadius: 'var(--radius-sm)',
@@ -145,6 +161,8 @@ export function VendorPreferenceControl({
             fontSize: 'var(--text-xs)',
           }}
         />
+        <FieldSaveFeedback saving={noteSaving} success={noteSaved} error={null} />
+        </div>
       )}
 
       {others.length > 0 && (
@@ -161,7 +179,6 @@ export function VendorPreferenceControl({
           {others.slice(0, TEAM_TAKES_SHOWN).map((p) => (
             <li
               key={p.id}
-              title={p.note ?? undefined}
               style={{
                 fontSize: 'var(--text-xs)',
                 color: 'var(--theme-text-secondary)',
@@ -178,16 +195,19 @@ export function VendorPreferenceControl({
                 {p.agent_name ?? 'A teammate'}
               </span>
               {p.note && (
-                <span
-                  style={{
-                    color: 'var(--theme-text-tertiary)',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  — {p.note}
-                </span>
+                // The note truncates on one line — the tooltip holds the whole of it.
+                <Tooltip label={p.note} side="top">
+                  <span
+                    style={{
+                      color: 'var(--theme-text-tertiary)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    — {p.note}
+                  </span>
+                </Tooltip>
               )}
             </li>
           ))}

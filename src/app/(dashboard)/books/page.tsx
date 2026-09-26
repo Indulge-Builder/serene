@@ -13,7 +13,11 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { BooksOverviewStrip, BooksBankAccounts } from '@/components/books/BooksOverview';
 import { ZohoInvoicesTable, ZohoPaymentsTable } from '@/components/books/ZohoTables';
 import { RefreshBooksButton } from '@/components/books/RefreshBooksButton';
+import { TOP_BAR_ENABLED } from '@/lib/constants/feature-flags';
+import { PageControls } from '@/components/layout/PageControls';
 import { BooksSkeleton } from './loading';
+
+export const metadata = { title: 'Books' };
 
 function canSee(role: string): boolean {
   return role === 'admin' || role === 'founder';
@@ -51,7 +55,7 @@ async function BooksAsync() {
         <div style={BODY}><ZohoInvoicesTable rows={overview.overdueInvoices} orgId={orgId} emptyTitle="Nothing overdue." previewRows={15} /></div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: 'var(--space-6)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(420px, 100%), 1fr))', gap: 'var(--space-6)' }}>
         <div style={SHELL}>
           <CardHeader icon={FileText} label="Latest invoices" />
           <div style={BODY}><ZohoInvoicesTable rows={overview.recentInvoices} orgId={orgId} previewRows={12} /></div>
@@ -78,7 +82,10 @@ export default async function BooksPage() {
         <h1 className="type-page-title m-0">
           Books<span className="page-title-dot">.</span>
         </h1>
-        <RefreshBooksButton />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+          <RefreshBooksButton />
+          {TOP_BAR_ENABLED && <PageControls isPrivileged={false} />}
+        </div>
       </div>
       <Suspense fallback={<BooksSkeleton />}>
         <BooksAsync />

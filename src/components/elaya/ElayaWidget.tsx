@@ -163,7 +163,11 @@ export function ElayaWidget() {
             and hands its resolved seed down; the cold-path glyph fallback lives
             inside EmbeddedElayaChat (seed is null until fetchSeed lands). The
             AnimatePresence keys on the conversation so a fresh open fades in. */}
-        <div className="flex flex-col" style={{ height: 'min(78dvh, 680px)' }}>
+        {/* Below md the sheet: the chat asks for the whole viewport and shrinks
+            to the sheet's 90dvh cap (flex-auto + min-h-0), so an open keyboard
+            (interactiveWidget resizes-content) shrinks it and the composer stays
+            in view (mobile audit 2026-09-26). md+: the fixed 78dvh / 680px card. */}
+        <div className="flex flex-col max-md:h-dvh max-md:flex-auto max-md:min-h-0 md:h-[min(78dvh,680px)]">
           <AnimatePresence mode="wait">
             <motion.div
               key={seed?.conversationId ?? 'elaya-widget-loading'}

@@ -1,6 +1,8 @@
 'use client';
 
 // TicketBriefCard — the typed request, editable in place; the fields follow the category.
+import { FormSelect } from '@/components/ui/FormSelect';
+import { Input } from '@/components/ui/Field';
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { FileText } from 'lucide-react';
@@ -13,7 +15,6 @@ import { formatDate } from '@/lib/utils/dates';
 import { TICKET_BRIEF_FIELDS_BY_CATEGORY, TICKET_BRIEF_FIELD_LABELS, TICKET_CATEGORIES, TICKET_SUB_CATEGORIES, type TicketBriefField } from '@/lib/constants/tickets';
 import type { TicketRow } from '@/lib/types/ticket';
 
-const FIELD: React.CSSProperties = { width: '100%', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--theme-paper-border)', background: 'var(--theme-paper)', color: 'var(--theme-text-primary)', fontSize: 'var(--text-sm)', fontFamily: 'inherit', boxSizing: 'border-box' };
 
 function show(f: TicketBriefField, v: unknown): string {
   if (v == null || v === '') return '—';
@@ -56,19 +57,19 @@ export function TicketBriefCard({ ticket }: { ticket: TicketRow }) {
           </>
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 'var(--space-3)' }}>
-            <label style={{ gridColumn: '1 / -1' }}><span className="label-micro" style={{ color: 'var(--theme-text-tertiary)' }}>Title</span><input style={FIELD} value={title} onChange={(e) => setTitle(e.target.value)} /></label>
+            <label style={{ gridColumn: '1 / -1' }}><span className="label-micro" style={{ color: 'var(--theme-text-tertiary)' }}>Title</span><Input style={{ width: '100%' }} value={title} onChange={(e) => setTitle(e.target.value)} /></label>
             {subs.length > 0 && (
               <label><span className="label-micro" style={{ color: 'var(--theme-text-tertiary)' }}>Sub-category</span>
-                <select style={FIELD} value={sub} onChange={(e) => setSub(e.target.value)}><option value="">Not set</option>{subs.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}</select>
+                <FormSelect style={{ width: '100%' }} value={sub} onValueChange={(nextValue) => setSub(nextValue)}><option value="">Not set</option>{subs.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}</FormSelect>
               </label>
             )}
             {fields.map((f) => (
               <label key={f} style={f === 'notes' || f === 'delivery_address' ? { gridColumn: '1 / -1' } : undefined}>
                 <span className="label-micro" style={{ color: 'var(--theme-text-tertiary)' }}>{TICKET_BRIEF_FIELD_LABELS[f]}</span>
                 {f === 'early_check_in' ? (
-                  <select style={FIELD} value={brief[f] === true ? 'yes' : brief[f] === false ? 'no' : ''} onChange={(e) => setBrief({ ...brief, [f]: e.target.value === 'yes' ? true : e.target.value === 'no' ? false : '' })}><option value="">Not set</option><option value="yes">Yes</option><option value="no">No</option></select>
+                  <FormSelect style={{ width: '100%' }} value={brief[f] === true ? 'yes' : brief[f] === false ? 'no' : ''} onValueChange={(nextValue) => setBrief({ ...brief, [f]: nextValue === 'yes' ? true : nextValue === 'no' ? false : '' })}><option value="">Not set</option><option value="yes">Yes</option><option value="no">No</option></FormSelect>
                 ) : (
-                  <input style={FIELD} value={typeof brief[f] === 'string' ? (brief[f] as string) : ''} onChange={(e) => setBrief({ ...brief, [f]: e.target.value })} />
+                  <Input style={{ width: '100%' }} value={typeof brief[f] === 'string' ? (brief[f] as string) : ''} onChange={(e) => setBrief({ ...brief, [f]: e.target.value })} />
                 )}
               </label>
             ))}

@@ -47,6 +47,7 @@ import { AvatarStack } from '@/components/ui/AvatarStack';
 import { CollapseReveal } from '@/components/ui/CollapseReveal';
 import { MotionRow } from '@/components/ui/RowMotion';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { LoadingVeil } from '@/components/ui/LogoSpinner';
 import type { Task, TaskGroup, TaskStatus, TaskPriority, UserRole, AppDomain } from '@/lib/types/database';
 import { TASK_STATUS_LABELS } from '@/lib/constants/task-types';
@@ -346,6 +347,10 @@ const GroupRow = memo(function GroupRow({
   // Below --bp-md the fixed metrics cluster (~480px) cannot share one row with
   // the title — it wraps to its own line(s) under the title row.
   const isMobile = useMediaQuery(MQ.mobile);
+  // A finger has no double-click: on a coarse pointer a header tap toggles at
+  // once (the 220ms wait also invites iOS double-tap zoom); the "Open" button
+  // is the way into the workspace there (mobile audit 2026-09-26).
+  const isTouch  = useMediaQuery(MQ.touch);
   const accent   = getAccentForRow(group);
   const iconKey  = getIconForRow(group);
   const progress = group.subtask_count > 0
@@ -360,11 +365,15 @@ const GroupRow = memo(function GroupRow({
 
   const handleHeaderClick = useCallback(() => {
     if (headerClickTimerRef.current) clearTimeout(headerClickTimerRef.current);
+    if (isTouch) {
+      onToggle(group.id);
+      return;
+    }
     headerClickTimerRef.current = setTimeout(() => {
       headerClickTimerRef.current = null;
       onToggle(group.id);
     }, HEADER_CLICK_DELAY_MS);
-  }, [onToggle, group.id]);
+  }, [onToggle, group.id, isTouch]);
 
   const handleHeaderDoubleClick = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -433,6 +442,11 @@ const GroupRow = memo(function GroupRow({
     () => assignableUsers.find((u) => u.id === currentUserId) ?? null,
     [assignableUsers, currentUserId],
   );
+  // Who the add-subtask row will assign — the picker button shows only an
+  // avatar, so the name rides its tooltip and its aria-label.
+  const subtaskAssigneeName = subtaskAssignee
+    ? subtaskAssignee.full_name
+    : (defaultAssignee?.full_name ?? 'You (default assignee)');
 
   function handleOpenSubtask(subtask: SubtaskWithAssignee) {
     setSelectedSubtask(subtask);
@@ -603,7 +617,7 @@ const GroupRow = memo(function GroupRow({
         role="button"
         tabIndex={0}
         onClick={handleHeaderClick}
-        onDoubleClick={handleHeaderDoubleClick}
+        onDoubleClick={isTouch ? undefined : handleHeaderDoubleClick}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onToggle(group.id); }}
         style={{
           display:    'flex',
@@ -668,6 +682,7 @@ const GroupRow = memo(function GroupRow({
           onClick={(e) => e.stopPropagation()}
         >
           {/* Open workspace — click; row double-click also navigates */}
+          <Tooltip label="Open workspace (double-click row)" side="top">
           <MotionButton
           variant="ghost" size="sm"
           type="button"
@@ -676,7 +691,6 @@ const GroupRow = memo(function GroupRow({
               openWorkspace();
             }}
           aria-label={`Open ${group.title}`}
-          title="Open workspace (double-click row)"
           className="serene-icon-lift-hover"
           whileTap={{ scale: 0.92 }}
           transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
@@ -687,6 +701,7 @@ const GroupRow = memo(function GroupRow({
               <ArrowUpRight style={{ width: 13, height: 13, strokeWidth: 1.5 }} />
             </span>
           </MotionButton>
+          </Tooltip>
 
           {/* Member avatars */}
           {group.assignee_previews.length > 0 && (
@@ -741,6 +756,7 @@ const GroupRow = memo(function GroupRow({
                   setMoreMenuOpen((v) => !v);
                 }}
                 aria-label="More options"
+                className="serene-touch"
                 style={{ display:        'flex', alignItems:     'center', justifyContent: 'center', width:          28, height:         28 }}
               >
                 <MoreHorizontal style={{ width: 14, height: 14, strokeWidth: 1.5 }} />
@@ -948,6 +964,7 @@ const GroupRow = memo(function GroupRow({
                       <PriorityPill priority={subtask.priority} />
 
                       {subtask.assignee && (
+                        <Tooltip label={subtask.assignee.full_name} side="top">
                         <span
                           style={{
                             display:        'inline-flex',
@@ -962,9 +979,9 @@ const GroupRow = memo(function GroupRow({
                             flexShrink:     0,
                             opacity:        isSubComplete ? 0.45 : 1,
                           }}
-                          title={subtask.assignee.full_name}
                         >
                           <span
+                            aria-hidden
                             style={{
                               fontFamily: 'var(--font-sans)',
                               fontSize:   9,
@@ -976,13 +993,16 @@ const GroupRow = memo(function GroupRow({
                           >
                             {getInitials(subtask.assignee.full_name)}
                           </span>
+                          <span className="sr-only">{subtask.assignee.full_name}</span>
                         </span>
+                        </Tooltip>
                       )}
 
                       {subtask.due_at && <DueDateChip dueAt={subtask.due_at} />}
                     </div>
 
                     <span
+                      className="serene-touch-hit"
                       style={{
                         display:        'inline-flex',
                         alignItems:     'center',
@@ -1038,13 +1058,13 @@ const GroupRow = memo(function GroupRow({
                           caretColor: accent,
                         }}
                       />
+                      <Tooltip label={subtaskAssigneeName} side="top">
                       <Button
                         variant="control"
                         size="sm"
                         type="button"
                         onClick={(e) => { e.stopPropagation(); setShowAssigneePicker(true); }}
-                        aria-label="Pick assignee"
-                        title={subtaskAssignee ? subtaskAssignee.full_name : (defaultAssignee?.full_name ?? 'You (default assignee)')}
+                        aria-label={`Pick assignee, currently ${subtaskAssigneeName}`}
                         style={{ display:        'flex', alignItems:     'center', justifyContent: 'center', width:          28, height:         28, flexShrink:     0 }}
                       >
                         {subtaskAssignee ? (
@@ -1053,6 +1073,7 @@ const GroupRow = memo(function GroupRow({
                           <User style={{ width: 12, height: 12, strokeWidth: 1.5 }} />
                         )}
                       </Button>
+                      </Tooltip>
                       <Button
                         variant="primary"
                         size="sm"

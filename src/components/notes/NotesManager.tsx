@@ -5,7 +5,10 @@ import { AnimatePresence } from "framer-motion";
 import { Plus, SlidersHorizontal, NotebookPen } from "lucide-react";
 import { MotionButton, MOTION_BUTTON_DEFAULTS } from "@/components/ui/MotionButton";
 import { Button } from "@/components/ui/Button";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { CondensingPageHeader } from "@/components/layout/CondensingPageHeader";
+import { PageControls } from "@/components/layout/PageControls";
+import { TOP_BAR_ENABLED } from "@/lib/constants/feature-flags";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { EditDeleteActions } from "@/components/ui/RowActions";
@@ -98,6 +101,9 @@ export function NotesManager({ initialNotes }: NotesManagerProps) {
     <>
       {/* Row 1 — page header (sticky, condenses on scroll — polish §07) */}
       <CondensingPageHeader title="Notes">
+        {/* At the cap the button is disabled — the reason rides the pill (the
+            wrapper still hears the hover) and is spoken as part of its name. */}
+        <Tooltip label={`You've reached the ${ELAYA_NOTES_MAX_PER_USER}-note limit`} side="bottom" disabled={!atCap}>
         <MotionButton
           {...MOTION_BUTTON_DEFAULTS}
           variant="primary"
@@ -105,12 +111,14 @@ export function NotesManager({ initialNotes }: NotesManagerProps) {
           iconMotion="rotate"
           onClick={openCreate}
           disabled={atCap}
-          title={atCap ? `You've reached the ${ELAYA_NOTES_MAX_PER_USER}-note limit.` : undefined}
           style={{ boxShadow: "var(--shadow-accent-glow)", whiteSpace: "nowrap", flexShrink: 0 }}
         >
           <Plus style={{ width: 14, height: 14, strokeWidth: 1.5 }} />
           New Note
+          {atCap && <span className="sr-only">You&apos;ve reached the {ELAYA_NOTES_MAX_PER_USER}-note limit.</span>}
         </MotionButton>
+        </Tooltip>
+        {TOP_BAR_ENABLED && <PageControls isPrivileged={false} />}
       </CondensingPageHeader>
 
       {/* Row 2 — filter bar */}

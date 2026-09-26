@@ -25,19 +25,22 @@
 textarea.serene-field-control { resize: vertical; min-height: 96px; }
 .serene-field-control[readonly] { background: var(--neu-section-bg); box-shadow: none; }
 .serene-field-control:disabled { opacity: 0.6; cursor: not-allowed; }
-.serene-field-control[aria-invalid="true"] { border-color: var(--color-danger-text); }
+/* A radio row whose native input is visually hidden shows the keyboard focus on
+   the row itself (ui/TaskFormFields TaskTypeField, 2026-09-25). */
+.serene-radio-row:has(input:focus-visible) { outline: 2px solid var(--neu-focus-edge); outline-offset: 2px; }
+.serene-field-control:is([aria-invalid="true"], [data-invalid="true"]) { border-color: var(--color-danger-text); }
 /* The field focus frame (serene-neumorphic-tokens.css, .neu-input): hugging, never offset. */
 .serene-field-control:focus-visible {
   outline: none;
   border-color: var(--neu-focus-edge);
   box-shadow: 0 0 0 1px var(--neu-focus-edge), var(--neu-shadow-input);
 }
-.serene-field-control[aria-invalid="true"]:focus-visible {
+.serene-field-control:is([aria-invalid="true"], [data-invalid="true"]):focus-visible {
   border-color: var(--color-danger-text);
   box-shadow: 0 0 0 1px var(--color-danger-text), var(--neu-shadow-input);
 }
 @media (hover: hover) and (pointer: fine) {
-  .serene-field-control:hover:not(:disabled):not([readonly]):not([aria-invalid="true"]):not(:focus-visible) { border-color: var(--neu-edge-strong); }
+  .serene-field-control:hover:not(:disabled):not([readonly]):not([aria-invalid="true"]):not([data-invalid="true"]):not(:focus-visible) { border-color: var(--neu-edge-strong); }
 }
 .serene-badge {
   display: inline-flex; align-items: center; justify-content: center;

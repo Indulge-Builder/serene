@@ -3,6 +3,8 @@
 // was asked, what she answered, what the user said was wrong, her own guess at the cause. The admin
 // marks each fixed / declined / became a playbook with a note; open ones are folded into her prompt
 // as known issues until then. Display + form state only (A-06); writes through actions/elaya-memory.ts.
+import { FormSelect } from '@/components/ui/FormSelect';
+import { Input } from '@/components/ui/Field';
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { SectionCard } from '@/components/ui/SectionCard';
@@ -15,10 +17,6 @@ import { ELAYA_REQUEST_KIND_LABELS, ELAYA_REQUEST_STATUS_LABELS, ELAYA_REQUEST_S
 import type { ElayaImprovementRequestRow } from '@/lib/services/elaya-memory-service';
 import { MessageSquareWarning } from 'lucide-react';
 
-const INPUT: React.CSSProperties = {
-  width: '100%', padding: '8px var(--space-3)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--theme-paper-border)',
-  background: 'var(--theme-paper)', color: 'var(--theme-text-primary)', fontSize: 'var(--text-sm)', fontFamily: 'inherit',
-};
 
 function Quote({ label, text }: { label: string; text: string | null }) {
   if (!text) return null;
@@ -55,11 +53,11 @@ function RequestCard({ r }: { r: ElayaImprovementRequestRow }) {
         {r.diagnosis && <div style={{ fontSize: 'var(--text-sm)', color: 'var(--theme-text-secondary)' }}><strong>Elaya's guess:</strong> {r.diagnosis}</div>}
         <Quote label="The question" text={r.question} />
         <Quote label="Her answer" text={r.answer} />
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(140px, 200px) 1fr auto', gap: 'var(--space-2)', alignItems: 'center', paddingTop: 'var(--space-2)', borderTop: '1px solid var(--theme-paper-border)' }}>
-          <select value={status} onChange={(e) => setStatus(e.target.value as ElayaRequestStatus)} style={INPUT}>
+        <div className="serene-form-row" style={{ gap: 'var(--space-2)', alignItems: 'center', paddingTop: 'var(--space-2)', borderTop: '1px solid var(--theme-paper-border)' }}>
+          <FormSelect aria-label="Status" value={status} onValueChange={(nextValue) => setStatus(nextValue as ElayaRequestStatus)} style={{ width: '100%' }}>
             {ELAYA_REQUEST_STATUS_OPTIONS_FOR_PANEL.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-          </select>
-          <input style={INPUT} value={note} onChange={(e) => setNote(e.target.value)} placeholder="What was done, in one line. Elaya reads this." maxLength={1000} />
+          </FormSelect>
+          <Input style={{ width: '100%' }} value={note} onChange={(e) => setNote(e.target.value)} placeholder="What was done, in one line. Elaya reads this." maxLength={1000} />
           <Button size="xs" variant="secondary" onClick={save} disabled={pending}>Save</Button>
         </div>
       </div>

@@ -7,12 +7,16 @@ import { MembersFilters } from '@/components/members/MembersFilters';
 import { MembersTable } from '@/components/members/MembersTable';
 import { MembersTableSkeleton } from '@/components/members/MembersTableSkeleton';
 import { AddMemberButton } from '@/components/members/AddMemberButton';
+import { TOP_BAR_ENABLED } from '@/lib/constants/feature-flags';
+import { PageControls } from '@/components/layout/PageControls';
 import { Pagination } from '@/components/ui/Pagination';
 import { CLIENTS_LIST_PAGE_SIZE } from '@/lib/constants/sia-roles';
 import { canAccessRoute } from '@/lib/utils/route-access';
 import { CLIENTS_PATH } from '@/lib/constants/sia-roles';
 import type { MemberListFilters } from '@/lib/types/member';
 import type { MemberTier } from '@/lib/constants/member-facets';
+
+export const metadata = { title: 'Members' };
 
 // Who sees members: the whole queendom (any Sia member), admin and founder. The rows are
 // RLS-scoped (member_visible); this gate only decides reachability, like every list page.
@@ -67,10 +71,13 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
         <h1 className="type-page-title m-0">
           Members<span className="page-title-dot">.</span>
         </h1>
-        <AddMemberButton queendoms={queendoms} defaultQueendomId={profile.queendom_id ?? null} canPickQueendom={privileged} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+          <AddMemberButton queendoms={queendoms} defaultQueendomId={profile.queendom_id ?? null} canPickQueendom={privileged} />
+          {TOP_BAR_ENABLED && <PageControls isPrivileged={false} />}
+        </div>
       </div>
 
-      <div className="mb-4">
+      <div className="px-5 py-4 mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)">
         <MembersFilters queendoms={privileged ? queendoms : queendoms.filter((q) => q.id === profile.queendom_id)} />
       </div>
 

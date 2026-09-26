@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { DictationButton } from "@/components/ui/DictationButton";
 import { upsertNote } from "@/lib/actions/elaya-notes";
 import { useToast } from "@/hooks/useToast";
+import { MQ, useMediaQuery } from "@/hooks/useMediaQuery";
 import {
   ELAYA_NOTE_TITLE_MAX,
   ELAYA_NOTE_BODY_MAX,
@@ -42,6 +43,8 @@ export function NoteFormModal({ open, onClose, editing, onSaved }: NoteFormModal
   const [saving, setSaving] = useState(false);
   const [dictating, setDictating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // No autofocus on a phone: the keyboard would cover the opening sheet.
+  const touch = useMediaQuery(MQ.touch);
 
   // Reset on open / when the editing target changes.
   useEffect(() => {
@@ -85,6 +88,21 @@ export function NoteFormModal({ open, onClose, editing, onSaved }: NoteFormModal
       onClose={busy ? () => {} : onClose}
       title={editing ? "Edit Note" : "New Note"}
       maxWidth="max-w-xl"
+      error={error ? (
+        <p
+          style={{
+            fontSize:     "var(--text-sm)",
+            color:        "var(--color-danger-text)",
+            background:   "var(--color-danger-light)",
+            border:       "1px solid var(--color-danger)",
+            borderRadius: "var(--radius-md)",
+            padding:      "var(--space-3)",
+            margin:       0,
+          }}
+        >
+          {error}
+        </p>
+      ) : undefined}
       footer={
         <>
           <Button variant="ghost" type="button" onClick={onClose} disabled={busy}>
@@ -104,21 +122,6 @@ export function NoteFormModal({ open, onClose, editing, onSaved }: NoteFormModal
       }
     >
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)" }}>
-        {error && (
-          <p
-            style={{
-              fontSize:     "var(--text-sm)",
-              color:        "var(--color-danger-text)",
-              background:   "var(--color-danger-light)",
-              border:       "1px solid var(--color-danger)",
-              borderRadius: "var(--radius-md)",
-              padding:      "var(--space-3)",
-              margin:       0,
-            }}
-          >
-            {error}
-          </p>
-        )}
 
         {/* Title */}
         <div>
@@ -132,7 +135,7 @@ export function NoteFormModal({ open, onClose, editing, onSaved }: NoteFormModal
             placeholder="e.g. How I work my GMR leads"
             className="serene-input"
             style={inputBase}
-            autoFocus
+            autoFocus={!touch}
           />
         </div>
 

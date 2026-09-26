@@ -3,6 +3,8 @@ import { getCurrentProfile } from "@/lib/services/profiles-service";
 import { getMyNotes } from "@/lib/services/elaya-notes-service";
 import { NotesManager } from "@/components/notes/NotesManager";
 
+export const metadata = { title: "Notes" };
+
 // /notes — the per-user Notes section (Elaya Jarvis, Feature 3 / Block 4). All signed-in
 // staff: notes are personal, every user has their own (no role gate — only a session
 // gate). Data read goes through the service (Rule 03); owner-only RLS scopes it to the

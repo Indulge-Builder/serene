@@ -123,7 +123,6 @@ const MOBILE_TRIGGER_PATHS = new Set<string>([
   ...ANALYTICS_NAV.map((i) => i.href),
   "/admin/ad-creatives",
   "/admin/elaya-training",
-  "/settings/teach-elaya",
   "/settings",
   "/sia",
   "/freshdesk",
@@ -132,6 +131,7 @@ const MOBILE_TRIGGER_PATHS = new Set<string>([
   "/admin/usage",
   "/admin/suggestions",
   "/profile",
+  "/error-log",
 ]);
 
 // ─── NavLink ──────────────────────────────────────────────
@@ -295,6 +295,11 @@ export function Sidebar({ profile }: SidebarProps) {
   // Mobile drawer (< md). On md+ the CSS ignores data-open entirely —
   // the aside is a static rail/full sidebar (globals.css .serene-sidebar).
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // The md icon rail hides the footer label too — the same test the NavLinks
+  // run, so the feedback button's pill shows only where its label is hidden.
+  const footerTabletDown = useMediaQuery(MQ.tabletDown);
+  const footerMobile = useMediaQuery(MQ.mobile);
+  const footerIsRail = footerTabletDown && !footerMobile;
 
   // Navigating closes the drawer (nav links push a new pathname).
   useEffect(() => {
@@ -333,7 +338,7 @@ export function Sidebar({ profile }: SidebarProps) {
             onClick={() => setDrawerOpen(true)}
           >
             <img
-              src="/logo.webp"
+              src="/logo-bg-removed.webp"
               alt=""
               aria-hidden="true"
               style={{ width: "34px", height: "34px", objectFit: "contain" }}
@@ -402,7 +407,7 @@ export function Sidebar({ profile }: SidebarProps) {
           <img
             // Dark-ink logo variant — the light-on-dark logo washes out on the
             // cream rail (same asset the mobile trigger bubble uses).
-            src="/logo.webp"
+            src="/logo-bg-removed.webp"
             alt=""
             aria-hidden="true"
             className="serene-sidebar-logo-img"
@@ -499,10 +504,10 @@ export function Sidebar({ profile }: SidebarProps) {
             (all roles). A button, not a nav link: it opens a modal, no route.
             Closes the mobile drawer first so the composer isn't hidden behind it.
             Styled like a nav link; on the md icon rail only the icon shows. */}
+        <Tooltip label="Send feedback" side="right" wrap="block" disabled={!footerIsRail}>
         <button
           type="button"
           className="serene-nav-link serene-pressable"
-          title="Send feedback"
           onClick={() => {
             setDrawerOpen(false);
             openComposer();
@@ -535,6 +540,7 @@ export function Sidebar({ profile }: SidebarProps) {
             Send feedback
           </span>
         </button>
+        </Tooltip>
 
         <div
           aria-hidden="true"

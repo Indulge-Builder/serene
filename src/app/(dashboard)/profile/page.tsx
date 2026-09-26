@@ -23,8 +23,10 @@ import { ROLE_LABELS } from "@/lib/constants/roles";
 import { DEFAULT_APPEARANCE, isAppearanceKey } from "@/lib/constants/appearance";
 import { DOMAIN_LABELS } from "@/lib/constants/domains";
 import { formatDate } from "@/lib/utils/dates";
+import { TOP_BAR_ENABLED } from "@/lib/constants/feature-flags";
+import { PageControls } from "@/components/layout/PageControls";
 
-export const metadata = { title: "Profile — Serene" };
+export const metadata = { title: "Profile" };
 
 export default async function ProfilePage() {
   const profile = await getCurrentProfile();
@@ -48,12 +50,13 @@ export default async function ProfilePage() {
       style={{ paddingBottom: "var(--space-16)", maxWidth: "1280px" }}
     >
       {/* ── Page header ──────────────────────────────── */}
-      <div style={{ marginBottom: "var(--space-6)" }}>
+      <div className="flex items-center justify-between gap-4 mb-6">
         {/* m-0 as a class (not inline style) — the mobile-trigger title
             indent in globals.css must be able to override the margin. */}
         <h1 className="type-page-title m-0">
           Profile<span className="page-title-dot">.</span>
         </h1>
+        {TOP_BAR_ENABLED && <PageControls isPrivileged={false} />}
       </div>
 
       {/* ── Wide two-column layout — single column below lg ── */}

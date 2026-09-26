@@ -134,7 +134,7 @@ export function CaseListRow({ serviceCase: c, index = 0, onClick }: CaseListRowP
           <span
             style={{
               fontFamily:    'var(--font-sans)',
-              fontSize:      'var(--text-2xs)',
+              fontSize:      'var(--text-xs)',
               color:         'var(--theme-text-tertiary)',
               letterSpacing: 'var(--tracking-wide)',
               whiteSpace:    'nowrap',

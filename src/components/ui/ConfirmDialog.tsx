@@ -77,8 +77,6 @@ export function ConfirmDialog({
               position:   'fixed',
               inset:      0,
               background: 'var(--neu-scrim)',
-              backdropFilter: 'blur(3px)',
-              WebkitBackdropFilter: 'blur(3px)',
               zIndex:     'var(--z-overlay)' as React.CSSProperties['zIndex'],
             }}
           />

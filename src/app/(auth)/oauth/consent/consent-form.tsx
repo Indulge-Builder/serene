@@ -25,7 +25,7 @@ export function ConsentForm({ state }: { state: ConsentFormState }) {
       >
         <div className="flex flex-col items-center gap-3 mb-8">
           <div className="serene-auth-logo-medallion">
-            <Image src="/logo.webp" alt="Serene" width={48} height={48} priority style={{ borderRadius: "var(--radius-sm)" }} />
+            <Image src="/logo-bg-removed.webp" alt="Serene" width={48} height={48} priority style={{ borderRadius: "var(--radius-sm)" }} />
           </div>
           <h1
             style={{

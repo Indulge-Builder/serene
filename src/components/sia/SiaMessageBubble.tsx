@@ -14,6 +14,7 @@
 import { m as motion } from "framer-motion";
 import { Ban, Forward, Pencil } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { formatDate } from "@/lib/utils/dates";
 import { SPRING_CONFIG, FAST_DURATION, EASE_IN_OUT } from "@/lib/constants/motion";
 import { renderWaText } from "@/components/ui/WaText";
@@ -77,11 +78,11 @@ function QuoteStrip({
     (q ? (TYPE_PREVIEW[q.type]?.label ?? q.type) : "Not captured");
   const jumpable = !!m.quoted_wa_message_id && !!onJumpToQuoted;
   return (
+    <Tooltip label="Go to the original message" side="top" wrap="block" disabled={!jumpable}>
     <button
       type="button"
       disabled={!jumpable}
       onClick={() => jumpable && onJumpToQuoted!(m.quoted_wa_message_id!)}
-      title={jumpable ? "Go to the original message" : undefined}
       className="block w-full text-left rounded-(--radius-xs) px-2.5 py-1.5 mb-1.5 border-0"
       style={{ background: "var(--neu-well)", cursor: jumpable ? "pointer" : "default" }}
     >
@@ -94,7 +95,9 @@ function QuoteStrip({
       <div className="type-caption truncate" style={{ color: "var(--theme-text-tertiary)" }}>
         {preview}
       </div>
+      {jumpable && <span className="sr-only">Go to the original message</span>}
     </button>
+    </Tooltip>
   );
 }
 
@@ -218,8 +221,10 @@ export function SiaMessageBubble({
           className="relative"
           style={{
             maxWidth: "72%",
-            padding: "var(--space-2) var(--space-3)",
-            borderRadius: fromMe ? "16px 16px 5px 16px" : clusterStart ? "5px 16px 16px 16px" : "16px",
+            // One bubble spec across Sia, WhatsApp and Elaya (mobile audit
+            // 2026-09-26): 20/6 radius, space-3/space-4 padding.
+            padding: "var(--space-3) var(--space-4)",
+            borderRadius: fromMe ? "20px 20px 6px 20px" : clusterStart ? "6px 20px 20px 20px" : "20px",
             background: fromMe ? "var(--neu-chat-user-bg)" : "var(--neu-surface-high)",
             // No hairline — the chip shadow alone lifts the bubble off the
             // wallpaper (the --neu-edge border read harsh; design pass 2026-08-29).

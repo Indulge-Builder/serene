@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
 import { useState, useMemo, useRef, useEffect, useTransition, useCallback, memo } from 'react';
 import dynamic from 'next/dynamic';
@@ -23,6 +24,10 @@ import { TabSelector } from '@/components/ui/TabSelector';
 import { Tooltip } from '@/components/ui/Tooltip';
 import type { AppDomain, LeadFilters, UserRole } from '@/lib/types/database';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { Checkbox } from '@/components/ui/Checkbox';
+
+/** The name cell's link inherits the row's colour; the row click stays for the mouse. */
+const LINK_STYLE = { color: 'inherit', textDecoration: 'none' } as const;
 
 // Load-on-intent (perf audit G-1): the picker (@dnd-kit chain) stays out of the
 // /leads route chunk until the Columns button is first clicked.
@@ -325,11 +330,11 @@ export function LeadsTable({ leads, totalCount, userId, role, domain, filters, h
                   borderBottom: '1px solid var(--theme-paper-border)',
                 }}
               >
-                <CheckboxCell
+                <Checkbox
                   checked={allSelected}
                   indeterminate={someSelected}
                   onChange={toggleAll}
-                  label="Select all"
+                  aria-label="Select all"
                 />
               </th>
               {orderedVisible.map((colId) => (
@@ -532,55 +537,6 @@ const LeadMobileCard = memo(function LeadMobileCard({
 // ─────────────────────────────────────────────
 // Checkbox cell — indeterminate support via ref
 // ─────────────────────────────────────────────
-function CheckboxCell({
-  checked,
-  indeterminate,
-  onChange,
-  label,
-}: {
-  checked:       boolean;
-  indeterminate?: boolean;
-  onChange:      () => void;
-  label:         string;
-}) {
-  const active = checked || (indeterminate ?? false);
-  return (
-    <div
-      role="checkbox"
-      aria-checked={indeterminate ? 'mixed' : checked}
-      aria-label={label}
-      tabIndex={0}
-      onClick={(e) => { e.stopPropagation(); onChange(); }}
-      onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); onChange(); } }}
-      style={{
-        width:        '1rem',
-        height:       '1rem',
-        borderRadius: 'var(--radius-xs)',
-        border:       `1.5px solid ${active ? 'var(--theme-accent)' : 'var(--theme-paper-border)'}`,
-        background:   active ? 'var(--theme-accent)' : 'transparent',
-        cursor:       'pointer',
-        display:      'flex',
-        alignItems:   'center',
-        justifyContent: 'center',
-        flexShrink:   0,
-        transition:   'background var(--duration-fast) var(--ease-in-out), border-color var(--duration-fast) var(--ease-in-out)',
-      }}
-    >
-      {indeterminate && !checked && (
-        <svg width="8" height="2" viewBox="0 0 8 2" fill="none">
-          <rect x="0" y="0" width="8" height="2" rx="1" fill="var(--theme-accent-fg)" />
-        </svg>
-      )}
-      {checked && (
-        <svg width="8" height="6" viewBox="0 0 8 6" fill="none">
-          <path className="serene-check-draw" d="M1 3L3 5L7 1" stroke="var(--theme-accent-fg)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      )}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────
 // Single table row — renders only visible cells in the stored order.
 // memo (G-4): props are a stable lead object, the memoised visibleColumns
 // array, a primitive selected flag, and the useCallback'd toggle — so a
@@ -636,10 +592,10 @@ const LeadRow = memo(function LeadRow({
         style={{ padding: 'var(--space-3) var(--space-3) var(--space-3) var(--space-4)', width: '2.5rem' }}
         onClick={(e) => e.stopPropagation()}
       >
-        <CheckboxCell
+        <Checkbox
           checked={selected}
           onChange={() => onToggleSelect(lead.id)}
-          label={`Select ${fullName}`}
+          aria-label={`Select ${fullName}`}
         />
       </td>
       {visibleColumns.map((colId) => (
@@ -648,6 +604,7 @@ const LeadRow = memo(function LeadRow({
           colId={colId}
           lead={lead}
           fullName={fullName}
+          href={href}
           badgeVariant={badgeVariant}
           statusHighlighted={hovered}
         />
@@ -663,12 +620,15 @@ function LeadCell({
   colId,
   lead,
   fullName,
+  href,
   badgeVariant,
   statusHighlighted,
 }: {
   colId:              LeadColumnId;
   lead:               LeadListItemWithAssignee;
   fullName:           string;
+  /** The dossier link; the name cell carries it so a keyboard can open the row. */
+  href:               string;
   badgeVariant:       string;
   statusHighlighted?: boolean;
 }) {
@@ -692,7 +652,11 @@ function LeadCell({
     case 'name':
       return (
         <td style={{ ...baseCell, fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', color: 'var(--theme-text-primary)' }}>
-          {fullName}
+          {/* A real link (2026-09-25): Tab reaches it, Enter opens the lead; the
+              row click stays for the mouse. stopPropagation keeps one navigation. */}
+          <Link href={href} onClick={(e) => e.stopPropagation()} style={LINK_STYLE}>
+            {fullName}
+          </Link>
         </td>
       );
 

@@ -1,6 +1,9 @@
 'use client';
 
-import { usePopoverKeyboard } from '@/hooks/usePopoverKeyboard';
+import { FormSelect } from '@/components/ui/FormSelect';
+import { usePortalAnchor } from '@/hooks/usePortalAnchor';
+import { useMediaQuery, MQ } from '@/hooks/useMediaQuery';
+import { FloatingPanel } from '@/components/ui/FloatingPanel';
 import { SelectionButton } from '@/components/ui/SelectionButton';
 import {
   useCallback,
@@ -29,7 +32,7 @@ import { CreateGroupTaskSchema } from '@/lib/validations/task-schemas';
 import * as LucideIcons from 'lucide-react';
 import { GROUP_TASK_ACCENT_COLORS, GROUP_TASK_ICONS } from '@/lib/constants/task-constants';
 import { DOMAIN_LABELS, GIA_DOMAINS } from '@/lib/constants/domains';
-import { EASE_OUT_EXPO, FAST_DURATION } from '@/lib/constants/motion';
+import { EASE_OUT_EXPO } from '@/lib/constants/motion';
 import type { TaskGroup, TaskPriority, AppDomain, UserRole } from '@/lib/types/database';
 import type { AssignableUser } from '@/lib/types';
 
@@ -105,12 +108,15 @@ function AssigneeInlinePicker({
   disabled?: boolean;
   warn?:     boolean;
 }) {
-  const [open, setOpen] = useState(false);
+  // Portaled through usePortalAnchor + FloatingPanel (the one anchored-panel
+  // mechanism): a position: absolute panel inside the scrolling sheet body
+  // was clipped on a phone (mobile audit 2026-09-26). The hook owns the
+  // outside-close, Escape and arrow-key plumbing usePopoverKeyboard used to.
+  const anchor = usePortalAnchor({ estimatedWidth: 240, estimatedHeight: 220 });
+  const { open, setOpen } = anchor;
   const [query, setQuery] = useState('');
   const dropId = useId();
-  const assigneeTriggerRef = useRef<HTMLButtonElement>(null);
-  const assigneePanelRef = useRef<HTMLDivElement>(null);
-  usePopoverKeyboard(open, assigneePanelRef, assigneeTriggerRef, () => setOpen(false));
+  const isTouch = useMediaQuery(MQ.touch);
   const filtered = users.filter((u) =>
     !query.trim() || u.full_name.toLowerCase().includes(query.toLowerCase()),
   );
@@ -118,7 +124,7 @@ function AssigneeInlinePicker({
   return (
     <div style={{ position: 'relative' }}>
       <Button
-        ref={assigneeTriggerRef}
+        ref={anchor.triggerRef}
         aria-controls={open ? dropId : undefined}
         variant="control" size="sm" active={!!value}
         aria-label={warn ? "Choose an assignee (required)" : "Choose an assignee"}
@@ -160,38 +166,26 @@ function AssigneeInlinePicker({
       </Button>
       {value && <Button type="button" variant="ghost" size="sm" iconOnly disabled={disabled} aria-label="Clear assignee" onClick={() => onChange(null)}><X style={{ width: 10, height: 10 }} /></Button>}
 
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            ref={assigneePanelRef}
-            role="group"
-            aria-label="Choose an assignee"
-            initial={{ opacity: 0, y: -4, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -4, scale: 0.97 }}
-            transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO }}
-            style={{
-              position:     'absolute',
-              top:          'calc(100% + 4px)',
-              left:         0,
-              zIndex:       'var(--z-dropdown)' as unknown as number,
-              minWidth:     200,
-              maxWidth:     240,
-              maxHeight:    220,
-              overflowY:    'auto',
-              background:   'var(--theme-paper)',
-              border:       '1px solid var(--theme-paper-border)',
-              borderRadius: 'var(--radius-md)',
-              boxShadow:    'var(--shadow-3)',
-              display:      'flex',
-              flexDirection: 'column',
-            }}
-            onMouseDown={(e) => e.preventDefault()}
-          >
+      <FloatingPanel
+        {...anchor.panelProps}
+        panelKey={`assignee-${dropId}`}
+        style={{
+          // Above the modal panel (the default --z-dropdown sits under --z-modal).
+          zIndex:        'var(--z-modal-nested)' as React.CSSProperties['zIndex'],
+          minWidth:      200,
+          maxWidth:      240,
+          maxHeight:     220,
+          overflowY:     'auto',
+          padding:       0,
+          display:       'flex',
+          flexDirection: 'column',
+        }}
+      >
+        <div role="group" aria-label="Choose an assignee">
             {/* Search */}
             <div style={{ padding: 'var(--space-2)', borderBottom: '1px solid var(--theme-paper-border)', flexShrink: 0 }}>
               <input
-                autoFocus
+                autoFocus={!isTouch}
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -263,17 +257,8 @@ function AssigneeInlinePicker({
               })
             )}
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Click-outside close */}
-      {open && (
-        <div
-          style={{ position: 'fixed', inset: 0, zIndex: 'calc(var(--z-dropdown) - 1)' as unknown as number }}
-          onClick={() => setOpen(false)}
-        />
-      )}
+        </div>
+      </FloatingPanel>
     </div>
   );
 }
@@ -303,20 +288,25 @@ function SubtaskRow({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const focusHandlers = useInputFocus();
+  const isTouch = useMediaQuery(MQ.touch);
 
   useEffect(() => {
-    if (autoFocus) setTimeout(() => inputRef.current?.focus(), 30);
-  }, [autoFocus]);
+    // A new row focuses its title on a fine pointer only — on a phone the
+    // keyboard must not throw itself over the sheet (mobile audit 2026-09-26).
+    if (autoFocus && !isTouch) setTimeout(() => inputRef.current?.focus(), 30);
+  }, [autoFocus, isTouch]);
 
   return (
     <motion.div
       initial={{ opacity: 0, y: -6 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -4, height: 0 }}
+      exit={{ opacity: 0, y: -4 }}
       transition={{ duration: 0.18, ease: EASE_OUT_EXPO }}
+      // <sm: the title on its own line, the four controls wrap on a second
+      // (the fixed columns exceed a 328px sheet and left the title at 0px);
+      // sm+: the one-line grid.
+      className="grid grid-cols-1 sm:grid-cols-[1fr_auto_auto_auto_auto]"
       style={{
-        display:       'grid',
-        gridTemplateColumns: '1fr auto auto auto auto',
         gap:           'var(--space-2)',
         alignItems:    'center',
         padding:       'var(--space-2) var(--space-3)',
@@ -347,6 +337,9 @@ function SubtaskRow({
         {...focusHandlers}
       />
 
+      {/* Controls — one wrapping line below sm; `contents` from sm so each
+          control lands in its own grid column. */}
+      <div className="flex flex-wrap items-center gap-2 sm:contents">
       {/* Priority inline */}
       <PriorityChipRow
         variant="dot"
@@ -387,6 +380,7 @@ function SubtaskRow({
       >
         <Trash2 style={{ width: 12, height: 12, strokeWidth: 1.5 }} />
       </Button>
+      </div>
     </motion.div>
   );
 }
@@ -421,6 +415,8 @@ export function CreateGroupTaskModal({
   const [assignableUsers, setAssignableUsers] = useState<AssignableUser[]>([]);
 
   const titleRef = useRef<HTMLInputElement>(null);
+  // Coarse pointer: no autofocus on open (the keyboard would cover the sheet).
+  const isTouch = useMediaQuery(MQ.touch);
   const descRef  = useRef<HTMLTextAreaElement>(null);
   const focusHandlers = useInputFocus();
 
@@ -457,7 +453,7 @@ export function CreateGroupTaskModal({
     setDrafts([]);
     setLastAddedId(null);
     setPhase('idle');
-    setTimeout(() => titleRef.current?.focus(), 50);
+    if (!isTouch) setTimeout(() => titleRef.current?.focus(), 50);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -684,43 +680,19 @@ export function CreateGroupTaskModal({
             <div>
               <FieldLabel required>Domain</FieldLabel>
               <div style={{ position: 'relative' }}>
-                <select
+                <FormSelect aria-label="Domain" aria-invalid={!!domainError}
                   value={domain}
-                  onChange={(e) => { setDomain(e.target.value as AppDomain | ''); if (domainError && e.target.value) setDomainError(''); setDrafts([]); }}
+                  onValueChange={(nextValue) => { setDomain(nextValue as AppDomain | ''); if (domainError && nextValue) setDomainError(''); setDrafts([]); }}
                   disabled={isPending}
-                  style={{
-                    ...INPUT_BASE,
-                    appearance:       'none',
-                    WebkitAppearance: 'none',
-                    paddingRight:     'var(--space-8)',
-                    color:            domain ? 'var(--theme-text-primary)' : 'var(--theme-text-tertiary)',
-                    borderColor:      domainError ? 'var(--color-danger)' : undefined,
-                    boxShadow:        domainError ? '0 0 0 3px var(--color-danger-light)' : undefined,
-                    cursor:           isPending ? 'not-allowed' : 'pointer',
-                  }}
-                  {...focusHandlers}
+                  style={{ width:        '100%', height:       36 }}
+
                 >
                   <option value="" disabled>Select domain</option>
                   {GIA_DOMAINS.map((d) => (
                     <option key={d} value={d}>{DOMAIN_LABELS[d]}</option>
                   ))}
-                </select>
-                <svg
-                  viewBox="0 0 12 12"
-                  style={{
-                    position: 'absolute',
-                    right: 'var(--space-3)',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    width: 12,
-                    height: 12,
-                    pointerEvents: 'none',
-                    color: 'var(--theme-text-tertiary)',
-                  }}
-                  stroke="currentColor" fill="none" strokeWidth="1.5"
-                >
-                  <path d="M2 4l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+                </FormSelect>
+
               </div>
               <FieldError message={domainError || undefined} />
             </div>
@@ -760,6 +732,7 @@ export function CreateGroupTaskModal({
                   aria-label={c.label}
                   onClick={() => setAccentColor(c.hex)}
                   aria-pressed={accentColor === c.hex}
+                  className="serene-touch-hit"
                   style={{
                     width:        22,
                     height:       22,
@@ -809,6 +782,7 @@ export function CreateGroupTaskModal({
                     title={ic.label}
                     aria-label={ic.label}
                     onClick={() => setIconKey(ic.id)}
+                    className="serene-touch-hit"
                     style={{
                             display: 'flex',
                             alignItems: 'center',
@@ -851,8 +825,9 @@ export function CreateGroupTaskModal({
           {/* Column headers — only show when there are drafts */}
           {drafts.length > 0 && (
             <div
+              // The row stacks below sm, so its column headers only make sense from sm.
+              className="hidden sm:grid"
               style={{
-                display:             'grid',
                 gridTemplateColumns: '1fr auto auto auto auto',
                 gap:                 'var(--space-2)',
                 padding:             '0 var(--space-3)',

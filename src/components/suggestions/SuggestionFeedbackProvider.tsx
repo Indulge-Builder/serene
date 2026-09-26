@@ -37,6 +37,11 @@ export function useSuggestionFeedback(): SuggestionFeedbackContextValue {
   return ctx;
 }
 
+/** The same, for a surface that may also mount outside the provider (null there). */
+export function useOptionalSuggestionFeedback(): SuggestionFeedbackContextValue | null {
+  return useContext(SuggestionFeedbackContext);
+}
+
 export function SuggestionFeedbackProvider({
   userId,
   children,

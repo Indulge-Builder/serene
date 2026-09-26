@@ -279,7 +279,7 @@ export function LeadWhatsAppCard({
                     <span
                       style={{
                         fontFamily:    "var(--font-sans)",
-                        fontSize:      "var(--text-2xs)",
+                        fontSize:      "var(--text-xs)",
                         fontWeight:    "var(--weight-semibold)",
                         letterSpacing: "0.08em",
                         textTransform: "uppercase",
@@ -353,7 +353,7 @@ function StatusPill({ status }: { status: "open" | "resolved" }) {
         alignItems:    "center",
         padding:       "2px var(--space-2)",
         borderRadius:  "var(--radius-full)",
-        fontSize:      "var(--text-2xs)",
+        fontSize:      "var(--text-xs)",
         fontFamily:    "var(--font-sans)",
         fontWeight:    "var(--weight-semibold)",
         letterSpacing: "0.04em",
@@ -396,7 +396,7 @@ function CardHeader({ conversation }: { conversation: WhatsAppConversation | nul
         <span
           style={{
             fontFamily:    "var(--font-sans)",
-            fontSize:      "var(--text-2xs)",
+            fontSize:      "var(--text-xs)",
             fontWeight:    "var(--weight-semibold)",
             letterSpacing: "0.08em",
             textTransform: "uppercase",

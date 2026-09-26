@@ -19,6 +19,8 @@ import { TICKETS_PATH } from '@/lib/constants/tickets';
 import { CLIENTS_PATH } from '@/lib/constants/sia-roles';
 import { formatDate, formatRelativeTime } from '@/lib/utils/dates';
 
+export const metadata = { title: 'Ticket' };
+
 type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ from?: string }> };
 
 export default async function TicketPage({ params, searchParams }: Props) {

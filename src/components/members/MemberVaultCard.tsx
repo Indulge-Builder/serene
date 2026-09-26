@@ -5,8 +5,13 @@
 // person says why, for VAULT_REVEAL_SECONDS, and that reveal is on record. Adding encrypts in
 // the app before anything is stored. Removing is admin and founder, behind a ConfirmDialog.
 
+import { FormSelect } from '@/components/ui/FormSelect';
+import { Input, Textarea } from '@/components/ui/Field';
+import { DatePicker } from '@/components/ui/DatePicker';
+import { parseIsoMonth, toIsoMonth } from '@/lib/utils/dates';
 import { useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import { MQ, useMediaQuery } from '@/hooks/useMediaQuery';
 import { KeyRound, Copy } from 'lucide-react';
 import { CardHeader } from '@/components/leads/CardHeader';
 import { Button } from '@/components/ui/Button';
@@ -19,11 +24,13 @@ import type { MemberVaultItem, MemberVaultKind } from '@/lib/types/member';
 
 const SHELL: React.CSSProperties = { background: 'var(--theme-paper)', border: '1px solid var(--theme-paper-border)', borderRadius: 'var(--neu-radius-card)', boxShadow: 'var(--shadow-1)', overflow: 'hidden' };
 const BODY: React.CSSProperties = { padding: 'var(--space-4) var(--space-6) var(--space-5)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' };
-const FIELD: React.CSSProperties = { width: '100%', padding: 'var(--space-2) var(--space-3)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--theme-paper-border)', background: 'var(--theme-paper)', color: 'var(--theme-text-primary)', fontSize: 'var(--text-sm)', fontFamily: 'inherit', boxSizing: 'border-box' };
+
 
 function Row({ item, memberId, canDelete }: { item: MemberVaultItem; memberId: string; canDelete: boolean }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  // No autofocus on a phone: the keyboard would cover the opening sheet.
+  const touch = useMediaQuery(MQ.touch);
   const [asking, setAsking] = useState<'reveal' | 'delete' | null>(null);
   const [reason, setReason] = useState('');
   const [secret, setSecret] = useState<string | null>(null);
@@ -64,8 +71,8 @@ function Row({ item, memberId, canDelete }: { item: MemberVaultItem; memberId: s
         )}
       </div>
       {asking === 'reveal' && (
-        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
-          <input style={FIELD} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why do you need it? (kept on record)" maxLength={300} autoFocus />
+        <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap' }}>
+          <Input style={{ width: '100%', flex: '1 1 12rem' }} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why do you need it? (kept on record)" maxLength={300} autoFocus={!touch} />
           <Button size="xs" loading={pending} disabled={reason.trim().length < 3} onClick={reveal}>Open</Button>
           <Button size="xs" variant="ghost" disabled={pending} onClick={() => { setAsking(null); setReason(''); }}>Cancel</Button>
         </div>
@@ -83,7 +90,7 @@ function Row({ item, memberId, canDelete }: { item: MemberVaultItem; memberId: s
       <ConfirmDialog
         open={asking === 'delete'}
         title={`Remove ${item.label}?`}
-        body={<div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}><span>The details are deleted from Serene for good. That this was removed, by whom and why, stays on record.</span><input style={FIELD} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why? (required, kept on record)" maxLength={300} /></div>}
+        body={<div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}><span>The details are deleted from Serene for good. That this was removed, by whom and why, stays on record.</span><Input style={{ width: '100%' }} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why? (required, kept on record)" maxLength={300} /></div>}
         confirmLabel="Remove"
         danger
         pending={pending}
@@ -118,14 +125,14 @@ export function MemberVaultCard({ memberId, items, canDelete }: { memberId: stri
           : <ul style={{ margin: 0, padding: 0 }}>{items.map((it) => <Row key={it.id} item={it} memberId={memberId} canDelete={canDelete} />)}</ul>}
         {adding ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
-            <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-              <select style={{ ...FIELD, width: 'auto' }} value={form.kind} onChange={(e) => setForm({ ...form, kind: e.target.value as MemberVaultKind })}>
+            <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
+              <FormSelect aria-label="Secret type" style={{ width: 'auto' }} value={form.kind} onValueChange={(nextValue) => setForm({ ...form, kind: nextValue as MemberVaultKind })}>
                 {MEMBER_VAULT_KINDS.options.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-              </select>
-              <input style={FIELD} value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} placeholder="Label, e.g. HDFC Visa (never the number)" maxLength={120} />
+              </FormSelect>
+              <Input style={{ width: '100%', flex: '1 1 12rem' }} value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} placeholder="Label, e.g. HDFC Visa (never the number)" maxLength={120} />
             </div>
-            <textarea style={{ ...FIELD, resize: 'vertical', fontFamily: 'var(--font-mono)' }} rows={3} value={form.secret} onChange={(e) => setForm({ ...form, secret: e.target.value })} placeholder="The details, as you would write them on a note. Encrypted before saving." maxLength={4000} />
-            {form.kind === 'card' && <input style={{ ...FIELD, width: 'auto' }} type="month" value={form.expires} onChange={(e) => setForm({ ...form, expires: e.target.value })} aria-label="Expiry month" />}
+            <Textarea style={{ width: '100%', resize: 'vertical' }} rows={3} value={form.secret} onChange={(e) => setForm({ ...form, secret: e.target.value })} placeholder="The details, as you would write them on a note. Encrypted before saving." maxLength={4000} />
+            {form.kind === 'card' && <DatePicker mode="month" aria-label="Expiry month" placeholder="Expiry month" value={parseIsoMonth(form.expires)} onChange={(d) => setForm({ ...form, expires: toIsoMonth(d) })} />}
             {error && <span style={{ fontSize: 'var(--text-xs)', color: 'var(--color-danger-text)' }}>{error}</span>}
             <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
               <Button size="xs" loading={pending} disabled={form.label.trim().length < 2 || form.secret.trim().length < 2} onClick={save}>Store</Button>

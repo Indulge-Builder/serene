@@ -139,7 +139,7 @@ export function DashboardRoom({
 
   return (
     <>
-      <HomeAppBar onOpenDrawer={() => setDrawerOpen(true)} unread={false} />
+      <HomeAppBar onOpenDrawer={() => setDrawerOpen(true)} />
 
       <GreetingBlock
         dateLabel={greeting.dateLabel}

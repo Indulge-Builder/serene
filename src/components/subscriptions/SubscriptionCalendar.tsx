@@ -1,8 +1,13 @@
 "use client";
 
-// Calendar view — a month grid with a dot on each day that has a subscription due,
-// a weekly summary, and a grouped list of what's due (click → history). Anchored to
-// the current IST month; top-up subscriptions (no due date) never appear here.
+// Calendar view — the month at a glance (2026-09-25 layout). Left: the month grid
+// with a dot on each due day, and this week's count in the card's footer. Right:
+// the month's status breakdown (ui/StatStrip, the Freshdesk and Books anatomy:
+// a cell per status with its count and what it adds up to) above ONE card of due
+// dates (ui/SectionCard), an agenda: a date tile, the bill, its amount, its real
+// per-cycle status; click a row for its history. Anchored to the current IST
+// month; top-up subscriptions (no due date) never appear here. Amounts are never
+// converted: every total is kept per currency.
 
 import { SelectionButton } from '@/components/ui/SelectionButton';
 import { Button } from '@/components/ui/Button';
@@ -10,14 +15,24 @@ import { useCallback, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { Calendar, type TaskDotMeta } from "@/components/ui/Calendar";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { SectionCard } from "@/components/ui/SectionCard";
+import { StatStrip } from "@/components/ui/StatStrip";
+import { StatTile } from "@/components/ui/StatTile";
 import { formatDate } from "@/lib/utils/dates";
-import { formatCurrency } from "@/lib/utils/numbers";
+import { formatCount, formatCurrency } from "@/lib/utils/numbers";
 import {
   istTodayISO,
   occurrenceInMonthISO,
   statusForOccurrenceISO,
 } from "@/lib/utils/subscription-status";
-import type { SubscriptionStatus } from "@/lib/constants/subscription-constants";
+import {
+  SUBSCRIPTION_CURRENCIES,
+  SUBSCRIPTION_STATUSES,
+  SUBSCRIPTION_STATUS_CONFIG,
+  SUBSCRIPTION_TYPE_LABELS,
+  type SubscriptionStatus,
+} from "@/lib/constants/subscription-constants";
+import { DOMAIN_LABELS } from "@/lib/constants/domains";
 import type { SubscriptionListItem } from "@/lib/types/subscription";
 import { SubscriptionStatusPill, CurrencyAmount } from "./SubscriptionBits";
 
@@ -42,6 +57,24 @@ function addDaysISO(iso: string, days: number): string {
   const t = new Date(Date.UTC(y, m - 1, d + days));
   return `${t.getUTCFullYear()}-${pad2(t.getUTCMonth() + 1)}-${pad2(t.getUTCDate())}`;
 }
+
+/** Per-currency totals, never converted: "₹47,199 · $506". Null when nothing has an amount. */
+function moneyText(items: SubOccurrence[]): string | null {
+  const totals = new Map<string, number>();
+  for (const { sub } of items) {
+    if (sub.amount == null) continue;
+    totals.set(sub.currency, (totals.get(sub.currency) ?? 0) + sub.amount);
+  }
+  const parts = SUBSCRIPTION_CURRENCIES.filter((c) => totals.has(c)).map((c) =>
+    formatCurrency(totals.get(c), c),
+  );
+  return parts.length ? parts.join(" · ") : null;
+}
+
+/** Most urgent first: overdue, due today, upcoming, paid. */
+const STATUS_ORDER = [...SUBSCRIPTION_STATUSES].sort(
+  (a, b) => SUBSCRIPTION_STATUS_CONFIG[a].order - SUBSCRIPTION_STATUS_CONFIG[b].order,
+);
 
 export function SubscriptionCalendar({
   subscriptions,
@@ -117,8 +150,8 @@ export function SubscriptionCalendar({
     return dots;
   }, [viewOccurrences]);
 
-  // Weekly summary (Mon–Sun, IST). INR total sums only INR-denominated subs
-  // (amounts are never auto-converted, so a mixed-currency ₹ total would be wrong).
+  // Weekly summary (Mon–Sun, IST), always anchored to today. Totals per currency
+  // (amounts are never auto-converted, so one mixed total would be wrong).
   const week = useMemo(() => {
     const [ty, tm, td] = todayISO.split("-").map(Number);
     const dow = new Date(Date.UTC(ty, tm - 1, td)).getUTCDay(); // 0=Sun … 6=Sat
@@ -126,11 +159,19 @@ export function SubscriptionCalendar({
     const start = addDaysISO(todayISO, mondayOffset);
     const end = addDaysISO(start, 6);
     const inWeek = currentMonthOccurrences.filter((o) => o.occ >= start && o.occ <= end);
-    const inrTotal = inWeek
-      .filter((o) => o.sub.currency === "INR" && o.sub.amount != null)
-      .reduce((sum, o) => sum + (o.sub.amount ?? 0), 0);
-    return { count: inWeek.length, inrTotal };
+    return { count: inWeek.length, money: moneyText(inWeek) };
   }, [currentMonthOccurrences, todayISO]);
+
+  // The viewed month's breakdown: how many bills in each status, and what they add up to.
+  const monthStats = useMemo(
+    () =>
+      STATUS_ORDER.map((status) => {
+        const items = viewOccurrences.filter((o) => o.status === status);
+        return { status, count: items.length, money: moneyText(items) };
+      }),
+    [viewOccurrences],
+  );
+  const monthMoney = useMemo(() => moneyText(viewOccurrences), [viewOccurrences]);
 
   // Local Date for the selected day so the Calendar can highlight the cell.
   // Must be a LOCAL date (not Date.UTC) — Calendar's isSameDay compares local
@@ -155,16 +196,30 @@ export function SubscriptionCalendar({
     return [...map.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
   }, [viewOccurrences, selectedDay]);
 
+  // The agenda: one row per bill, the date tile only on a date's first row.
+  const rows = useMemo(
+    () => groups.flatMap(([date, items]) => items.map((o, i) => ({ ...o, date, first: i === 0 }))),
+    [groups],
+  );
+
   function openHistory(sub: SubscriptionListItem) {
     setHistoryFor(sub);
     setHistoryOpen(true);
   }
 
+  const monthLabel = formatDate(`${viewMonth.year}-${pad2(viewMonth.month + 1)}-01`, "MMMM yyyy");
+  const listTitle = selectedDay
+    ? formatDate(selectedDay, "EEEE, dd MMMM")
+    : isCurrentMonthView
+      ? "Due this month"
+      : `Due in ${monthLabel}`;
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
-      {/* Calendar */}
-      <div className="lg:sticky lg:top-0 self-start">
-        <div style={cardStyle}>
+    <div className="grid grid-cols-1 lg:grid-cols-[340px_minmax(0,1fr)] gap-6 items-start">
+      {/* The month: the grid, and this week in the card's footer. */}
+      <div className="lg:sticky lg:top-0" style={cardStyle}>
+        {/* Centred, so a stacked full-width card (tablets) keeps the grid in the middle. */}
+        <div style={{ padding: "var(--space-5)", maxWidth: "340px", margin: "0 auto" }}>
           <Calendar
             value={selectedDate}
             taskDots={taskDots}
@@ -178,92 +233,176 @@ export function SubscriptionCalendar({
             }}
           />
         </div>
-        <div style={{ ...cardStyle, marginTop: "var(--space-4)" }}>
+        <div
+          style={{
+            borderTop: "1px solid var(--theme-paper-border)",
+            background: "var(--neu-section-bg)",
+            padding: "var(--space-4) var(--space-5)",
+          }}
+        >
           <p className="label-micro" style={{ margin: "0 0 var(--space-1)" }}>
-            This Week
+            This week
           </p>
-          <p style={{ margin: 0, fontSize: "var(--text-lg)", color: "var(--theme-text-primary)" }}>
+          <p style={{ margin: 0, fontSize: "var(--text-base)", color: "var(--theme-text-primary)" }}>
             {week.count} {week.count === 1 ? "payment" : "payments"} due
+            {week.money && (
+              <span style={{ color: "var(--theme-text-secondary)" }}> · {week.money}</span>
+            )}
           </p>
-          {week.inrTotal > 0 && (
-            <p style={{ margin: "var(--space-1) 0 0", fontSize: "var(--text-sm)", color: "var(--theme-text-secondary)" }}>
-              {formatCurrency(week.inrTotal, "INR")} total{" "}
-              <span style={{ color: "var(--theme-text-tertiary)" }}>(INR subscriptions)</span>
-            </p>
-          )}
         </div>
       </div>
 
-      {/* Due list */}
-      <div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "var(--space-3)" }}>
-          <h2 style={{ margin: 0, fontFamily: "var(--font-serif)", fontSize: "var(--text-lg)", fontWeight: "var(--weight-normal)", color: "var(--theme-text-primary)" }}>
-            {selectedDay
-              ? formatDate(selectedDay, "dd MMMM yyyy")
-              : isCurrentMonthView
-                ? "Due this month"
-                : `Due in ${formatDate(
-                    `${viewMonth.year}-${String(viewMonth.month + 1).padStart(2, "0")}-01`,
-                    "MMMM yyyy",
-                  )}`}
-          </h2>
-          {selectedDay && (
-            <Button
-              variant="control"
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)", minWidth: 0 }}>
+        {/* The month in four numbers, most urgent first. */}
+        <StatStrip
+          title={monthLabel}
+          aside={`${formatCount(viewOccurrences.length)} ${viewOccurrences.length === 1 ? "bill" : "bills"}${monthMoney ? ` · ${monthMoney}` : ""}`}
+          divided
+        >
+          {monthStats.map(({ status, count, money }) => (
+            <StatTile
+              key={status}
+              variant="cell"
               size="sm"
-              type="button"
-              onClick={() => setSelectedDay(null)}
-            >
-              Show whole month
-            </Button>
-          )}
-        </div>
+              dot={SUBSCRIPTION_STATUS_CONFIG[status].dot}
+              label={SUBSCRIPTION_STATUS_CONFIG[status].label}
+              value={formatCount(count)}
+              sub={
+                money
+                  ? {
+                      text: money,
+                      color: status === "overdue" ? "var(--color-danger-text)" : "var(--theme-text-tertiary)",
+                    }
+                  : undefined
+              }
+            />
+          ))}
+        </StatStrip>
 
-        {groups.length === 0 ? (
-          <EmptyState
-            variant="inline"
-            title={selectedDay ? "Nothing due on this day." : "Nothing due this month."}
-          />
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
-            {groups.map(([date, items]) => (
-              <div key={date}>
-                <p className="label-micro" style={{ margin: "0 0 var(--space-2)" }}>
-                  {formatDate(date, "EEE, dd MMM")}
-                </p>
-                <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
-                  {items.map(({ sub: s, status, daysOverdue }) => (
-                    <SelectionButton appearance="option"
-      key={s.id}
-      type="button"
-      onClick={() => openHistory(s)}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: "var(--space-3)",
-        width: "100%",
-        padding: "var(--space-3) var(--space-4)",
-      }}
-    >
-                      <span style={{ display: "flex", flexDirection: "column", gap: 2, textAlign: "left" }}>
-                        <span style={{ fontWeight: "var(--weight-medium)", color: "var(--theme-text-primary)" }}>
+        <SectionCard
+          title={listTitle}
+          bodyPadding={false}
+          headerRight={
+            selectedDay ? (
+              <Button variant="control" size="sm" type="button" onClick={() => setSelectedDay(null)}>
+                Show whole month
+              </Button>
+            ) : undefined
+          }
+        >
+          {rows.length === 0 ? (
+            <EmptyState
+              variant="inline"
+              title={selectedDay ? "Nothing due on this day." : `Nothing due in ${monthLabel}.`}
+              description="Monthly and yearly bills land here on their due dates; top-ups never do."
+            />
+          ) : (
+            <ul style={{ listStyle: "none", margin: 0, padding: "var(--space-2)" }}>
+              {rows.map(({ sub: s, status, daysOverdue, date, first }, i) => {
+                const isToday = date === todayISO;
+                const detail = [
+                  SUBSCRIPTION_TYPE_LABELS[s.type],
+                  s.departments.map((d) => DOMAIN_LABELS[d] ?? d).join(", "),
+                ]
+                  .filter(Boolean)
+                  .join(" · ");
+                return (
+                  <li
+                    key={`${s.id}-${date}`}
+                    // A hairline between dates; bills on the same date sit together.
+                    style={{ borderTop: first && i > 0 ? "1px solid var(--theme-paper-border)" : undefined }}
+                  >
+                    <SelectionButton
+                      appearance="option"
+                      type="button"
+                      onClick={() => openHistory(s)}
+                      // From sm the amount and status columns have fixed widths, so every amount
+                      // lines up down the list whatever the pill beside it says.
+                      className="grid grid-cols-[3rem_minmax(0,1fr)_auto] sm:grid-cols-[3rem_minmax(0,1fr)_7rem_8.5rem] items-center gap-x-4"
+                      style={{ width: "100%", padding: "var(--space-3)", textAlign: "left" }}
+                    >
+                      {/* The date tile: the day, and the weekday (or Today) beneath it. */}
+                      {first ? (
+                        <span style={{ display: "flex", flexDirection: "column", alignItems: "center", lineHeight: 1 }}>
+                          <span
+                            style={{
+                              fontFamily: "var(--font-mono)",
+                              fontVariantNumeric: "tabular-nums",
+                              fontSize: "var(--text-lg)",
+                              color: isToday ? "var(--neu-accent-deep)" : "var(--theme-text-primary)",
+                            }}
+                          >
+                            {formatDate(date, "dd")}
+                          </span>
+                          <span
+                            className="label-micro"
+                            style={{ marginTop: "var(--space-1)", color: isToday ? "var(--neu-accent-deep)" : undefined }}
+                          >
+                            {isToday ? "Today" : formatDate(date, "EEE")}
+                          </span>
+                        </span>
+                      ) : (
+                        // Keeps the tile column (an sr-only child alone is absolutely
+                        // positioned and would let the name fall into it); the date is
+                        // still read out for this row.
+                        <span>
+                          <span className="sr-only">{formatDate(date, "EEE, dd MMM")}</span>
+                        </span>
+                      )}
+
+                      <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                        {/* Two lines on a phone (a cut-off name is unreadable), one line wider. */}
+                        <span
+                          className="line-clamp-2 sm:line-clamp-1"
+                          style={{ fontWeight: "var(--weight-medium)", color: "var(--theme-text-primary)", overflowWrap: "anywhere" }}
+                        >
                           {s.name}
                         </span>
-                        <span style={{ fontSize: "var(--text-sm)", color: "var(--theme-text-secondary)" }}>
-                          <CurrencyAmount amount={s.amount} currency={s.currency} />
+                        <span
+                          style={{
+                            fontSize: "var(--text-xs)",
+                            color: "var(--theme-text-tertiary)",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {/* On a phone this line is the amount; wider, the amount has its own
+                              column and this line says how the bill recurs and whose it is. */}
+                          <span className="sm:hidden" style={{ color: "var(--theme-text-secondary)" }}>
+                            <CurrencyAmount amount={s.amount} currency={s.currency} />
+                          </span>
+                          <span className="hidden sm:inline">{detail}</span>
                         </span>
                       </span>
+
+                      <span
+                        className="hidden sm:block"
+                        style={{
+                          fontFamily: "var(--font-mono)",
+                          fontVariantNumeric: "tabular-nums",
+                          fontSize: "var(--text-sm)",
+                          color: "var(--theme-text-primary)",
+                          textAlign: "right",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        <CurrencyAmount amount={s.amount} currency={s.currency} />
+                      </span>
+
                       {/* Real per-cycle status: settled → Paid, past-unpaid → Overdue,
                           today → Due today, future → Upcoming. */}
-                      <SubscriptionStatusPill status={status} daysOverdue={daysOverdue} />
+                      {/* Start-aligned in its column, so the pills line up like a table's. */}
+                      <span style={{ justifySelf: "start" }}>
+                        <SubscriptionStatusPill status={status} daysOverdue={daysOverdue} />
+                      </span>
                     </SelectionButton>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </SectionCard>
       </div>
 
       {historyFor && (
@@ -281,7 +420,7 @@ export function SubscriptionCalendar({
 const cardStyle = {
   background: "var(--theme-paper)",
   border: "1px solid var(--theme-paper-border)",
-  borderRadius: "var(--radius-lg)",
+  borderRadius: "var(--neu-radius-card)",
   boxShadow: "var(--shadow-1)",
-  padding: "var(--space-5)",
+  overflow: "hidden",
 } as const;

@@ -14,6 +14,8 @@ import { BudgetContentSkeleton } from "./BudgetContentSkeleton";
 import { BudgetTabProvider } from "./budget-tab-context";
 import { BudgetFilterBar } from "./BudgetFilterBar";
 
+export const metadata = { title: "Budget" };
+
 // ─────────────────────────────────────────────
 // /budget — ad spend vs lead/deal outcomes per campaign.
 // Reads only from our DB (ad_spend_daily via get_budget_summary) — never a

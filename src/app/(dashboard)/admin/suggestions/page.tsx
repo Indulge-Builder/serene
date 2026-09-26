@@ -6,6 +6,8 @@ import { TOP_BAR_ENABLED } from "@/lib/constants/feature-flags";
 import { PageControls } from "@/components/layout/PageControls";
 import { SuggestionInboxClient } from "@/components/suggestions/SuggestionInboxClient";
 
+export const metadata = { title: "Suggestions" };
+
 /**
  * /admin/suggestions — the suggestion / bug-report triage inbox. Admin/founder only.
  *

@@ -2,6 +2,7 @@
 
 import { SelectionButton } from '@/components/ui/SelectionButton';
 import { Button } from '@/components/ui/Button';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { filterTriggerStyle } from '@/components/ui/material-styles';
 
 import { useState, useRef, useEffect } from 'react';
@@ -106,14 +107,16 @@ export function DashboardDateFilter({ activePreset, fromParam, toParam }: Dashbo
           chevron hidden), matching the domain selector so the header is one
           consistent row of icon chips. No accent dot: the date range is always
           active, so a dot would always be on (noise) — the accent-surface chrome
-          already signals it. The current label rides aria-label/title. */}
+          already signals it. The current label rides aria-label + the tooltip.
+          wrap="block": a block wrapper inside the inline-block anchor adds no
+          line box, so the panel's top offset is unchanged. */}
+      <Tooltip label={activeLabel} side="bottom" wrap="block" disabled={!isMobile}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         className="serene-filter-trigger"
         aria-label={isMobile ? `Date range: ${activeLabel}` : undefined}
-        title={isMobile ? activeLabel : undefined}
         style={{
           display:        'flex',
           alignItems:     'center',
@@ -145,6 +148,7 @@ export function DashboardDateFilter({ activePreset, fromParam, toParam }: Dashbo
           </>
         )}
       </button>
+      </Tooltip>
 
       {/* Dropdown panel */}
       <AnimatePresence>
@@ -216,19 +220,33 @@ export function DashboardDateFilter({ activePreset, fromParam, toParam }: Dashbo
               >
                 Custom range
               </p>
-              <div style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
+              {/* Two pickers side by side on a desktop; stacked below md the way
+                  DateRangeFields does (two ~100px date fields in a 220px panel truncate). */}
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 'var(--space-2)',
+                  ...(isMobile
+                    ? { flexDirection: 'column' as const, alignItems: 'stretch' as const }
+                    : { alignItems: 'center' as const }),
+                }}
+              >
                 <DatePicker
                   value={customFrom}
                   onChange={setCustomFrom}
                   placeholder="From"
-                  style={{ flex: 1, minWidth: 0 }}
+                  aria-label="From date"
+                  style={isMobile ? { width: '100%' } : { flex: 1, minWidth: 0 }}
                 />
-                <span style={{ color: 'var(--theme-text-tertiary)', fontSize: 'var(--text-xs)', flexShrink: 0 }}>→</span>
+                {!isMobile && (
+                  <span style={{ color: 'var(--theme-text-tertiary)', fontSize: 'var(--text-xs)', flexShrink: 0 }}>→</span>
+                )}
                 <DatePicker
                   value={customTo}
                   onChange={setCustomTo}
                   placeholder="To"
-                  style={{ flex: 1, minWidth: 0 }}
+                  aria-label="To date"
+                  style={isMobile ? { width: '100%' } : { flex: 1, minWidth: 0 }}
                 />
               </div>
               <Button

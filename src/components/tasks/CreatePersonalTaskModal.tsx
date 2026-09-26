@@ -29,6 +29,7 @@ import {
 } from 'react';
 import { Plus, X } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
+import { useMediaQuery, MQ } from '@/hooks/useMediaQuery';
 import { Button } from '@/components/ui/Button';
 import {
   FieldLabel,
@@ -73,6 +74,9 @@ export function CreatePersonalTaskModal({
   const titleRef    = useRef<HTMLTextAreaElement>(null);
   const notesRef    = useRef<HTMLTextAreaElement>(null);
   const [isPending, startTransition] = useTransition();
+  // On a coarse pointer nothing auto-focuses: the keyboard must not throw
+  // itself over the opening sheet (mobile audit 2026-09-26).
+  const isTouch = useMediaQuery(MQ.touch);
 
   // ── Reset state on open ────────────────────────────────────────────────────
   useEffect(() => {
@@ -87,8 +91,9 @@ export function CreatePersonalTaskModal({
       setTags([]);
       setTagInput('');
       // Autofocus title on open (50ms delay matches quick-add pattern)
-      setTimeout(() => titleRef.current?.focus(), 50);
+      if (!isTouch) setTimeout(() => titleRef.current?.focus(), 50);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   // ── Auto-grow textarea height ──────────────────────────────────────────────
@@ -402,7 +407,7 @@ export function CreatePersonalTaskModal({
                 outline:    'none',
                 background: 'transparent',
                 fontFamily: 'var(--font-sans)',
-                fontSize:   'var(--text-xs)',
+                fontSize:   'var(--text-sm)',
                 color:      'var(--theme-text-primary)',
                 caretColor: 'var(--theme-accent)',
                 padding:    '2px var(--space-1)',

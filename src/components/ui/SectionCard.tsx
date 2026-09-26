@@ -12,7 +12,7 @@ export interface SectionCardProps {
   children:     React.ReactNode;
 }
 
-/** Canonical detail card: porcelain body, neutral section header, quiet contact edge. */
+/** Canonical detail card: porcelain body, tinted satin header, quiet contact edge. */
 export function SectionCard({
   title,
   description,
@@ -37,7 +37,8 @@ export function SectionCard({
           alignItems:   "center",
           gap:          "var(--space-4)",
           padding:      "var(--space-4) var(--space-6)",
-          background:   "var(--neu-header-wash)",
+          background:   "var(--neu-header-surface)",
+          boxShadow:    "var(--neu-header-highlight)",
           borderBottom: "1px solid var(--neu-edge)",
         }}
       >
@@ -50,7 +51,7 @@ export function SectionCard({
               style={{
                 fontFamily: "var(--font-sans)",
                 fontSize:   "var(--text-xs)",
-                color:      "var(--theme-text-secondary)",
+                color:      "var(--neu-header-description)",
                 margin:     "var(--space-1) 0 0",
               }}
             >

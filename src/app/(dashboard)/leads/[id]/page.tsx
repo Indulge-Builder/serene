@@ -20,6 +20,8 @@ import { ProductEnquiryCardAsync } from '@/components/leads/ProductEnquiryCardAs
 import { LeadTasksCardSkeleton } from '@/components/leads/LeadTasksCardSkeleton';
 import { DossierCardSkeleton } from '@/components/leads/LeadDossierSkeletons';
 
+export const metadata = { title: 'Lead' };
+
 type Props = { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string>> };
 
 // Streaming shape (perf audit 2026-06-11 item B):

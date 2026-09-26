@@ -31,15 +31,15 @@ import {
 // the same file backs apple-touch-icon in the layout.
 //
 // The icon art is the umber→gold seed-of-life glyph composited onto a SOLID
-// #ECE8E1 (NEU_CANVAS_LIGHT — the boot screen canvas) plate — built by
-// scripts/pad-app-icons.mjs from the transparent sources. The cream plate
-// makes the OS-generated splash (background_color + this icon) read as the
-// AppBootScreen's own canvas instead of a separate black card (the previous
-// #0d0c0a plate — retired 2026-07-10). Because the fill is solid (no
+// plate — built by scripts/pad-app-icons.mjs from the transparent sources:
+// white for the default mark (2026-09-26, the founder's pick, so iPhone and
+// Android show the same square instead of the black an iPhone paints behind a
+// transparent icon), cream #ECE8E1 for the decorative picks. (The black
+// #0d0c0a plate was retired 2026-07-10.) Because the fill is solid (no
 // transparency) the `maskable` entry is valid: Android crops it into a
 // circle/squircle and the glyph sits inside the safe zone (GLYPH_RATIO 0.82
 // in the build script), so the petals are never clipped and corners are
-// cream, not transparent. NEVER re-add maskable if the art reverts to a
+// filled, not transparent. NEVER re-add maskable if the art reverts to a
 // transparent background — see the script comment.
 export function buildManifest(
   icon: IconKey,

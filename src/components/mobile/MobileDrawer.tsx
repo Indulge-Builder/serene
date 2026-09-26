@@ -5,14 +5,7 @@ import { ModalScopeContext, useModalFocus } from '@/hooks/useModalFocus';
 import { useEffect, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence, m as motion } from 'framer-motion';
-import {
-  FileText,
-  SlidersVertical,
-  MessageCircle,
-  Monitor,
-  LogOut,
-  type LucideIcon,
-} from 'lucide-react';
+import { Monitor, LogOut, type LucideIcon } from 'lucide-react';
 import { lockBodyScroll } from '@/lib/utils/scroll';
 import { getInitials } from '@/lib/utils/strings';
 import { signOutUser } from '@/lib/actions/profiles';
@@ -23,8 +16,8 @@ import { useMobileSession } from './MobileSessionProvider';
  * The drawer — everything else, behind the mark (§Navigation).
  * Panel 76% width, r 0 30 30 0, slide-in 380ms soft-out over a
  * blurred scrim; dismissed by scrim tap, row selection, or a
- * swipe left. Content: profile row · ROOMS · THE HOUSE · Sign out
- * in clay. No hamburger anywhere in the app — the company mark
+ * swipe left. Content: profile row · ROOMS · (View desktop site) · Sign
+ * out in clay. No hamburger anywhere in the app — the company mark
  * (top-left knob) is the only door here.
  */
 
@@ -129,12 +122,13 @@ export function MobileDrawer({
             onDragEnd={(_, info) => {
               if (info.offset.x < -60 || info.velocity.x < -400) onClose();
             }}
-            className="absolute inset-y-0 left-0 w-[76%] max-w-[340px] bg-(--neu-surface) flex flex-col gap-2 px-3 pb-4"
+            className="absolute inset-y-0 left-0 w-[76%] max-w-[340px] bg-(--neu-surface) flex flex-col gap-2 px-3"
             style={{
               borderRadius: '0 30px 30px 0',
               borderRight: '1px solid var(--neu-edge-strong)',
               boxShadow: 'var(--neu-m-drawer-shadow)',
               paddingTop: 'max(20px, env(safe-area-inset-top))',
+              paddingBottom: 'max(16px, env(safe-area-inset-bottom))',
             }}
             role="dialog"
             aria-modal="true"
@@ -175,10 +169,6 @@ export function MobileDrawer({
               />
             ))}
 
-            <TrackedLabel>THE HOUSE</TrackedLabel>
-            <DrawerRow icon={FileText} label="Documents" onSelect={onClose} />
-            <DrawerRow icon={SlidersVertical} label="Preferences" onSelect={onClose} />
-            <DrawerRow icon={MessageCircle} label="Reach the house" onSelect={onClose} />
             {(session.role === 'admin' || session.role === 'founder') && (
               // Opt out of the /dashboard→/m auto-redirect (this session's phone).
               // A hard nav guarantees the cookie is on the server request that

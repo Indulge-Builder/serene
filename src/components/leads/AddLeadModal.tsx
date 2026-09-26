@@ -288,6 +288,7 @@ export function AddLeadModal({
       title="Add Lead"
       maxWidth="max-w-xl"
       pending={isPending}
+      error={serverError ? <Alert tone="danger">{serverError}</Alert> : undefined}
       footer={
         <>
           <Button variant="ghost" type="button" onClick={handleClose} disabled={isPending}>
@@ -323,14 +324,7 @@ export function AddLeadModal({
         style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}
       >
         {/* Row 1: First name + Last name */}
-        <div
-          style={{
-            display:             'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap:                 'var(--space-4)',
-          }}
-          className="add-lead-name-row"
-        >
+        <div className="serene-form-row add-lead-name-row">
           <Field htmlFor="al-first-name" label="First name" required error={errors.first_name?.message}>
             <Input
               id="al-first-name"
@@ -379,15 +373,7 @@ export function AddLeadModal({
         </Field>
 
         {/* Row 4: Source · Domain · Assign to */}
-        <div
-          style={{
-            display:             'grid',
-            gridTemplateColumns: canChangeDomain
-              ? 'minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)'
-              : 'minmax(0, 1fr) minmax(0, 1fr)',
-            gap:                 'var(--space-4)',
-          }}
-        >
+        <div className="serene-form-row">
           <div style={{ minWidth: 0 }}>
             <span id="al-source-label" style={fieldLabel}>
               Source
@@ -512,11 +498,6 @@ export function AddLeadModal({
         </div>
 
         {agentError && <Alert tone="danger" action={<Button variant="ghost" size="sm" onClick={() => setAgentRetry(value => value + 1)}>Retry loading assignees</Button>}>{agentError}</Alert>}
-
-        {/* Server error */}
-        {serverError && (
-          <Alert tone="danger">{serverError}</Alert>
-        )}
       </form>
     </Modal>
   );

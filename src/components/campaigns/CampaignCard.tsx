@@ -32,7 +32,7 @@ function DomainBadge({ domain }: { domain: string }) {
         background:    'var(--theme-paper-subtle)',
         border:        '1px solid var(--theme-paper-border)',
         fontFamily:    'var(--font-sans)',
-        fontSize:      'var(--text-2xs)',
+        fontSize:      'var(--text-xs)',
         fontWeight:    'var(--weight-medium)',
         color:         'var(--theme-text-secondary)',
         letterSpacing: 'var(--tracking-wide)',
@@ -73,7 +73,7 @@ function HeroDatum({
       <span
         style={{
           fontFamily:    'var(--font-sans)',
-          fontSize:      'var(--text-2xs)',
+          fontSize:      'var(--text-xs)',
           fontWeight:    'var(--weight-semibold)',
           letterSpacing: 'var(--tracking-widest)',
           textTransform: 'uppercase',

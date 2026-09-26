@@ -49,16 +49,17 @@ export async function generateMetadata(): Promise<Metadata> {
     : DEFAULT_APPEARANCE;
 
   return {
-    title: "Serene",
+    title: { default: "Serene", template: "%s · Serene" },
     description: "Internal operating system for Indulge team members.",
     // Per-icon dynamic manifest — overrides the static /manifest.webmanifest so
     // the installed app carries the user's chosen icon (failure-mode #3: iOS
     // needs the apple entry below regardless, since it ignores manifest icons).
     manifest: `/api/manifest?icon=${icon}`,
     icons: {
-      // The tab icon is the mark on its cream plate (app/favicon.ico, built by
-      // scripts/pad-app-icons.mjs), the same look as the home-screen icon. The
-      // transparent logo.webp vanished on dark tab strips.
+      // The tab icon is the transparent mark (app/favicon.ico, built by
+      // scripts/pad-app-icons.mjs with a heavier stroke than the logo image, so
+      // it still reads on a dark tab strip). The phone shortcut (`apple`, the
+      // manifest) is the same mark on a white plate.
       icon: "/favicon.ico",
       apple: iconHref,
     },
@@ -93,6 +94,9 @@ export async function generateViewport(): Promise<Viewport> {
     // env(safe-area-inset-*) in the codebase evaluates to 0. The shell's
     // safe-area padding (globals.css) depends on this.
     viewportFit: "cover",
+    // Android Chrome: the keyboard shrinks the layout instead of covering the
+    // fixed shell, so a chat composer rises above it (mobile audit 2026-09-26).
+    interactiveWidget: "resizes-content",
     themeColor:
       appearance === "system"
         ? [

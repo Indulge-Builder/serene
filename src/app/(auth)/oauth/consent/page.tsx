@@ -12,7 +12,7 @@ import { getOAuthConsentRequest } from '@/lib/services/oauth-server-service';
 import { OAUTH_CONSENT_PATH } from '@/lib/constants/mcp';
 import { ConsentForm } from './consent-form';
 
-export const metadata: Metadata = { title: 'Connect an app — Serene' };
+export const metadata: Metadata = { title: 'Connect an app' };
 
 const ID_RE = /^[A-Za-z0-9._~-]{8,200}$/;
 

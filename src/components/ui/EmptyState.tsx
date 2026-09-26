@@ -1,10 +1,7 @@
-'use client';
-
 import React from 'react';
-import { m as motion } from 'framer-motion';
 import type { LucideIcon } from 'lucide-react';
-import { ENTER_DURATION, EASE_OUT_EXPO } from '@/lib/constants/motion';
 import { SeedMandala } from './SeedMandala';
+import { EmptyStateEntrance } from './EmptyStateEntrance';
 
 /**
  * THE canonical empty state — ONE anatomy everywhere in Serene (2026-09-25), taken
@@ -24,6 +21,11 @@ import { SeedMandala } from './SeedMandala';
  *
  * Copy: calm, specific, one poetic touch at most; say what will appear here and, if
  * there is one, the single thing to do next (then pass exactly ONE `action`).
+ *
+ * Server-safe on purpose (no 'use client'): server pages pass `icon={Trophy}`, and a
+ * component cannot be handed to a client component. The icon renders here, on the
+ * caller's side; only the entrance is client (EmptyStateEntrance). Never add hooks or
+ * 'use client' back to this file.
  */
 
 export interface EmptyStateProps {
@@ -82,11 +84,9 @@ export function EmptyState({
   const hero = resolved === 'hero';
 
   return (
-    <motion.div
+    <EmptyStateEntrance
+      rise={hero ? 8 : 4}
       className={className}
-      initial={{ opacity: 0, y: hero ? 8 : 4 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: ENTER_DURATION, ease: EASE_OUT_EXPO }}
       style={{
         display:        'flex',
         flexDirection:  'column',
@@ -157,6 +157,6 @@ export function EmptyState({
         )}
         {action && <div style={{ marginTop: s.actionGap }}>{action}</div>}
       </div>
-    </motion.div>
+    </EmptyStateEntrance>
   );
 }

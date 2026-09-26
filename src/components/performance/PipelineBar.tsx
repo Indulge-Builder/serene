@@ -73,19 +73,18 @@ export function PipelineBar({
             minWidth:     '4px',
             opacity:      0.9,
           } as const;
-          const title = `${LEAD_STATUS_LABELS[status as keyof typeof LEAD_STATUS_LABELS] ?? status}: ${count}`;
+          // No hover title: the legend chips below carry each status's label + count.
           return onSegmentClick ? (
             <button
               key={status}
               type="button"
-              title={title}
               aria-label={`Show ${count} ${LEAD_STATUS_LABELS[status as keyof typeof LEAD_STATUS_LABELS] ?? status} lead${count === 1 ? '' : 's'}`}
               onClick={() => onSegmentClick(status)}
               className="serene-touch"
               style={{ ...segStyle, border: 'none', padding: 0, cursor: 'pointer' }}
             />
           ) : (
-            <div key={status} title={title} style={segStyle} />
+            <div key={status} style={segStyle} />
           );
         })}
       </div>

@@ -2,6 +2,7 @@
 
 import { m as motion } from 'framer-motion';
 import { Avatar, type AvatarSize } from './Avatar';
+import { Tooltip } from './Tooltip';
 import { SPRING_CONFIG } from '@/lib/constants/motion';
 
 export interface AvatarStackUser {
@@ -56,7 +57,6 @@ export function AvatarStack({
       {visible.map((user, i) => (
         <motion.div
           key={user.id}
-          title={user.name}
           variants={{
             rest:    { x: 0 },
             hovered: { x: i * (overlap / 2) },
@@ -69,16 +69,21 @@ export function AvatarStack({
             position:   'relative',
           }}
         >
-          <Avatar
-            src={user.imageUrl ?? null}
-            name={user.name}
-            size={size}
-            style={{
-              // Separator ring — paints outside the element, no layout shift.
-              // box-shadow composes with Avatar's selected ring (comma-separated layers).
-              boxShadow: '0 0 0 2px var(--theme-paper)',
-            }}
-          />
+          {/* The name rides the charcoal pill; the Avatar's own alt / aria-label
+              carries it for screen readers. Wrapped INSIDE the motion.div so the
+              spread transform, overlap margin and z-order stay on the mover. */}
+          <Tooltip label={user.name} side="top">
+            <Avatar
+              src={user.imageUrl ?? null}
+              name={user.name}
+              size={size}
+              style={{
+                // Separator ring — paints outside the element, no layout shift.
+                // box-shadow composes with Avatar's selected ring (comma-separated layers).
+                boxShadow: '0 0 0 2px var(--theme-paper)',
+              }}
+            />
+          </Tooltip>
         </motion.div>
       ))}
 

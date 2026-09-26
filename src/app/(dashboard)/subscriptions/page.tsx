@@ -15,11 +15,15 @@ import { SubscriptionsTable } from "@/components/subscriptions/SubscriptionsTabl
 import { SubscriptionCalendar } from "@/components/subscriptions/SubscriptionCalendar";
 import { SpendingOverview } from "@/components/subscriptions/SpendingOverview";
 import { Shimmer, skeletonStagger } from "@/components/ui/PageSkeletons";
+import { TOP_BAR_ENABLED } from "@/lib/constants/feature-flags";
+import { PageControls } from "@/components/layout/PageControls";
 import type { AppDomain } from "@/lib/types/database";
 import type {
   SubscriptionType,
   SubscriptionStatus,
 } from "@/lib/constants/subscription-constants";
+
+export const metadata = { title: "Subscriptions" };
 
 function getStr(v: string | string[] | undefined): string | null {
   if (!v) return null;
@@ -85,11 +89,12 @@ function ContentSkeleton() {
         padding: "var(--space-4)",
       }}
     >
+      {/* Table rows on md+, card-shaped shimmers below (the phone renders cards). */}
       {Array.from({ length: 8 }).map((_, i) => (
         <div
           key={i}
+          className="hidden md:flex"
           style={{
-            display: "flex",
             alignItems: "center",
             gap: "var(--space-4)",
             padding: "var(--space-3) 0",
@@ -100,6 +105,30 @@ function ContentSkeleton() {
           <Shimmer w={120} h={16} delay={skeletonStagger(i)} />
           <div style={{ flex: 1 }} />
           <Shimmer w={72} h={20} r="var(--radius-full)" delay={skeletonStagger(i)} />
+        </div>
+      ))}
+      {Array.from({ length: 5 }).map((_, i) => (
+        <div
+          key={`card-${i}`}
+          className="md:hidden"
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "var(--space-2)",
+            padding: "var(--space-3) 0",
+            borderBottom: i < 4 ? "1px solid var(--theme-paper-border)" : "none",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-2)" }}>
+            <Shimmer w={150} h={16} delay={skeletonStagger(i)} />
+            <Shimmer w={32} h={32} r="var(--radius-full)" delay={skeletonStagger(i)} />
+          </div>
+          <div style={{ display: "flex", gap: "var(--space-2)" }}>
+            <Shimmer w={72} h={20} r="var(--radius-full)" delay={skeletonStagger(i)} />
+            <Shimmer w={60} h={20} r="var(--radius-full)" delay={skeletonStagger(i)} />
+            <Shimmer w={80} h={16} delay={skeletonStagger(i)} />
+          </div>
+          <Shimmer w={110} h={16} delay={skeletonStagger(i)} />
         </div>
       ))}
     </div>
@@ -137,6 +166,7 @@ export default async function SubscriptionsPage({
         <div className="flex items-center gap-3">
           <SubscriptionExportButton />
           <AddSubscriptionButton />
+          {TOP_BAR_ENABLED && <PageControls isPrivileged={false} />}
         </div>
       </div>
 
@@ -149,7 +179,11 @@ export default async function SubscriptionsPage({
         ) : view === "overview" ? (
           <OverviewFilters leading={<SubscriptionViewTabs />} />
         ) : (
-          <SubscriptionViewTabs />
+          // Content-sized, as when it leads a filter bar: a lone tray in a block
+          // would stretch into one long empty pill across the strip.
+          <div className="flex">
+            <SubscriptionViewTabs />
+          </div>
         )}
       </div>
 

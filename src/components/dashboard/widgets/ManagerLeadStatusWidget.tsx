@@ -6,6 +6,7 @@ import { RefreshCcw } from "lucide-react";
 import { getLeadStatusSummaryAction } from "@/lib/actions/dashboard";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { formatCompact } from "@/lib/utils/numbers";
 import { LEAD_STATUS_LABELS } from "@/lib/constants/lead-statuses";
 import type { LeadStatus } from "@/lib/types/database";
@@ -169,7 +170,6 @@ function StackedBar({ mix, total }: { mix: Partial<Record<LeadStatus, number>>; 
         {segments.map(({ s }, i) => (
           <div
             key={s}
-            title={`${LEAD_STATUS_LABELS[s]}: ${segments[i].count}`}
             style={{
               width: `${pcts[i]}%`,
               background: `linear-gradient(180deg, color-mix(in srgb, ${BAR_COLORS[s]} 72%, white), ${BAR_COLORS[s]})`,
@@ -262,15 +262,18 @@ export function ManagerLeadStatusWidget({ userId, role, initialData, dateRange, 
         >
           Lead Pipeline<span className="page-title-dot">.</span>
         </p>
+        <Tooltip label="Refresh" side="bottom">
         <Button
           variant="ghost"
           onClick={handleRefresh}
           loading={isPending}
-          title="Refresh"
+          aria-label="Refresh"
+          className="serene-touch"
           style={{ width: 28, height: 28, padding: 0, border: "1px solid var(--theme-paper-border)", flexShrink: 0 }}
           iconLeft={RefreshCcw}
           size="xs"
         />
+        </Tooltip>
       </div>
 
       {/* ── Scrollable body ── */}

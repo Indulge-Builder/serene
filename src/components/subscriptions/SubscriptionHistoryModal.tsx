@@ -111,7 +111,7 @@ export function SubscriptionHistoryModal({
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)" }}>
           {/* Summary */}
-          <div style={summaryGrid}>
+          <div className="serene-form-row" style={summaryGrid}>
             <Field label="Departments">
               <DepartmentPills departments={sub.departments} max={4} />
             </Field>
@@ -290,9 +290,8 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+/* Composes .serene-form-row (stacks on a phone); the wider column gap is on purpose. */
 const summaryGrid: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
   columnGap: "var(--space-6)",
   rowGap: "var(--space-4)",
 };

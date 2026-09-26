@@ -11,6 +11,8 @@ import { TicketChangesTimeline } from '@/components/freshdesk/TicketChangesTimel
 import { FRESHDESK_PATH } from '@/lib/constants/freshdesk';
 import { mapRows } from '@/lib/utils/rows';
 
+export const metadata = { title: 'Freshdesk ticket' };
+
 type Props = {
   params: Promise<{ id: string }>;
   searchParams: Promise<{ from?: string }>;

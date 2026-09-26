@@ -15,6 +15,8 @@ import { AddDealButton } from '@/components/deals/AddDealButton';
 import { DealsAsync } from './DealsAsync';
 import { DealsSkeleton } from './DealsSkeleton';
 
+export const metadata = { title: 'Deals' };
+
 const PAGE_SIZE = 50;
 
 // ─────────────────────────────────────────────

@@ -16,6 +16,8 @@ import { PerformanceFilters } from "@/components/performance/PerformanceFilters"
 import { AgentPerformanceShell } from "@/components/performance/AgentPerformanceShell";
 import type { AppDomain } from "@/lib/types/database";
 
+export const metadata = { title: "Performance" };
+
 // ─────────────────────────────────────────────
 // Motivational footer — server component, Elaya's voice (agent view only)
 // ─────────────────────────────────────────────

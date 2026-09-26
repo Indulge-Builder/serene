@@ -19,6 +19,8 @@ import { getCurrentProfile } from '@/lib/services/profiles-service';
 import { WorkspaceAsync } from './WorkspaceAsync';
 import { WorkspaceSkeleton } from './WorkspaceSkeleton';
 
+export const metadata = { title: 'Task group' };
+
 interface Props {
   params: Promise<{ id: string }>;
 }

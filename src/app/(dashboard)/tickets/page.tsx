@@ -12,9 +12,13 @@ import { TicketsFilters } from '@/components/tickets/TicketsFilters';
 import { TicketsTable } from '@/components/tickets/TicketsTable';
 import { TicketsTableSkeleton } from '@/components/tickets/TicketsTableSkeleton';
 import { Pagination } from '@/components/ui/Pagination';
+import { TOP_BAR_ENABLED } from '@/lib/constants/feature-flags';
+import { PageControls } from '@/components/layout/PageControls';
 import { canAccessRoute } from '@/lib/utils/route-access';
 import { TICKETS_PATH, TICKETS_LIST_PAGE_SIZE, TICKET_STATUSES, TICKET_CATEGORIES, type TicketStatus, type TicketCategory, TICKETS_BOARD_PATH } from '@/lib/constants/tickets';
 import type { TicketListFilters } from '@/lib/types/ticket';
+
+export const metadata = { title: 'Tickets' };
 
 function parseFilters(sp: Awaited<SearchParams>): TicketListFilters {
   const getString = (key: string): string | null => { const v = sp[key]; if (!v) return null; return typeof v === 'string' ? v : Array.isArray(v) ? (v[0] ?? null) : null; };
@@ -59,15 +63,16 @@ export default async function TicketsPage({ searchParams }: { searchParams: Prom
         <h1 className="type-page-title m-0">Tickets<span className="page-title-dot">.</span></h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
         <Link href={TICKETS_BOARD_PATH} className="serene-btn-secondary serene-pressable" style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)', padding: 'var(--space-2) var(--space-4)', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', whiteSpace: 'nowrap' }}>
-          <LayoutGrid style={{ width: '1rem', height: '1rem', strokeWidth: 1.5 }} /> Board
+          <LayoutGrid style={{ width: '1rem', height: '1rem', strokeWidth: 1.5 }} /><span className="max-md:sr-only">Board</span>
         </Link>
         <Link href={`${TICKETS_PATH}/new`} className="serene-btn-primary serene-pressable" style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-2)', padding: 'var(--space-2) var(--space-4)', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-sm)', fontWeight: 'var(--weight-medium)', whiteSpace: 'nowrap' }}>
-          <Plus style={{ width: '1rem', height: '1rem', strokeWidth: 1.5 }} /> New ticket
+          <Plus style={{ width: '1rem', height: '1rem', strokeWidth: 1.5 }} /><span className="max-md:sr-only">New ticket</span>
         </Link>
+        {TOP_BAR_ENABLED && <PageControls isPrivileged={false} />}
         </div>
       </div>
       <IntakeProposals proposals={intake.proposals} total={intake.total} statsSlot={privileged ? <Suspense fallback={<IntakeStatsLine stats={null} />}><IntakeStatsAsync /></Suspense> : null} />
-      <div className="mb-4"><TicketsFilters queendoms={privileged ? queendoms : queendoms.filter((q) => q.id === profile.queendom_id)} staff={staff} tags={settings.tags} labels={settings.statusLabels} /></div>
+      <div className="px-5 py-4 mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)"><TicketsFilters queendoms={privileged ? queendoms : queendoms.filter((q) => q.id === profile.queendom_id)} staff={staff} tags={settings.tags} labels={settings.statusLabels} /></div>
       <Suspense key={JSON.stringify(filters)} fallback={<TicketsTableSkeleton />}>
         <TicketsAsync filters={filters} callerId={profile.id} />
       </Suspense>

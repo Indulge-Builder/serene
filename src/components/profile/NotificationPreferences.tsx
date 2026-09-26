@@ -27,6 +27,7 @@ import { setNotificationPrefAction } from "@/lib/actions/notification-prefs";
 import { toast } from "@/lib/toast";
 import type { UserRole } from "@/lib/types/database";
 import { EmptyState } from '@/components/ui/EmptyState';
+import { Checkbox } from '@/components/ui/Checkbox';
 
 interface SeedPref {
   notification_key: string;
@@ -176,12 +177,11 @@ export function NotificationPreferences({ role, initialPrefs }: NotificationPref
                         cursor:     pending ? "not-allowed" : "pointer",
                       }}
                     >
-                      <input
-                        type="checkbox"
+                      <Checkbox
+                        className="serene-touch-hit"
                         checked={checked}
                         disabled={pending}
                         onChange={() => toggle(cat.key, channel)}
-                        style={{ accentColor: "var(--theme-accent)" }}
                       />
                       {channel === "in_app" ? "In-app" : "WhatsApp"}
                     </label>

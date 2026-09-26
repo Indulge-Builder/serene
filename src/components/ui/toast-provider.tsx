@@ -47,7 +47,10 @@ export function ToastProvider() {
         zIndex:        "var(--z-toast)",
         ...(isMobile
           ? {
-              bottom: "calc(80px + env(safe-area-inset-bottom))",
+              // Above the Elaya button AND a chat composer (mobile audit
+              // 2026-09-26): 80px sat exactly over the composer, so a
+              // send-failure toast covered the field it was about.
+              bottom: "calc(var(--elaya-fab-clearance) + var(--space-4) + env(safe-area-inset-bottom))",
               left:   "var(--space-4)",
               right:  "var(--space-4)",
               display: "flex",

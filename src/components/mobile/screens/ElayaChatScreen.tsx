@@ -2,10 +2,11 @@
 
 import { Fab } from '@/components/mobile/buttons';
 import { SelectionButton } from '@/components/ui/SelectionButton';
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Send } from 'lucide-react';
 import { scrollToBottom } from '@/lib/utils/scroll';
+import { formatDate } from '@/lib/utils/dates';
 import { formErrors } from '@/lib/validations/form-errors';
 import { ELAYA_STARTER_PROMPTS } from '@/lib/constants/elaya';
 import { ChatMarkdown } from '@/components/ui/ChatMarkdown';
@@ -22,7 +23,9 @@ import { IconKnob } from '../buttons';
  * (mobile-ops §10). Streams POST /api/elaya/chat through the shared
  * elaya-stream transport (the same loop ElayaChatShell pumps — never a
  * second transport). The neu chrome is unchanged: halo'd ✦ header, inset
- * date chip, raised Elaya bubbles (r 20/20/20/6), accent-grad user
+ * date chips (one per real day — Today / Yesterday / the date, from each
+ * message's createdAt; a message without a stamp gets no chip rather than
+ * a wrong one), raised Elaya bubbles (r 20/20/20/6), accent-grad user
  * bubbles (r 20/20/6/20, ink fg), typing dots, floating composer + send
  * knob. Her glyph always breathes while she is present.
  *
@@ -33,6 +36,34 @@ import { IconKnob } from '../buttons';
 
 const ELAYA_RADIUS = '20px 20px 20px 6px';
 const USER_RADIUS = '20px 20px 6px 20px';
+const DAY_KEY = 'yyyy-MM-dd';
+
+/** A transcript row plus when it was said — the seed carries created_at, a local send stamps now. */
+export type MobileChatMessage = ElayaUiMessage & { createdAt?: string };
+
+/** "TODAY" / "YESTERDAY" / "12 SEP 2026" for the chip above a day's first message. */
+function dayLabel(iso: string, now: Date): string {
+  const key = formatDate(iso, DAY_KEY);
+  if (key === formatDate(now, DAY_KEY)) return 'TODAY';
+  if (key === formatDate(new Date(now.getTime() - 86_400_000), DAY_KEY)) return 'YESTERDAY';
+  return formatDate(iso, 'd MMM yyyy').toUpperCase();
+}
+
+/** Date chip — inset pill, tracked caps. */
+function DateChip({ label }: { label: string }) {
+  return (
+    <span
+      className="self-center shrink-0 h-6 px-3.5 rounded-full bg-(--neu-well) flex items-center text-[9.5px] font-semibold text-(--neu-text-tertiary)"
+      style={{
+        letterSpacing: '0.12em',
+        boxShadow:
+          'inset 1px 1px 3px rgb(var(--neu-dark) / 0.25), inset -1px -1px 3px rgb(var(--neu-light) / 0.7)',
+      }}
+    >
+      {label}
+    </span>
+  );
+}
 
 function TypingBubble({ statusLine }: { statusLine: string | null }) {
   return (
@@ -63,7 +94,7 @@ function TypingBubble({ statusLine }: { statusLine: string | null }) {
 
 export type ElayaChatScreenProps = {
   conversationId: string;
-  initialMessages: ElayaUiMessage[];
+  initialMessages: MobileChatMessage[];
   /** Server-computed greeting shown as Elaya's opening line when the transcript is empty. */
   greeting: string;
   remainingToday: number;
@@ -76,7 +107,7 @@ export function ElayaChatScreen({
   remainingToday,
 }: ElayaChatScreenProps) {
   const router = useRouter();
-  const [messages, setMessages] = useState<ElayaUiMessage[]>(initialMessages);
+  const [messages, setMessages] = useState<MobileChatMessage[]>(initialMessages);
   const [draft, setDraft] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [toolStatus, setToolStatus] = useState<string | null>(null);
@@ -93,8 +124,16 @@ export function ElayaChatScreen({
     isStreaming && messages.some((msg) => msg.pending && msg.content.length === 0);
   const statusLine = toolStatus ?? (awaitingReply ? 'Thinking…' : null);
 
+  // Follow the reply only while the reader is at the bottom (2026-09-25); a
+  // reader who scrolled up keeps their place while she answers.
+  const stickRef = useRef(true);
+  const onListScroll = () => {
+    const el = listRef.current;
+    if (!el) return;
+    stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 96;
+  };
   useEffect(() => {
-    if (listRef.current) scrollToBottom(listRef.current);
+    if (listRef.current && stickRef.current) scrollToBottom(listRef.current);
   }, [messages, statusLine]);
 
   function prefill(prompt: string) {
@@ -110,14 +149,16 @@ export function ElayaChatScreen({
     const localId = `local-${counterRef.current}`;
     const assistantId = `${localId}-assistant`;
 
+    const createdAt = new Date().toISOString();
     setMessages((prev) => [
       ...prev,
-      { id: localId, role: 'user', content },
-      { id: assistantId, role: 'assistant', content: '', pending: true },
+      { id: localId, role: 'user', content, createdAt },
+      { id: assistantId, role: 'assistant', content: '', pending: true, createdAt },
     ]);
     setDraft('');
     setErrorLine(null);
     setIsStreaming(true);
+    stickRef.current = true;
     setToolStatus(null);
 
     const appendDelta = (text: string) =>
@@ -183,6 +224,18 @@ export function ElayaChatScreen({
 
   const showStarters = messages.length === 0 && !isStreaming && !capReached;
 
+  // One chip per real day: emitted above the first message whose day differs
+  // from the last chip's. A message with no stamp changes nothing.
+  const now = new Date();
+  let lastDayKey: string | null = null;
+  const chipFor = (createdAt: string | undefined) => {
+    if (!createdAt) return null;
+    const key = formatDate(createdAt, DAY_KEY);
+    if (key === lastDayKey) return null;
+    lastDayKey = key;
+    return <DateChip label={dayLabel(createdAt, now)} />;
+  };
+
   return (
     <div
       className="h-dvh flex flex-col gap-3 px-5 min-h-0"
@@ -194,7 +247,7 @@ export function ElayaChatScreen({
       {/* Header — back · halo'd ✦ + ELAYA · spacer. The halo always breathes:
           Elaya is present on this screen. */}
       <div className="flex items-center justify-between">
-        <IconKnob size={44} aria-label="Back" onClick={() => router.back()}>
+        <IconKnob size={44} aria-label="Back" onClick={() => router.push('/m')}>
           <ArrowLeft size={16} strokeWidth={1.7} />
         </IconKnob>
         <span className="flex flex-col items-center gap-[3px]">
@@ -211,20 +264,9 @@ export function ElayaChatScreen({
         <span className="w-11 h-11 shrink-0" aria-hidden />
       </div>
 
-      {/* Date chip — inset pill */}
-      <span
-        className="self-center h-6 px-3.5 rounded-full bg-(--neu-well) flex items-center text-[9.5px] font-semibold text-(--neu-text-tertiary)"
-        style={{
-          letterSpacing: '0.12em',
-          boxShadow:
-            'inset 1px 1px 3px rgb(var(--neu-dark) / 0.25), inset -1px -1px 3px rgb(var(--neu-light) / 0.7)',
-        }}
-      >
-        TODAY
-      </span>
-
       {/* Messages — the one scroll axis */}
-      <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2.5">
+      <div ref={listRef} onScroll={onListScroll} className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-2.5" style={{ overscrollBehavior: 'contain' }}>
+        {messages.length === 0 && <DateChip label="TODAY" />}
         {messages.length === 0 && (
           <div
             className="self-start max-w-[82%] px-[15px] py-[13px] bg-(--neu-surface) border border-(--neu-edge-strong) text-[12.5px] leading-[1.55] text-(--neu-text-primary)"
@@ -238,27 +280,31 @@ export function ElayaChatScreen({
             // The pending empty bubble is the TypingBubble below — skip it here.
             if (msg.pending && msg.content.length === 0) return null;
             return (
-              <div
-                key={msg.id}
-                className="self-start max-w-[82%] px-[15px] py-[13px] bg-(--neu-surface) border border-(--neu-edge-strong) text-[12.5px] leading-[1.55] text-(--neu-text-primary)"
-                style={{ borderRadius: ELAYA_RADIUS, boxShadow: 'var(--neu-shadow-raised)' }}
-              >
-                <ChatMarkdown content={msg.content} />
-              </div>
+              <Fragment key={msg.id}>
+                {chipFor(msg.createdAt)}
+                <div
+                  className="self-start max-w-[82%] px-[15px] py-[13px] bg-(--neu-surface) border border-(--neu-edge-strong) text-[12.5px] leading-[1.55] text-(--neu-text-primary)"
+                  style={{ borderRadius: ELAYA_RADIUS, boxShadow: 'var(--neu-shadow-raised)' }}
+                >
+                  <ChatMarkdown content={msg.content} />
+                </div>
+              </Fragment>
             );
           }
           return (
-            <div
-              key={msg.id}
-              className="self-end max-w-[78%] px-[15px] py-[13px] border border-(--neu-accent-btn-edge) text-[12.5px] leading-[1.55] text-(--neu-accent-fg)"
-              style={{
-                borderRadius: USER_RADIUS,
-                background: 'var(--neu-accent-gradient)',
-                boxShadow: 'var(--neu-shadow-raised)',
-              }}
-            >
-              {msg.content}
-            </div>
+            <Fragment key={msg.id}>
+              {chipFor(msg.createdAt)}
+              <div
+                className="self-end max-w-[78%] px-[15px] py-[13px] border border-(--neu-accent-btn-edge) text-[12.5px] leading-[1.55] text-(--neu-accent-fg)"
+                style={{
+                  borderRadius: USER_RADIUS,
+                  background: 'var(--neu-accent-gradient)',
+                  boxShadow: 'var(--neu-shadow-raised)',
+                }}
+              >
+                {msg.content}
+              </div>
+            </Fragment>
           );
         })}
         {(awaitingReply || toolStatus) && <TypingBubble statusLine={statusLine} />}
@@ -279,7 +325,7 @@ export function ElayaChatScreen({
               appearance="choice"
               key={s}
               onClick={() => prefill(s)}
-              className="neu-m-touch h-9 px-3.5 shrink-0 rounded-full bg-(--neu-surface) border border-(--neu-edge) text-[11px] font-medium text-(--neu-accent-deep)"
+              className="neu-m-touch h-11 px-3.5 shrink-0 rounded-full bg-(--neu-surface) border border-(--neu-edge) text-[11px] font-medium text-(--neu-accent-deep)"
             >
               {s}
             </SelectionButton>
@@ -323,7 +369,7 @@ export function ElayaChatScreen({
               }}
               placeholder="Write to Elaya…"
               disabled={isStreaming}
-              className="flex-1 bg-transparent outline-none border-none text-[12.5px] text-(--neu-text-primary) placeholder:text-(--neu-text-tertiary)"
+              className="flex-1 bg-transparent outline-none border-none text-sm text-(--neu-text-primary) placeholder:text-(--neu-text-tertiary)"
             />
           </div>
           <Fab

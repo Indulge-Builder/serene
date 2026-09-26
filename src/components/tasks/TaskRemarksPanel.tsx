@@ -35,6 +35,7 @@ import {
 import { m as motion, AnimatePresence } from "framer-motion";
 import { EASE_OUT_EXPO, EXIT_DURATION } from "@/lib/constants/motion";
 import { Send } from "lucide-react";
+import { useMediaQuery, MQ } from "@/hooks/useMediaQuery";
 import { createClient } from "@/lib/supabase/client";
 import { Avatar } from "@/components/ui/Avatar";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -97,11 +98,26 @@ export function TaskRemarksPanel({
   }, [taskId]);
 
   // ── Auto-scroll to bottom ─────────────────────────────────────────────────
+  // Follow new remarks only while the reader is at the bottom (the
+  // ElayaChatShell guard, mobile audit 2026-09-26): a reader who scrolled up
+  // to re-read is never yanked down by a Realtime row. The first paint and
+  // the reader's own send always land at the bottom.
 
+  const stickRef = useRef(true);
+  const NEAR_BOTTOM_PX = 96;
+  const onListScroll = () => {
+    const el = listRef.current;
+    if (!el) return;
+    stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM_PX;
+  };
   useEffect(() => {
     const el = listRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (el && stickRef.current) el.scrollTop = el.scrollHeight;
   }, [remarks]);
+
+  // The two blurred orbs (blur 72/80px, animated forever) cost a phone GPU
+  // for nothing: fine pointers only.
+  const isTouch = useMediaQuery(MQ.touch);
 
   // ── Realtime subscription ─────────────────────────────────────────────────
 
@@ -202,6 +218,7 @@ export function TaskRemarksPanel({
       author:        { id: currentUserId, full_name: currentUserName, avatar_url: null },
     };
 
+    stickRef.current = true; // the reader's own send always lands at the bottom
     setRemarks((prev) => [...prev, optimisticRemark]);
 
     startTransition(async () => {
@@ -236,7 +253,12 @@ export function TaskRemarksPanel({
     });
   }, [draft, isPending, taskId, currentUserId, currentUserName]);
 
+  // Enter sends on a desktop keyboard (Shift+Enter for a newline). A phone
+  // keyboard has no Shift, so on a coarse pointer Enter inserts the newline
+  // and the Send button is the only send (mobile audit 2026-09-26; the same
+  // rule MessageBar owns as `sendOnEnter`).
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (isTouch) return;
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       postRemark();
@@ -273,6 +295,7 @@ export function TaskRemarksPanel({
       `}</style>
 
       {/* Orb A — top-right quadrant */}
+      {!isTouch && (
       <div
         aria-hidden="true"
         style={{
@@ -290,8 +313,10 @@ export function TaskRemarksPanel({
           zIndex:        0,
         }}
       />
+      )}
 
       {/* Orb B — bottom-left quadrant */}
+      {!isTouch && (
       <div
         aria-hidden="true"
         style={{
@@ -309,6 +334,7 @@ export function TaskRemarksPanel({
           zIndex:        0,
         }}
       />
+      )}
 
       <div
         style={{
@@ -323,6 +349,7 @@ export function TaskRemarksPanel({
         {/* Timeline — transparent background, messages as floating cards */}
         <div
           ref={listRef}
+          onScroll={onListScroll}
           style={{
             flex:                    1,
             overflowY:               "auto",
@@ -520,9 +547,10 @@ export function TaskRemarksPanel({
               value={draft}
               onChange={handleDraftChange}
               onKeyDown={handleKeyDown}
+              enterKeyHint={isTouch ? "enter" : undefined}
               rows={1}
               aria-label={COMPOSER_PLACEHOLDER}
-              title="Return to send · Shift+Return for a new line"
+              title={isTouch ? undefined : "Return to send · Shift+Return for a new line"}
               placeholder={COMPOSER_PLACEHOLDER}
               style={{
                 flex:         1,

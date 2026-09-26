@@ -17,12 +17,16 @@ import { FreshdeskTable } from '@/components/freshdesk/FreshdeskTable';
 import { FreshdeskTableSkeleton } from '@/components/freshdesk/FreshdeskTableSkeleton';
 import { SyncNowButton } from '@/components/freshdesk/SyncNowButton';
 import { Pagination } from '@/components/ui/Pagination';
+import { TOP_BAR_ENABLED } from '@/lib/constants/feature-flags';
+import { PageControls } from '@/components/layout/PageControls';
 import Link from 'next/link';
 import { FRESHDESK_LIST_PAGE_SIZE, FRESHDESK_PATH } from '@/lib/constants/freshdesk';
 import { CLIENTS_PATH } from '@/lib/constants/sia-roles';
 import { dateFromUrlParam } from '@/lib/utils/filter-params';
 import { toISTMidnight, toISTEndOfDay } from '@/lib/utils/ist';
 import type { FdTicketListFilters } from '@/lib/types/freshdesk';
+
+export const metadata = { title: 'Freshdesk' };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -100,14 +104,17 @@ export default async function FreshdeskPage({ searchParams }: { searchParams: Pr
         <h1 className="type-page-title m-0">
           Freshdesk<span className="page-title-dot">.</span>
         </h1>
-        {!pin.pinned && <SyncNowButton />}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+          {!pin.pinned && <SyncNowButton />}
+          {TOP_BAR_ENABLED && <PageControls isPrivileged={false} />}
+        </div>
       </div>
 
       <Suspense key={overviewKey} fallback={<FreshdeskOverviewSkeleton />}>
         <OverviewAsync filters={filters} />
       </Suspense>
 
-      <div className="mb-4">
+      <div className="px-5 py-4 mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)">
         <FreshdeskFilters vocab={vocab} showGroup={!pin.pinned} />
       </div>
 

@@ -1,8 +1,9 @@
 'use client';
 
+import { FormSelect } from '@/components/ui/FormSelect';
 import { Button } from '@/components/ui/Button';
 import { useState, useMemo } from 'react';
-import { Search, ChevronDown, ChevronRight } from 'lucide-react';
+import { Search, ChevronRight } from 'lucide-react';
 import type { LeadRawPayload } from '@/lib/types/database';
 import { formatDate } from '@/lib/utils/dates';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -234,43 +235,18 @@ export function ErrorLogTable({ rows }: ErrorLogTableProps) {
 
         {/* Source filter */}
         <div style={{ position: 'relative' }}>
-          <select
+          <FormSelect aria-label="Source" fullWidth={false}
             value={sourceFilter}
-            onChange={(e) => setSourceFilter(e.target.value)}
-            style={{
-              height:       '2.25rem',
-              paddingLeft:  'var(--space-3)',
-              paddingRight: 'var(--space-6)',
-              border:       '1px solid var(--theme-paper-border)',
-              borderRadius: 'var(--radius-sm)',
-              background:   'var(--theme-paper-subtle)',
-              fontSize:     'var(--text-sm)',
-              color:        'var(--theme-text-primary)',
-              appearance:       'none',
-              WebkitAppearance: 'none',
-              cursor:           'pointer',
-              outline:          'none',
-              transition:       'var(--transition-hover)',
-            }}
+            onValueChange={(nextValue) => setSourceFilter(nextValue)}
+            style={{ height:       '2.25rem' }}
           >
             {sources.map((s) => (
               <option key={s} value={s}>
                 {s === 'all' ? 'All sources' : s}
               </option>
             ))}
-          </select>
-          <ChevronDown
-            style={{
-              position:      'absolute',
-              right:         'var(--space-2)',
-              top:           '50%',
-              transform:     'translateY(-50%)',
-              width:         '0.875rem',
-              height:        '0.875rem',
-              color:         'var(--theme-text-tertiary)',
-              pointerEvents: 'none',
-            }}
-          />
+          </FormSelect>
+
         </div>
 
         {/* Count */}

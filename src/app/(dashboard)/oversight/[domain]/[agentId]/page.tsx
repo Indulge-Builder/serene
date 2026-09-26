@@ -17,6 +17,8 @@ import { AgentOversightMetricsRow } from "@/components/oversight/AgentOversightM
 import { OversightAgentRail } from "@/components/oversight/OversightRail";
 import type { AppDomain } from "@/lib/types/database";
 
+export const metadata = { title: "Agent" };
+
 // ─────────────────────────────────────────────
 // /oversight/[domain]/[agentId] — Tier 3 (Agent detail). The agent's personal +
 // group tasks, their task metrics (derived from the same one query), and a live

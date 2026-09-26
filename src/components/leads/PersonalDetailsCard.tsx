@@ -156,13 +156,11 @@ export function PersonalDetailsCard({ lead, canEdit }: Props) {
       {/* Body */}
       <form onSubmit={handleSave}>
         <div
+          className="serene-form-row"
           onClick={!active && canEdit ? handleActivate : undefined}
           style={{
-            padding:             'var(--space-5)',
-            display:             'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap:                 'var(--space-4)',
-            cursor:              !active && canEdit ? 'text' : 'default',
+            padding: 'var(--space-5)',
+            cursor:  !active && canEdit ? 'text' : 'default',
           }}
         >
           {/* JSONB grid fields */}

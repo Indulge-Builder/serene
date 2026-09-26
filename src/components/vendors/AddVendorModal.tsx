@@ -15,9 +15,12 @@
 // CAPABILITIES, not the vendor row, so a vendor created without one never
 // appears in Find a vendor until someone adds it from the dossier.
 
+import { FormSelect } from '@/components/ui/FormSelect';
+import { Input } from '@/components/ui/Field';
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Dialog } from '@/components/ui/Dialog';
+import { MQ, useMediaQuery } from '@/hooks/useMediaQuery';
 import { Button } from '@/components/ui/Button';
 import { createVendorAction, upsertCapabilityAction } from '@/lib/actions/vendors';
 import {
@@ -30,16 +33,6 @@ import {
   type VendorService,
 } from '@/lib/constants/vendors';
 
-const FIELD: React.CSSProperties = {
-  width: '100%',
-  padding: 'var(--space-3)',
-  borderRadius: 'var(--radius-sm)',
-  border: '1px solid var(--theme-paper-border)',
-  background: 'var(--theme-paper)',
-  color: 'var(--theme-text-primary)',
-  fontSize: 'var(--text-sm)',
-  fontFamily: 'inherit',
-};
 
 function Label({ children, required }: { children: React.ReactNode; required?: boolean }) {
   return (
@@ -64,6 +57,8 @@ export function AddVendorModal({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  // The keyboard would cover the sheet on a phone; the person taps the field they want.
+  const touch = useMediaQuery(MQ.touch);
   const [error, setError] = useState<string | null>(null);
 
   const [name, setName] = useState('');
@@ -142,6 +137,19 @@ export function AddVendorModal({
       onClose={handleClose}
       title="Add a vendor"
       size="sm"
+      error={error ? (
+        <div
+          style={{
+            padding: 'var(--space-3)',
+            borderRadius: 'var(--radius-sm)',
+            background: 'var(--color-danger-light)',
+            color: 'var(--color-danger-text)',
+            fontSize: 'var(--text-sm)',
+          }}
+        >
+          {error}
+        </div>
+      ) : undefined}
       footer={
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-3)' }}>
           <Button variant="ghost" type="button" onClick={handleClose} disabled={pending}>
@@ -156,12 +164,12 @@ export function AddVendorModal({
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
         <div>
           <Label required>Name</Label>
-          <input
-            style={FIELD}
+          <Input
+            style={{ width: '100%' }}
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="LuxDrovia"
-            autoFocus
+            autoFocus={!touch}
           />
         </div>
 
@@ -169,12 +177,12 @@ export function AddVendorModal({
           <Label required>Category</Label>
           {addingCategory ? (
             <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-              <input
-                style={FIELD}
+              <Input
+                style={{ width: '100%' }}
                 value={newCategory}
                 onChange={(e) => setNewCategory(e.target.value)}
                 placeholder="e.g. Automotive"
-                autoFocus
+                autoFocus={!touch}
               />
               <Button
                 variant="ghost"
@@ -185,12 +193,12 @@ export function AddVendorModal({
               </Button>
             </div>
           ) : (
-            <select
-              style={FIELD}
+            <FormSelect aria-label="Category"
+              style={{ width: '100%' }}
               value={category}
-              onChange={(e) => {
-                if (e.target.value === '__new__') { setAddingCategory(true); return; }
-                setCategory(e.target.value);
+              onValueChange={(nextValue) => {
+                if (nextValue === '__new__') { setAddingCategory(true); return; }
+                setCategory(nextValue);
               }}
             >
               <option value="">Choose a category…</option>
@@ -198,68 +206,54 @@ export function AddVendorModal({
                 <option key={o.id} value={o.id}>{o.label}</option>
               ))}
               <option value="__new__">+ Add a new category…</option>
-            </select>
+            </FormSelect>
           )}
         </div>
 
         <div>
           <Label>Ticket category</Label>
           <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-            <select
-              style={FIELD}
+            <FormSelect aria-label="Service category"
+              style={{ width: '100%' }}
               value={doesCategory}
-              onChange={(e) => { setDoesCategory(e.target.value as RequestCategory | ''); setDoesService(''); }}
+              onValueChange={(nextValue) => { setDoesCategory(nextValue as RequestCategory | ''); setDoesService(''); }}
             >
               <option value="">Choose…</option>
               {REQUEST_CATEGORY_OPTIONS.map((o) => (
                 <option key={o.id} value={o.id}>{o.label}</option>
               ))}
-            </select>
+            </FormSelect>
             {services.length > 0 && (
-              <select
-                style={FIELD}
+              <FormSelect aria-label="Service"
+                style={{ width: '100%' }}
                 value={doesService}
-                onChange={(e) => setDoesService(e.target.value as VendorService | '')}
+                onValueChange={(nextValue) => setDoesService(nextValue as VendorService | '')}
               >
                 <option value="">Any service</option>
                 {services.map((s) => (
                   <option key={s} value={s}>{VENDOR_SERVICE_LABELS[s]}</option>
                 ))}
-              </select>
+              </FormSelect>
             )}
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+        <div className="serene-form-row">
           <div>
             <Label>Phone</Label>
-            <input style={FIELD} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91 98765 43210" />
+            <Input type="tel" inputMode="tel" style={{ width: '100%' }} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+91 98765 43210" />
           </div>
           <div>
             <Label>City</Label>
-            <input style={FIELD} value={city} onChange={(e) => setCity(e.target.value)} placeholder="Mumbai" />
+            <Input style={{ width: '100%' }} value={city} onChange={(e) => setCity(e.target.value)} placeholder="Mumbai" />
           </div>
         </div>
 
         <div>
           <Label>Email</Label>
-          <input style={FIELD} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="bookings@vendor.com" />
+          <Input type="email" inputMode="email" style={{ width: '100%' }} value={email} onChange={(e) => setEmail(e.target.value)} placeholder="bookings@vendor.com" />
         </div>
 
-        {error && (
-          <div
-            role="alert"
-            style={{
-              padding: 'var(--space-3)',
-              borderRadius: 'var(--radius-sm)',
-              background: 'var(--color-danger-light)',
-              color: 'var(--color-danger-text)',
-              fontSize: 'var(--text-sm)',
-            }}
-          >
-            {error}
-          </div>
-        )}
       </div>
     </Dialog>
   );

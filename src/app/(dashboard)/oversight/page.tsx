@@ -9,6 +9,8 @@ import type { AppDomain, UserRole } from "@/lib/types/database";
 import { OversightSkeleton } from "./OversightSkeleton";
 import { TeamOverviewGrid } from "@/components/oversight/TeamOverviewGrid";
 
+export const metadata = { title: "Oversight" };
+
 // ─────────────────────────────────────────────
 // /oversight — Tier 1 (Teams). Founder/admin only land here; a manager has no
 // Tier 1 (they own one team) and is redirected to their own team detail; agents

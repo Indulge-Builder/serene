@@ -5,6 +5,8 @@ import { TOP_BAR_ENABLED } from '@/lib/constants/feature-flags';
 import { PageControls } from '@/components/layout/PageControls';
 import { ElayaChatShell } from '@/components/elaya/ElayaChatShell';
 
+export const metadata = { title: 'Elaya' };
+
 // /elaya — Elaya's chat surface (all roles; '/elaya' is in ALWAYS_ALLOWED_PREFIXES).
 // Server Component: resolves the conversation + transcript + greeting + budget via
 // the shared resolveElayaChatSeed (the SAME seed the floating widget's server action

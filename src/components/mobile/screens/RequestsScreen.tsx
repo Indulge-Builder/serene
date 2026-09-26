@@ -97,11 +97,11 @@ export function RequestsScreen() {
         </Fab>
       </div>
 
-      {/* Toast floats above the tab bar, full width */}
+      {/* Toast floats above the FAB (56px knob + 12px gap), full width */}
       {toast && (
         <div
           className="fixed inset-x-0 z-40 px-5"
-          style={{ bottom: 'calc(max(16px, env(safe-area-inset-bottom)) + 80px)' }}
+          style={{ bottom: 'calc(max(16px, env(safe-area-inset-bottom)) + 148px)' }}
         >
           <div className="mx-auto max-w-[390px]">
             <ToastPill

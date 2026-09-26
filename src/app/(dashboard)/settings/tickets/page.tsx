@@ -13,7 +13,7 @@ import { TicketSlaPoliciesPanel } from "@/components/settings/TicketSlaPoliciesP
 import { TicketLabelsPanel } from "@/components/settings/TicketLabelsPanel";
 import { IntakeLessonsPanel } from "@/components/settings/IntakeLessonsPanel";
 
-export const metadata = { title: "Ticket settings — Serene" };
+export const metadata = { title: "Ticket settings" };
 
 export default async function TicketSettingsPage() {
   const profile = await getCurrentProfile();

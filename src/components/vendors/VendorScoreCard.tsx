@@ -13,6 +13,7 @@
 
 import { TrendingUp } from 'lucide-react';
 import { CardHeader } from '@/components/leads/CardHeader';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { StarRating } from './StarRating';
 import { VendorScoreRing } from './VendorScoreRing';
 import { VendorPreferenceControl } from './VendorPreferenceControl';
@@ -138,15 +139,17 @@ export function VendorScoreCard({
               gap: 'var(--space-4) var(--space-3)',
             }}
           >
-            {ratings.map((r) => (
-              <div
-                key={r.dimension}
-                title={
-                  r.count === 0
-                    ? `${REVIEW_DIMENSION_LABELS[r.dimension]}: not rated yet`
-                    : `${REVIEW_DIMENSION_LABELS[r.dimension]}: ${r.average?.toFixed(1)} from ${r.count} ${r.count === 1 ? 'rating' : 'ratings'}`
-                }
-              >
+            {ratings.map((r) => {
+              // The per-dimension count lives here (the header carries only the
+              // total): on the pill for pointers, sr-only for everyone else.
+              const summary =
+                r.count === 0
+                  ? `${REVIEW_DIMENSION_LABELS[r.dimension]}: not rated yet`
+                  : `${REVIEW_DIMENSION_LABELS[r.dimension]}: ${r.average?.toFixed(1)} from ${r.count} ${r.count === 1 ? 'rating' : 'ratings'}`;
+              return (
+              <Tooltip key={r.dimension} label={summary} side="top" wrap="block">
+              <div>
+                <span className="sr-only">{summary}</span>
                 <div
                   style={{
                     display: 'flex',
@@ -178,7 +181,9 @@ export function VendorScoreCard({
                   label={REVIEW_DIMENSION_LABELS[r.dimension]}
                 />
               </div>
-            ))}
+              </Tooltip>
+              );
+            })}
           </div>
         </div>
 

@@ -23,8 +23,9 @@ export function AddRechargeButton() {
         variant="secondary"
         iconLeft={Wallet as LucideIcon}
         onClick={() => setOpen(true)}
+        aria-label="Add Recharge"
       >
-        Add Recharge
+        <span className="max-md:sr-only">Add Recharge</span>
       </Button>
       {mounted && <AddRechargeModal open={open} onClose={() => setOpen(false)} />}
     </>

@@ -6,6 +6,8 @@
 // sentence ("after 15 min → bishop"). The most specific matching row wins for a ticket.
 // Edits save on Save; a new policy starts from the defaults; delete keeps at least one active.
 
+import { FormSelect } from '@/components/ui/FormSelect';
+import { Input } from '@/components/ui/Field';
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Trash2 } from 'lucide-react';
@@ -25,8 +27,6 @@ type Draft = {
   business_hours: boolean; escalation: Step[]; is_active: boolean;
 };
 
-const SELECT: React.CSSProperties = { padding: '6px var(--space-2)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--theme-paper-border)', background: 'var(--theme-paper)', color: 'var(--theme-text-primary)', fontSize: 'var(--text-sm)', fontFamily: 'inherit' };
-const NUM: React.CSSProperties = { ...SELECT, width: 90, fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums' };
 
 function toDraft(p: TicketSlaPolicyRow): Draft {
   const esc = Array.isArray(p.escalation) ? (p.escalation as Step[]).filter((s) => s && typeof s.after_min === 'number') : [];
@@ -47,7 +47,7 @@ function Clock({ label, value, onChange }: { label: string; value: number; onCha
   return (
     <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--text-xs)', color: 'var(--theme-text-secondary)' }}>
       {label}
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><input type="number" min={0} style={NUM} value={value} onChange={(e) => onChange(Math.max(0, Number(e.target.value) || 0))} /> min</span>
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><Input type="number" min={0} style={{ width: 90 }} value={value} onChange={(e) => onChange(Math.max(0, Number(e.target.value) || 0))} /> min</span>
     </label>
   );
 }
@@ -95,20 +95,20 @@ function PolicyCard({ initial, queendoms, onDone }: { initial: Draft; queendoms:
         </span>
       </div>
       <div style={{ display: 'flex', gap: 'var(--space-3)', flexWrap: 'wrap' }}>
-        <select style={SELECT} value={d.queendom_id ?? ''} onChange={(e) => set('queendom_id', e.target.value || null)}>
+        <FormSelect aria-label="Queendom" fullWidth={false} value={d.queendom_id ?? ''} onValueChange={(nextValue) => set('queendom_id', nextValue || null)}>
           <option value="">Every queendom</option>{queendoms.map((q) => <option key={q.id} value={q.id}>{q.name}</option>)}
-        </select>
-        <select style={SELECT} value={d.category ?? ''} onChange={(e) => { set('category', e.target.value || null); set('sub_category', null); }}>
+        </FormSelect>
+        <FormSelect aria-label="Category" fullWidth={false} value={d.category ?? ''} onValueChange={(nextValue) => { set('category', nextValue || null); set('sub_category', null); }}>
           <option value="">Every category</option>{TICKET_CATEGORIES.options.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-        </select>
+        </FormSelect>
         {subs.length > 0 && (
-          <select style={SELECT} value={d.sub_category ?? ''} onChange={(e) => set('sub_category', e.target.value || null)}>
+          <FormSelect aria-label="Sub-category" fullWidth={false} value={d.sub_category ?? ''} onValueChange={(nextValue) => set('sub_category', nextValue || null)}>
             <option value="">Any sub-category</option>{subs.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-          </select>
+          </FormSelect>
         )}
-        <select style={SELECT} value={d.priority ?? ''} onChange={(e) => set('priority', e.target.value || null)}>
+        <FormSelect aria-label="Priority" fullWidth={false} value={d.priority ?? ''} onValueChange={(nextValue) => set('priority', nextValue || null)}>
           <option value="">Every priority</option>{TICKET_PRIORITIES.options.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-        </select>
+        </FormSelect>
       </div>
       <div style={{ display: 'flex', gap: 'var(--space-5)', flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <Clock label="First response" value={d.first_response_min} onChange={(n) => set('first_response_min', n)} />
@@ -121,13 +121,13 @@ function PolicyCard({ initial, queendoms, onDone }: { initial: Draft; queendoms:
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
         <span className="label-micro" style={{ color: 'var(--theme-text-tertiary)' }}>After a breach, escalate</span>
         {d.escalation.map((s, i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)', fontSize: 'var(--text-sm)' }}>
+          <div key={i} style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 'var(--space-2)', fontSize: 'var(--text-sm)' }}>
             <span>after</span>
-            <input type="number" min={0} style={NUM} value={s.after_min} onChange={(e) => set('escalation', d.escalation.map((x, j) => (j === i ? { ...x, after_min: Math.max(0, Number(e.target.value) || 0) } : x)))} />
+            <Input type="number" min={0} style={{ width: 90 }} value={s.after_min} onChange={(e) => set('escalation', d.escalation.map((x, j) => (j === i ? { ...x, after_min: Math.max(0, Number(e.target.value) || 0) } : x)))} />
             <span>min →</span>
-            <select style={SELECT} value={s.to} onChange={(e) => set('escalation', d.escalation.map((x, j) => (j === i ? { ...x, to: e.target.value as Step['to'] } : x)))}>
+            <FormSelect aria-label="Escalation recipient" fullWidth={false} value={s.to} onValueChange={(nextValue) => set('escalation', d.escalation.map((x, j) => (j === i ? { ...x, to: nextValue as Step['to'] } : x)))}>
               <option value="bishop">the bishop</option><option value="queen">the queen</option><option value="founder">the founder</option>
-            </select>
+            </FormSelect>
             <Button
               variant="ghost"
               iconOnly size="sm"

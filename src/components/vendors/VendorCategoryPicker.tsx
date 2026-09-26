@@ -25,6 +25,7 @@ import { useState, useTransition } from 'react';
 import { Check, ChevronDown, Loader2, Plus } from 'lucide-react';
 import { usePortalAnchor } from '@/hooks/usePortalAnchor';
 import { FloatingPanel } from '@/components/ui/FloatingPanel';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { toast } from '@/lib/toast';
 import { updateVendorAction } from '@/lib/actions/vendors';
 import { vendorCategoryOptions, getVendorCategoryLabel, toVocabularyKey } from '@/lib/constants/vendors';
@@ -80,6 +81,7 @@ export function VendorCategoryPicker({
 
   return (
     <>
+      <Tooltip label="Change what kind of supplier this is" side="bottom">
       <Button
         variant="control"
         size="sm"
@@ -88,15 +90,16 @@ export function VendorCategoryPicker({
         type="button"
         onClick={anchor.toggle}
         disabled={pending}
-        title="Change what kind of supplier this is"
       >
         {getVendorCategoryLabel(value)}
+        <span className="sr-only">Change what kind of supplier this is</span>
         {pending ? (
           <Loader2 style={{ width: 12, height: 12, strokeWidth: 2 }} className="animate-spin" />
         ) : (
           <ChevronDown style={{ width: 12, height: 12, strokeWidth: 2 }} />
         )}
       </Button>
+      </Tooltip>
 
       <FloatingPanel {...anchor.panelProps} panelKey={`vendor-category-${vendorId}`}>
         <div style={{ padding: 'var(--space-2)', minWidth: 200, maxHeight: 320, overflowY: 'auto' }}>

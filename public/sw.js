@@ -12,7 +12,7 @@
  *
  * Bump CACHE_VERSION whenever offline.html or the icons change.
  */
-const CACHE_VERSION = "serene-shell-v3";
+const CACHE_VERSION = "serene-shell-v4";
 const OFFLINE_URL = "/offline.html";
 const PRECACHE = [OFFLINE_URL, "/icons/icon-192.png"];
 

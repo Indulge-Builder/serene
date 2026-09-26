@@ -8,7 +8,8 @@
 import { useState, useTransition } from "react";
 import { Download, type LucideIcon } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
-import { Input } from "@/components/ui/Field";
+import { DatePicker } from "@/components/ui/DatePicker";
+import { parseIsoMonth, toIsoMonth } from "@/lib/utils/dates";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { TabSelector } from "@/components/ui/TabSelector";
@@ -144,11 +145,13 @@ export function SubscriptionExportButton() {
             <label className="serene-field-label" style={FIELD_LABEL_STYLE} htmlFor="export-month">
               Month
             </label>
-            <Input
+            <DatePicker
               id="export-month"
-              type="month"
-              value={month}
-              onChange={(e) => setMonth(e.target.value)}
+              mode="month"
+              style={{ width: "100%" }}
+              placeholder="Pick a month"
+              value={parseIsoMonth(month)}
+              onChange={(d) => setMonth(toIsoMonth(d))}
               disabled={isPending}
             />
           </div>

@@ -9,6 +9,8 @@ import {
   FileText, Link2, Image as ImageIcon, Film, Mic, BookOpen,
 } from "lucide-react";
 import { MotionButton, MOTION_BUTTON_DEFAULTS } from "@/components/ui/MotionButton";
+import { PageControls } from "@/components/layout/PageControls";
+import { TOP_BAR_ENABLED } from "@/lib/constants/feature-flags";
 import { SearchBar } from "@/components/ui/SearchBar";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -137,6 +139,7 @@ export function ElayaTrainingManager({ initialAssets }: ElayaTrainingManagerProp
         <h1 className="type-page-title m-0">
           Elaya Training<span className="page-title-dot">.</span>
         </h1>
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
         <MotionButton
           {...MOTION_BUTTON_DEFAULTS}
           variant="primary"
@@ -148,6 +151,8 @@ export function ElayaTrainingManager({ initialAssets }: ElayaTrainingManagerProp
           <Plus style={{ width: 14, height: 14, strokeWidth: 1.5 }} />
           Add Asset
         </MotionButton>
+        {TOP_BAR_ENABLED && <PageControls isPrivileged={false} />}
+        </div>
       </div>
 
       {/* Company-facts brief card(s) — pinned above the library */}

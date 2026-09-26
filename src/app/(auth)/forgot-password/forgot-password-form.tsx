@@ -25,7 +25,7 @@ export function ForgotPasswordForm() {
         <div className="flex flex-col items-center gap-3 mb-10">
           <div className="serene-auth-logo-medallion">
             <Image
-              src="/logo.webp"
+              src="/logo-bg-removed.webp"
               alt="Serene"
               width={48}
               height={48}

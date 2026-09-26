@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, useTransition } from "react";
-import { useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { ConversationList } from "@/components/whatsapp/ConversationList";
 import { LogoSpinner } from "@/components/ui/LogoSpinner";
 import { ConversationPanel } from "@/components/whatsapp/ConversationPanel";
@@ -37,6 +37,9 @@ interface WhatsAppShellProps {
 }
 
 
+/** The open conversation in the URL below md (`/whatsapp?c=<conversationId>`). */
+const WA_CONVERSATION_PARAM = "c";
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function WhatsAppShell({
@@ -49,8 +52,17 @@ export function WhatsAppShell({
   // with back navigation — a genuine behaviour branch, so the hook, not CSS.
   const isMobile = useMediaQuery(MQ.mobile);
   const searchParams = useSearchParams();
+  const pathname = usePathname();
   const { period, customFrom, customTo } = parseWhatsAppPeriodFromSearchParams(searchParams);
   const skipPeriodRefetch = useRef(true);
+  // ?c=<conversationId>: below md an open conversation is a history entry, so
+  // hardware Back closes it instead of leaving the page (mobile audit
+  // 2026-09-26; the Sia workspace's ?group= rule). Pushed through the native
+  // pushState Next integrates (no page refetch); read on mount for a deep link.
+  const urlConversationId = searchParams.get(WA_CONVERSATION_PARAM);
+  const pushedEntry = useRef(false);
+  const returnFocusId = useRef<string | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const [conversations, setConversations] =
     useState<WhatsAppConversation[]>(initialConversations);
@@ -213,6 +225,75 @@ export function WhatsAppShell({
 
   async function handleSelectConversation(id: string) {
     if (id === activeConversationId) return;
+    if (isMobile && urlConversationId !== id) {
+      const next = new URLSearchParams(searchParams.toString());
+      next.set(WA_CONVERSATION_PARAM, id);
+      window.history.pushState(null, "", `${pathname}?${next.toString()}`);
+      pushedEntry.current = true;
+    }
+    await openConversation(id);
+  }
+
+  function closeConversation() {
+    returnFocusId.current = activeConversationId;
+    setActiveConversationId(null);
+    if (!urlConversationId) return;
+    if (pushedEntry.current) {
+      pushedEntry.current = false;
+      window.history.back();
+    } else {
+      const next = new URLSearchParams(searchParams.toString());
+      next.delete(WA_CONVERSATION_PARAM);
+      const qs = next.toString();
+      window.history.replaceState(null, "", qs ? `${pathname}?${qs}` : pathname);
+    }
+  }
+
+  // A deep link (?c=) opens its conversation on arrival, when it is in the list.
+  useEffect(() => {
+    if (urlConversationId && initialConversations.some((c) => c.id === urlConversationId)) {
+      void openConversation(urlConversationId);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // On a phone the URL is the truth: Back / Forward move it and the pane follows.
+  useEffect(() => {
+    if (!isMobile) return;
+    if (urlConversationId === null) {
+      if (activeIdRef.current !== null) {
+        returnFocusId.current = activeIdRef.current;
+        setActiveConversationId(null);
+      }
+      pushedEntry.current = false;
+    } else if (urlConversationId !== activeIdRef.current && conversationsRef.current.some((c) => c.id === urlConversationId)) {
+      void openConversation(urlConversationId);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlConversationId, isMobile]);
+
+  // Once the rail is back, focus the row that was open. The rows carry no id
+  // (ConversationList is not ours to change), so the row is found by its place
+  // in the list and checked against the title before it takes focus.
+  useEffect(() => {
+    if (activeConversationId !== null || !returnFocusId.current) return;
+    const id = returnFocusId.current;
+    returnFocusId.current = null;
+    const conv = conversations.find((c) => c.id === id);
+    const idx = conversations.findIndex((c) => c.id === id);
+    if (!conv || idx < 0) return;
+    requestAnimationFrame(() => {
+      const rows = rootRef.current?.querySelectorAll<HTMLElement>("button[aria-pressed]");
+      const row = rows?.[idx];
+      if (!row || !row.textContent?.includes(conv.lead_name ?? conv.phone)) return;
+      row.focus({ preventScroll: true });
+      row.scrollIntoView({ block: "nearest" });
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConversationId]);
+
+  async function openConversation(id: string) {
+    if (id === activeIdRef.current) return;
     setActiveConversationId(id);
 
     // Optimistically clear this row's unread state — the panel persists the
@@ -254,7 +335,7 @@ export function WhatsAppShell({
   return (
     // The Sia layout (2026-09-25): page header, then the rail card beside the pane
     // card on the workspace ground (ui/SplitWorkspace), never a full-bleed split.
-    <div className="flex-1 min-h-0 flex flex-col">
+    <div ref={rootRef} className="flex-1 min-h-0 flex flex-col">
       <div className="mb-6 flex shrink-0 items-center gap-4">
         <h1 className="type-page-title m-0" style={{ marginRight: "auto" }}>
           WhatsApp<span className="page-title-dot">.</span>
@@ -312,7 +393,7 @@ export function WhatsAppShell({
                   conversation={activeConversation}
                   initialMessages={activeMessages}
                   callerProfile={callerProfile}
-                  onBack={isMobile ? () => setActiveConversationId(null) : undefined}
+                  onBack={isMobile ? closeConversation : undefined}
                 />
               </SplitPane>
             )

@@ -8,6 +8,8 @@ import { TOP_BAR_ENABLED } from "@/lib/constants/feature-flags";
 import { PageControls } from "@/components/layout/PageControls";
 import { UsersTable } from "@/components/admin/UsersTable";
 
+export const metadata = { title: "Team" };
+
 export default async function AdminUsersPage() {
   const profile = await getCurrentProfile();
 

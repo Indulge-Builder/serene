@@ -131,6 +131,8 @@ body {
   box-shadow: var(--neu-shadow-shell);
   overflow-y: auto;
   overflow-x: hidden;
+  /* Scrolling past the end never bounces the whole page (2026-09-25). */
+  overscroll-behavior: contain;
 }
 @media (max-width: 767.98px) { /* < --bp-md */
   .serene-shell {
@@ -400,6 +402,12 @@ body {
 .serene-shell-paper > main:not(.overflow-hidden) {
   padding-bottom: calc(var(--elaya-fab-clearance) + env(safe-area-inset-bottom, 0px));
 }
+/* A page's own floating action (the group workspace's Add subtask) stacks
+   ABOVE the Elaya button at the same corner instead of under it (2026-09-25:
+   the right 48px of that button were opening Elaya). */
+.serene-above-elaya-fab {
+  bottom: calc(var(--elaya-fab-clearance) + env(safe-area-inset-bottom, 0px));
+}
 /* Right-anchored controls that scroll through the FAB zone (md+ only — below
    md the FAB sits on its own row of breathing room, and the row is narrow). */
 @media (min-width: 768px) { /* ≥ --bp-md */
@@ -430,6 +438,15 @@ body {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-6);
+}
+/* Below lg the grid is one column: the aside of an --aside-left grid must
+   come AFTER the main content (the ticket page's help window is not what a
+   phone opens the ticket for), and a --side-first grid puts its aside BEFORE
+   (the New ticket page: the suggestion the form rests on). Mobile audit
+   2026-09-26. */
+@media (max-width: 1023.98px) {
+  .serene-dossier-grid--aside-left > :first-child { order: 2; }
+  .serene-dossier-grid--side-first > :last-child { order: -1; }
 }
 @media (min-width: 1024px) { /* --bp-lg */
   .serene-dossier-grid {
@@ -546,6 +563,28 @@ body {
     min-height: 40px;
     min-width: 40px;
   }
+  /* A tiny drawn control (a pager dot, a priority dot, a grip, a 16px tick)
+     keeps its size and grows an invisible 44px hit area around it (mobile
+     audit 2026-09-26). The element must not be position: static's parent
+     of anything that matters; ::after inherits its box. */
+  .serene-touch-hit { position: relative; }
+  .serene-touch-hit::after {
+    content: '';
+    position: absolute;
+    inset: 50% auto auto 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
+  }
+}
+
+/* THE form row: two or three controls side by side on a desktop, stacked on a
+   phone (mobile audit 2026-09-26). Every two-up or three-up field row composes
+   this instead of an inline "1fr 1fr" that never stacks. */
+.serene-form-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(11rem, 100%), 1fr));
+  gap: var(--space-4);
 }
 
 /* Atmosphere (mounted on the auth shell; marketing later). Never the dashboard
@@ -1000,10 +1039,13 @@ body {
   text-decoration: underline;
 }
 
-/* Dashboard "Recent Activity" deck card — a Link to the lead dossier.
-   Rest = paper-subtle inset; hover lifts with shadow + accent-muted border +
-   a 1px transform (transform/opacity/shadow only — never layout; Never-Do list).
-   Gated to fine pointers so a tap never sticks a hover state. */
+/* Dashboard "Recent Leads" deck card and the Oversight cards — a Link to a record.
+   Each consumer sets its rest state inline, never on the sunken paper-subtle well:
+   a porcelain card (--theme-paper, a hairline, --shadow-1) for the Recent Leads
+   deck and the Oversight grids, a plain hairline row in AgentTaskList. Hover lifts
+   with the hover shadow + the strong edge + a 1px transform (transform/opacity/
+   shadow only — never layout; Never-Do list). Gated to fine pointers so a tap
+   never sticks a hover state. */
 .serene-activity-card {
   transition:
     box-shadow var(--duration-base) var(--ease-out-soft),

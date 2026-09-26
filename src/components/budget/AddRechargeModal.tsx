@@ -9,7 +9,10 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Wallet, type LucideIcon } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
-import { Input, Textarea, Select } from "@/components/ui/Field";
+import { Input, Textarea } from "@/components/ui/Field";
+import { DatePicker } from "@/components/ui/DatePicker";
+import { parseIsoDate, toIsoDate } from "@/lib/utils/dates";
+import { FormSelect } from "@/components/ui/FormSelect";
 import { Alert } from "@/components/ui/Alert";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/hooks/useToast";
@@ -95,6 +98,7 @@ export function AddRechargeModal({ open, onClose }: Props) {
 
   return (
     <Modal
+      error={saveError ? <Alert tone="danger">{saveError}</Alert> : undefined}
       open={open}
       pending={isPending}
       onClose={handleClose}
@@ -124,10 +128,10 @@ export function AddRechargeModal({ open, onClose }: Props) {
           <label className="serene-field-label" style={fieldLabelStyle} htmlFor="recharge-account">
             Ad Account
           </label>
-          <Select
+          <FormSelect
             id="recharge-account"
             value={adAccount}
-            onChange={(e) => setAdAccount(e.target.value as AdAccountKey)}
+            onValueChange={(next) => setAdAccount(next as AdAccountKey)}
             disabled={isPending}
           >
             {AD_ACCOUNTS.map((a) => (
@@ -135,11 +139,11 @@ export function AddRechargeModal({ open, onClose }: Props) {
                 {a.displayName}
               </option>
             ))}
-          </Select>
+          </FormSelect>
         </div>
 
         {/* Amount + currency */}
-        <div style={{ display: "flex", gap: "var(--space-3)" }}>
+        <div className="serene-form-row" style={{ gap: "var(--space-3)" }}>
           <div style={{ flex: 2 }}>
             <label className="serene-field-label" style={fieldLabelStyle} htmlFor="recharge-amount">
               Amount
@@ -160,15 +164,15 @@ export function AddRechargeModal({ open, onClose }: Props) {
             <label className="serene-field-label" style={fieldLabelStyle} htmlFor="recharge-currency">
               Currency
             </label>
-            <Select
+            <FormSelect
               id="recharge-currency"
               value={currency}
-              onChange={(e) => setCurrency(e.target.value as "INR" | "USD")}
+              onValueChange={(next) => setCurrency(next as "INR" | "USD")}
               disabled={isPending}
             >
               <option value="INR">INR ₹</option>
               <option value="USD">USD $</option>
-            </Select>
+            </FormSelect>
           </div>
         </div>
 
@@ -193,11 +197,12 @@ export function AddRechargeModal({ open, onClose }: Props) {
           <label className="serene-field-label" style={fieldLabelStyle} htmlFor="recharge-date">
             Recharge Date
           </label>
-          <Input
+          <DatePicker
             id="recharge-date"
-            type="date"
-            value={rechargedAt}
-            onChange={(e) => setRechargedAt(e.target.value)}
+            style={{ width: "100%" }}
+            placeholder="Pick a date"
+            value={parseIsoDate(rechargedAt)}
+            onChange={(d) => setRechargedAt(toIsoDate(d))}
             disabled={isPending}
           />
         </div>
@@ -243,7 +248,6 @@ export function AddRechargeModal({ open, onClose }: Props) {
             style={{ resize: "vertical" }}
           />
         </div>
-        {saveError && <Alert tone="danger">{saveError}</Alert>}
       </form>
     </Modal>
   );

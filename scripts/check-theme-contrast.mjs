@@ -51,7 +51,11 @@ try {
       for(const surface of ['sidebar','sidebar-pigment','sidebar-wash'])pairs.push(['sidebar / '+surface,'var(--neu-sidebar-ink)','var(--neu-'+surface+')',4.5]);
       for(const tone of ['sage','powder','butter','lilac','peach','teal','danger'])pairs.push(['deep-'+tone,'var(--neu-'+tone+'-deep)','var(--neu-surface)',4.5]);
       pairs.push(['accent label','var(--neu-accent-deep)','color-mix(in srgb,var(--theme-accent) 12%,var(--neu-surface))',4.5]);
-      pairs.push(['header label','var(--neu-header-ink)','var(--neu-header-wash)',4.5]);
+      for(const surface of ['header-wash','header-top']) {
+        pairs.push(['header label / '+surface,'var(--neu-header-ink)','var(--neu-'+surface+')',4.5]);
+        pairs.push(['header description / '+surface,'var(--neu-header-description)','var(--neu-'+surface+')',4.5]);
+        pairs.push(['header icon / '+surface,'var(--neu-header-icon)','var(--neu-'+surface+')',3]);
+      }
       for(const surface of ['surface','surface-high','workspace','sidebar','section-bg'])pairs.push(['focus / '+surface,'var(--neu-focus-edge)','var(--neu-'+surface+')',3]);
       for(const [name,bg] of [['primary top','color-mix(in srgb,var(--neu-accent) '+(mode==='dark'?92:88)+'%,white)'],['primary bottom','color-mix(in srgb,var(--neu-accent) '+(mode==='dark'?86:90)+'%,black)']])pairs.push([name,'var(--theme-accent-fg)',bg,4.5]);
       for(const el of document.querySelectorAll('.serene-selection:not(:disabled)')){const css=getComputedStyle(el);pairs.push(['selection '+el.dataset.appearance+' '+el.dataset.selected,css.color,css.backgroundColor,4.5]);}

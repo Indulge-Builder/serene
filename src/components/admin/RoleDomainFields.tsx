@@ -12,11 +12,13 @@
  *   queendom    "which team"                 required with a position, blank otherwise
  *
  * The <form> receives exactly four fields: role, domain, sia_role, queendom_id — the same
- * names the Zod schemas read. A domain with no positions renders the plain role select.
+ * names the Zod schemas read (domain and queendom_id ride FormSelect's hidden input, 2026-09-25;
+ * the Zod schema is the required check). A domain with no positions renders the plain role select.
  */
 
 import { useState } from "react";
-import { Field, Select } from "@/components/ui/Field";
+import { Field } from "@/components/ui/Field";
+import { FormSelect } from "@/components/ui/FormSelect";
 import { USER_ROLES, ROLE_LABELS } from "@/lib/constants/roles";
 import { APP_DOMAINS, DOMAIN_LABELS } from "@/lib/constants/domains";
 import { SIA_ROLES, SIA_ROLE_PLATFORM_ROLE, positionsForDomain, isSiaRole, type SiaRole } from "@/lib/constants/sia-roles";
@@ -76,13 +78,13 @@ export function RoleDomainFields({ queendoms, defaults, idPrefix = "" }: Props) 
       <input type="hidden" name="sia_role" value={position ?? ""} />
       {!position && <input type="hidden" name="queendom_id" value="" />}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-4)" }}>
+      <div className="serene-form-row">
         <Field label="Domain" htmlFor={id("domain")} required>
-          <Select id={id("domain")} name="domain" required value={domain} onChange={(e) => onDomain(e.target.value as AppDomain)}>
+          <FormSelect id={id("domain")} name="domain" value={domain} onValueChange={(next) => onDomain(next as AppDomain)}>
             {APP_DOMAINS.map((d) => (
               <option key={d} value={d}>{DOMAIN_LABELS[d]}</option>
             ))}
-          </Select>
+          </FormSelect>
         </Field>
 
         <Field
@@ -91,7 +93,7 @@ export function RoleDomainFields({ queendoms, defaults, idPrefix = "" }: Props) 
           required
           hint={position ? `Access level: ${ROLE_LABELS[role]} (set by the position)` : undefined}
         >
-          <Select id={id("role")} required value={encode(pick)} onChange={(e) => setPick(decode(e.target.value))}>
+          <FormSelect id={id("role")} value={encode(pick)} onValueChange={(next) => setPick(decode(next))}>
             {positions.length > 0 && (
               <optgroup label="Positions">
                 {positions.map((p) => (
@@ -104,18 +106,18 @@ export function RoleDomainFields({ queendoms, defaults, idPrefix = "" }: Props) 
                 <option key={r} value={encode({ kind: "role", value: r })}>{ROLE_LABELS[r]}</option>
               ))}
             </optgroup>
-          </Select>
+          </FormSelect>
         </Field>
       </div>
 
       {position && (
         <Field label="Queendom" htmlFor={id("queendom")} required hint="The team this person works in. Queen, Bishop and Joker are one seat each.">
-          <Select id={id("queendom")} name="queendom_id" required value={queendomId} onChange={(e) => setQueendomId(e.target.value)}>
+          <FormSelect id={id("queendom")} name="queendom_id" value={queendomId} onValueChange={setQueendomId}>
             <option value="" disabled>Choose a queendom</option>
             {queendoms.map((q) => (
               <option key={q.id} value={q.id}>{q.name}</option>
             ))}
-          </Select>
+          </FormSelect>
         </Field>
       )}
     </>

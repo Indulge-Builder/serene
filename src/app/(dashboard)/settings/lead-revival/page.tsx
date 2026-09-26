@@ -7,7 +7,7 @@ import { BackButton }            from "@/components/ui/BackButton";
 import { EmptyState }            from "@/components/ui/EmptyState";
 import { Sparkles } from 'lucide-react';
 
-export const metadata = { title: "Lead Revival — Serene" };
+export const metadata = { title: "Lead revival" };
 
 export default async function LeadRevivalPage() {
   const profile = await getCurrentProfile();

@@ -18,3 +18,15 @@
  * Both bell mount points read this flag, so exactly one bell ever mounts.
  */
 export const TOP_BAR_ENABLED = true;
+
+/**
+ * The three /m demo screens (Profile, Requests, Request detail) — specimen
+ * copy from the design handoff (DEMO_PERSONA, DEMO_REQUESTS, the Gulfstream
+ * request) that real staff were reaching from the tab bar (mobile audit
+ * 2026-09-26, P1).
+ *
+ * ON  → the three pages render their demo screens as before.
+ * OFF → the three pages call notFound(); the components stay on disk as the
+ *       handoff's reference.
+ */
+export const MOBILE_DEMO_SCREENS_ENABLED = false;

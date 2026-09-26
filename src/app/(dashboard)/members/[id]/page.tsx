@@ -20,6 +20,8 @@ import { listVaultItems } from '@/lib/services/member-vault';
 import { CLIENTS_PATH } from '@/lib/constants/sia-roles';
 import { ESSENTIAL_FACETS, PREFERENCE_FACETS } from '@/lib/constants/member-facets';
 
+export const metadata = { title: 'Member' };
+
 type Props = { params: Promise<{ id: string }>; searchParams: Promise<{ from?: string }> };
 
 export default async function MemberPage({ params, searchParams }: Props) {
@@ -65,7 +67,7 @@ export default async function MemberPage({ params, searchParams }: Props) {
         <MemberObservationCard clientId={detail.member.id} notes={detail.notes} />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 'var(--space-6)', marginBottom: 'var(--space-6)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(340px, 100%), 1fr))', gap: 'var(--space-6)', marginBottom: 'var(--space-6)' }}>
         <MemberFactsCard clientId={detail.member.id} facts={detail.facts} facets={ESSENTIAL_FACETS} title="Essentials" icon="compass" />
         <MemberFactsCard clientId={detail.member.id} facts={detail.facts} facets={PREFERENCE_FACETS} title="Preferences" icon="heart" />
       </div>

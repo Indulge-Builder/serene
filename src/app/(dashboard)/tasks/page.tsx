@@ -11,6 +11,8 @@ import { TasksCreateProvider } from '@/components/tasks/TasksCreateContext';
 import { TasksAsync } from './TasksAsync';
 import { TasksSkeleton } from './TasksSkeleton';
 
+export const metadata = { title: 'Tasks' };
+
 export type TaskTab = 'personal' | 'group';
 
 export default async function TasksPage({

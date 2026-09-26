@@ -5,6 +5,7 @@ import { m as motion } from "framer-motion";
 import { RefreshCcw, Fuel } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
 import { getBudgetGaugeWidgetAction } from "@/lib/actions/dashboard";
 import { resolvePresetToRange } from "@/lib/utils/date-range";
@@ -92,11 +93,13 @@ export function ManagerBudgetWidget({ initialData, dateRange, domain }: WidgetPr
             Campaign Fuel<span className="page-title-dot">.</span>
           </span>
         </p>
+        <Tooltip label="Refresh" side="bottom">
         <Button
           variant="ghost"
           onClick={() => refetch()}
           loading={isPending}
-          title="Refresh"
+          aria-label="Refresh"
+          className="serene-touch"
           style={{
             width: 28,
             height: 28,
@@ -107,6 +110,7 @@ export function ManagerBudgetWidget({ initialData, dateRange, domain }: WidgetPr
           iconLeft={RefreshCcw}
           size="xs"
         />
+        </Tooltip>
       </div>
 
       {!loaded ? null : data === null ? (

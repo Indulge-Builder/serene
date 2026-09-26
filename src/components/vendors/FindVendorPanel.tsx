@@ -20,10 +20,11 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { Search, X } from 'lucide-react';
+import { ChevronRight, Search, X } from 'lucide-react';
 import { m as motion } from 'framer-motion';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { SectionCard } from '@/components/ui/SectionCard';
 import { VendorScoreRing } from './VendorScoreRing';
 import { rankVendorsAction } from '@/lib/actions/vendors';
 import {
@@ -153,6 +154,14 @@ function parseRequest(text: string, cities: string[]): Parsed {
   return { category, service: service as VendorService | null, city };
 }
 
+/** Requests shown under an empty box: the way the team actually phrases them. A tap
+ *  fills the box and runs the search, so the page teaches itself. */
+const EXAMPLES = [
+  'Black forest cake for a birthday',
+  'Chauffeur in Dubai for three days',
+  'Dinner for six in Mumbai tonight',
+];
+
 function Chip({
   label,
   onClear,
@@ -237,17 +246,16 @@ export function FindVendorPanel({ cities }: { cities: string[] }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function run() {
-    if (!canSearch) return;
+  function search(phrase: string, chips: Parsed) {
     setError(null);
     startTransition(async () => {
       const result = await rankVendorsAction({
         // The whole sentence goes through — the ranker searches it against past
         // ticket titles first and only falls back to the chips.
-        phrase: text.trim(),
-        category: parsed.category,
-        service: parsed.service,
-        city: parsed.city,
+        phrase,
+        category: chips.category,
+        service: chips.service,
+        city: chips.city,
       });
       if (result.error || !result.data) {
         setError(result.error ?? 'Could not run that search.');
@@ -258,173 +266,253 @@ export function FindVendorPanel({ cities }: { cities: string[] }) {
     });
   }
 
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)', maxWidth: '820px' }}>
-      <div
-        className="neu-input"
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 'var(--space-3)',
-          padding: 'var(--space-4) var(--space-5)',
-        }}
-      >
-        <Search
-          style={{ width: '1rem', height: '1rem', color: 'var(--theme-text-tertiary)', strokeWidth: 1.5, flexShrink: 0 }}
-        />
-        <input
-          value={text}
-          onChange={(e) => {
-            setText(e.target.value);
-            setCleared({});
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') run();
-          }}
-          placeholder="What do you need? e.g. black forest cake for a birthday"
-          className="serene-input"
-          style={{
-            flex: 1,
-            minWidth: 0,
-            background: 'transparent',
-            border: 'none',
-            outline: 'none',
-            fontFamily: 'var(--font-sans)',
-            fontSize: 'var(--text-base)',
-            color: 'var(--theme-text-primary)',
-          }}
-        />
-      </div>
+  function run() {
+    if (!canSearch) return;
+    search(text.trim(), parsed);
+  }
 
-      <div
+  /** An example request: into the box, and searched, with its own chips. */
+  function tryExample(phrase: string) {
+    if (isPending) return;
+    setText(phrase);
+    setCleared({});
+    search(phrase, parseRequest(phrase, cities));
+  }
+
+  const hasChips = Boolean(parsed.category || parsed.service || parsed.city);
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)', maxWidth: '960px' }}>
+      {/* The search: ONE card. A line that says how it works, the field with its
+          Find button inside it, then what the words were understood as (or, while
+          the box is empty, three requests to try). */}
+      <section
+        // Roomy on a desk, tighter on a phone where every pixel is the field's.
+        className="p-5 sm:p-6"
         style={{
+          background: 'var(--theme-paper)',
+          border: '1px solid var(--theme-paper-border)',
+          borderRadius: 'var(--neu-radius-card)',
+          boxShadow: 'var(--shadow-1)',
           display: 'flex',
-          alignItems: 'center',
-          gap: 'var(--space-2)',
-          flexWrap: 'wrap',
-          fontSize: 'var(--text-xs)',
-          color: 'var(--theme-text-tertiary)',
+          flexDirection: 'column',
+          gap: 'var(--space-4)',
         }}
       >
-        <span>Understood as</span>
-        {parsed.category && (
-          <Chip
-            label={getRequestCategoryLabel(parsed.category)}
-            onClear={() => setCleared((c) => ({ ...c, category: null }))}
+        <div>
+          <h2
+            style={{
+              margin: 0,
+              fontFamily: 'var(--font-serif)',
+              fontSize: 'var(--text-xl)',
+              fontWeight: 'var(--weight-normal)',
+              color: 'var(--theme-text-primary)',
+            }}
+          >
+            What does the member need?
+          </h2>
+          <p style={{ margin: 'var(--space-1) 0 0', fontSize: 'var(--text-sm)', color: 'var(--theme-text-secondary)', lineHeight: 'var(--leading-relaxed)' }}>
+            Say it in plain words. We match them against every past job and each vendor&apos;s
+            capabilities, then rank the vendors by how those jobs went.
+          </p>
+        </div>
+
+        {/* One field: the shell draws the frame, the input inside is bare. */}
+        <div
+          className="neu-input"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--space-3)',
+            padding: 'var(--space-2) var(--space-2) var(--space-2) var(--space-4)',
+          }}
+        >
+          <Search
+            aria-hidden="true"
+            style={{ width: '1.125rem', height: '1.125rem', color: 'var(--theme-text-tertiary)', strokeWidth: 1.5, flexShrink: 0 }}
           />
-        )}
-        {parsed.service && (
-          <Chip
-            label={VENDOR_SERVICE_LABELS[parsed.service]}
-            onClear={() => setCleared((c) => ({ ...c, service: null }))}
+          <input
+            value={text}
+            onChange={(e) => {
+              setText(e.target.value);
+              setCleared({});
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') run();
+            }}
+            aria-label="What does the member need?"
+            placeholder="e.g. black forest cake for a birthday"
+            className="serene-input-bare"
+            style={{
+              flex: 1,
+              minWidth: 0,
+              height: '2.5rem',
+              background: 'transparent',
+              border: 'none',
+              outline: 'none',
+              fontFamily: 'var(--font-sans)',
+              fontSize: 'var(--text-base)',
+              color: 'var(--theme-text-primary)',
+            }}
           />
-        )}
-        {parsed.city && (
-          <Chip
-            label={parsed.city.charAt(0).toUpperCase() + parsed.city.slice(1)}
-            onClear={() => setCleared((c) => ({ ...c, city: null }))}
-          />
-        )}
-        {!parsed.category && !parsed.service && !parsed.city && (
-          <span style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic' }}>
-            searching past jobs for these words
-          </span>
-        )}
-        <span style={{ marginLeft: 'auto' }}>
-          <Button size="sm" onClick={run} disabled={!canSearch} loading={isPending} loadingLabel="Finding…">
+          <Button onClick={run} disabled={!canSearch} loading={isPending} loadingLabel="Finding…">
             Find
           </Button>
-        </span>
-      </div>
+        </div>
 
-      {error && (
-        <span style={{ fontSize: 'var(--text-sm)', color: 'var(--color-danger-text)' }}>{error}</span>
-      )}
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--space-2)',
+            flexWrap: 'wrap',
+            minHeight: '1.75rem',
+            fontSize: 'var(--text-xs)',
+            color: 'var(--theme-text-tertiary)',
+          }}
+        >
+          {!text.trim() ? (
+            <>
+              <span>Try</span>
+              {EXAMPLES.map((example) => (
+                <Button key={example} variant="control" size="sm" type="button" onClick={() => tryExample(example)}>
+                  {example}
+                </Button>
+              ))}
+            </>
+          ) : hasChips ? (
+            <>
+              <span>Understood as</span>
+              {parsed.category && (
+                <Chip
+                  label={getRequestCategoryLabel(parsed.category)}
+                  onClear={() => setCleared((c) => ({ ...c, category: null }))}
+                />
+              )}
+              {parsed.service && (
+                <Chip
+                  label={VENDOR_SERVICE_LABELS[parsed.service]}
+                  onClear={() => setCleared((c) => ({ ...c, service: null }))}
+                />
+              )}
+              {parsed.city && (
+                <Chip
+                  label={parsed.city.charAt(0).toUpperCase() + parsed.city.slice(1)}
+                  onClear={() => setCleared((c) => ({ ...c, city: null }))}
+                />
+              )}
+            </>
+          ) : (
+            <span style={{ fontFamily: 'var(--font-serif)', fontStyle: 'italic', fontSize: 'var(--text-sm)' }}>
+              Searching past jobs for these words.
+            </span>
+          )}
+        </div>
 
-      {results != null && results.length === 0 && (
+        {error && (
+          <span role="alert" style={{ fontSize: 'var(--text-sm)', color: 'var(--color-danger-text)' }}>{error}</span>
+        )}
+      </section>
+
+      {results != null && <VendorMatches results={results} fromUrl={fromUrl} />}
+    </div>
+  );
+}
+
+/**
+ * The ranked answer as ONE card: a row per vendor (rank, score ring, name, the
+ * reasons it ranked, any cautions), each row a link to the vendor. Display only;
+ * the order is the ranker's.
+ */
+export function VendorMatches({ results, fromUrl }: { results: RankedVendor[]; fromUrl: string }) {
+  return (
+    <SectionCard
+      title="Best matches"
+      bodyPadding={false}
+      headerRight={
+        results.length > 0 ? (
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--neu-header-ink)' }}>
+            {results.length} {results.length === 1 ? 'vendor' : 'vendors'}
+          </span>
+        ) : undefined
+      }
+    >
+      {results.length === 0 ? (
         <EmptyState
           variant="inline"
           title="Nobody offers that yet."
-          description="No active vendor has a capability covering this request."
+          description="No active vendor has a capability covering this request. Try fewer words, or clear a chip."
         />
-      )}
-
-      {results != null && results.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+      ) : (
+        <ol style={{ listStyle: 'none', margin: 0, padding: 'var(--space-2)' }}>
           {results.map((r, i) => (
-            <motion.div
+            <motion.li
               key={r.vendor.id}
               initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: FAST_DURATION, ease: EASE_OUT_EXPO, delay: Math.min(i * 0.04, 0.16) }}
+              style={{ borderTop: i > 0 ? '1px solid var(--theme-paper-border)' : undefined }}
             >
               <Link
                 href={`${VENDORS_PATH}/${r.vendor.id}?from=${encodeURIComponent(fromUrl)}`}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--space-5)',
-                  padding: 'var(--space-4) var(--space-5)',
-                  borderRadius: 'var(--neu-radius-tile)',
-                  background: 'var(--theme-paper)',
-                  border: '1px solid var(--theme-paper-border)',
-                  boxShadow: 'var(--shadow-1)',
-                }}
+                // The shared rich-row material (SelectionButton's), on a link. The rank
+                // column appears from sm: on a phone the order speaks for itself and
+                // the text needs the width.
+                className="serene-selection grid grid-cols-[48px_minmax(0,1fr)_auto] sm:grid-cols-[1.75rem_48px_minmax(0,1fr)_auto] items-center gap-3 sm:gap-4"
+                data-appearance="option"
+                style={{ padding: 'var(--space-3)', textDecoration: 'none' }}
               >
-                <VendorScoreRing score={r.score} size={64} stroke={6} />
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 'var(--space-2)',
-                      flexWrap: 'wrap',
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontFamily: 'var(--font-mono)',
-                        fontSize: 'var(--text-xs)',
-                        color: 'var(--theme-text-tertiary)',
-                      }}
-                    >
-                      {String(i + 1).padStart(2, '0')}
+                <span
+                  className="hidden sm:block"
+                  style={{
+                    fontFamily: 'var(--font-mono)',
+                    fontVariantNumeric: 'tabular-nums',
+                    fontSize: 'var(--text-xs)',
+                    color: 'var(--theme-text-tertiary)',
+                    textAlign: 'right',
+                  }}
+                >
+                  {String(i + 1).padStart(2, '0')}
+                </span>
+                <VendorScoreRing score={r.score} size={48} stroke={5} />
+                <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 'var(--space-1)' }}>
+                  <span style={{ fontWeight: 'var(--weight-medium)', color: 'var(--theme-text-primary)', overflowWrap: 'anywhere' }}>
+                    {r.vendor.name}
+                  </span>
+                  {r.reasons.length > 0 && (
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--theme-text-secondary)', lineHeight: 'var(--leading-relaxed)' }}>
+                      {r.reasons.join(' · ')}
                     </span>
-                    <span style={{ fontWeight: 'var(--weight-medium)' }}>{r.vendor.name}</span>
-                  </div>
-                  <ul
-                    style={{
-                      margin: 'var(--space-2) 0 0',
-                      padding: 0,
-                      listStyle: 'none',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '2px',
-                    }}
-                  >
-                    {r.reasons.map((reason) => (
-                      <li
-                        key={reason}
-                        style={{ fontSize: 'var(--text-xs)', color: 'var(--theme-text-secondary)' }}
-                      >
-                        · {reason}
-                      </li>
-                    ))}
-                    {r.flags.map((flag) => (
-                      <li
-                        key={flag}
-                        style={{ fontSize: 'var(--text-xs)', color: 'var(--color-warning-text)' }}
-                      >
-                        ! {flag}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+                  )}
+                  {r.flags.length > 0 && (
+                    <span style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-1)' }}>
+                      {r.flags.map((flag) => (
+                        <span
+                          key={flag}
+                          style={{
+                            fontSize: 'var(--text-2xs)',
+                            fontWeight: 'var(--weight-medium)',
+                            padding: '1px 8px',
+                            borderRadius: 'var(--radius-full)',
+                            background: 'var(--color-warning-light)',
+                            color: 'var(--color-warning-text)',
+                          }}
+                        >
+                          {flag}
+                        </span>
+                      ))}
+                    </span>
+                  )}
+                </span>
+                <ChevronRight
+                  aria-hidden="true"
+                  style={{ width: '1rem', height: '1rem', color: 'var(--theme-text-tertiary)', strokeWidth: 1.5 }}
+                />
               </Link>
-            </motion.div>
+            </motion.li>
           ))}
-        </div>
+        </ol>
       )}
-    </div>
+    </SectionCard>
   );
 }

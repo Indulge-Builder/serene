@@ -1,8 +1,9 @@
 "use client";
 
+import { FormSelect } from '@/components/ui/FormSelect';
 import { UploadButton } from '@/components/ui/UploadButton';
 import { useEffect, useRef, useState } from "react";
-import { UploadCloud, FileText, ChevronDown, X } from "lucide-react";
+import { UploadCloud, FileText, X } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/Button";
 import { LogoSpinner } from "@/components/ui/LogoSpinner";
@@ -43,26 +44,6 @@ const inputBase: React.CSSProperties = {
   outline:      "none",
 };
 
-const selectBase: React.CSSProperties = {
-  ...inputBase,
-  appearance:       "none",
-  WebkitAppearance: "none",
-  paddingRight:     "var(--space-8)",
-  cursor:           "pointer",
-};
-
-const chevronStyle: React.CSSProperties = {
-  position:      "absolute",
-  right:         "var(--space-3)",
-  top:           "50%",
-  transform:     "translateY(-50%)",
-  width:         "1rem",
-  height:        "1rem",
-  strokeWidth:   1.5,
-  pointerEvents: "none",
-  color:         "var(--theme-text-tertiary)",
-  flexShrink:    0,
-};
 
 const requiredStar = <span style={{ color: "var(--color-danger-text)" }}>*</span>;
 
@@ -239,6 +220,21 @@ export function TrainingAssetFormModal({
       onClose={busy ? () => {} : onClose}
       title={editing ? "Edit Asset" : "Add Asset"}
       maxWidth="max-w-2xl"
+      error={error ? (
+        <p
+          style={{
+            fontSize:     "var(--text-sm)",
+            color:        "var(--color-danger-text)",
+            background:   "var(--color-danger-light)",
+            border:       "1px solid var(--color-danger)",
+            borderRadius: "var(--radius-md)",
+            padding:      "var(--space-3)",
+            margin:       0,
+          }}
+        >
+          {error}
+        </p>
+      ) : undefined}
       footer={
         <>
           <Button
@@ -263,21 +259,6 @@ export function TrainingAssetFormModal({
       }
     >
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)" }}>
-        {error && (
-          <p
-            style={{
-              fontSize:     "var(--text-sm)",
-              color:        "var(--color-danger-text)",
-              background:   "var(--color-danger-light)",
-              border:       "1px solid var(--color-danger)",
-              borderRadius: "var(--radius-md)",
-              padding:      "var(--space-3)",
-              margin:       0,
-            }}
-          >
-            {error}
-          </p>
-        )}
 
         {/* Kind */}
         <div>
@@ -285,17 +266,17 @@ export function TrainingAssetFormModal({
             Type {requiredStar}
           </label>
           <div style={{ position: "relative" }}>
-            <select
+            <FormSelect
               id="ta-kind"
               value={kind}
-              onChange={(e) => handleKindChange(e.target.value as TrainingAssetKind)}
-              style={selectBase}
+              onValueChange={(nextValue) => handleKindChange(nextValue as TrainingAssetKind)}
+              style={{ width:        "100%", height:       "2.5rem" }}
             >
               {TRAINING_ASSET_KIND_OPTIONS.map((o) => (
                 <option key={o.id} value={o.id}>{o.label}</option>
               ))}
-            </select>
-            <ChevronDown style={chevronStyle} />
+            </FormSelect>
+
           </div>
         </div>
 
@@ -478,22 +459,22 @@ export function TrainingAssetFormModal({
         </div>
 
         {/* Domain + Send order — two-up */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-4)" }}>
+        <div className="serene-form-row">
           <div>
             <label htmlFor="ta-domain" className="label-micro block mb-2">Domain</label>
             <div style={{ position: "relative" }}>
-              <select
+              <FormSelect
                 id="ta-domain"
                 value={domain}
-                onChange={(e) => setDomain(e.target.value as GiaDomain | "")}
-                style={selectBase}
+                onValueChange={(nextValue) => setDomain(nextValue as GiaDomain | "")}
+                style={{ width:        "100%", height:       "2.5rem" }}
               >
                 <option value="">All domains</option>
                 {GIA_DOMAINS.map((d) => (
                   <option key={d} value={d}>{DOMAIN_LABELS[d]}</option>
                 ))}
-              </select>
-              <ChevronDown style={chevronStyle} />
+              </FormSelect>
+
             </div>
           </div>
           <div>

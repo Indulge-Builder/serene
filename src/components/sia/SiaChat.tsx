@@ -13,6 +13,7 @@
 
 import { MotionButton } from '@/components/ui/MotionButton';
 import { Button } from '@/components/ui/Button';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, m as motion } from "framer-motion";
 import { ArrowDown, ArrowLeft, ClipboardPlus, Search, Users, X } from "lucide-react";
@@ -297,7 +298,7 @@ export function SiaChat({
               type="button"
               onClick={onBack}
               aria-label="Back to conversations"
-              className="serene-pressable shrink-0 w-8 h-8 rounded-full border border-(--theme-paper-border) bg-(--theme-paper) flex items-center justify-center text-(--theme-text-secondary)"
+              className="serene-pressable serene-touch shrink-0 w-8 h-8 rounded-full border border-(--theme-paper-border) bg-(--theme-paper) flex items-center justify-center text-(--theme-text-secondary)"
             >
               <ArrowLeft className="w-4 h-4" strokeWidth={1.5} />
             </Button>
@@ -308,7 +309,6 @@ export function SiaChat({
             type="button"
             onClick={() => setInfoOpen((v) => !v)}
             aria-label="Open group info"
-            title="Group info"
             className="min-w-0 flex-1 flex items-center gap-3 text-left border-0 bg-transparent rounded-(--radius-md) px-1 py-0.5 -mx-1 hover:bg-(--theme-paper-subtle)"
           >
             <Avatar name={groupTitle(group)} size="sm" />
@@ -325,28 +325,30 @@ export function SiaChat({
               </div>
             </div>
           </Button>
+          <Tooltip label={selecting ? "Cancel selection" : "Create a ticket from messages"} side="bottom">
           <Button
             variant="control"
             iconOnly size="sm" active={selecting}
             type="button"
             onClick={() => { setSelecting((v) => !v); setSelectedIds(new Set()); }}
             aria-label={selecting ? "Cancel selection" : "Create a ticket from messages"}
-            title={selecting ? "Cancel selection" : "Create a ticket from messages"}
-            className="serene-pressable shrink-0 w-8 h-8 rounded-full border flex items-center justify-center"
+            className="serene-pressable serene-touch shrink-0 w-8 h-8 rounded-full border flex items-center justify-center"
           >
             <ClipboardPlus className="w-4 h-4" strokeWidth={1.5} />
           </Button>
+          </Tooltip>
+          <Tooltip label={searchOpen ? "Close search" : "Search this conversation"} side="bottom">
           <Button
             variant="control"
             iconOnly size="sm" active={searchOpen}
             type="button"
             onClick={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
             aria-label={searchOpen ? "Close search" : "Search this conversation"}
-            title={searchOpen ? "Close search" : "Search this conversation"}
-            className="serene-pressable shrink-0 w-8 h-8 rounded-full border flex items-center justify-center"
+            className="serene-pressable serene-touch shrink-0 w-8 h-8 rounded-full border flex items-center justify-center"
           >
             {searchOpen ? <X className="w-4 h-4" strokeWidth={1.5} /> : <Search className="w-4 h-4" strokeWidth={1.5} />}
           </Button>
+          </Tooltip>
         </div>
 
         <AnimatePresence initial={false}>

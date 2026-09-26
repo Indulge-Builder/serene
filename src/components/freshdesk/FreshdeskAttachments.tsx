@@ -4,6 +4,7 @@
 // urls minted by the read path; nothing here talks to storage. Server-component-safe.
 
 import { Paperclip, ImageOff } from 'lucide-react';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { fdAttachmentKind } from '@/lib/constants/freshdesk';
 import { formatBytes } from '@/lib/utils/numbers';
 import type { FdAttachment } from '@/lib/types/freshdesk';
@@ -26,16 +27,19 @@ export function FreshdeskAttachments({ attachments }: { attachments: FdAttachmen
             const kind = fdAttachmentKind(a);
             const key = a.storage_path ?? `${a.id ?? i}`;
             if (kind === 'image') {
+              // The file name rides the tooltip; the img alt carries it for screen readers.
               return (
-                <a key={key} href={a.signed_url ?? undefined} target="_blank" rel="noreferrer" title={a.name} style={{ display: 'block', lineHeight: 0 }}>
-                  <img src={a.signed_url ?? undefined} alt={a.name ?? 'image'} loading="lazy" style={{ maxHeight: 180, maxWidth: 260, borderRadius: 'var(--radius-md)', border: '1px solid var(--theme-paper-border)', objectFit: 'cover' }} />
-                </a>
+                <Tooltip key={key} label={a.name ?? ''} side="top" disabled={!a.name}>
+                  <a href={a.signed_url ?? undefined} target="_blank" rel="noreferrer" style={{ display: 'block', lineHeight: 0 }}>
+                    <img src={a.signed_url ?? undefined} alt={a.name ?? 'image'} loading="lazy" style={{ maxHeight: 180, maxWidth: 260, borderRadius: 'var(--radius-md)', border: '1px solid var(--theme-paper-border)', objectFit: 'cover' }} />
+                  </a>
+                </Tooltip>
               );
             }
             if (kind === 'video') {
-              return <video key={key} src={a.signed_url ?? undefined} controls preload="metadata" style={{ maxHeight: 220, maxWidth: 320, borderRadius: 'var(--radius-md)', border: '1px solid var(--theme-paper-border)', background: 'var(--theme-paper-subtle)' }} />;
+              return <video key={key} src={a.signed_url ?? undefined} controls preload="metadata" style={{ maxHeight: 220, maxWidth: '100%', borderRadius: 'var(--radius-md)', border: '1px solid var(--theme-paper-border)', background: 'var(--theme-paper-subtle)' }} />;
             }
-            return <audio key={key} src={a.signed_url ?? undefined} controls preload="metadata" style={{ maxWidth: 320 }} />;
+            return <audio key={key} src={a.signed_url ?? undefined} controls preload="metadata" style={{ maxWidth: '100%' }} />;
           })}
         </div>
       )}
@@ -43,14 +47,22 @@ export function FreshdeskAttachments({ attachments }: { attachments: FdAttachmen
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)' }}>
           {files.map((a, i) => {
             const label = `${a.name ?? 'attachment'}${a.size ? ` · ${formatBytes(a.size)}` : ''}`;
+            const reason = a.store_error ? `Not copied yet: ${a.store_error}` : 'Not copied yet';
+            // The chip truncates at 260px — the tooltip carries the full name; the
+            // "not copied" reason is spoken too (sr-only), never hover-only.
             return a.signed_url ? (
-              <a key={a.storage_path ?? `${a.id ?? i}`} href={a.signed_url} target="_blank" rel="noreferrer" style={{ ...CHIP, color: 'var(--neu-accent-deep)' }} title={a.name}>
-                <Paperclip style={{ width: '0.75rem', height: '0.75rem', strokeWidth: 1.5, flexShrink: 0 }} />{label}
-              </a>
+              <Tooltip key={a.storage_path ?? `${a.id ?? i}`} label={a.name ?? ''} side="top" disabled={!a.name}>
+                <a href={a.signed_url} target="_blank" rel="noreferrer" style={{ ...CHIP, color: 'var(--neu-accent-deep)' }}>
+                  <Paperclip style={{ width: '0.75rem', height: '0.75rem', strokeWidth: 1.5, flexShrink: 0 }} />{label}
+                </a>
+              </Tooltip>
             ) : (
-              <span key={`${a.id ?? i}`} style={{ ...CHIP, color: 'var(--theme-text-tertiary)' }} title={a.store_error ? `Not copied yet: ${a.store_error}` : 'Not copied yet'}>
-                <ImageOff style={{ width: '0.75rem', height: '0.75rem', strokeWidth: 1.5, flexShrink: 0 }} />{label}
-              </span>
+              <Tooltip key={`${a.id ?? i}`} label={reason} side="top">
+                <span style={{ ...CHIP, color: 'var(--theme-text-tertiary)' }}>
+                  <ImageOff style={{ width: '0.75rem', height: '0.75rem', strokeWidth: 1.5, flexShrink: 0 }} />{label}
+                  <span className="sr-only">{reason}</span>
+                </span>
+              </Tooltip>
             );
           })}
         </div>

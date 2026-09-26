@@ -7,7 +7,7 @@ import {
 } from '@/lib/services/mobile-service';
 import { DashboardRoom } from '@/components/mobile/rooms/DashboardRoom';
 
-export const metadata = { title: 'Serene' };
+export const metadata = { title: 'Home' };
 
 /**
  * Dashboard room (mobile-ops §3). RSC seeds the first swipeable domain;

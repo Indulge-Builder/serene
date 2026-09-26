@@ -1,24 +1,19 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Bell } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { IndulgeMark } from './IndulgeMark';
 import { IconKnob } from './buttons';
 
 /**
  * Mobile app bars (§02 Navigation — App bars).
  * Home bar: the mark knob (THE drawer button) · SERENE wordmark ·
- * bell knob with an accent unread dot. Detail bar: back knob ·
+ * a spacer (the bell knob had no handler; removed 2026-09-26 until a
+ * real notification panel exists on /m). Detail bar: back knob ·
  * tracked-caps title · ··· knob. Titles never truncate.
  */
 
-export function HomeAppBar({
-  onOpenDrawer,
-  unread = true,
-}: {
-  onOpenDrawer: () => void;
-  unread?: boolean;
-}) {
+export function HomeAppBar({ onOpenDrawer }: { onOpenDrawer: () => void }) {
   return (
     <div className="flex items-center justify-between">
       <IconKnob accent size={44} aria-label="Open the house" onClick={onOpenDrawer}>
@@ -37,17 +32,7 @@ export function HomeAppBar({
           SERENE
         </span>
       </span>
-      <span className="relative">
-        <IconKnob size={44} aria-label="Notifications">
-          <Bell size={16} strokeWidth={1.7} />
-        </IconKnob>
-        {unread && (
-          <span
-            className="absolute top-2 right-[9px] w-2 h-2 rounded-full bg-(--neu-accent) pointer-events-none"
-            style={{ border: '1.5px solid var(--neu-surface)' }}
-          />
-        )}
-      </span>
+      <span className="w-11 h-11 shrink-0" aria-hidden />
     </div>
   );
 }

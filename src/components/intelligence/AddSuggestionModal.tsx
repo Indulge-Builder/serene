@@ -26,6 +26,7 @@
  * without any client-side merge.
  */
 
+import { FormSelect } from '@/components/ui/FormSelect';
 import { useEffect, useRef, useState, useTransition, type KeyboardEvent } from 'react';
 import { Plus, X } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
@@ -257,20 +258,20 @@ export function AddSuggestionModal({ open, onClose, initialDomain, serviceCase }
       {/* ─── Domain ────────────────────────────────────────────────────────── */}
       <div style={{ marginBottom: 'var(--space-5)' }}>
         <FieldLabel>Domain</FieldLabel>
-        <select
+        <FormSelect aria-label="Domain"
           value={domain}
-          onChange={(e) => setDomain(e.target.value as AppDomain)}
+          onValueChange={(nextValue) => setDomain(nextValue as AppDomain)}
           disabled={isPending}
-          style={{ ...fieldChrome, ...borderFor(false), height: 36, cursor: 'pointer' }}
-          onFocus={(e) => focusField(e, false)}
-          onBlur={(e) => blurField(e, false)}
+          style={{ width:        '100%', height: 36 }}
+
+
         >
           {GIA_DOMAINS.map((d) => (
             <option key={d} value={d}>
               {DOMAIN_LABELS[d]}
             </option>
           ))}
-        </select>
+        </FormSelect>
       </div>
 
       {/* ─── The story ─────────────────────────────────────────────────────── */}
@@ -322,14 +323,7 @@ export function AddSuggestionModal({ open, onClose, initialDomain, serviceCase }
       </div>
 
       {/* ─── City / Country (optional) ─────────────────────────────────────── */}
-      <div
-        style={{
-          display:             'grid',
-          gridTemplateColumns: '1fr 1fr',
-          gap:                 'var(--space-3)',
-          marginBottom:        'var(--space-5)',
-        }}
-      >
+      <div className="serene-form-row" style={{ gap: 'var(--space-3)', marginBottom: 'var(--space-5)' }}>
         <div>
           <FieldLabel optional>City</FieldLabel>
           <input

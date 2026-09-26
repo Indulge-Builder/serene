@@ -23,8 +23,9 @@ export function AdSpendUploadButton() {
         variant="primary"
         iconLeft={Upload as LucideIcon}
         onClick={() => setOpen(true)}
+        aria-label="Upload Spend"
       >
-        Upload Spend
+        <span className="max-md:sr-only">Upload Spend</span>
       </Button>
       {mounted && <AdSpendUploadModal open={open} onClose={() => setOpen(false)} />}
     </>

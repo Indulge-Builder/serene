@@ -166,11 +166,16 @@ UNREAD-only on mount via `getMyNotificationsAction`. Never add a second provider
 
 Every primary page with a standard server title row renders `PageControls` (bell always; selector
 when `isPrivileged`): leads, deals, campaigns (selector ON — domain-aware), tasks, performance (all
-3 role branches), helpdesk, budget, escalations, settings, elaya, admin/users (bell-only). Dashboard
-has no server title row — its bell rides the `DashboardCanvas` header cluster (`PageControls` reads
-state from the layout provider, no seed threaded in). `/whatsapp` renders it too since it joined
-the Sia layout (2026-09-25): its title row (title, the "N unread" pill, the bell) lives inside
-`WhatsAppShell`.
+3 role branches), helpdesk, budget, escalations, settings, elaya, admin/users (bell-only), and since
+2026-09-25 every remaining primary page, bell-only: members, tickets, tickets/board, vendors,
+subscriptions, freshdesk, books, profile, settings/teach-elaya, and the four whose title row lives in
+a client shell (notes via `CondensingPageHeader`, sia in `SiaWorkspace`, admin/ad-creatives in
+`AdCreativesManager`, admin/elaya-training in `ElayaTrainingManager`). The selector is meaningful
+only on the domain-aware pages; a bell-only page passes `isPrivileged={false}`. Dashboard has no
+server title row — its bell rides the `DashboardCanvas` header cluster (`PageControls` reads state
+from the layout provider, no seed threaded in). `/whatsapp` renders it too since it joined the Sia
+layout (2026-09-25): its title row (title, the "N unread" pill, the bell) lives inside
+`WhatsAppShell`. A new primary page renders it in its title row from day one.
 
 ### Domain selector → `param ?? cookie` (the navigation-persistence fix)
 

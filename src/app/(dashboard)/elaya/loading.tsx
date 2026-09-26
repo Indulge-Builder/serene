@@ -31,6 +31,7 @@ export default function ElayaLoading() {
         </SkeletonCard>
 
         <SkeletonCard
+          className="hidden lg:flex"
           style={{
             flexDirection: 'column',
             alignItems: 'center',

@@ -10,6 +10,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { SelectionButton } from '../src/components/ui/SelectionButton.tsx';
 import { UploadButton } from '../src/components/ui/UploadButton.tsx';
 import { MobileButton, IconKnob, Fab } from '../src/components/mobile/buttons.tsx';
+import { FormSelect } from '../src/components/ui/FormSelect.tsx';
 import { Field, Input, Textarea, Select } from '../src/components/ui/Field.tsx';
 import { Badge } from '../src/components/ui/Badge.tsx';
 import { Alert } from '../src/components/ui/Alert.tsx';
@@ -42,6 +43,7 @@ const content = renderToStaticMarkup(h('main', null,
     h(Field, { label: 'Lead name', htmlFor: 'spec-name', required: true, hint: 'Use the name the lead prefers.' }, h(Input, { defaultValue: 'Ananya Rao' })),
     h(Field, { label: 'Email', htmlFor: 'spec-email', error: 'Enter a valid email address.' }, h(Input, { defaultValue: 'ananya@', type: 'email' })),
     h(Field, { label: 'Status', htmlFor: 'spec-status' }, h(Select, { defaultValue: 'open' }, h('option', { value: 'open' }, 'Open'))),
+    h(Field, { label: 'Owner', htmlFor: 'spec-owner' }, h(FormSelect, { value: 'ada', onValueChange: () => {} }, h('option', { value: 'ada' }, 'Ada'))),
     h(Field, { label: 'Notes', htmlFor: 'spec-notes' }, h(Textarea, { placeholder: 'Add useful context…' }))
   )),
   section('Status and feedback', row(...['neutral','info','success','warning','danger'].map(tone => h(Badge, {tone}, tone))),

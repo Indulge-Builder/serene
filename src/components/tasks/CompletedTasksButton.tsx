@@ -4,6 +4,7 @@ import { useState } from 'react';
 import dynamic from 'next/dynamic';
 import { History } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { useMediaQuery, MQ } from '@/hooks/useMediaQuery';
 import type { UserRole, AppDomain } from '@/lib/types/database';
 
@@ -31,16 +32,18 @@ export function CompletedTasksButton({ currentUser }: CompletedTasksButtonProps)
 
   return (
     <>
+      {/* The pill names the icon-only form; never tooltip the visible label. */}
+      <Tooltip label="Completed tasks" side="bottom" disabled={!isMobile}>
       <Button
         variant="secondary"
         size="sm"
         iconLeft={History}
         onClick={() => setOpen(true)}
         aria-label="Completed tasks"
-        title="Completed tasks"
       >
         {isMobile ? null : 'Completed'}
       </Button>
+      </Tooltip>
 
       {open && (
         <CompletedTasksModal

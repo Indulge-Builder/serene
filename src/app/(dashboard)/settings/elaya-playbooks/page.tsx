@@ -10,7 +10,7 @@ import { resolveElayaChatSeed } from "@/lib/services/elaya-service";
 import { BackButton } from "@/components/ui/BackButton";
 import { ElayaPlaybooksPanel } from "@/components/settings/ElayaPlaybooksPanel";
 
-export const metadata = { title: "Elaya playbooks — Serene" };
+export const metadata = { title: "Playbooks" };
 
 export default async function ElayaPlaybooksPage() {
   const profile = await getCurrentProfile();

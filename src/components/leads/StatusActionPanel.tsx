@@ -499,10 +499,12 @@ function ConfirmModal({
   onClose: () => void;
   onConfirm: () => void;
 }) {
-  const confirmStyle: React.CSSProperties =
-    confirmVariant === 'success' ? { background: 'var(--color-success)',      color: 'var(--color-success-fg)'   } :
-    confirmVariant === 'revive'  ? { background: 'var(--color-warning)',       color: 'var(--color-warning-fg)'  } :
-                                   { background: 'var(--theme-accent)',        color: 'var(--theme-accent-fg)'    };
+  // Button's own semantic variants (2026-09-25): the hand-set fills used the
+  // warm-white ink on a butter fill that lifts LIGHT in dark mode (about 1.3:1).
+  const buttonVariant =
+    confirmVariant === 'success' ? 'success' :
+    confirmVariant === 'revive'  ? 'warning' :
+                                   'primary';
 
   return (
     <Modal
@@ -516,12 +518,11 @@ function ConfirmModal({
             Cancel
           </Button>
           <Button
-            variant="primary"
+            variant={buttonVariant}
             type="button"
             onClick={onConfirm}
             disabled={isPending}
             loading={isPending}
-            style={confirmStyle}
           >
             {isPending ? 'Saving…' : confirmLabel}
           </Button>

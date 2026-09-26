@@ -97,6 +97,7 @@ export function FormChip({
       selected={active}
       aria-pressed={active}
       type="button"
+      className="serene-touch"
       onClick={onClick}
       disabled={disabled}
       style={{
@@ -155,6 +156,7 @@ export function PriorityChipRow({
               aria-pressed={isActive}
               aria-label={cfg.label}
               disabled={disabled}
+              className="serene-touch-hit"
               onClick={() => handleClick(p)}
               style={{
                 width:          20,
@@ -307,6 +309,7 @@ export function TaskTypeField({
       {TASK_TYPES.map((type) => (
         <label
           key={type}
+          className="serene-radio-row"
           style={{
             display:      'flex',
             alignItems:   'center',
@@ -324,6 +327,8 @@ export function TaskTypeField({
             transition: 'background var(--duration-fast) var(--ease-in-out), box-shadow var(--duration-fast) var(--ease-in-out)',
           }}
         >
+          {/* The native radio stays for the keyboard (arrow keys walk the group)
+              but is visually hidden; the dot beside it is drawn in the theme. */}
           <input
             type="radio"
             name="taskType"
@@ -331,8 +336,27 @@ export function TaskTypeField({
             checked={value === type}
             disabled={disabled}
             onChange={() => onChange(type)}
-            style={{ accentColor: 'var(--theme-accent)' }}
+            className="sr-only"
           />
+          <span
+            aria-hidden="true"
+            style={{
+              width:          16,
+              height:         16,
+              borderRadius:   'var(--radius-full)',
+              border:         `1.5px solid ${value === type ? 'var(--theme-accent)' : 'var(--neu-edge-strong)'}`,
+              background:     'var(--neu-input-bg)',
+              boxShadow:      'var(--neu-shadow-input)',
+              display:        'grid',
+              placeItems:     'center',
+              flexShrink:     0,
+              transition:     'border-color var(--duration-fast) var(--ease-in-out)',
+            }}
+          >
+            {value === type && (
+              <span style={{ width: 8, height: 8, borderRadius: 'var(--radius-full)', background: 'var(--theme-accent)' }} />
+            )}
+          </span>
           <span
             style={{
               fontFamily: 'var(--font-sans)',

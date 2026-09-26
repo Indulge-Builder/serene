@@ -14,6 +14,7 @@ import { EASE_OUT_EXPO, BASE_DURATION, SPRING_CONFIG } from "@/lib/constants/mot
 import { formatRelativeTime } from "@/lib/utils/dates";
 import { getAgentRecentActivityAction } from "@/lib/actions/dashboard";
 import { useWidgetData } from "@/hooks/useWidgetData";
+import { useMediaQuery, MQ } from "@/hooks/useMediaQuery";
 import { EmptyState } from "@/components/ui/EmptyState";
 import type { DashboardRecentLead } from "@/lib/types";
 import type { WidgetProps } from "../DashboardWidgetSlot";
@@ -178,7 +179,7 @@ function LeadActivityCard({
 
       {/* Line 3 — latest note. Sans + secondary (the canonical note-body
           treatment in LeadNotesSection) — serif-italic + tertiary read as
-          washed-out body copy on the paper-subtle card. */}
+          washed-out body copy on the card. */}
       {noteBody && (
         <p
           style={{
@@ -199,14 +200,20 @@ function LeadActivityCard({
     </>
   );
 
+  // A porcelain card on the porcelain widget (2026-09-25), the rest state of the
+  // Oversight cards that share .serene-activity-card. Never the sunken
+  // --theme-paper-subtle well: that cool grey read as a violet tint on the warm
+  // card, and it is the same in every theme. The theme lives in the small signals
+  // (the title dot, the Mine/Team thumb); the status chips carry their own colour.
   const cardStyle: React.CSSProperties = {
     display: "flex",
     flexDirection: "column",
     gap: "var(--space-2)",
     padding: "var(--space-3)",
     borderRadius: "var(--radius-md)",
-    background: "var(--theme-paper-subtle)",
+    background: "var(--theme-paper)",
     border: "1px solid var(--theme-paper-border)",
+    boxShadow: "var(--shadow-1)",
     textDecoration: "none",
   };
 
@@ -299,6 +306,7 @@ function ScopeSwitch({
             aria-selected={active}
             disabled={disabled}
             onClick={() => !active && onChange(opt.value)}
+            className="serene-touch"
             style={{
               position: "relative",
               zIndex: 1,
@@ -406,6 +414,10 @@ export function AgentActivityWidget({
   const GAP_PX = 8; // --space-2, the gap between cards and between the two copies
   const [marquee, setMarquee] = useState(false);
   const [shiftPx, setShiftPx] = useState(0);
+  // A finger has no hover to pause the drift and cannot scroll a hidden-overflow
+  // viewport (mobile audit 2026-09-26): on a coarse pointer the marquee never
+  // runs — native scroll, one copy of the list.
+  const isTouch = useMediaQuery(MQ.touch);
   useEffect(() => {
     const viewport = viewportRef.current;
     const content = measureRef.current;
@@ -421,7 +433,7 @@ export function AgentActivityWidget({
     ).matches;
     const check = () => {
       const copyHeight = content.scrollHeight; // one copy (the measured wrapper)
-      setMarquee(!reduced && copyHeight > viewport.clientHeight + 8);
+      setMarquee(!reduced && !isTouch && copyHeight > viewport.clientHeight + 8);
       setShiftPx(copyHeight + GAP_PX);
     };
     check();
@@ -431,7 +443,7 @@ export function AgentActivityWidget({
     return () => ro.disconnect();
     // The ResizeObserver above re-measures on any height change (the slot now
     // drives a continuous height), so `size` is no longer a dep.
-  }, [leads]);
+  }, [leads, isTouch]);
 
   return (
     <div

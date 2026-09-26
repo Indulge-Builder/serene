@@ -13,6 +13,7 @@ import { useEffect, useRef, useState } from "react";
 import { useInView } from "framer-motion";
 import { Download, FileText, Pause, Play, Video as VideoIcon } from "lucide-react";
 import { SeedMandala } from "@/components/ui/SeedMandala";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { getSiaMediaAction } from "@/lib/actions/sia";
 import { triggerBrowserDownload } from "@/lib/utils/export";
 import { formatBytes, formatClock, TYPE_PREVIEW } from "./sia-shared";
@@ -171,24 +172,39 @@ function InViewImage({ chatJid, waMessageId, senderJid, media, bare }: MediaProp
   if (failed) return <MediaChip media={media} note="Preview unavailable" danger />;
 
   const maxW = bare ? 140 : 280;
-  const openFull = async () => {
+  // Synchronous on purpose: iOS Safari only honours window.open inside the
+  // user gesture, and an `await` before it left the tap outside (mobile audit
+  // 2026-09-26). The data: URL is decoded inline; a presigned URL opens as is.
+  const openFull = () => {
     if (!payload) return;
     if (!payload.dataUrl.startsWith("data:")) {
       // S3 mode: the presigned URL opens directly — fetch() would die on CORS.
       window.open(payload.dataUrl, "_blank", "noopener");
       return;
     }
-    const blob = await (await fetch(payload.dataUrl)).blob();
-    window.open(URL.createObjectURL(blob), "_blank", "noopener");
+    const blobUrl = dataUrlToBlobUrl(payload.dataUrl);
+    if (blobUrl) {
+      window.open(blobUrl, "_blank", "noopener");
+      return;
+    }
+    // Not base64 (never today): open the tab inside the gesture, point it later.
+    const win = window.open("", "_blank");
+    if (!win) return;
+    win.opener = null;
+    fetch(payload.dataUrl)
+      .then((r) => r.blob())
+      .then((blob) => { win.location.href = URL.createObjectURL(blob); })
+      .catch(() => win.close());
   };
 
   return (
-    <div ref={ref} style={{ maxWidth: `${maxW}px` }}>
+    // The media never widens the bubble: the px cap is bounded by the bubble.
+    <div ref={ref} style={{ maxWidth: `min(${maxW}px, 100%)` }}>
       {payload ? (
+        <Tooltip label="Open full size" side="top" wrap="block">
         <button
           type="button"
           onClick={openFull}
-          title="Open full size"
           className="block p-0 border-0 bg-transparent"
           style={{ cursor: "zoom-in" }}
         >
@@ -199,7 +215,7 @@ function InViewImage({ chatJid, waMessageId, senderJid, media, bare }: MediaProp
             onLoad={() => setLoaded(true)}
             style={{
               display: "block",
-              maxWidth: `${maxW}px`,
+              maxWidth: "100%",
               maxHeight: bare ? "140px" : "320px",
               width: "auto",
               height: "auto",
@@ -209,15 +225,34 @@ function InViewImage({ chatJid, waMessageId, senderJid, media, bare }: MediaProp
               transition: "opacity var(--duration-base) var(--ease-in-out)",
             }}
           />
+          <span className="sr-only">Open full size</span>
         </button>
+        </Tooltip>
       ) : (
         <div
           className="skeleton"
-          style={{ width: `${bare ? 120 : 220}px`, height: `${bare ? 120 : 160}px`, borderRadius: "var(--radius-sm)" }}
+          style={{ width: `min(${bare ? 120 : 220}px, 100%)`, height: `${bare ? 120 : 160}px`, borderRadius: "var(--radius-sm)" }}
         />
       )}
     </div>
   );
+}
+
+/** A base64 data: URL → a blob: URL, synchronously (so a tap can open it). Null when not base64. */
+function dataUrlToBlobUrl(dataUrl: string): string | null {
+  const comma = dataUrl.indexOf(",");
+  if (comma < 0) return null;
+  const head = dataUrl.slice(0, comma);
+  if (!head.endsWith(";base64")) return null;
+  const mime = head.slice("data:".length, -";base64".length) || "application/octet-stream";
+  try {
+    const bin = atob(dataUrl.slice(comma + 1));
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return URL.createObjectURL(new Blob([bytes], { type: mime }));
+  } catch {
+    return null;
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -269,7 +304,7 @@ function VoiceNotePlayer({ chatJid, waMessageId, senderJid, media }: MediaProps)
   };
 
   return (
-    <div ref={ref} className="flex items-center gap-3" style={{ minWidth: "200px", maxWidth: "260px" }}>
+    <div ref={ref} className="flex items-center gap-3" style={{ minWidth: "min(200px, 100%)", maxWidth: "min(260px, 100%)" }}>
       <Button
         variant="primary" size="sm" iconOnly
         type="button"
@@ -303,7 +338,8 @@ function VoiceNotePlayer({ chatJid, waMessageId, senderJid, media }: MediaProps)
           aria-valuemax={100}
           aria-valuenow={Math.round(progress * 100)}
           onClick={seek}
-          className="w-full py-1.5"
+          // serene-touch-hit: a 44px hit area around the 4px bar on coarse pointers.
+          className="w-full py-1.5 serene-touch-hit"
           style={{ cursor: payload ? "pointer" : "default" }}
         >
           <div

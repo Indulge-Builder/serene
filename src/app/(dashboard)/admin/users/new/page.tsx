@@ -5,6 +5,8 @@ import { getQueendoms } from "@/lib/services/members-service";
 import { NewUserClient } from "@/components/admin/NewUserClient";
 import { BackButton } from "@/components/ui/BackButton";
 
+export const metadata = { title: "New team member" };
+
 export default async function NewUserPage() {
   const profile = await getCurrentProfile();
 

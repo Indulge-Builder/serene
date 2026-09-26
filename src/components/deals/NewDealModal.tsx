@@ -242,6 +242,7 @@ export function NewDealModal({
 
   return (
     <Modal
+      error={error ? <Alert tone="danger">{error}</Alert> : undefined}
       open={open}
       pending={isPending}
       onClose={handleClose}
@@ -408,9 +409,6 @@ export function NewDealModal({
             </div>
           )}
 
-          {error && (
-            <Alert tone="danger">{error}</Alert>
-          )}
         </form>
       ) : (
         <form
@@ -499,7 +497,7 @@ export function NewDealModal({
           )}
 
           {/* Deal date + Source — side by side */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+          <div className="serene-form-row">
             <div>
               <p style={{ ...labelStyle, margin: '0 0 var(--space-2) 0' }}>
                 Deal Date <span style={{ color: "var(--color-danger-text)" }}>*</span>
@@ -567,9 +565,6 @@ export function NewDealModal({
             </div>
           </div>
 
-          {error && (
-            <Alert tone="danger">{error}</Alert>
-          )}
 
           {isPending && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>

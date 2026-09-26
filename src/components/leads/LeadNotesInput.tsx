@@ -3,6 +3,7 @@
 import { Button } from '@/components/ui/Button';
 import { useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import { MQ, useMediaQuery } from '@/hooks/useMediaQuery';
 import { BookOpen, Send } from 'lucide-react';
 import { SeedMandala } from '@/components/ui/SeedMandala';
 import { DictationButton } from '@/components/ui/DictationButton';
@@ -20,6 +21,7 @@ export function LeadNotesInput({ leadId, canAdd, onNoteAdded }: Props) {
   const [error, setError]         = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [dictationBusy, setDictationBusy] = useState(false);  // recording OR transcribing
+  const touch = useMediaQuery(MQ.touch);
   const textareaRef               = useRef<HTMLTextAreaElement>(null);
   const router                    = useRouter();
 
@@ -126,15 +128,20 @@ export function LeadNotesInput({ leadId, canAdd, onNoteAdded }: Props) {
                 background:   'var(--theme-paper-subtle)',
               }}
             >
-              <p
-                style={{
-                  fontSize: 'var(--text-xs)',
-                  color:    'var(--theme-text-tertiary)',
-                  margin:   0,
-                }}
-              >
-                ⌘ + Enter to submit
-              </p>
+              {/* A phone keyboard has no ⌘; the hint would only puzzle. An empty span keeps the submit cluster on the right. */}
+              {touch ? (
+                <span aria-hidden />
+              ) : (
+                <p
+                  style={{
+                    fontSize: 'var(--text-xs)',
+                    color:    'var(--theme-text-tertiary)',
+                    margin:   0,
+                  }}
+                >
+                  ⌘ + Enter to submit
+                </p>
+              )}
 
               <span
                 style={{

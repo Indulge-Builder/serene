@@ -3,6 +3,8 @@
 // MemberHealthCard — the happiness score with its reasons, and a manual adjustment for a
 // bishop or queen (a signed delta with a note; an append-only health event).
 
+import { FormSelect } from '@/components/ui/FormSelect';
+import { Input } from '@/components/ui/Field';
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { HeartPulse } from 'lucide-react';
@@ -60,10 +62,10 @@ export function MemberHealthCard({ clientId, health }: { clientId: string; healt
         {open ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>
             <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
-              <select className="serene-input neu-input" value={delta} onChange={(e) => setDelta(e.target.value)} style={{ width: 96 }}>
+              <FormSelect aria-label="Health adjustment"  value={delta} onValueChange={(nextValue) => setDelta(nextValue)} style={{ width: 96 }}>
                 {[-20, -10, -5, -2, 2, 5, 10, 20].map((d) => <option key={d} value={d}>{d > 0 ? `+${d}` : d}</option>)}
-              </select>
-              <input className="serene-input neu-input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Why (required)" style={{ flex: 1 }} maxLength={300} />
+              </FormSelect>
+              <Input className="serene-input neu-input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Why (required)" style={{ flex: 1 }} maxLength={300} />
             </div>
             <div style={{ display: 'flex', gap: 'var(--space-2)', justifyContent: 'flex-end' }}>
               <Button variant="ghost" size="xs" onClick={() => setOpen(false)}>Cancel</Button>

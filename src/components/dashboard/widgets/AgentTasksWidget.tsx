@@ -6,6 +6,7 @@ import { RefreshCcw } from "lucide-react";
 import { getAgentTasksSummaryAction } from "@/lib/actions/dashboard";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { AnimatedNumber } from "@/components/ui/AnimatedNumber";
 import { formatDate } from "@/lib/utils/dates";
 import { formatCount } from "@/lib/utils/numbers";
@@ -246,11 +247,13 @@ export function AgentTasksWidget({ userId, initialData }: WidgetProps) {
           >
             My Tasks<span className="page-title-dot">.</span>
           </p>
+          <Tooltip label="Refresh" side="bottom">
           <Button
             variant="ghost"
             onClick={handleRefresh}
             loading={isPending}
-            title="Refresh"
+            aria-label="Refresh"
+            className="serene-touch"
             style={{
               width: 28,
               height: 28,
@@ -261,6 +264,7 @@ export function AgentTasksWidget({ userId, initialData }: WidgetProps) {
             iconLeft={RefreshCcw}
             size="xs"
           />
+          </Tooltip>
         </div>
 
         {/* Compact tier — the cell is too small for a list; show a summary. */}

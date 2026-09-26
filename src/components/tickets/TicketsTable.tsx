@@ -2,6 +2,7 @@
 
 // TicketsTable — the /tickets dense table (the board at list density). Display-only.
 
+import Link from 'next/link';
 import { memo, useCallback, useState } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { ClipboardList } from 'lucide-react';
@@ -61,7 +62,8 @@ const Row = memo(function Row({ t, label }: { t: TicketListItem; label?: string 
     <tr onClick={go} onMouseEnter={onEnter} onMouseLeave={() => setHovered(false)} style={{ cursor: 'pointer' }}>
       <td style={{ ...CELL, ...rc, fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)', whiteSpace: 'nowrap' }}>{t.ticket_no}</td>
       <td style={{ ...CELL, ...rc, minWidth: 260 }}>
-        <span style={{ display: 'block', fontWeight: 'var(--weight-medium)', color: 'var(--theme-text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 420 }}>{t.title}</span>
+        {/* A real link, so a keyboard can open the ticket; the row click stays for the mouse. */}
+        <Link href={href} onClick={(e) => e.stopPropagation()} style={{ color: 'inherit', textDecoration: 'none', display: 'block', fontWeight: 'var(--weight-medium)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 420 }}>{t.title}</Link>
         <span style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>{t.member_name} · {TICKET_CATEGORIES.labels[t.category] ?? t.category}{t.queendom_name ? ` · ${t.queendom_name.replace(' Queendom', '')}` : ''}</span>
       </td>
       <td style={{ ...CELL, ...rc }}><TicketStatusPill status={t.status} label={label} /></td>

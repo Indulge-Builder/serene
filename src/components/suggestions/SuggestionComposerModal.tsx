@@ -15,6 +15,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/hooks/useToast";
+import { MQ, useMediaQuery } from "@/hooks/useMediaQuery";
 import { submitSuggestionAction } from "@/lib/actions/suggestions";
 import { formErrors } from "@/lib/validations/form-errors";
 import {
@@ -48,6 +49,8 @@ export function SuggestionComposerModal({
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // No autofocus on a phone: the keyboard would cover the opening sheet.
+  const touch = useMediaQuery(MQ.touch);
 
   function reset() {
     attachments.forEach((a) => URL.revokeObjectURL(a.previewUrl));
@@ -155,14 +158,14 @@ export function SuggestionComposerModal({
       title="Send feedback"
       description="Spotted a bug or have an idea? Tell us — add screenshots if it helps."
       size="md"
+      error={error ? (
+        <span style={{ color: "var(--color-danger-text)", fontSize: "var(--text-xs)" }}>
+          {error}
+        </span>
+      ) : undefined}
       footer={
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", width: "100%" }}>
-          {error && (
-            <span style={{ flex: 1, color: "var(--color-danger-text)", fontSize: "var(--text-xs)" }}>
-              {error}
-            </span>
-          )}
-          <div style={{ flex: error ? 0 : 1 }} />
+          <div style={{ flex: 1 }} />
           <Button variant="ghost" size="sm" onClick={handleClose} disabled={submitting}>
             Cancel
           </Button>
@@ -221,7 +224,7 @@ export function SuggestionComposerModal({
             placeholder="What happened, or what would you like to see?"
             rows={4}
             maxLength={2000}
-            autoFocus
+            autoFocus={!touch}
             style={{
               resize: "vertical",
               minHeight: "96px",

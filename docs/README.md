@@ -22,7 +22,8 @@ docs/
 │   ├── database_architecture.sql ← raw pg_dump snapshot (2026-06-12; migrations are truth for anything newer)
 │   ├── auth-and-rbac.md     ← roles×domains, profiles foundation, sessions, RLS policy
 │   ├── caching.md           ← Redis key registry, TTLs, invalidation contracts
-│   └── migrations.md        ← conventions + full migration index (0001–0156)
+│   ├── migrations.md        ← conventions + full migration index (0001–0156)
+│   └── hands-plan.md        ← PLAN (2026-09-26): Elaya gets hands; Instinct as the first agent vendor; nothing built
 ├── design/
 │   ├── DESIGN-DNA.md        ← the design constitution (law)
 │   ├── design-system.md     ← component implementation reference

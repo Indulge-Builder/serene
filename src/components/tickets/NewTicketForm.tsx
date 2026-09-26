@@ -7,9 +7,14 @@
 // picks the member and fills the brief. Everything is editable before saving. Priority is a
 // suggestion until a bishop approves it on the ticket page; the SLA starts then.
 
+import { FormSelect } from '@/components/ui/FormSelect';
+import { Input, Textarea } from '@/components/ui/Field';
+import { DatePicker } from '@/components/ui/DatePicker';
+import { parseIsoDateTime, toIsoDateTime } from '@/lib/utils/dates';
 import { SelectionButton } from '@/components/ui/SelectionButton';
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import { MQ, useMediaQuery } from '@/hooks/useMediaQuery';
 import { Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { toast } from '@/lib/toast';
@@ -34,7 +39,7 @@ export type TicketSelection = {
   messages: { chat_jid: string; wa_message_id: string; sender_jid: string; sender_name: string | null; from_member: boolean; at: string; text: string }[];
 };
 
-const FIELD: React.CSSProperties = { width: '100%', padding: 'var(--space-3)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--theme-paper-border)', background: 'var(--theme-paper)', color: 'var(--theme-text-primary)', fontSize: 'var(--text-sm)', fontFamily: 'inherit', boxSizing: 'border-box' };
+
 const CARD: React.CSSProperties = { background: 'var(--theme-paper)', border: '1px solid var(--theme-paper-border)', borderRadius: 'var(--neu-radius-card)', boxShadow: 'var(--shadow-1)', padding: 'var(--space-6)' };
 function Label({ children }: { children: React.ReactNode }) {
   return <span className="label-micro" style={{ display: 'block', color: 'var(--theme-text-tertiary)', marginBottom: 'var(--space-2)' }}>{children}</span>;
@@ -50,6 +55,8 @@ export function NewTicketForm({ initialMember, callerQueendomId, initialProposal
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  // No autofocus on a phone: the keyboard would cover the opening sheet.
+  const touch = useMediaQuery(MQ.touch);
   const [drafting, setDrafting] = useState(false);
   const [selection, setSelection] = useState<TicketSelection | null>(null);
   const [draft, setDraft] = useState<TicketDraft | null>(null);
@@ -149,7 +156,7 @@ export function NewTicketForm({ initialMember, callerQueendomId, initialProposal
   }
 
   return (
-    <div className="serene-dossier-grid serene-dossier-grid--340" style={{ alignItems: 'start' }}>
+    <div className="serene-dossier-grid serene-dossier-grid--340 serene-dossier-grid--side-first" style={{ alignItems: 'start' }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)' }}>
         <div style={CARD}>
           <Label>Member</Label>
@@ -160,7 +167,7 @@ export function NewTicketForm({ initialMember, callerQueendomId, initialProposal
             </div>
           ) : (
             <>
-              <input style={FIELD} value={memberQuery} onChange={(e) => setMemberQuery(e.target.value)} placeholder="Search a member by name or number" autoFocus />
+              <Input style={{ width: '100%' }} value={memberQuery} onChange={(e) => setMemberQuery(e.target.value)} placeholder="Search a member by name or number" autoFocus={!touch} enterKeyHint="search" />
               {hits.length > 0 && (
                 <ul style={{ margin: 'var(--space-2) 0 0', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 2 }}>
                   {hits.map((h) => (
@@ -193,45 +200,47 @@ export function NewTicketForm({ initialMember, callerQueendomId, initialProposal
           )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 'var(--space-4)' }}>
             <label><Label>Category</Label>
-              <select style={FIELD} value={form.category} onChange={(e) => { setForm({ ...form, category: e.target.value as TicketCategory, sub_category: '' }); }}>
+              <FormSelect style={{ width: '100%' }} value={form.category} onValueChange={(nextValue) => { setForm({ ...form, category: nextValue as TicketCategory, sub_category: '' }); }}>
                 {TICKET_CATEGORIES.options.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-              </select>
+              </FormSelect>
             </label>
             {subs.length > 0 && (
               <label><Label>Sub-category</Label>
-                <select style={FIELD} value={form.sub_category} onChange={(e) => setForm({ ...form, sub_category: e.target.value })}>
+                <FormSelect style={{ width: '100%' }} value={form.sub_category} onValueChange={(nextValue) => setForm({ ...form, sub_category: nextValue })}>
                   <option value="">Not set</option>{subs.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-                </select>
+                </FormSelect>
               </label>
             )}
-            <label style={{ gridColumn: '1 / -1' }}><Label>Title</Label><input style={FIELD} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="What the member wants, in one line" /></label>
+            <label style={{ gridColumn: '1 / -1' }}><Label>Title</Label><Input style={{ width: '100%' }} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="What the member wants, in one line" /></label>
             {fields.map((f) => (
               <label key={f} style={f === 'notes' || f === 'delivery_address' || f === 'product_details' ? { gridColumn: '1 / -1' } : undefined}>
                 <Label>{TICKET_BRIEF_FIELD_LABELS[f]}</Label>
                 {f === 'early_check_in' ? (
-                  <select style={FIELD} value={brief[f] === true ? 'yes' : brief[f] === false ? 'no' : ''} onChange={(e) => setBrief({ ...brief, [f]: e.target.value === '' ? undefined : e.target.value === 'yes' })}><option value="">Not set</option><option value="yes">Yes</option><option value="no">No</option></select>
+                  <FormSelect style={{ width: '100%' }} value={brief[f] === true ? 'yes' : brief[f] === false ? 'no' : ''} onValueChange={(nextValue) => setBrief({ ...brief, [f]: nextValue === '' ? undefined : nextValue === 'yes' })}><option value="">Not set</option><option value="yes">Yes</option><option value="no">No</option></FormSelect>
+                ) : f === 'date' || f === 'date_to' ? (
+                  <DatePicker showTime style={{ width: '100%' }} placeholder="Pick a date and time" value={parseIsoDateTime(typeof brief[f] === 'string' ? (brief[f] as string) : '')} onChange={(d) => setBrief({ ...brief, [f]: toIsoDateTime(d) })} />
                 ) : (
-                  <input style={FIELD} type={f === 'date' || f === 'date_to' ? 'datetime-local' : 'text'} value={typeof brief[f] === 'string' ? (brief[f] as string) : ''} onChange={(e) => setBrief({ ...brief, [f]: e.target.value })} />
+                  <Input style={{ width: '100%' }} value={typeof brief[f] === 'string' ? (brief[f] as string) : ''} onChange={(e) => setBrief({ ...brief, [f]: e.target.value })} />
                 )}
               </label>
             ))}
             <label><Label>Priority (suggested)</Label>
-              <select style={FIELD} value={form.priority} onChange={(e) => setForm({ ...form, priority: e.target.value as TicketPriority })}>
+              <FormSelect style={{ width: '100%' }} value={form.priority} onValueChange={(nextValue) => setForm({ ...form, priority: nextValue as TicketPriority })}>
                 {TICKET_PRIORITIES.options.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-              </select>
+              </FormSelect>
               {draft?.priority_reason && <span style={{ fontSize: 'var(--text-xs)', color: 'var(--theme-text-tertiary)' }}>{draft.priority_reason}</span>}
             </label>
-            <label><Label>Needed by</Label><input style={FIELD} type="datetime-local" value={form.requested_for} onChange={(e) => setForm({ ...form, requested_for: e.target.value })} /></label>
+            <label><Label>Needed by</Label><DatePicker showTime style={{ width: '100%' }} placeholder="Pick a date and time" value={parseIsoDateTime(form.requested_for)} onChange={(d) => setForm({ ...form, requested_for: toIsoDateTime(d) })} /></label>
             <label><Label>Genie</Label>
-              <select style={FIELD} value={form.assignee_id} onChange={(e) => setForm({ ...form, assignee_id: e.target.value })}>
+              <FormSelect style={{ width: '100%' }} value={form.assignee_id} onValueChange={(nextValue) => setForm({ ...form, assignee_id: nextValue })}>
                 <option value="">Unassigned</option>{staff.map((s) => <option key={s.id} value={s.id}>{s.full_name}{s.sia_role ? ` (${s.sia_role})` : ''}</option>)}
-              </select>
+              </FormSelect>
             </label>
-            <label style={{ gridColumn: '1 / -1' }}><Label>Note (the member's words, or why)</Label><textarea style={{ ...FIELD, minHeight: 90, resize: 'vertical' }} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></label>
+            <label style={{ gridColumn: '1 / -1' }}><Label>Note (the member's words, or why)</Label><Textarea style={{ width: '100%', minHeight: 90, resize: 'vertical' }} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></label>
             {draft && corrections.length > 0 && (
               <label style={{ gridColumn: '1 / -1' }}>
                 <Label>What did Serene get wrong? (optional)</Label>
-                <input style={FIELD} value={feedback} onChange={(e) => setFeedback(e.target.value)} maxLength={500} placeholder={`You changed ${corrections.map((c) => c.field.replace('brief.', '')).join(', ')}. One line on why is how it learns.`} />
+                <Input style={{ width: '100%' }} value={feedback} onChange={(e) => setFeedback(e.target.value)} maxLength={500} placeholder={`You changed ${corrections.map((c) => c.field.replace('brief.', '')).join(', ')}. One line on why is how it learns.`} />
               </label>
             )}
           </div>

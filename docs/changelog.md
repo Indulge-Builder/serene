@@ -12,18 +12,110 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
-## 2026-09-26 — Freshdesk for a queen: no Queendom filter, only her team in the Agent list
+## 2026-09-26 — Serene on a phone: the mobile audit fixed
 
-A queen on /freshdesk was offered a Queendom filter, though the server already pins her to
-her own queendom's group, and an Agent list of all 48 Freshdesk agents in the company.
+Everything in `docs/audits/2026-09-26-mobile-audit.md` sections 3 and 4, and most of 5, in one
+pass; nothing else touched. Code only, no app run.
 
-- The Queendom filter is gone for a pinned viewer (`FreshdeskFilters showGroup`). Admin,
-  founder and the tech workbench keep it.
-- The Agent list offers only the people who work her queendom: everyone assigned a ticket in
-  its Freshdesk group in the last 90 days (`getGroupAgentIds` in freshdesk-service.ts,
-  `FD_GROUP_AGENT_WINDOW_DAYS`). Freshdesk's group membership is not in the mirror (the groups
-  list has no agent_ids), so the work is the fact. Checked on production data: 10, 12 and 11
-  people for the three queendoms, each the right team. A failed read keeps the full list.
+**Shared pieces (the leverage list).** `@media (pointer: coarse)` in serene-neumorphic-tokens.css
+lifts every text field to 16px (iOS zoomed the page on every tap, from the login screen on) and
+every `.serene-selection` to 44px. globals.css: `.serene-touch-hit` (an invisible 44px hit area
+around a tiny drawn control), `.serene-form-row` (side by side on a desktop, stacked on a phone),
+and the order rules that put an `--aside-left` aside after the main content below lg and a
+`--side-first` aside before it. `generateViewport` sets `interactiveWidget: resizes-content` so
+Android's keyboard shrinks the shell instead of covering a composer. `Dialog` and `Modal` take an
+`error` prop rendered above the footer buttons (a phone never saw an error that was the last child
+of the scrolling body), and the footer wraps. `MessageBar` owns the Enter rule (`sendOnEnter`): a
+bare Enter on touch is a newline, the knob sends. `usePortalAnchor` no longer focuses a panel's
+input on touch. `SkeletonCard` takes `className`.
+
+**The two screens the founder named.** `/elaya` below lg has no sidebar column (the flex-fill grid
+had squeezed it into a 48px strip): the chat fills the screen, the role's starters are a chip row
+above the composer while the transcript is empty, Send feedback is an icon in the header
+(`useOptionalSuggestionFeedback`); the skeleton matches. `/performance`: one
+`AgentIdentityHeader` and one `AgentStatRow` (`components/performance/AgentIdentity.tsx`) drawn by
+both the manager panel and the founder deck, so a founder on a phone sees the same agent whichever
+domain filter is on; the deck's private `DeckTile` and its "Recent calls: View" are gone.
+
+**Pages.** Title rows on Tickets, Board, Vendors, Leads and Budget keep their icon and hide the
+secondary label below md so the primary button and the bell never clip. The board has a back
+button, touch drag (TouchSensor with a hold, `pan-x pan-y` cards) and a per-card "Move to" menu on
+touch. teach-elaya left the drawer-trigger set (its back button was under the trigger); error-log
+joined the set and the padding ladder. The ticket page shows the brief before the side cards on a
+phone; the New ticket page shows the suggestion before the form. Members has a card list below md
+(`MemberMobileCard`). The Recent Leads marquee does not run on touch. Vendor header wraps;
+Freshdesk media fits its card; the members, leads and subscriptions skeletons match what the phone
+renders. FilterBar's mobile scroll row is CSS now, no hydration flip.
+
+**Forms.** Thirteen two- and three-up rows compose `.serene-form-row` (Add lead, New deal, Add
+vendor, role/domain, training asset, suggestion, subscription, payment, top-up, recharge, personal
+details, Elaya requests). Fourteen modals moved their whole-form error to the `error` prop.
+`autoFocus` is skipped on touch in every form and modal. Phone and email fields carry their
+keyboards, search fields `enterKeyHint`. CalledModal's outcome menu is portaled. The SLA and
+escalation rows wrap; the vault rows wrap; the Merge dialog uses the Dialog footer.
+
+**Tasks.** The group workspace row is the two-line mobile row the tab already had; the add-subtask
+panel is a Dialog sheet below md. The subtask row in New group task stacks below sm and its
+assignee picker is portaled (`usePortalAnchor` + `FloatingPanel`). SubTaskModal is a bottom sheet
+below md with no backdrop blur, a Mouse + Touch sensor pair on the checklist and Move up / down
+on touch. Group headers act at once on touch (no 220ms double-click wait). My Tasks lists first on
+a phone. TaskRemarksPanel sticks to the bottom only when the reader is there, the blur orbs render
+on fine pointers only, and Enter is a newline on touch.
+
+**Chats.** Media is `maxWidth: 100%` of its bubble (Sia, WhatsApp); the voice player fits; the
+seek bar has a 44px band; the full-size photo opens inside the tap. WhatsApp scrolls to the bottom
+only when the reader is near it and shows the "N new messages" pill like Sia. Back closes the chat
+on Sia (`?group=`) and WhatsApp (`?c=`) instead of leaving the page, focus returns to the rail row.
+One bubble spec (20/6 radius, clock time). The Elaya widget fills the sheet and follows the
+keyboard; the presence card's Send feedback sits in its own header row. Toasts sit above the
+composer. Touch targets across Sia and WhatsApp.
+
+**The `/m` app.** The demo Profile, Requests and Request screens are behind
+`MOBILE_DEMO_SCREENS_ENABLED` (off): any signed-in staff could reach "Arfam Alam" and a fake
+booking flow by URL. The drawer's dead rows and the app bar's handler-less bell are gone; the
+drawer pads the bottom safe area. The Elaya screen's back goes to `/m`, its date chips follow the
+real day (`ElayaSeedMessage.createdAt` now carries `created_at`), starter chips are 44px, the input
+16px. Pager dots have a 44px hit area. `lockBodyScroll` is the position-fixed lock (iOS
+rubber-banded behind sheets).
+
+**Left as is, on purpose.** RevivalPoliciesPanel keeps its sideways table (its four fixed columns
+need a card-per-policy layout, a separate piece). Calendar day cells keep their 33px (a 44px halo
+on that grid would land taps on the neighbouring day). The founder's boot screen still plays on a
+PWA launch. TaskRemarksPanel keeps its own composer rather than MessageBar (a larger chrome
+change).
+
+---
+
+## 2026-09-26 — Audit: Serene on a phone (report only, nothing changed)
+
+`docs/audits/2026-09-26-mobile-audit.md`. Every screen read at 360 to 430px, code only, no running
+app. Score 10 / 20 on the phone-only rubric. The two screens the founder named have their causes:
+the Elaya page's sidebar column becomes a 48px strip below `lg` because the flex-fill grid gives
+the chat its 420px and the identity card is `overflowY: auto` (measured 535px / 115px rows,
+762px of content in 48px); the Performance agent profile has three renderings (`AgentDetailPanel`,
+`FounderDrillDownDeck`, `AgentPerformanceShell`) with three tile styles and two avatar sizes, and
+a founder on a phone sees a different one depending on the domain filter. Sixteen P1s: 14px
+fields that make iOS zoom on every tap, no `interactiveWidget`, the drag-only ticket board with no
+way out, title rows that clip their CTA on four pages, the ticket aside rendered before the brief,
+nine form rows that never stack, the 5-column subtask row, form errors below the fold, the
+hover-only marquee, chat media wider than its bubble, the `/m` demo screens reachable by any
+staff, and the teach-elaya trigger over its back button. Nine shared changes clear most of it.
+
+---
+
+## 2026-09-26 — Plan: Elaya gets hands (Instinct as the first agent vendor)
+
+`docs/architecture/hands-plan.md`. Nothing built. The founder's idea: Elaya hands member jobs to
+Instinct (the WhatsApp personal agent) the way a genie hands a job to a vendor, from a separate
+number and a separate Indulge identity with a capped card, never a member's card, name or number.
+The plan: a second Baileys number and process (the Sia watcher stays read only and untouched; the
+Gupshup business number cannot message Instinct at all, Meta blocks business-to-business), Instinct
+as an `agent` vendor in the existing book and ledger, the thread on the ticket timeline, a
+disclosure filter that shows the genie what is sent and what is held back, Elaya draft-then-approve
+tools, a `/hands` page over SplitWorkspace, a four-level trust ladder and spend caps in settings.
+The same shape takes the next agent (Meta's Muse) as one more vendor row. Eight decisions listed.
+
+---
 
 ## 2026-09-26 — Members: the list orders by who is active, and every member gets Serene's judgement (0241)
 
@@ -79,6 +171,50 @@ Files: `supabase/migrations/20260926000241_member_pulse_and_list.sql`, `src/lib/
 `src/lib/actions/members.ts`, `src/lib/validations/member-schema.ts`, `src/lib/types/member.ts`, `src/lib/supabase/schemas.ts`,
 `src/lib/constants/member-facets.ts`, `src/lib/services/llm-providers-service.ts`, `src/app/(dashboard)/members/page.tsx`,
 `src/app/(dashboard)/members/[id]/page.tsx`, `src/lib/types/database.ts`.
+
+## 2026-09-26 — Freshdesk for a queen: no Queendom filter, only her team in the Agent list
+
+A queen on /freshdesk was offered a Queendom filter, though the server already pins her to
+her own queendom's group, and an Agent list of all 48 Freshdesk agents in the company.
+
+- The Queendom filter is gone for a pinned viewer (`FreshdeskFilters showGroup`). Admin,
+  founder and the tech workbench keep it.
+- The Agent list offers only the people who work her queendom: everyone assigned a ticket in
+  its Freshdesk group in the last 90 days (`getGroupAgentIds` in freshdesk-service.ts,
+  `FD_GROUP_AGENT_WINDOW_DAYS`). Freshdesk's group membership is not in the mirror (the groups
+  list has no agent_ids), so the work is the fact. Checked on production data: 10, 12 and 11
+  people for the three queendoms, each the right team. A failed read keeps the full list.
+
+## 2026-09-26 — Empty states work on server pages again
+
+Opening a missing address threw "Only plain objects can be passed to Client Components" at
+`app/not-found.tsx`: `EmptyState` was a client component, and a server page handed it a
+Lucide icon, which is a component, not data. Nine server call sites did the same (both 404
+pages, Deals, Books, Campaigns, the follow-up engine and lead revival settings, the agent task
+list), so every one of those empty states broke when it showed.
+
+- `components/ui/EmptyState.tsx` is server-safe now: no `'use client'`, the icon renders on
+  the caller's side, and only the fade-in is client, in the private
+  `ui/EmptyStateEntrance.tsx`. No call site changed. Checked on the dev server: a missing
+  address returns the 404 page with the icon drawn and no error.
+
+## 2026-09-26 — The tab icon is the bare mark; the phone shortcut is the mark on white
+
+The founder asked for the background-free logo (`public/logo-bg-removed.webp`, the old
+`logo.webp` renamed by hand) as the tab icon and the phone shortcut. A shortcut cannot be
+transparent: an iPhone paints black behind a transparent icon and Android usually white, so
+the founder chose: tab transparent, phone on white.
+
+- **Tab** (`src/app/favicon.ico`): the mark with no plate, the same heavier 16px stroke as
+  before, scaled to fill the box. Checked on light and dark tab strips.
+- **Phone shortcut** (`public/icon-1.webp`, `src/app/apple-icon.png`,
+  `public/icons/icon-192.png` / `-512.png`): the mark on a solid white plate (was cream).
+  Solid, so the manifest's `maskable` entry stays valid. The three decorative icon picks keep
+  their cream plate. A shortcut already on a phone keeps its old icon until it is re-added.
+- **The rename**: the sidebar and the seven auth screens still pointed at `/logo.webp` and
+  would have shown a broken image; all now read `/logo-bg-removed.webp`, and
+  `scripts/pad-app-icons.mjs` writes that name. The script is the one place these rasters
+  come from (white `MARK_PLATE` for the default, bare favicon); `sw.js` cache → v4.
 
 ## 2026-09-26 — New ticket: the messages behind a suggestion, as a mini WhatsApp view
 
@@ -148,6 +284,138 @@ Files: `src/components/sia/SiaMessagesPeek.tsx`, `src/components/sia/SiaChat.tsx
   the member (decision 2026-09-15).
 
 ---
+
+## 2026-09-25 — The audit's urgent fixes: nothing falls back to the browser, and the missing pieces are in
+
+Why: the founder took the audit's urgent list and asked for all of it fixed without disturbing anything
+else. Every item below was in that list. Where a fix needed a shared piece, the piece was built once
+and the call sites moved onto it; where another tool's unfinished dropdown work sat in the same file,
+only the lines these fixes needed were touched.
+
+- **Error and 404 pages.** `(dashboard)/not-found.tsx` and `error.tsx` render inside the shell (a
+  BackButton, a framed EmptyState, a way back or Try again, the error digest for support);
+  `(client)/m/error.tsx` is the mobile twin; `app/not-found.tsx` and `app/global-error.tsx` cover a URL
+  outside any group and the root layout itself. A bad link to a lead, member, ticket or vendor now lands
+  on a Serene page with a way back, and a crash no longer replaces the app with "Application error".
+- **Browser checkboxes and radios.** `ui/Checkbox` is THE tick box (promoted from the leads table's
+  private one): the ticket checklist uses `CheckTile`, notification preferences and the SLA channel
+  picks use `Checkbox`, the playbook "Active" is a `Toggle`, and the task-type radio keeps its native
+  input visually hidden behind a drawn dot (the row shows the keyboard focus). `accent-color` is set
+  globally as the safety net.
+- **Browser date, time and month pickers.** All eleven fields use `DatePicker`: the member form's
+  membership dates, the subscription due date, both payment dates, the top-up and recharge dates,
+  New ticket's brief dates and "Needed by" (with time), the card expiry and the export month (a new
+  `mode="month"`: a year stepper over the twelve months). `DatePicker` gains `id` for labels, speaks its
+  value, and draws its focus in the shared focus colour (so does `TimePicker`). The text ↔ Date helpers
+  live in `lib/utils/dates.ts`.
+- **Browser dropdown lists.** The nine remaining native selects (Won deal category, role, domain and
+  queendom on every user form, subscription type and currency, the top-up and recharge selects) use
+  `FormSelect`, which gained `name` (a hidden input for plain form posts), `<optgroup>` support (group
+  headings in the list, via `FilterDropdownItem.group`) and a spoken value.
+- **Scrollbars.** One global rule: thin, token-coloured thumbs on a transparent track, in every scroll
+  area (the page workspace, modal bodies, menus, the chat rails), not only `.scrollable`. The workspace
+  also contains overscroll. Number fields lose the OS spin arrows.
+- **Tooltips.** Of the native `title` tooltips on the app's own elements, 39 became `ui/Tooltip` (icon-only
+  controls; state and meaning titles such as the priority dot, the approval state, the linked-or-not icons
+  and "not copied yet" also keep their words in the DOM as visually hidden text or an `aria-label`, for
+  touch and screen readers), 5 that repeated visible text were removed, and 4 stay where a wrapper would
+  break the layout (the remarks composer, a task row's lead link, the snapshot tile, the mobile feedback
+  button). `BackButton` now draws its label as a Tooltip; the four widget Refresh buttons gained names.
+- **Tab titles.** The root layout has a title template ("Members · Serene") and every page exports its
+  own title; record pages use a static noun.
+- **The bell** (`PageControls`, bell-only) is on every primary page now: members, tickets, the board,
+  vendors, subscriptions, freshdesk, books, profile, Teach Elaya, and the four client shells (notes, sia,
+  ad creatives, Elaya training).
+- **Loading screens in each route's own shape** for tickets/[id], members/[id] and finance, tickets/new
+  and board, freshdesk/[id], campaigns/[id], vendors/find, admin/users/[id] and new, the four settings
+  pages, every mobile room, the mobile Elaya screen and the agent tasks screen. The mobile tab bar
+  moves its active tile on the tap, not when the server answers.
+- **The filter strip** is back on members, tickets, the board, vendors and freshdesk.
+- **Keyboard.** The name cell of the leads, members, tickets, vendors and Freshdesk lists is a real link;
+  the row click stays for the mouse.
+- **Dark mode.** The Revive lead confirm uses Button's `warning` variant (and Won its `success`); the
+  three semantic `-fg` inks are the charcoal in dark, where those fills lift light. `--neu-surface-high`
+  is a real step above the card in dark (#3B3529), and Elaya's transcript sits on the well like the
+  WhatsApp and Sia panes, so her bubbles are bubbles again in both modes.
+- **Layout.** "Add subtask" stacks above the Elaya button (`.serene-above-elaya-fab`); the Books, member
+  finance and member page grids use `minmax(min(Npx, 100%), 1fr)` so phones no longer cut them off.
+- **Touch and scrolling.** `ui/Carousel` follows the finger 1:1 (Framer drag with direction lock and
+  rubber-banding), lands on the slide a flick would reach, one per gesture, and springs on at the
+  finger's speed; hidden slides are inert. Elaya's chat (desktop and mobile) follows the reply only while
+  the reader is at the bottom; scrolling up keeps your place and a "New reply" pill jumps back down.
+
+Checked: TypeScript (only another tool's two unfinished files fail, as before), lint on every changed
+file, the contrast audit (1,568 pairs, 0 below target), the UI gates with the two new controls accepted
+into the appearance baseline, and the new controls, pages and skeletons rendered in a headless browser
+in light and dark.
+
+## 2026-09-25 — UI and UX audit of the whole front end (report only)
+
+Why: the founder asked for every place the UI, the experience or the visual finish falls short,
+above all elements that fall back to the browser's own look. `docs/audits/2026-09-25-ui-ux-audit.md`
+holds the result: five parallel code reviews (native fallbacks, page states, accessibility,
+responsive and dark mode, motion and feel), a scan of all 523 components and the Impeccable detector.
+Score 12 of 20. 21 P1 findings, led by the missing error and 404 pages, the bell missing on 13 pages,
+native checkboxes, date pickers and scrollbars, list rows a keyboard cannot open, and two dark-mode and
+phone bugs. Section 7 lists the dozen shared changes that remove most of them. No code changed.
+
+## 2026-09-25 — The purple tint is gone; the Subscriptions calendar and Find a vendor are rebuilt
+
+Why: the founder saw the same purple tint in many places (the Monthly Spend chart, the lead page's
+WhatsApp card, the notes box and note entries, the activity history) and asked why. The cause was
+one commit: the morning's quiet surfaces pass (99b571b) moved nine neutral tokens from the warm cream
+family to violet greys (OKLCH hue about 310), while the cards and the workspace stayed warm. Those
+tokens fill every inset, field, track and chart frame and draw every hairline and shadow, so the
+cast showed up app-wide, and no theme touched it. The founder also found the Subscriptions calendar
+layout broken (the view switcher stretched into an empty pill, and the due list floated on the page
+with its status pills a room away from their bills) and the Find a vendor page poor (a field inside a
+field, a loose Find button, an empty page).
+
+- **Neutrals** (`src/styles/serene-neumorphic-tokens.css`): the nine tokens have warm twins at the
+  same OKLCH lightness, so depth and contrast are unchanged. Light: `--neu-canvas` #ECE8E1,
+  `--neu-well` #EBE9E3, `--neu-sidebar-ink` #5A564C, `--neu-dark` 117 111 99 (and the edges built on
+  it), `--neu-input-bg` #EDEBE5 to #F5F3EE, `--neu-input-edge`, `--neu-track-bg` #E4E1DB to #EFEDE8.
+  Dark: `--neu-sidebar` #2A2721 (it was a violet charcoal among warm ones). No component changed;
+  every surface named above reads the tokens. `NEU_CANVAS_LIGHT` (`lib/constants/appearance.ts`) is
+  #ECE8E1 again, the same as the canvas and the home-screen icon plate, so the OS launch screen, the
+  browser bar and the boot screen match.
+- **Subscriptions calendar** (`components/subscriptions/SubscriptionCalendar.tsx`): the month grid
+  with this week in its footer; beside it the month in four numbers (`ui/StatStrip`: overdue, due
+  today, upcoming, paid, each with what it adds up to, per currency, never converted), then ONE
+  `ui/SectionCard` of due dates: a date tile (the day, the weekday or Today), the bill with how it
+  recurs and whose it is, the amount in its own column, the status. Amounts and pills line up down
+  the list; on a phone the name wraps and the amount rides under it. The switcher on the calendar
+  view is content-sized (`app/(dashboard)/subscriptions/page.tsx`). Recurrence and status logic are
+  unchanged.
+- **Find a vendor** (`components/vendors/FindVendorPanel.tsx`): one search card, a line on how the
+  ranking works, ONE field (the shell draws the frame, the input inside is `.serene-input-bare`) with
+  Find inside it, three example requests to try while the box is empty, and the understood-as chips
+  once typing. The answer is ONE "Best matches" card of ranked rows (`VendorMatches`, exported): rank,
+  score, name, the reasons, any cautions as chips, on the shared rich-row material. Parsing and
+  ranking are unchanged. `VendorScoreRing` gains a compact tier below 60px: the number alone, with
+  the full reading as its accessible label (the vendor page's 108px ring is unchanged).
+
+Checked: the contrast audit (1,568 theme and mode pairs, 0 below target), `npm run check:ui`, lint on
+every changed file, the TypeScript check (only another tool's two unfinished files fail), and the real
+components in a headless browser: the lead notes, activity, fields and chart frame before and after
+the token fix, the calendar at 1240, 820 and 390px, and Find a vendor at desktop and phone widths.
+
+## 2026-09-25 — Recent Leads rows: porcelain cards, not the grey well
+
+Why: the founder saw a purple tint on every row of the dashboard's Recent Leads widget, the same
+in every theme. The rows sat on `--theme-paper-subtle`, the sunken well, which the morning's quiet
+surfaces pass set to a cool grey (`--neu-well`, #EAE8EC). Beside the warm card it reads as violet,
+and a theme never touches it. Asked whether the rows should be plain or take the theme: plain.
+The status chips already carry colour, and a theme wash on every row would stack eight tinted
+blocks and fight them. The theme stays in the small signals (the title dot, the Mine/Team thumb).
+
+- `components/dashboard/widgets/AgentActivityWidget.tsx`: each row is a porcelain card on the
+  porcelain widget (`--theme-paper`, the hairline, `--shadow-1`), the rest state the Oversight
+  cards that share `.serene-activity-card` already use. The hover lift is unchanged.
+- `app/globals.css`: the `.serene-activity-card` comment now says what each consumer rests on.
+
+Checked: lint and types on the file, the token check, and the real widget with mock rows in a
+headless browser (Earth and Rose light, Water dark), before and after.
 
 ## 2026-09-25 — One empty state everywhere, the mark with its centre circle, a clean boot, the cream icon
 
