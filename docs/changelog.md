@@ -12,6 +12,35 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-27 — Team page: the roster cards tightened and warmed
+
+**Why.** The Domains card repeated Concierge, which the Queendoms card above it already shows:
+46 people in one tile, the tallest thing on the page. Tiles in a row also stretched to match
+the tallest one, so a team of two sat in a mostly empty box. And the tiles used the sunken well
+grey (`--theme-paper-subtle`), which read dull against the paper.
+
+**What.**
+- **Concierge left the Domains card.** The Queendoms card now owns every Concierge account.
+  The five Concierge accounts that hold no seat (three founders, a manager, an agent) sit in a
+  **No seat** group beside the Joker head, each tagged with their role, so nobody drops off
+  both cards. `QueendomRosterCard` now takes `users` and works out the Joker head and the
+  unseated people itself. The page no longer does that.
+- **Masonry for the Domains card.** `RosterGrid masonry` packs tiles into columns, so a tile
+  is only as tall as its people. Each tile rides an inline-block wrapper, which no browser
+  splits across columns. The Queendoms card keeps the row grid (its three tiles are alike).
+- **Theme-tinted tiles.** A new token, `--neu-tile-bg` (`serene-families.css`), is the paper
+  with 6% of the theme accent (4% in dark mode, like the table-row tints). The tile also gets
+  the `--neu-header-edge` hairline and `--shadow-1`, so it reads raised, not sunken. 6% is the
+  most tint the 10px tertiary labels can take and still keep 4.6:1 in all eight themes.
+
+Checked in a rendered preview: Earth light and dark, Water, and a 390px phone.
+
+Files: `src/components/admin/Roster.tsx`, `src/components/admin/QueendomRosterCard.tsx`,
+`src/components/admin/DomainRosterCard.tsx`, `src/app/(dashboard)/admin/users/page.tsx`,
+`src/styles/serene-families.css`.
+
+---
+
 ## 2026-09-26 -- Docs: the whole tree brought up to the code (docs-only)
 
 **Why.** The docs were last audited on 2026-07-02, at migration 0156. Since then the concierge

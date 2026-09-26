@@ -5,6 +5,9 @@
   --neu-table-header-bg: var(--neu-section-bg);
   --neu-table-row-hover: color-mix(in srgb, var(--theme-accent) 5%, var(--neu-surface));
   --neu-table-row-selected: color-mix(in srgb, var(--theme-accent) 12%, var(--neu-surface));
+  /* A raised tile inside a card (the Team roster tiles): the paper warmed by the theme,
+     never the sunken well grey. 6% keeps the 10px tertiary labels at 4.6:1 in every theme. */
+  --neu-tile-bg: color-mix(in srgb, var(--theme-accent) 6%, var(--theme-paper));
 }
 
 .serene-field { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
@@ -82,6 +85,7 @@ textarea.serene-field-control { resize: vertical; min-height: 96px; }
 [data-neu="dark"] {
   --neu-table-row-hover: color-mix(in srgb, var(--theme-accent) 2%, var(--neu-surface));
   --neu-table-row-selected: color-mix(in srgb, var(--theme-accent) 3%, var(--neu-surface));
+  --neu-tile-bg: color-mix(in srgb, var(--theme-accent) 4%, var(--theme-paper));
 }
 
 @media (pointer: coarse) {

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { CSSProperties, ReactNode } from "react";
+import { Children, type CSSProperties, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 import { Avatar } from "@/components/ui/Avatar";
 import type { Profile } from "@/lib/types/database";
@@ -12,12 +12,29 @@ import type { Profile } from "@/lib/types/database";
  */
 
 export type RosterMember = Pick<Profile, "id" | "full_name" | "avatar_url" | "is_active" | "is_on_leave"> & {
-  /** A short tag after the name: a concierge seat on the Domains card. */
+  /** A short tag after the name: the role of a Concierge account that holds no seat. */
   note?: string | null;
 };
 
-/** The tile grid inside a SectionCard: as many 240px tiles as fit, one column on a phone. */
-export function RosterGrid({ children }: { children: ReactNode }) {
+/**
+ * The tile grid inside a SectionCard: as many 240px tiles as fit, one column on a phone.
+ * `masonry` packs tiles of very different heights into columns instead of rows, so a tile
+ * with two people never stretches to the height of the one beside it with ten. Each tile
+ * rides an inline-block wrapper, which a column never splits in any browser.
+ */
+export function RosterGrid({ masonry = false, children }: { masonry?: boolean; children: ReactNode }) {
+  if (masonry) {
+    return (
+      // The negative margin takes back the gap under the last tile of the tallest column.
+      <div style={{ columns: "240px", columnGap: "var(--space-4)", marginBottom: "calc(-1 * var(--space-4))" }}>
+        {Children.map(children, (tile) => (
+          <div style={{ display: "inline-block", width: "100%", verticalAlign: "top", marginBottom: "var(--space-4)" }}>
+            {tile}
+          </div>
+        ))}
+      </div>
+    );
+  }
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "var(--space-4)" }}>
       {children}
@@ -46,9 +63,11 @@ export function RosterTile({
       flexDirection: "column",
       gap: "var(--space-3)",
       padding: "var(--space-4)",
-      background: "var(--theme-paper-subtle)",
-      border: "1px solid var(--theme-paper-border)",
+      // Raised and warmed by the theme (--neu-tile-bg), never the sunken well grey.
+      background: "var(--neu-tile-bg)",
+      border: "1px solid var(--neu-header-edge)",
       borderRadius: "var(--radius-md)",
+      boxShadow: "var(--shadow-1)",
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
         <Icon aria-hidden="true" style={{ width: 14, height: 14, strokeWidth: 1.5, color: iconColor, flexShrink: 0 }} />
