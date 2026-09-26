@@ -12,7 +12,6 @@ import { Gavel, RefreshCw } from 'lucide-react';
 import { CardHeader } from '@/components/leads/CardHeader';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { HealthPill } from '@/components/members/HealthPill';
 import { toast } from '@/lib/toast';
 import { formatDate, formatRelativeTime } from '@/lib/utils/dates';
 import { assessMemberNowAction } from '@/lib/actions/members';
@@ -65,7 +64,7 @@ export function MemberAssessmentCard({ memberId, assessment, pulse }: { memberId
     <div style={SHELL}>
       <CardHeader
         icon={Gavel}
-        label="Serene's judgement"
+        label="Why the health score is what it is"
         right={<Button size="xs" variant="ghost" onClick={queued ? () => router.refresh() : assessNow} loading={pending} loadingLabel="Starting…"><RefreshCw style={{ width: '0.8rem', height: '0.8rem', strokeWidth: 1.5 }} /> {queued ? 'Refresh' : assessment ? 'Assess again' : 'Assess now'}</Button>}
       />
       <div style={BODY}>
@@ -74,7 +73,6 @@ export function MemberAssessmentCard({ memberId, assessment, pulse }: { memberId
         ) : (
           <>
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
-              <HealthPill score={assessment.score} size="lg" />
               <span style={{ display: 'inline-flex', padding: '2px var(--space-3)', borderRadius: 'var(--radius-full)', fontSize: 'var(--text-xs)', fontWeight: 'var(--weight-medium)', ...RISK_STYLE[assessment.risk] }}>{ASSESSMENT_RISK_LABELS[assessment.risk]}</span>
               <span style={{ ...MUTED, marginLeft: 'auto' }}>judged {formatRelativeTime(assessment.assessed_at)} on {assessment.inputs.events} conversations, {assessment.inputs.tickets} requests, {assessment.inputs.facts} facts · confidence {Math.round(assessment.confidence * 100)}%</span>
             </div>

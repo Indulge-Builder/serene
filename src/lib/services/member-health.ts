@@ -10,6 +10,10 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { memberDb } from "@/lib/supabase/schemas";
 import type { Json } from "@/lib/types/database";
+import { startMemberAssessment } from "@/trigger/member-assessment";
+
+/** A signal at least this strong queues a fresh judgement (0241): a complaint re-bases the score within minutes, not on Sunday. */
+const REJUDGE_ABS_DELTA = 10;
 
 export type HealthSignalInput = {
   signal: string;
@@ -43,6 +47,9 @@ export async function addHealthSignalCore(clientId: string, input: HealthSignalI
     evidence: input.evidence as unknown as Json, run_id: input.run_id ?? null, observed_at: observedAt,
   }).select("id").single();
   if (error || !data) { console.error("[member-health] write failed", error?.message); return { data: null, error: "Could not record the health signal." }; }
+  if (Math.abs(Number((policy as { delta: number }).delta)) >= REJUDGE_ABS_DELTA) {
+    try { await startMemberAssessment(clientId); } catch (e) { console.warn("[member-health] re-judge could not be queued (non-fatal):", e instanceof Error ? e.message : e); }
+  }
   return { data: { id: (data as { id: string }).id }, error: null };
 }
 

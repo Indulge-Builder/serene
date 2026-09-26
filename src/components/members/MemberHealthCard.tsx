@@ -23,7 +23,7 @@ export function MemberHealthCard({ clientId, health }: { clientId: string; healt
   const [open, setOpen] = useState(false);
   const [delta, setDelta] = useState('5');
   const [note, setNote] = useState('');
-  const hasEvents = health.events.length > 0;
+  const hasEvents = health.events.length > 0 || health.base !== null;
 
   function submit() {
     start(async () => {
@@ -49,6 +49,11 @@ export function MemberHealthCard({ clientId, health }: { clientId: string; healt
                 {health.trend30d >= 0 ? '+' : ''}{health.trend30d} in 30 days
               </span>
             </div>
+            {health.base && (
+              <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--theme-text-primary)', lineHeight: 1.5 }}>
+                <span style={{ color: 'var(--theme-text-tertiary)' }}>Serene's judgement, {health.base.score} on {formatDate(health.base.at, 'd MMM')}: </span>{health.base.verdict}
+              </p>
+            )}
             <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>
               {health.reasons.map((r, i) => (
                 <li key={i} style={{ fontSize: 'var(--text-sm)', color: 'var(--theme-text-primary)', display: 'flex', justifyContent: 'space-between', gap: 'var(--space-3)' }}>

@@ -85,6 +85,8 @@ export type MemberAssessment = {
 export type MemberHealth = {
   score: number;
   trend30d: number;
+  /** Serene's latest judgement, the baseline the score rests on (0241); null before the first judgement. */
+  base: { score: number; at: string; verdict: string; risk: AssessmentRisk } | null;
   reasons: { label: string; delta: number; observed_at: string }[];
   events: (MemberHealthEventRow & { label: string })[];
 };

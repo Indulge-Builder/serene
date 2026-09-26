@@ -134,17 +134,26 @@ export const HEALTH_BASELINE = 70;
 export const HEALTH_MIN = 0;
 export const HEALTH_MAX = 100;
 
-/** Compute the live score from the ledger: baseline + Σ delta × 0.5^(age / half-life). */
+/**
+ * Compute the live score from the ledger: baseline + Σ delta × 0.5^(age / half-life).
+ * `base` (0241, the founder's rule 2026-09-26: ONE number, Serene keeps it current) = Serene's
+ * latest judgement: it becomes the baseline, and only signals logged AFTER it move the number
+ * until the next judgement re-bases it. With no judgement yet: HEALTH_BASELINE + every signal.
+ */
+export type HealthBase = { score: number; at: string };
 export function computeHealthScore(
   events: { delta: number; observed_at: string; half_life_days: number }[],
   now: Date = new Date(),
+  base: HealthBase | null = null,
 ): number {
   let sum = 0;
+  const baseAt = base ? new Date(base.at).getTime() : null;
   for (const e of events) {
+    if (baseAt !== null && new Date(e.observed_at).getTime() <= baseAt) continue;
     const ageDays = Math.max(0, (now.getTime() - new Date(e.observed_at).getTime()) / 86_400_000);
     sum += e.delta * Math.pow(0.5, ageDays / Math.max(1, e.half_life_days));
   }
-  return Math.round(Math.min(HEALTH_MAX, Math.max(HEALTH_MIN, HEALTH_BASELINE + sum)));
+  return Math.round(Math.min(HEALTH_MAX, Math.max(HEALTH_MIN, (base ? base.score : HEALTH_BASELINE) + sum)));
 }
 
 /** The vault (0236): what kind of secret a member has left with us. Mirrors the SQL CHECK. */

@@ -49,7 +49,6 @@ export function MembersTable({ members, hasFilters }: { members: MemberListItem[
               <th className="label-micro" style={HEAD}>Tier</th>
               <th className="label-micro" style={HEAD}>Status</th>
               <th className="label-micro" style={{ ...HEAD, textAlign: 'center' }}>Health</th>
-              <th className="label-micro" style={{ ...HEAD, textAlign: 'center' }}>Serene</th>
               <th className="label-micro" style={{ ...HEAD, textAlign: 'right' }}>Open</th>
               <th className="label-micro" style={HEAD}>Last contact</th>
               <th className="label-micro" style={HEAD}>Renews</th>
@@ -152,11 +151,8 @@ const MemberRow = memo(function MemberRow({ c }: { c: MemberListItem }) {
       <td style={{ ...CELL, ...rowCell }}>
         <span style={STATUS_PILL(expired)}>{c.membership_status ?? '—'}</span>
       </td>
-      <td style={{ ...CELL, ...rowCell, textAlign: 'center' }}><HealthPill score={c.health_score} /></td>
       <td style={{ ...CELL, ...rowCell, textAlign: 'center' }}>
-        {c.assessment ? (
-          <Tooltip label={`${ASSESSMENT_RISK_LABELS[c.assessment.risk]}: ${c.assessment.verdict}`} side="top"><span style={{ display: 'inline-flex' }}><HealthPill score={c.assessment.score} /></span></Tooltip>
-        ) : <span style={{ color: 'var(--theme-text-tertiary)', fontSize: 'var(--text-xs)' }}>{c.activity_score != null ? `pulse ${c.activity_score}` : '—'}</span>}
+        {c.assessment ? <Tooltip label={`${ASSESSMENT_RISK_LABELS[c.assessment.risk]}: ${c.assessment.verdict}`} side="top"><span style={{ display: 'inline-flex' }}><HealthPill score={c.health_score} /></span></Tooltip> : <HealthPill score={c.health_score} />}
       </td>
       <td style={{ ...CELL, ...rowCell, textAlign: 'right', fontFamily: 'var(--font-mono)', fontVariantNumeric: 'tabular-nums', color: c.open_tickets ? 'var(--theme-text-primary)' : 'var(--theme-text-tertiary)' }}>{c.open_tickets}</td>
       <td style={{ ...CELL, ...rowCell, color: 'var(--theme-text-tertiary)', whiteSpace: 'nowrap', fontSize: 'var(--text-xs)' }}>{c.last_contact_at ? formatRelativeTime(c.last_contact_at) : '—'}</td>

@@ -12,7 +12,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { mapRows } from "@/lib/utils/rows";
 import type { AssessmentRisk } from "@/lib/constants/member-assessment";
-import { computeHealthScore, CLIENT_FACETS, type MemberFacet, type MemberTier } from "@/lib/constants/member-facets";
+import { computeHealthScore, CLIENT_FACETS, type HealthBase, type MemberFacet, type MemberTier } from "@/lib/constants/member-facets";
 import { CLIENTS_LIST_PAGE_SIZE } from "@/lib/constants/sia-roles";
 import { getFreshdeskTicketsForMember } from "@/lib/services/freshdesk-service";
 import { getSiaGroupForMember } from "@/lib/services/sia-service";
@@ -58,20 +58,31 @@ async function readHealthPolicy(supabase: Db): Promise<Map<string, MemberHealthP
 
 const getHealthPolicy = cache(async (): Promise<Map<string, MemberHealthPolicyRow>> => readHealthPolicy(await createClient()));
 
-function buildHealth(events: MemberHealthEventRow[], policy: Map<string, MemberHealthPolicyRow>): MemberHealth {
+/** The judgement in a snapshot's data, as the health base (0241). */
+function assessmentBase(data: unknown): MemberHealth["base"] {
+  const a = ((data ?? {}) as { assessment?: { score?: number; assessed_at?: string; verdict?: string; risk?: AssessmentRisk } }).assessment;
+  return a && typeof a.score === "number" && a.assessed_at ? { score: a.score, at: a.assessed_at, verdict: a.verdict ?? "", risk: a.risk ?? "watch" } : null;
+}
+
+function buildHealth(events: MemberHealthEventRow[], policy: Map<string, MemberHealthPolicyRow>, base: MemberHealth["base"]): MemberHealth {
   const withHalf = events.map((e) => ({ delta: Number(e.delta), observed_at: e.observed_at, half_life_days: policy.get(e.signal)?.half_life_days ?? 60 }));
   const now = new Date();
-  const score = computeHealthScore(withHalf, now);
+  const score = computeHealthScore(withHalf, now, base);
   const thirtyAgo = new Date(now.getTime() - 30 * 86_400_000);
-  const scoreThen = computeHealthScore(withHalf.filter((e) => new Date(e.observed_at) <= thirtyAgo), thirtyAgo);
-  const reasons = [...events]
+  // The trend compares against the score 30 days ago; a judgement newer than that did not exist then.
+  const baseThen = base && new Date(base.at) <= thirtyAgo ? base : null;
+  const scoreThen = computeHealthScore(withHalf.filter((e) => new Date(e.observed_at) <= thirtyAgo), thirtyAgo, baseThen);
+  // Reasons: the signals since the judgement (they are what moved it), else the strongest ones.
+  const since = base ? new Date(base.at).getTime() : 0;
+  const pool = events.filter((e) => new Date(e.observed_at).getTime() > since);
+  const reasons = [...(pool.length ? pool : events)]
     .sort((a, b) => Math.abs(Number(b.delta)) - Math.abs(Number(a.delta)) || (a.observed_at < b.observed_at ? 1 : -1))
     .slice(0, 3)
     .map((e) => ({ label: e.note ?? policy.get(e.signal)?.label ?? e.signal, delta: Number(e.delta), observed_at: e.observed_at }));
-  return { score, trend30d: score - scoreThen, reasons, events: events.map((e) => ({ ...e, label: policy.get(e.signal)?.label ?? e.signal })) };
+  return { score, trend30d: score - scoreThen, base, reasons, events: events.map((e) => ({ ...e, label: policy.get(e.signal)?.label ?? e.signal })) };
 }
 
-async function healthScoresFor(memberIds: string[]): Promise<Map<string, number>> {
+async function healthScoresFor(memberIds: string[], bases: Map<string, HealthBase>): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   if (memberIds.length === 0) return out;
   const supabase = await createClient();
@@ -86,8 +97,9 @@ async function healthScoresFor(memberIds: string[]): Promise<Map<string, number>
     byMember.set(r.member_id, arr);
   });
   for (const id of memberIds) {
-    const evs = byMember.get(id);
-    out.set(id, evs && evs.length ? computeHealthScore(evs) : Number.NaN);
+    const evs = byMember.get(id) ?? [];
+    const base = bases.get(id) ?? null;
+    out.set(id, evs.length || base ? computeHealthScore(evs, new Date(), base) : Number.NaN);
   }
   return out;
 }
@@ -140,7 +152,8 @@ export async function listMembers(filters: MemberListFilters): Promise<{ members
   const ids = rows.map((r) => r.id);
   const qd = new Map(queendoms.map((x) => [x.id, x]));
   // Open tickets and last contact come from the pulse (0241): WhatsApp AND both ticket systems, hourly. (The old per-page Freshdesk-only read is gone.)
-  const health = await healthScoresFor(ids);
+  const bases = new Map<string, HealthBase>(rows.filter((r) => r.assessment_score != null && r.assessed_at).map((r) => [r.id, { score: Number(r.assessment_score), at: r.assessed_at as string }]));
+  const health = await healthScoresFor(ids, bases);
 
   let members: MemberListItem[] = rows.map((r) => ({
     id: r.id,
@@ -304,7 +317,7 @@ async function readMemberDetail(supabase: Db, clientId: string, sessionless: boo
     people: mapRows(people.data, (r) => r as MemberDetail["people"][number]),
     facts,
     notes,
-    health: buildHealth(mapRows<MemberHealthEventRow, MemberHealthEventRow>(healthRes.data, (r) => r), policy),
+    health: buildHealth(mapRows<MemberHealthEventRow, MemberHealthEventRow>(healthRes.data, (r) => r), policy, assessmentBase((snapshot.data as { data?: unknown } | null)?.data)),
     tickets,
     group,
     events: mapRows(events.data, (r) => r as MemberDetail["events"][number]),

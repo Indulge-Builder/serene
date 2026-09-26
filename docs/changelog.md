@@ -12,6 +12,34 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-26 — Health: one number. Serene's judgement becomes the baseline, signals move it live
+
+The founder, on seeing the judgement score next to the health score: "we need only one number
+that includes everything; it will be very rare that an agent sets health by hand; Serene must
+look at every detail live and keep updating it." So the two fold into one.
+
+- **The health score = Serene's latest judgement + every signal logged since it.** In
+  `computeHealthScore(events, now, base)` the judgement is the baseline (in place of the fixed
+  70) and only signals observed after it count, decaying as before; the next judgement re-bases
+  it. Before the first judgement nothing changes (70 + all signals). The list and the member
+  page both compute it this way (`members-service.ts`, from the `members_list` view's
+  `assessment_score` / `assessed_at` and the snapshot).
+- **Live:** a strong signal (a complaint, |delta| ≥ 10) queues a fresh judgement the moment it
+  is logged (`addHealthSignalCore` → `member-assess-one`), so the score re-bases within minutes
+  rather than on Sunday. Praise and tone still move it at once through the ledger.
+- **One number on the surface:** the "Serene" column is gone from the Members list; the Health
+  cell shows the verdict on hover and "Health" is a sort option. On the member page the Health
+  card's first line is "Serene's judgement, N on <date>: <verdict>" and the reasons under it are
+  the signals since; the judgement card is renamed "Why the health score is what it is" and no
+  longer shows a second number.
+- **All Active members judged today** at the founder's ask, from the laptop (the weekly task's
+  budget would have cut it short): 347 of 348 in 19 minutes, about ₹700; 3 refused by the leak
+  check ("name in output"), to be re-run once the masking is tightened.
+
+Files: `src/lib/constants/member-facets.ts`, `src/lib/services/members-service.ts`, `src/lib/services/member-health.ts`,
+`src/components/members/MembersTable.tsx`, `src/components/members/MemberHealthCard.tsx`, `src/components/members/MemberAssessmentCard.tsx`,
+`src/lib/constants/member-assessment.ts`, `src/lib/types/member.ts`.
+
 ## 2026-09-26 — Serene on a phone: the mobile audit fixed
 
 Everything in `docs/audits/2026-09-26-mobile-audit.md` sections 3 and 4, and most of 5, in one

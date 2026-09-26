@@ -31,4 +31,4 @@ export const ASSESSMENT_RISK_LABELS: Record<AssessmentRisk, string> = { low: "Se
 /** The list's sort options (0241). `active` = Active first, then the pulse; the default. */
 export const MEMBER_SORTS = ["active", "score", "name"] as const;
 export type MemberSort = (typeof MEMBER_SORTS)[number];
-export const MEMBER_SORT_LABELS: Record<MemberSort, string> = { active: "Most active", score: "Serene's score", name: "Name" };
+export const MEMBER_SORT_LABELS: Record<MemberSort, string> = { active: "Most active", score: "Health", name: "Name" };
