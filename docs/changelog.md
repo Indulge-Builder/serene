@@ -12,6 +12,41 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-26 — Hands, step 1: the second WhatsApp number and its tables (0245)
+
+Why: Elaya will use outside AI agents (Instinct first, Muse later) as vendors to book things for
+members, from a separate Indulge number and identity (`docs/architecture/hands-plan.md`). The Sia
+watcher is read-only by law and Gupshup's business number cannot message another business, so the
+hands need their own phone, their own process and their own tables. Step 1 lays that floor. No
+page, no Elaya tool and no line to Instinct yet; the migration is not applied.
+
+- **Migration 0245** (`20260926000245_hands.sql`): schema `hands` with `auth_state` (the second
+  session, never the watcher's rows), `connector_status` (one row: state, QR, heartbeat),
+  `allowed_contacts` (the only numbers the hands may talk to, each tied to an agent vendor),
+  `threads` (one open per ticket, one open Talk per contact, with the queendom for scoping),
+  `raw_events` (append-only), `messages` (both directions, idempotent on jid + message id, the
+  reply frame and a payment block) and `outbox` (Serene writes, the connector alone sends;
+  queued / sent / failed / refused). RLS on, no user policies; service role only. Adds
+  `vendors.kind` (human | agent), the private `hands-media` bucket, and `hands` to PostgREST's
+  exposed schemas.
+- **Vocabulary**: `lib/constants/hands.ts` (paths, kinds, statuses, `readHandsFrame`, the trust
+  ladder and settings keys, the per-field disclosure table, the rulebook text); `VENDOR_KINDS` in
+  `constants/vendors.ts`; four ticket event kinds `hands_message`, `hands_sent`,
+  `payment_request`, `hands_payment` in `constants/tickets.ts`; `handsDb()` in
+  `supabase/schemas.ts`; row types in `types/hands.ts`.
+- **Services**: `hands-service.ts` (reads, admin client, the caller passes its queendom scope) and
+  `hands-mutations.ts` (open a ticket or Talk thread, queue a line, mark a QR paid, close, edit the
+  allowlist). No function here sends anything; a message leaves only as an outbox row.
+- **The connector** (`connector-hands/`): a second Baileys process. Inbound: raw first, allowlist
+  filter, file once, attach to the open thread, ticket event through `apply_ticket_change`, media
+  to the bucket, the frame and a payment ask read off the agent's words. Outbound: poll the outbox,
+  re-check the allowlist and the thread, send, settle, ticket event. Own session through
+  `usePostgresAuthState({ table, client })`, the watcher's store made parameterised with its
+  defaults unchanged. Runbook in `connector-hands/README.md`.
+
+Next: apply 0245, pair the hands phone, then Layer D (Elaya's hands tools), E (`/hands`), F
+(`/settings/hands`).
+
 ## 2026-09-26 — The Joker head: one seat that works every queendom (0244)
 
 Why: the concierge floor has one Joker head who oversees the jokers and must reach every

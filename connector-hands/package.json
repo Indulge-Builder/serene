@@ -1,0 +1,24 @@
+{
+  "name": "hands-connector",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Elaya's hands: the second WhatsApp number (migration 0245). Sends ONLY what hands.outbox holds, ONLY to hands.allowed_contacts. A separate process from the Sia watcher.",
+  "scripts": {
+    "start": "trap 'echo; echo [hands] stopped; exit 0' INT TERM; while true; do tsx src/index.ts; echo '[hands] restarting in 2s (crash-only)'; sleep 2; done",
+    "typecheck": "tsc --noEmit",
+    "once": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "baileys": "7.0.0-rc14",
+    "pino": "^9.0.0",
+    "qrcode-terminal": "^0.12.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/qrcode-terminal": "^0.12.2",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

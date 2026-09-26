@@ -49,6 +49,7 @@ const eslintConfig = [
       'docs/**',
       'supabase/**',
       'scripts/**',           // one-off import/test scripts, run manually via tsx
+      'connector-hands/**',   // Elaya's hands, the second Baileys number (0245) — its own Node package + tsconfig, same posture as connector/
       'connector/**',         // the Sia Baileys watcher — its own Node package + tsconfig (connector/tsconfig.json); not part of the Next.js app lint scope
       'backend/**',           // the Python backend (master-plan Step 2) — not TS/JS app code
       'evals/**',             // the Python eval harness — not TS/JS app code

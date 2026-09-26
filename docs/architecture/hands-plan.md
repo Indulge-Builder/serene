@@ -1,6 +1,6 @@
 # Hands plan: Elaya gets hands, Instinct is the first pair
 
-Written 2026-09-26, revised the same day after reading the founder's nine days of Instinct chat (Sep 17 to 26; section 3a). Status: **PLAN, nothing built.** Decisions the founder must make are marked
+Written 2026-09-26, revised the same day after reading the founder's nine days of Instinct chat (Sep 17 to 26; section 3a). Status: **step 1 built 2026-09-26 (migration 0245, constants, services, `connector-hands/`; changelog entry of that date), migration not yet applied; Layers D, E, F not started.** Decisions the founder must make are marked
 **Decide**. Everything else is my recommendation and I will build it exactly as written unless told
 otherwise.
 

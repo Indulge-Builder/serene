@@ -107,6 +107,18 @@ export const ENGAGEMENT_OUTCOME_LABELS  = ENGAGEMENT_OUTCOME_DEF.labels;
 export const ENGAGEMENT_OUTCOME_OPTIONS = ENGAGEMENT_OUTCOME_DEF.options;
 export const ENGAGEMENT_OUTCOME_ENUM    = ENGAGEMENT_OUTCOME_DEF.zodEnum;
 
+// vendors.kind (0245, the Hands plan): a `human` vendor is a company or person we call or
+// email; an `agent` vendor is an AI agent we message on WhatsApp through the hands number
+// (Instinct). One ranker ranks both; the ticket page opens the hands thread for an agent.
+const VENDOR_KIND_DEF = defineEnum([
+  { id: "human", label: "Human vendor" },
+  { id: "agent", label: "AI agent" },
+]);
+export const VENDOR_KINDS = VENDOR_KIND_DEF.values;
+export type VendorKind = (typeof VENDOR_KINDS)[number];
+export const VENDOR_KIND_LABELS = VENDOR_KIND_DEF.labels;
+export const VENDOR_KIND_ENUM   = VENDOR_KIND_DEF.zodEnum;
+
 // ─────────────────────────────────────────────
 // TWO category vocabularies. They are different questions and they do NOT
 // join — conflating them is the bug this section exists to prevent.

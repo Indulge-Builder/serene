@@ -141,6 +141,8 @@ export const TICKET_EVENT_TYPES = [
   "brief_updated", "checklist_ticked", "note", "member_message_linked", "member_update_drafted", "member_update_sent",
   "vendor_shortlisted", "vendor_chosen", "quote_added", "payment_requested", "payment_received", "subtask_created",
   "handed_off", "sla_warning", "sla_breached", "reminder_sent", "observation", "escalated", "closed", "reopened", "learning_written",
+  // Hands (0245): a line from the agent, a line we sent it, its payment ask, and the rupees that left.
+  "hands_message", "hands_sent", "payment_request", "hands_payment",
 ] as const;
 export type TicketEventType = (typeof TICKET_EVENT_TYPES)[number];
 

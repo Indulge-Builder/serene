@@ -12,6 +12,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/types/database";
+import type { HandsDatabase } from "@/lib/types/hands";
 
 export const GIA_SCHEMA = "gia" as const;
 
@@ -68,5 +69,14 @@ export const MEMBER_TABLES = [
 /** The member schema view of a client. Works for the session client and the admin client. */
 export function memberDb(client: SupabaseClient<Database>) {
   return client.schema(MEMBER_SCHEMA);
+}
+
+export const HANDS_SCHEMA = "hands" as const;
+
+/** The hands schema (0245): the second WhatsApp number's threads, messages, outbox and allowlist. Admin client
+ *  only; the caller gates. Cast onto the hand-declared HandsDatabase until database.ts is regenerated (the
+ *  TicketingDatabase posture). */
+export function handsDb(client: SupabaseClient<Database>) {
+  return (client as unknown as SupabaseClient<HandsDatabase, "hands">).schema(HANDS_SCHEMA);
 }
 

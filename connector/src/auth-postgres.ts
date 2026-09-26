@@ -21,9 +21,15 @@ import {
   type AuthenticationState,
   type SignalDataTypeMap,
 } from "baileys";
-import { db } from "./db.js";
+import { db as watcherDb } from "./db.js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
-const TABLE = "wag_auth_state";
+// The watcher's own session rows. connector-hands passes ITS table + client (hands.auth_state):
+// two numbers never share a Signal session.
+const DEFAULT_TABLE = "wag_auth_state";
+let TABLE = DEFAULT_TABLE;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let db: SupabaseClient<any, any, any> = watcherDb;
 
 function serialize(value: unknown): unknown {
   return JSON.parse(JSON.stringify(value, BufferJSON.replacer));
@@ -83,10 +89,15 @@ async function deleteKeys(keys: string[]): Promise<void> {
   });
 }
 
-export async function usePostgresAuthState(): Promise<{
+export async function usePostgresAuthState(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  opts: { table?: string; client?: SupabaseClient<any, any, any> } = {},
+): Promise<{
   state: AuthenticationState;
   saveCreds: () => Promise<void>;
 }> {
+  TABLE = opts.table ?? DEFAULT_TABLE;
+  db = opts.client ?? watcherDb;
   const creds: AuthenticationCreds = (await readKey<AuthenticationCreds>("creds")) ?? initAuthCreds();
 
   return {

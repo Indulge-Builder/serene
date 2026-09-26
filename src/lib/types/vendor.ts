@@ -1,4 +1,5 @@
 // Vendors row types — hand-declared until `supabase gen types typescript` is
+import type { VendorKind } from "@/lib/constants/vendors";
 // re-run after migrations 0183–0185 are applied (the subscription.ts posture).
 // Shapes mirror the migrations EXACTLY. Types only — no runtime values.
 // The vocabulary (statuses, stances, outcomes, services, dimensions, weights)
@@ -36,6 +37,8 @@ export type VendorRow = {
   primary_phone: string | null;   // E.164
   home_city: string | null;
   identity_status: VendorIdentityStatus;
+  /** 0245: human (call / email) or agent (messaged through the hands number). */
+  kind: VendorKind;
   freshdesk_ref: string | null;
   sources: VendorSource[];
   import_raw: Record<string, unknown>;
