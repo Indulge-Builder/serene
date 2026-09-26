@@ -4,20 +4,31 @@ import { Plus } from "lucide-react";
 import { getCurrentProfile, getAllProfiles, getQueendomRoster } from "@/lib/services/profiles-service";
 import { hasElevatedPageAccess } from "@/lib/utils/route-access";
 import { QueendomRosterCard } from "@/components/admin/QueendomRosterCard";
+import { DomainRosterCard } from "@/components/admin/DomainRosterCard";
 import { TOP_BAR_ENABLED } from "@/lib/constants/feature-flags";
 import { PageControls } from "@/components/layout/PageControls";
 import { UsersTable } from "@/components/admin/UsersTable";
 
 export const metadata = { title: "Team" };
 
-export default async function AdminUsersPage() {
+type Props = {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
+
+export default async function AdminUsersPage({ searchParams }: Props) {
   const profile = await getCurrentProfile();
 
   if (!profile || !hasElevatedPageAccess(profile)) {
     redirect("/dashboard");
   }
 
-  const [users, roster] = await Promise.all([getAllProfiles(), getQueendomRoster()]);
+  const [users, roster, sp] = await Promise.all([getAllProfiles(), getQueendomRoster(), searchParams]);
+
+  // The view a roster chip returns to: the table's filters live in the URL (UsersTable),
+  // so a teammate opened from either card comes back to them too.
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(sp)) if (typeof value === "string") query.set(key, value);
+  const listHref = query.toString() ? `/admin/users?${query}` : "/admin/users";
 
   return (
     <main className="flex-1 p-4 sm:p-6 lg:p-8">
@@ -57,8 +68,9 @@ export default async function AdminUsersPage() {
         </div>
       </div>
 
-      <div style={{ marginBottom: "var(--space-5)" }}>
-        <QueendomRosterCard roster={roster} />
+      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-5)", marginBottom: "var(--space-5)" }}>
+        <QueendomRosterCard roster={roster} from={listHref} />
+        <DomainRosterCard users={users} from={listHref} />
       </div>
 
       <UsersTable users={users} />

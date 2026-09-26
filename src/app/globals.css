@@ -1065,6 +1065,19 @@ body {
   }
 }
 
+/* Roster person chip (admin/Roster.tsx: the Queendoms and Domains cards on /admin/users),
+   a Link to a teammate's page. The name warms to the accent ink on hover: colour only, so a
+   wrapped row of chips never shifts. Fine pointers only, like the cards above. */
+.serene-roster-chip {
+  color: var(--theme-text-primary);
+  transition: var(--transition-hover);
+}
+@media (hover: hover) and (pointer: fine) {
+  .serene-roster-chip:hover {
+    color: var(--neu-accent-deep);
+  }
+}
+
 /* Oversight "present agents now" pulse — a gentle opacity breathe on the live
    presence dot (Tier 1 team cards + Tier 2 agent cards). Opacity-only (never
    layout), reduced-motion-gated. The dot's colour is set inline (success when

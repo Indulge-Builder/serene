@@ -264,9 +264,10 @@ export async function readBurst(groupJid: string, memberId: string, context: Msg
 async function notifyProposal(proposalId: string, queendomId: string | null, memberName: string, what: string, ticketNo: string | null): Promise<void> {
   try {
     const seats = await getQueendomSeats(queendomId);
-    // The bishop decides. No bishop seated: the queen. Neither: the queendom's genies, so a floor
-    // that is only partly seated (the test phase) still hears about it. Nobody seated: nobody.
-    const recipients = seats.bishop ? [seats.bishop] : seats.queen ? [seats.queen] : seats.genies.slice(0, 12);
+    // The bishops decide (every one of them: a queendom can have two, 0242). No bishop seated:
+    // the queen. Neither: the queendom's genies, so a floor that is only partly seated (the test
+    // phase) still hears about it. Nobody seated: nobody.
+    const recipients = seats.bishops.length > 0 ? seats.bishops : seats.queen ? [seats.queen] : seats.genies.slice(0, 12);
     for (const to of recipients) await createNotification({
       recipient_id: to, type: "ticket_proposed", notificationKey: "ticket_proposed_for_approval",
       title: ticketNo ? `${memberName}: an update to ${ticketNo}` : `${memberName} is asking for something`,

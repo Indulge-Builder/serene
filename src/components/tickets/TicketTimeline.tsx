@@ -34,7 +34,8 @@ function describe(e: TicketDetail['events'][number]): string {
     case 'sla_warning': return 'Deadline near';
     case 'sla_breached': return 'Deadline missed';
     case 'reminder_sent': return 'Reminder';
-    case 'escalated': return `Escalated to the ${String(m.to ?? 'bishop')}`;
+    // 'bishop' reaches every bishop of the queendom (a queendom can have two, 0242).
+    case 'escalated': return `Escalated to the ${m.to && m.to !== 'bishop' ? String(m.to) : 'bishops'}`;
     case 'observation': return m.proposal === 'resolved' ? 'Proposal: resolved' : m.proposed_brief ? 'Proposal: the request changed' : 'Observation';
     case 'closed': return 'Closed';
     default: return e.event_type.replace(/_/g, ' ');

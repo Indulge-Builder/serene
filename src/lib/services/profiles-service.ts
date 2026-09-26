@@ -295,7 +295,10 @@ export async function updateAuthorization(
 export type QueendomRosterMember = Pick<Profile, "id" | "full_name" | "avatar_url" | "is_active" | "is_on_leave"> & { sia_role: SiaRole };
 export type QueendomRoster = {
   queendom: QueendomSummary;
+  /** The single seats (queen, joker). */
   seats: Record<(typeof SIA_SINGLE_SEATS)[number], QueendomRosterMember | null>;
+  /** Bishops are many since 0242, like genies. */
+  bishops: QueendomRosterMember[];
   genies: QueendomRosterMember[];
 };
 
@@ -326,7 +329,8 @@ export const getQueendomRoster = cache(async (): Promise<QueendomRoster[]> => {
     const seat = (role: SiaRole) => mine.find((r) => r.sia_role === role && r.is_active) ?? mine.find((r) => r.sia_role === role) ?? null;
     return {
       queendom,
-      seats: { queen: seat("queen"), bishop: seat("bishop"), joker: seat("joker") },
+      seats: { queen: seat("queen"), joker: seat("joker") },
+      bishops: mine.filter((r) => r.sia_role === "bishop"),
       genies: mine.filter((r) => r.sia_role === "genie"),
     };
   });

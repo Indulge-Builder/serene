@@ -1,11 +1,11 @@
 "use client";
 
 import { FormSelect } from '@/components/ui/FormSelect';
-import { useState, useMemo } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
 import { m as motion } from "framer-motion";
 import { Pencil, Shield } from "lucide-react";
-import type { Profile } from "@/lib/types/database";
+import type { AppDomain, Profile, UserRole } from "@/lib/types/database";
 import { ROLE_LABELS, USER_ROLES } from "@/lib/constants/roles";
 import { SIA_ROLES, isSiaRole } from "@/lib/constants/sia-roles";
 import { DOMAIN_LABELS, APP_DOMAINS } from "@/lib/constants/domains";
@@ -13,18 +13,27 @@ import { FilterBar } from "@/components/ui/FilterBar";
 import { Avatar } from "@/components/ui/Avatar";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { EASE_OUT_EXPO, EXIT_DURATION } from "@/lib/constants/motion";
+import { useUrlFilters, useMultiSelectUrlParam } from "@/hooks/useUrlFilters";
+import { buildFilterParams } from "@/lib/utils/filter-params";
 
 type UsersTableProps = {
   users: Profile[];
 };
 
 export function UsersTable({ users }: UsersTableProps) {
-  const [search, setSearch]             = useState("");
-  const [roleFilter, setRoleFilter]     = useState<string>("all");
-  const [domainFilter, setDomainFilter] = useState<string>("all");
+  // The filters live in the URL (search, role, domain), so opening a teammate and coming
+  // back keeps them: the browser's Back returns to this URL, the teammate page's own Back
+  // through ?from=. The list still filters on what is on screen, instantly.
+  const url = useUrlFilters();
+  const { params, pathname, searchInput, setSearchInput, clearAll } = url;
+  const [roleValues, setRoleValues]     = useMultiSelectUrlParam<UserRole>(url, "role");
+  const [domainValues, setDomainValues] = useMultiSelectUrlParam<AppDomain>(url, "domain");
+  const roleFilter   = USER_ROLES.find((r) => r === roleValues[0]) ?? "all";
+  const domainFilter = APP_DOMAINS.find((d) => d === domainValues[0]) ?? "all";
+  const search       = searchInput.trim();
 
   const filtered = useMemo(() => {
-    const q = search.toLowerCase().trim();
+    const q = search.toLowerCase();
     return users.filter((u) => {
       if (roleFilter   !== "all" && u.role   !== roleFilter)   return false;
       if (domainFilter !== "all" && u.domain !== domainFilter) return false;
@@ -36,8 +45,19 @@ export function UsersTable({ users }: UsersTableProps) {
     });
   }, [users, search, roleFilter, domainFilter]);
 
+  // Where a teammate's Back returns: this view as it is on screen (the URL can trail a
+  // keystroke behind the search debounce).
+  const fromUrl = useMemo(() => {
+    const query = buildFilterParams(params, {
+      search: search || null,
+      role:   roleFilter === "all" ? null : roleFilter,
+      domain: domainFilter === "all" ? null : domainFilter,
+    }).toString();
+    return query ? `${pathname}?${query}` : pathname;
+  }, [params, pathname, search, roleFilter, domainFilter]);
+
   const activeCount =
-    (search.trim() ? 1 : 0) +
+    (search ? 1 : 0) +
     (roleFilter !== "all" ? 1 : 0) +
     (domainFilter !== "all" ? 1 : 0);
 
@@ -53,17 +73,19 @@ export function UsersTable({ users }: UsersTableProps) {
     <div>
       {/* ── Filter bar — shared shell (chrome + mobile scroll row) ── */}
       <FilterBar
-        searchValue={search}
-        onSearchChange={setSearch}
+        searchValue={searchInput}
+        onSearchChange={setSearchInput}
         searchPlaceholder="Search by name or email…"
         searchSize="sm"
         searchAriaLabel="Search members"
         searchStyle={{ flex: "1 1 200px", minWidth: "160px" }}
         activeCount={activeCount}
         onClearAll={() => {
-          setSearch("");
-          setRoleFilter("all");
-          setDomainFilter("all");
+          // The selects clear at once; clearAll drops their pending URL writes and
+          // navigates to the bare page in one go.
+          setRoleValues([]);
+          setDomainValues([]);
+          clearAll();
         }}
         style={{
           padding:      "var(--space-4) var(--space-5)",
@@ -91,7 +113,7 @@ export function UsersTable({ users }: UsersTableProps) {
         <div style={{ position: "relative", flexShrink: 0 }}>
           <FormSelect aria-label="Role" fullWidth={false}
             value={roleFilter}
-            onValueChange={(nextValue) => setRoleFilter(nextValue)}
+            onValueChange={(nextValue) => setRoleValues(nextValue === "all" ? [] : [nextValue as UserRole])}
 
           >
             <option value="all">All roles</option>
@@ -105,7 +127,7 @@ export function UsersTable({ users }: UsersTableProps) {
         <div style={{ position: "relative", flexShrink: 0 }}>
           <FormSelect aria-label="Domain" fullWidth={false}
             value={domainFilter}
-            onValueChange={(nextValue) => setDomainFilter(nextValue)}
+            onValueChange={(nextValue) => setDomainValues(nextValue === "all" ? [] : [nextValue as AppDomain])}
 
           >
             <option value="all">All domains</option>
@@ -121,7 +143,7 @@ export function UsersTable({ users }: UsersTableProps) {
       {filtered.length === 0 ? emptyState : (
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
           {filtered.map((user, i) => (
-            <UserCard key={user.id} user={user} index={i} />
+            <UserCard key={user.id} user={user} index={i} fromUrl={fromUrl} />
           ))}
         </div>
       )}
@@ -133,7 +155,7 @@ export function UsersTable({ users }: UsersTableProps) {
 // UserCard — animated card with hover presence
 // ─────────────────────────────────────────────
 
-function UserCard({ user, index }: { user: Profile; index: number }) {
+function UserCard({ user, index, fromUrl }: { user: Profile; index: number; fromUrl: string }) {
   const staggerDelay = Math.min(index * 80, 320);
 
   return (
@@ -268,7 +290,7 @@ function UserCard({ user, index }: { user: Profile; index: number }) {
       {/* Edit link */}
       <div style={{ flex: "0 0 auto" }}>
         <Link
-          href={`/admin/users/${user.id}`}
+          href={`/admin/users/${user.id}?from=${encodeURIComponent(fromUrl)}`}
           className="serene-touch"
           style={{
             display:        "inline-flex",

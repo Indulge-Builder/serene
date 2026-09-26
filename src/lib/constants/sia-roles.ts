@@ -1,6 +1,6 @@
 // constants/sia-roles.ts — THE Sia (concierge) role vocabulary (migration 0194).
 //
-// A queendom is the unit: queen > bishop > genies, plus one joker (the creative arm). These
+// A queendom is the unit: one queen > bishops > genies, plus one joker (the creative arm). These
 // are `profiles.sia_role` values; they sit BESIDE `profiles.role` (the platform role that
 // authorises routes) — a bishop is a `manager`, a genie an `agent`, in `domain = concierge`.
 // Decided with the founder 2026-09-15 (member-ticket-plan.md 7.0).
@@ -24,8 +24,9 @@ export const SIA_ROLE_PLATFORM_ROLE: Record<SiaRole, "manager" | "agent"> = {
   joker:  "agent",
 };
 
-/** The single seats of a queendom: exactly one active holder each (0201 partial unique indexes). Genies are many. */
-export const SIA_SINGLE_SEATS = ["queen", "bishop", "joker"] as const satisfies readonly SiaRole[];
+/** The single seats of a queendom: exactly one active holder each (0201 partial unique indexes).
+ *  Bishops and genies are many (a queendom runs two bishops; 0242 dropped the one-bishop index). */
+export const SIA_SINGLE_SEATS = ["queen", "joker"] as const satisfies readonly SiaRole[];
 
 /**
  * DOMAIN_POSITIONS — which domains carry a "position" layer on top of the platform role

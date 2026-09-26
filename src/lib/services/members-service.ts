@@ -207,15 +207,15 @@ export async function searchMembersForPicker(q: string, limit = 8): Promise<Memb
 // ─── The dossier ─────────────────────────────────────────────────────────────
 
 async function getTeam(queendomId: string | null, db?: Db): Promise<MemberTeam> {
-  const empty: MemberTeam = { queen: null, bishop: null, joker: null, genies: [] };
+  const empty: MemberTeam = { queen: null, bishops: [], joker: null, genies: [] };
   if (!queendomId) return empty;
   const supabase = db ?? (await createClient());
   const { data } = await supabase.from("profiles").select("id, full_name, sia_role").eq("queendom_id", queendomId).eq("is_active", true).order("full_name");
-  const team: MemberTeam = { ...empty, genies: [] };
+  const team: MemberTeam = { ...empty, bishops: [], genies: [] };
   mapRows<{ id: string; full_name: string; sia_role: string | null }, void>(data, (p) => {
     const person = { id: p.id, full_name: p.full_name };
     if (p.sia_role === "queen") team.queen = person;
-    else if (p.sia_role === "bishop") team.bishop = person;
+    else if (p.sia_role === "bishop") team.bishops.push(person);
     else if (p.sia_role === "joker") team.joker = person;
     else team.genies.push({ ...person, sia_role: (p.sia_role as MemberTeam["genies"][number]["sia_role"]) ?? null });
   });

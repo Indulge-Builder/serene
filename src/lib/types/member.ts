@@ -146,7 +146,8 @@ export type MemberGroupSummary = {
 
 export type MemberTeam = {
   queen: { id: string; full_name: string } | null;
-  bishop: { id: string; full_name: string } | null;
+  /** A queendom can have several bishops (0242). */
+  bishops: { id: string; full_name: string }[];
   joker: { id: string; full_name: string } | null;
   genies: { id: string; full_name: string; sia_role: SiaRole | null }[];
 };

@@ -96,13 +96,13 @@ export function MemberIdentityCard({ detail, queendoms, canPickQueendom }: { det
         <InfoRow icon={Phone} label="WhatsApp" value={c.primary_phone ?? '—'} copyable copyValue={c.primary_phone ?? undefined} />
         {c.alt_phones.length > 0 && <InfoRow label="Other numbers" value={c.alt_phones.join(', ')} />}
         <InfoRow icon={Crown} label="Queendom" value={queendom?.name ?? <span style={{ color: 'var(--theme-text-tertiary)' }}>Not assigned</span>} divider />
-        {(team.queen || team.bishop || team.joker || team.genies.length > 0) && (
+        {(team.queen || team.bishops.length > 0 || team.joker || team.genies.length > 0) && (
           <InfoRow
             label="Team"
             value={
               <span style={{ fontSize: 'var(--text-sm)' }}>
                 {team.queen && <span>Queen {team.queen.full_name}. </span>}
-                {team.bishop && <span>Bishop {team.bishop.full_name}. </span>}
+                {team.bishops.length > 0 && <span>{team.bishops.length > 1 ? 'Bishops' : 'Bishop'} {team.bishops.map((b) => b.full_name).join(' and ')}. </span>}
                 {team.joker && <span>Joker {team.joker.full_name}. </span>}
                 {team.genies.length > 0 && <span style={{ color: 'var(--theme-text-secondary)' }}>{team.genies.length} genies.</span>}
               </span>

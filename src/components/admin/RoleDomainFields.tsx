@@ -111,7 +111,7 @@ export function RoleDomainFields({ queendoms, defaults, idPrefix = "" }: Props) 
       </div>
 
       {position && (
-        <Field label="Queendom" htmlFor={id("queendom")} required hint="The team this person works in. Queen, Bishop and Joker are one seat each.">
+        <Field label="Queendom" htmlFor={id("queendom")} required hint="The team this person works in. Queen and Joker are one seat each; a queendom can have several Bishops and Genies.">
           <FormSelect id={id("queendom")} name="queendom_id" value={queendomId} onValueChange={setQueendomId}>
             <option value="" disabled>Choose a queendom</option>
             {queendoms.map((q) => (

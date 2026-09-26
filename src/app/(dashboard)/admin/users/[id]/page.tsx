@@ -21,10 +21,14 @@ export const metadata = { title: "Team member" };
 
 type Props = {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ from?: string | string[] }>;
 };
 
-export default async function UserDetailPage({ params }: Props) {
-  const { id } = await params;
+export default async function UserDetailPage({ params, searchParams }: Props) {
+  const [{ id }, sp] = await Promise.all([params, searchParams]);
+  // Back returns to the Team view the teammate was opened from (its filters ride in
+  // ?from=, already decoded by Next), and only ever to the Team page.
+  const backHref = typeof sp.from === "string" && sp.from.startsWith("/admin/users") ? sp.from : "/admin/users";
 
   const [caller, user] = await Promise.all([
     getCurrentProfile(),
@@ -62,7 +66,7 @@ export default async function UserDetailPage({ params }: Props) {
           marginBottom: "var(--space-8)",
         }}
       >
-        <BackButton href="/admin/users" label="Back to Team" />
+        <BackButton href={backHref} label="Back to Team" />
 
         <h1 className="type-page-title" style={{ margin: 0 }}>
           {user.full_name}<span className="page-title-dot">.</span>

@@ -4,7 +4,8 @@
 // here reaches both. No `server-only` chain: it runs from a laptop script too.
 //
 // What it owns:
-//   - the seat pre-check: a queen / bishop / joker seat with a live holder is refused BEFORE the
+//   - the seat pre-check: a queen / joker seat with a live holder (SIA_SINGLE_SEATS; bishops are
+//     many since 0242) is refused BEFORE the
 //     auth call, with a named error (the partial unique index would otherwise surface as the
 //     opaque "Database error creating new user");
 //   - the auth.admin.createUser call (the 0201 signup trigger copies name / role / domain /

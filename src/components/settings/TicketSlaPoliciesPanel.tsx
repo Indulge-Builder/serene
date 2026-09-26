@@ -126,7 +126,7 @@ function PolicyCard({ initial, queendoms, onDone }: { initial: Draft; queendoms:
             <Input type="number" min={0} style={{ width: 90 }} value={s.after_min} onChange={(e) => set('escalation', d.escalation.map((x, j) => (j === i ? { ...x, after_min: Math.max(0, Number(e.target.value) || 0) } : x)))} />
             <span>min →</span>
             <FormSelect aria-label="Escalation recipient" fullWidth={false} value={s.to} onValueChange={(nextValue) => set('escalation', d.escalation.map((x, j) => (j === i ? { ...x, to: nextValue as Step['to'] } : x)))}>
-              <option value="bishop">the bishop</option><option value="queen">the queen</option><option value="founder">the founder</option>
+              <option value="bishop">the bishops</option><option value="queen">the queen</option><option value="founder">the founder</option>
             </FormSelect>
             <Button
               variant="ghost"

@@ -374,7 +374,8 @@ export async function readNewText(t: TicketRow, input: NonNullable<WakePlan["rea
 
 // ─── One wake ────────────────────────────────────────────────────────────────
 
-type Recipients = { assignee: string | null; bishop: string | null; queen: string | null; founders: string[] };
+/** A queendom has one queen but can have several bishops (0242): a bishop alert reaches all of them. */
+type Recipients = { assignee: string | null; bishops: string[]; queen: string | null; founders: string[] };
 
 async function resolveRecipients(t: TicketRow): Promise<Recipients> {
   const admin = createAdminClient();
@@ -386,7 +387,8 @@ async function resolveRecipients(t: TicketRow): Promise<Recipients> {
   ]);
   return {
     assignee: t.assignee_id,
-    bishop: t.bishop_id ?? seats.bishop,
+    // A ticket that names its own bishop keeps it; otherwise every bishop of the queendom.
+    bishops: t.bishop_id ? [t.bishop_id] : seats.bishops,
     queen: seats.queen,
     founders: mapRows<{ id: string }, string>(f.data, (r) => r.id),
   };
@@ -394,9 +396,9 @@ async function resolveRecipients(t: TicketRow): Promise<Recipients> {
 
 function targets(n: SentinelNotify, r: Recipients): string[] {
   switch (n.to) {
-    case "assignee": return r.assignee ? [r.assignee] : r.bishop ? [r.bishop] : [];
-    case "bishop": return r.bishop ? [r.bishop] : r.queen ? [r.queen] : [];
-    case "queen": return r.queen ? [r.queen] : r.bishop ? [r.bishop] : [];
+    case "assignee": return r.assignee ? [r.assignee] : r.bishops;
+    case "bishop": return r.bishops.length > 0 ? r.bishops : r.queen ? [r.queen] : [];
+    case "queen": return r.queen ? [r.queen] : r.bishops;
     case "founder": return r.founders;
   }
 }

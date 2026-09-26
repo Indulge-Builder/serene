@@ -12,6 +12,118 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-26 — Security: nobody can change their own seat or queendom (0243)
+
+Why: found while mapping the queendom boundary for a company-wide "Joker head" seat. The
+profile update policy (`profiles_update`, last redefined in 0095) stops a person changing their
+own `role` and `domain`, but never pinned `sia_role` or `queendom_id`. So anyone in the concierge
+domain could, with their own login, move themselves into another queendom through the database
+API and see that queendom's members (the card and ID vault included), tickets, WhatsApp groups and
+Freshdesk group, or give themselves a seat. Checked from the migration files; the live database
+was not queried (the Supabase MCP has no token on this machine).
+
+- **Migration 0243** (`20260926000243_profiles_pin_own_seat.sql`) re-creates `profiles_update`
+  with both fields pinned on the self branch, exactly like `role` and `domain`. Unchanged values
+  (including the NULLs every non-concierge account has) still pass. The admin/founder branch is
+  unchanged. **Not applied yet**: run it with the next `supabase db push`.
+- No app change: the only session write of these fields is `updateAuthorization`, behind the
+  admin/founder gate in `actions/profiles.ts`; account creation runs through the service role.
+- Still open, not fixed here: seat changes are not written to `profile_audit_log`
+  (`log_profile_changes` skips `sia_role` and `queendom_id`, though the admin page says changes
+  are audited), and linking a WhatsApp group to a member checks the member but not the group.
+
+## 2026-09-26 — A queendom can have more than one bishop (0242)
+
+Why: the concierge floor runs two bishops in a queendom (Anishqa and Ananyshree already have two
+in their WhatsApp groups), but 0201 made the bishop one seat per queendom. The Create form
+refused the second bishop ("That seat is already held"), and four readers each quietly picked
+ONE bishop, a different one each time: the seat read the ticket alerts use (no order, so an
+arbitrary bishop), the Team roster (the first by name), and the member dossier (the last by
+name). The queen and the joker stay one seat each.
+
+- **Migration 0242** (`20260926000242_bishops_per_queendom.sql`) drops
+  `idx_profiles_one_bishop_per_queendom`. Nothing else in the database counts bishops. **Not
+  applied yet**: run it with the next `supabase db push`. The app works either way; until it runs,
+  a second bishop is still refused with the same "seat already held" message.
+- `SIA_SINGLE_SEATS` is now queen and joker, so the Create form's seat pre-check
+  (`staff-account-mutations.ts`) lets a second bishop through.
+- Every seat read returns `bishops[]`: `getQueendomSeats` (queendom-seats.ts),
+  `getQueendomRoster` (profiles-service.ts) and the member dossier team (`MemberTeam.bishops`,
+  members-service.ts).
+- **The alerts reach every bishop.** The ticket sentinel sends each "to the bishop" alert (the
+  escalation ladders, the stale proposal nudge, "member sounds unhappy", and the assignee alerts
+  of an unassigned ticket) to all of the queendom's bishops, or only the ticket's own bishop when
+  it names one. A new intake card notifies every bishop, then the queen, then the genies, as
+  before.
+- **On screen:** the Queendoms card shows "Bishops · N" between the Queen and the Joker; the
+  member page's Team line names every bishop; Elaya's `get_member_profile` returns `bishops` as a
+  list; the queendom field hint, the SLA escalation choice ("the bishops") and the ticket
+  timeline ("Escalated to the bishops") say it the same way.
+
+Files: `supabase/migrations/20260926000242_bishops_per_queendom.sql`,
+`src/lib/constants/sia-roles.ts`, `src/lib/services/queendom-seats.ts`,
+`src/lib/services/ticket-sentinel.ts`, `src/lib/services/ticket-intake.ts`,
+`src/lib/services/profiles-service.ts`, `src/lib/services/staff-account-mutations.ts`,
+`src/lib/services/members-service.ts`, `src/lib/types/member.ts`, `src/lib/elaya/elaya-data.ts`
+(one line), `src/components/admin/QueendomRosterCard.tsx`,
+`src/components/members/MemberIdentityCard.tsx`, `src/components/admin/RoleDomainFields.tsx`,
+`src/components/settings/TicketSlaPoliciesPanel.tsx`, `src/components/tickets/TicketTimeline.tsx`,
+both migration indexes, `CLAUDE.md`.
+
+## 2026-09-26 — Team page: the filters survive opening a teammate
+
+Why: on the Team page (`/admin/users`), filtering the list, opening a teammate and coming back
+reset every filter. The table kept them in memory only; every other list (Leads, Tickets,
+Freshdesk, Vendors) keeps them in the URL and returns through `?from=`.
+
+- `UsersTable` now keeps search, role and domain in the URL through THE URL filter hook
+  (`useUrlFilters` + `useMultiSelectUrlParam`), and still filters on what is on screen at once.
+  The server renders the page already filtered, so there is no flash of the full list.
+- The Edit link carries `?from=` with the current view, and so do the chips on both roster cards
+  (the page passes its query to them). The teammate page's Back button returns there. It accepts
+  only a path under `/admin/users` and uses the value Next already decoded; the other detail pages
+  decode `from` a second time, which throws on a search that contains `%`.
+
+Files: `src/components/admin/UsersTable.tsx`, `src/app/(dashboard)/admin/users/page.tsx`,
+`src/app/(dashboard)/admin/users/[id]/page.tsx`, `src/components/admin/Roster.tsx`,
+`src/components/admin/QueendomRosterCard.tsx`, `src/components/admin/DomainRosterCard.tsx`.
+
+## 2026-09-26 — Team page: a Domains card under the Queendoms card
+
+Why: the Queendoms card on the Team page (`/admin/users`) works well, and the ask was a second
+card under it that shows every domain (Onboarding, Shop, Tech, Marketing, Finance and the rest)
+with the people in each. Built from the Queendoms card's own pieces, not a copy of it.
+
+- **The Domains card** (`components/admin/DomainRosterCard.tsx`). One tile per domain that has
+  people, in the platform's domain order, each with the domain's icon in the domain's own colour
+  (`DOMAIN_LINE_COLORS`) and a head count. Inside a tile, people are grouped by platform role
+  (Founders, Admins, Managers, Agents, Guests; only the groups that have someone), and each person
+  is a chip that opens their user page. A concierge seat rides as a tag (Queen, Bishop, Genie,
+  Joker) so the two cards read together. Everyone appears exactly once, because a profile has one
+  domain. A domain with nobody in it is not drawn as an empty tile: one line under the tiles names
+  them ("No one in Finance, Marketing or Business yet."). No new query: the card groups the
+  profiles the page already loads.
+- **One roster anatomy for both cards** (`components/admin/Roster.tsx`). The tile, the labelled
+  group and the person chip moved out of `QueendomRosterCard` into shared pieces (`RosterGrid`,
+  `RosterTile`, `RosterGroup`, `RosterEmpty`). The Queendoms card is now a thin mapper over them
+  and looks the same, with three small gains both cards share: an "On leave" tag (the roster
+  already read `is_on_leave` but never showed it), inactive people sorted to the end of a group,
+  and the name warming to the accent ink on hover (`.serene-roster-chip` in `globals.css`). In a
+  narrow tile a tag drops under the name; a name is never cut.
+- **One mark per domain** (`lib/constants/domain-icons.ts`). The all-domain icon map now takes the
+  four Gia marks from THE Gia map in `domains.ts` instead of keeping its own copy. It had Legacy
+  as a crown (the Queendoms card's crown, one card above) and a different Onboarding icon from the
+  domain picker and the mobile tiles. The founder Domains cards on `/performance` change with it:
+  Onboarding shows `UserRound`, Legacy shows `Trees`, the same as everywhere else.
+
+Checked in a browser preview with made-up people: Earth light and dark, Water, desktop width and a
+390px phone. `tsc` has no errors in `src/`, eslint is clean on the changed files, `check-tokens`
+passes.
+
+Files: `src/components/admin/Roster.tsx` (new), `src/components/admin/DomainRosterCard.tsx` (new),
+`src/components/admin/QueendomRosterCard.tsx`, `src/app/(dashboard)/admin/users/page.tsx`,
+`src/lib/constants/domain-icons.ts`, `src/app/globals.css`, `CLAUDE.md` (registry row).
+
 ## 2026-09-26 — Health: one number. Serene's judgement becomes the baseline, signals move it live
 
 The founder, on seeing the judgement score next to the health score: "we need only one number
