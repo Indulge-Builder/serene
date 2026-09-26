@@ -247,7 +247,7 @@ staff, and the teach-elaya trigger over its back button. Nine shared changes cle
 
 The founder's call after the company-wide audit: the data that makes Elaya worth using is Gia's
 (leads, deals, campaigns, escalations) and Sia's (members, groups, Freshdesk, tickets, vendors).
-Finance, marketing, tech, business and house hold only tasks, notes and the subscriptions tracker,
+Finance, marketing and business hold only tasks, notes and the subscriptions tracker (house is a Gia domain and tech is the workbench, so both keep her),
 and with so little in reach the model drifted toward promising things it could not do. So Elaya is
 switched on for admin and founder, every Gia domain and the concierge floor, and for nobody else
 until their tools and clean data exist.

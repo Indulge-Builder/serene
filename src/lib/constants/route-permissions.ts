@@ -15,7 +15,7 @@ export const ALWAYS_ALLOWED_PREFIXES: string[] = ['/dashboard', '/profile', '/he
 /**
  * ELAYA_DOMAINS — the teams Elaya is switched on for (the founder's call, 2026-09-26): the Gia sales
  * domains (leads, deals, campaigns, escalations) and the concierge floor (members, groups, Freshdesk,
- * Sia tickets, vendors). Finance, marketing, tech, business and house wait until they have their own
+ * Sia tickets, vendors). Finance, marketing and business wait until they have their own
  * tools and clean data: with only tasks and notes in reach, the model drifted toward promising things it
  * could not do (the 2026-09-26 audit). Admin and founder always pass; so does the tech workbench.
  * ONE list, read by every door: the /elaya page and nav (canAccessRoute), the floating button and the
