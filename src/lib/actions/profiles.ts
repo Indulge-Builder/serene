@@ -26,11 +26,13 @@ import { normalizeToE164 } from "@/lib/utils/phone";
 import type { ActionResult, Profile, AppDomain, AssignableUser } from "@/lib/types";
 import { ROLES_CAN_CREATE_USER, LEAD_ASSIGNABLE_ROLES } from "@/lib/constants/roles";
 import type { SiaRole } from "@/lib/constants/sia-roles";
+import { createStaffAccountCore, classifyAuthAdminError, type StaffAccountError } from "@/lib/services/staff-account-mutations";
 
 // ─────────────────────────────────────────────────────────
 // createUser
-// Creates a new auth.users row via the Supabase Admin API.
-// The on_auth_user_created trigger handles profiles insertion.
+// Zod → requireProfile → sanitize/normalize → createStaffAccountCore (services/staff-account-mutations.ts:
+// the seat pre-check, the auth.admin.createUser call the on_auth_user_created trigger turns into a
+// profile, the phone follow-up). The roster onboarding script calls the SAME core.
 // ─────────────────────────────────────────────────────────
 export async function createUser(
   _prevState: ActionResult<{ id: string }>,
@@ -73,42 +75,22 @@ export async function createUser(
     }
   }
 
-  const adminClient = createAdminClient();
-  const { data: authUser, error: authError } = await adminClient.auth.admin.createUser({
+  // THE shared core (also the roster script's path): seat pre-check → auth createUser → phone.
+  const result = await createStaffAccountCore({
     email,
     password,
-    email_confirm: true,
-    user_metadata: {
-      full_name:  sanitizedName,
-      role,
-      domain,
-      job_title:  sanitizedJobTitle,
-      phone:      normalizedPhone,
-      // The signup trigger (0201) copies these two into the profile in the same transaction.
-      sia_role,
-      queendom_id,
-    },
+    full_name: sanitizedName,
+    role: role as Profile["role"],
+    domain: domain as AppDomain,
+    job_title: sanitizedJobTitle,
+    phone: normalizedPhone,
+    sia_role: (sia_role as SiaRole | null) ?? null,
+    queendom_id: queendom_id ?? null,
   });
-
-  if (authError) {
-    if (authError.message.toLowerCase().includes("already registered")) {
-      return { data: null, error: formErrors.emailUnavailable };
-    }
-    if (isSeatTaken(authError.message)) return { data: null, error: formErrors.seatTaken };
-    return { data: null, error: formErrors.generic };
-  }
-
-  // If phone or job_title were provided, update profile after trigger fires.
-  // The trigger only sets full_name, role, domain from metadata.
-  if (normalizedPhone || sanitizedJobTitle) {
-    await updateProfileFields(authUser.user.id, {
-      phone:     normalizedPhone,
-      job_title: sanitizedJobTitle,
-    });
-  }
+  if (!result.ok) return { data: null, error: staffAccountErrorCopy(result.error) };
 
   revalidatePath("/admin/users");
-  return { data: { id: authUser.user.id }, error: null };
+  return { data: { id: result.id }, error: null };
 }
 
 // ─────────────────────────────────────────────────────────
@@ -315,11 +297,9 @@ export async function inviteUser(
   );
 
   if (inviteError) {
-    if (inviteError.message.toLowerCase().includes("already registered")) {
-      return { data: null, error: formErrors.emailUnavailable };
-    }
-    if (isSeatTaken(inviteError.message)) return { data: null, error: formErrors.seatTaken };
-    return { data: null, error: formErrors.generic };
+    const kind = classifyAuthAdminError(inviteError);
+    if (kind !== "email_exists") console.error("[profiles-action] invite failed", inviteError.code, inviteError.message);
+    return { data: null, error: staffAccountErrorCopy(kind) };
   }
 
   revalidatePath("/admin/users");
@@ -431,7 +411,11 @@ function mapProfileError(code: string | undefined): string {
  * with the Postgres text folded in; the 0201 one-holder-per-seat indexes are the only unique
  * violations that path can raise for us.
  */
-function isSeatTaken(message: string): boolean {
-  const m = message.toLowerCase();
-  return m.includes("idx_profiles_one_") || (m.includes("database error") && m.includes("duplicate"));
+/** One place the core's typed error becomes user copy (never a raw Auth message). */
+function staffAccountErrorCopy(kind: StaffAccountError): string {
+  switch (kind) {
+    case "email_exists": return formErrors.emailUnavailable;
+    case "seat_taken":   return formErrors.seatTaken;
+    default:             return formErrors.generic;
+  }
 }

@@ -131,6 +131,48 @@ staff, and the teach-elaya trigger over its back button. Nine shared changes cle
 
 ---
 
+## 2026-09-26 — Create user: the real error at last, and the whole company onboarded from the roster
+
+The founder tried to create teammates on /admin/users/new and got "Something went wrong" every
+time. Reproduced against production with the service key: the create itself works; the action
+misread two Supabase Auth answers. A duplicate email comes back as `email_exists` with the text
+"has already been registered", and the matcher looked for "already registered" (no "been"), so
+every person already on Serene read as a generic failure. A taken queen / bishop / joker seat
+comes back as an opaque "Database error creating new user" with no index name, so the seat matcher
+missed too.
+
+**What changed**
+
+- `src/lib/services/staff-account-mutations.ts` (new): `createStaffAccountCore(input)`, THE
+  context-free body of "create a Serene account": a seat pre-check through `getQueendomSeats`
+  (refused before the auth call, with a named error), the `auth.admin.createUser` call the 0201
+  trigger turns into a profile, the phone / job title follow-up on the admin client
+  (`fillStaffContactCore`). `classifyAuthAdminError()` is the ONE reading of an Auth admin error
+  (`email_exists` by code or text, the one-seat index by name, otherwise `db`). No `server-only`
+  chain, so a laptop script can call it.
+- `src/lib/actions/profiles.ts`: `createUser` is Zod → `requireProfile` → sanitize / normalize →
+  the core → copy; `inviteUser` maps its error through the same classifier; the private
+  `isSeatTaken` matcher is gone. A raw Auth message never reaches the screen; unknown failures are
+  logged with the code so the next one is diagnosable.
+- `scripts/admin/onboard-roster.ts` (new): the roster (Name / Department / Mobile, the founder's
+  sheet, kept in `cleint-data/`, git-ignored) → one account per person through the SAME core. Dry
+  run by default, `--apply` writes. Rules: a "<Name>'s Queendom" row is concierge, its named queen
+  takes the queen seat as manager, everyone else is a genie; Finance / Onboarding / Retail / Tech /
+  Marketing / Indulge House map to their domains as agents; HR and Partnerships land in `business`
+  (flagged); the four Jokers are concierge agents without a seat (a joker seat needs a queendom the
+  sheet does not name; flagged); device rows and second numbers are skipped. Email = first name
+  @indulge.global, a clash falls back to firstname+lastname; one temp password for all, changed on
+  /profile. A phone match counts as the same person only when the name agrees: three company SIMs
+  had moved to new people (Rubal, Kabeer, Pawani) and would otherwise have been "already exists".
+  Existing accounts are never re-roled; only a blank phone is filled.
+- Applied 2026-09-26: 43 accounts created, 3 phones filled (Dhanush, Syndia, Pawani), 19 already on
+  Serene, 5 rows skipped. One refusal: Anishqa Bhagia's queen seat is held by the tech admin's
+  account (a bench seat); free it on /admin/users and re-run, the script is idempotent. Open
+  placements for the founder: the four Jokers' queendoms, Kanchan (HR) and Simran (Partnerships)
+  in `business`, Rubal's and Kabeer's numbers still on the old accounts (Sailee, Meghana).
+
+---
+
 ## 2026-09-26 — Plan: Elaya gets hands (Instinct as the first agent vendor)
 
 `docs/architecture/hands-plan.md`. Nothing built. The founder's idea: Elaya hands member jobs to
