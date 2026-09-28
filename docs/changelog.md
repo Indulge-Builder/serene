@@ -78,7 +78,7 @@ the confirmation rule all stay in the Python brain. Only the ears and the mouth 
 was exercised against a fake brain speaking the real frame vocabulary (meta → tool → deltas →
 done: the holding line spoke after 1.2 s of tool-only silence, the deltas streamed, the
 conversation id carried into the second turn); `supabase db push --dry-run` lists 0247 only.
-NOT yet done: the migration is not applied, no LiveKit project exists yet (the three `LIVEKIT_*`
+Applied to production 2026-09-28 (both CHECKs read back with `voice`; the `voice_enabled` row already read `true`, set by hand during the local call test, and the three `LIVEKIT_*` values landed on Vercel the same afternoon, so the Call button goes live at the next Vercel deploy; the `voice` worker still runs only from a laptop in dev mode, not on Fargate); the brain redeployed as task definition 36 with the channel. NOT yet done: no LiveKit project exists yet (the three `LIVEKIT_*`
 values are unset everywhere), the `voice` service is not created or deployed, and no live call
 has been made. `/m/elaya` (the mobile screen) does not carry the Call button yet.
 
