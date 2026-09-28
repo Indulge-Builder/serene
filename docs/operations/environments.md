@@ -41,7 +41,7 @@ worker, L = local only.
 | `UPSTASH_REDIS_REST_URL` | server | Upstash REST endpoint | `lib/redis.ts` (lazy, first use) | V, T |
 | `UPSTASH_REDIS_REST_TOKEN` | server | Upstash REST token | `lib/redis.ts` | V, T |
 | `ANTHROPIC_API_KEY` | server | the model API for every AI call on the Node side | `lib/elaya/adapters/anthropic.ts` (the only `@anthropic-ai/sdk` import) | V, T |
-| `DEEPGRAM_API_KEY` | server | voice-note transcription | `services/transcription-service.ts` (the only Deepgram call site) | V |
+| `DEEPGRAM_API_KEY` | server | voice-note transcription | `services/transcription-service.ts` (the only Deepgram call site; the media reader calls it from Trigger.dev since 0246) | V, T |
 | `ELAYA_BRAIN_URL` | server | where Node reaches the Python brain. Production must be `https://` (the CloudFront front); an `http://` value is refused in production | `lib/elaya/python-brain.ts` | V |
 | `BRAIN_API_SECRET` | server | the shared bearer in both directions: Node to the brain, and the brain's write calls back to `/api/elaya/bridge` | `lib/elaya/python-brain.ts`, `api/elaya/bridge/route.ts` | V (and the brain, below) |
 | `ELAYA_BRAIN_OVERRIDE_IN_APP` / `ELAYA_BRAIN_OVERRIDE_WHATSAPP` | server | test seam: `node` or `python` overrides the `brain_*` settings rows so the eval harness can drive a local brain. Ignored when `NODE_ENV` is `production` | `services/llm-providers-service.ts` | L |
@@ -69,9 +69,9 @@ worker, L = local only.
 | `MEMBER_VAULT_KEY` | server | AES-256-GCM key for the member vault (32 bytes, base64). Lives only in the app environment, never in the database | `utils/vault-crypto.ts` | V |
 | `MEMBER_VAULT_KEY_VERSION` | server | the version number stamped on new ciphertexts | `utils/vault-crypto.ts` | V |
 | `MEMBER_VAULT_KEY_PREVIOUS` | server | the previous key, kept during a rotation so old rows still open | `utils/vault-crypto.ts` | V (during a rotation) |
-| `SIA_S3_ACCESS_KEY_ID` | server | a read-only IAM identity for the Sia media bucket (presigned URLs) | `services/sia-service.ts` | V, L |
-| `SIA_S3_SECRET_ACCESS_KEY` | server | its secret | `services/sia-service.ts` | V, L |
-| `SIA_S3_REGION` | server | bucket region, default `ap-south-1` | `services/sia-service.ts` | V, L (optional) |
+| `SIA_S3_ACCESS_KEY_ID` | server | a read-only IAM identity for the Sia media bucket (presigned URLs on the page, downloads in the media reader) | `services/sia-media-store.ts` | V, T, L |
+| `SIA_S3_SECRET_ACCESS_KEY` | server | its secret | `services/sia-media-store.ts` | V, T, L |
+| `SIA_S3_REGION` | server | bucket region, default `ap-south-1` | `services/sia-media-store.ts` | V, T, L (optional) |
 | `WAG_MEDIA_DIR` | server | the on-disk media root for pre-S3 rows (default `connector/media`) | `services/sia-service.ts` | L |
 | `TRIGGER_SECRET_KEY` | server | Trigger.dev SDK auth for arming and cancelling runs from the app. Production must hold the `tr_prod_…` key; the `tr_dev_…` key arms runs in DEV, which production workers never run. Read by the SDK, not by name in `src/` | the Trigger.dev SDK | V (prod key), L (dev key) |
 | `NODE_ENV` | runtime | standard | `supabase/client.ts`, `python-brain.ts`, `llm-providers-service.ts`, `ServiceWorkerRegistration.tsx` (the service worker registers in production only), `ui/Table.tsx` | all |
@@ -93,10 +93,17 @@ latches, the usage snapshot and cache invalidation; `FRESHDESK_DOMAIN` + `FRESHD
 money out). A missing var fails quietly inside a job (a skipped send, a disabled push, a no-op
 sync), so check the worker's env whenever a background feature "does nothing".
 
-TODO: verify the Trigger.dev prod environment against this list. An operator note of 2026-09-22
-(not in the changelog) found the brief's WhatsApp failing there with "Missing required env vars:
-GUPSHUP_API_KEY…". If that is still true, every WhatsApp sent from a job (SLA, reminders, the Sia
-alarm) fails the same way while the in-app copies still land.
+Verified 2026-09-28 through the envvars SDK: the Trigger.dev prod environment holds exactly
+`ANTHROPIC_API_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, the three `SIA_S3_*`
+(added that day, the media reader skipped every Sia file without them) and `DEEPGRAM_API_KEY`
+(added the same day). **Still missing there: every `GUPSHUP_*`, `VAPID_*`, `UPSTASH_*`, `FRESHDESK_*`
+and `ZOHO_*` variable.** So every WhatsApp sent from a job (SLA fires, reminders, the Sia alarm, the
+brief, alerts) fails with "Missing required env vars: GUPSHUP_API_KEY…" while the in-app copies
+land, push from jobs is a no-op, and the brief leaves money out. Adding them is one script run
+(`scripts/.probe/trigger-envvars.ts NAME…`, the envvars SDK with the prod secret key; a new value
+applies on the next run, no redeploy) but it switches those sends ON, so it is the founder's call.
+Also: `media-reader` and `media-redo` (0246) need `ANTHROPIC_API_KEY`, `DEEPGRAM_API_KEY` and the
+`SIA_S3_*` trio.
 
 ## The Python brain (`backend/`)
 
