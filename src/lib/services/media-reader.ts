@@ -260,7 +260,10 @@ export function parseReading(raw: string, piiDepth: PiiMaskingDepth): Omit<Media
   if (sensitive) {
     // Described, never transcribed. Whatever the model wrote, only the kind of document survives.
     text = null; fields = {}; description = null;
-    summary = summary && !/\d{4,}/.test(summary) ? summary : `a ${MEDIA_CLASSES.labels[cls]?.toLowerCase() ?? "sensitive document"}`;
+    // The kind of document and nothing else: no amount, no date, no bank, however the model phrased it
+    // (the first live hour kept "a bank transfer receipt showing a payment of ₹1,00,000" because the
+    // commas hid the digit run).
+    summary = `a ${MEDIA_CLASSES.labels[cls]?.toLowerCase() ?? "sensitive document"}`;
   } else {
     if (text) text = maskPii(text.slice(0, 6000), piiDepth);
     if (description) description = maskPii(description, piiDepth);
