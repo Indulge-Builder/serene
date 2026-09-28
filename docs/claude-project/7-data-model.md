@@ -1,271 +1,400 @@
-# Serene — Data Model & RPCs (Claude Project digest)
+# Serene: Data Model and RPCs (Claude Project digest)
 
-> Digest of `docs/architecture/database.md`, `migrations.md`, `auth-and-rbac.md`, and the module
-> specs — through migration file `0168` (2026-08-21), verified against `supabase/migrations/` on
-> 2026-08-24. The raw schema dump is `docs/architecture/database_architecture.sql`. RLS posture and
-> the two-tier RPC model are summarised here; the rules are in `6-engineering-rules.md`.
+> **Purpose:** the Postgres data model in one read: the six schemas, every table grouped by schema, the load-bearing functions and views, the RLS postures, storage, and what is applied on production.
+> **Audience:** a Claude Project chat that cannot read the repo, and the engineers who use it.
+> **Source-of-truth scope:** a digest. The truth is `supabase/migrations/` (each file's header carries the reasoning). Full narrative: `docs/architecture/database.md`; migration history, conventions and the full index: `docs/architecture/migrations.md`; the authorization model: `docs/architecture/auth-and-rbac.md`. The rules the schema obeys are in `6-engineering-rules.md`.
+> **Last verified:** digested 2026-09-26 from `database.md` and `migrations.md` as refreshed that day (both verified against every migration file through 0245 and production's applied list, `supabase migration list --linked`).
+
+## Production status (read first)
+
+- **Migrations 0000 to 0244 are all applied to production** (checked 2026-09-26). Older "not yet
+  applied" notes in the changelog or the migration index are history.
+- **0245 (`hands`) is committed but NOT applied.** It creates a `hands` schema for Elaya's second
+  WhatsApp number (tables `auth_state`, `connector_status`, `allowed_contacts`, `threads`,
+  `raw_events`, `messages`, and an `outbox` the connector polls), a private `hands-media` bucket,
+  and `vendors.kind` (`human` / `agent`). Plan: `docs/architecture/hands-plan.md`. As first
+  committed it set the API's exposed-schema list without `gia` and `member`, which would have
+  emptied the leads, deals and members pages on push; it was fixed before any push (commit
+  9f486fc). Do not describe the `hands` tables as live. `handsDb()` already exists in
+  `src/lib/supabase/schemas.ts` for when it lands.
+- **Next free migration number: 0246.**
+- `docs/architecture/database_architecture.sql` is a `pg_dump` from 2026-06-12 (before 0108). It
+  knows nothing about the schemas below. Do not use it for anything newer than June.
+- `src/lib/types/database.ts` is the fastest inventory: generated across `public`, `gia`, `member`,
+  `sia`, `freshdesk` (not `elaya_read`, which is not on the API), with a hand-written tail of
+  derived types below the generated block. A regen must keep that tail byte-identical.
 
 ## Ground rules
 
-- **Every table has RLS enabled** in its migration (A-08). Authorization reads only from
-  `public.profiles` (A-01); RLS policies call `get_user_role()` / `get_user_domain()` (SECURITY
-  DEFINER, `SET search_path = public`, wrapped `(SELECT …)`).
-- **Two real Postgres enums:** `user_role` (founder/admin/manager/agent/guest), `app_domain` (9
-  domains). Everything else called an "enum" is **text + CHECK**, mirrored in `src/lib/constants/` via
-  `defineEnum()` (Q-02).
-- **Append-only** log/activity tables (A-11). The documented UPDATE exceptions are listed in
-  `6-engineering-rules.md`; the newest tables (`task_events`, `activity_events`, the three
-  subscription history/audit tables) have **no write policy at all** — the admin client inside a
-  gated server action is the only writer.
-- **SECURITY DEFINER RPCs are two-tier (Q-13):** *self-scoped* keep `GRANT EXECUTE TO authenticated`;
-  *scope-param* have EXECUTE revoked and run admin-client-only with session-derived args.
-- **The "no user write RLS" posture** (introduced by `deals`, now used by subscriptions too) is
-  deliberate: the `requireProfile` gate + route access + the admin client are the trust boundary,
-  and SELECT policies still enforce who may *see* a row.
+- **RLS on every table, in its creation migration** (A-08), partitions included: Postgres does not
+  pass RLS from a partitioned parent to its children.
+- **Authorization reads only `public.profiles`** (A-01). Policies call `get_user_role()`,
+  `get_user_domain()`, `get_user_queendom()` (SECURITY DEFINER, pinned `search_path`, wrapped in
+  `(SELECT ...)` so Postgres hoists them).
+- **Four real enums:** `user_role` (founder, admin, manager, agent, guest), `app_domain` (concierge,
+  onboarding, finance, marketing, tech, shop, business, house, legacy; `b2b` became `business` in
+  0202a), `task_module` (gia, sia, core; 0138), `task_event_type` (0144). Every other vocabulary is
+  `text` plus a CHECK mirrored by a constant in `src/lib/constants/` (a new value = a constant entry
+  plus a CHECK migration that restates the full list).
+- **Append-only ledgers** (A-11): at most a SELECT policy, never an UPDATE or DELETE policy. Named
+  exceptions are resolve-once admin-client updates (listed in `6-engineering-rules.md`).
+- **Two-tier SECURITY DEFINER RPCs** (Q-13): self-scoped ones derive the caller from `auth.uid()`
+  and keep the `authenticated` grant; scope-parameter ones have EXECUTE revoked and run only on the
+  admin client with session-derived arguments. New functions in `sia`, `member`, `freshdesk`
+  default to service role only.
+- **No user write policy by design** on several tables (`deals`, vendors, subscriptions,
+  `sia.tickets`): the server action's gate plus the admin client is the write boundary, and SELECT
+  policies still decide who sees a row.
+- **Service-role-only tables** (RLS on, zero user policies): the whole `freshdesk` schema, the
+  `sia.wag_*` archive, the profiler and intake state, `member.member_vault`, `elaya_query_log`, the
+  usage tables. The app reads them on the admin client behind a code gate (`getSiaViewerScope()`,
+  `canAccessMember()`), which is the trust boundary there.
 
-## Tables by domain
+## The six schemas
 
-### Identity & access
+| Schema | What lives there | On the REST API | How code addresses it |
+| --- | --- | --- | --- |
+| `public` | Identity (`profiles`), tasks, notifications, activity, Elaya, vendors, subscriptions, usage, suggestions, the MCP ledger, and almost every RPC | yes | plain `.from('tasks')` |
+| `gia` | Gia (sales): leads, deals, SLA, revival, ad spend, the Gupshup lead WhatsApp, call intelligence. 22 tables moved from `public` on 2026-09-17 (0210) | yes | `giaDb(client)` |
+| `member` | The member twin: the `members` spine, facts, people, relations, timeline, health, snapshot, vault. Built as `clients` (0181, 0194), renamed members (0202b), moved here (0211) on 2026-09-17 | yes | `memberDb(client)` |
+| `sia` | The WhatsApp group archive (`wag_*`), queendoms, Serene's own tickets, profiler and intake state, the ticket training ledger (created 0172) | yes | `client.schema('sia')` inline (no helper yet) |
+| `freshdesk` | A read-only mirror of the Freshdesk account (0193) | yes | `freshdeskDb()` in `freshdesk-sync.ts` |
+| `elaya_read` | Cleaned views for Elaya's read-only SQL (0223) | no | only through `public.elaya_run_query()` |
 
-- **`profiles`** — root of authorization. `role` (`user_role`), `domain` (`app_domain`), `is_active`,
-  `theme` (8-key CHECK after 0154–0157), `appearance` (light/dark/system, 0158), `app_icon`
-  (`icon-1..4`, 0121), `reports_to`, `job_title`, dormant `last_seen_at`. Created only by the
-  `on_auth_user_created` trigger (which also copies `job_title` from invite metadata, 0125).
-  Self-update permits cosmetic fields; `WITH CHECK` blocks self role/domain elevation. Moving a
-  user's `domain` is the sanctioned round-robin pool lever.
-- **`profile_audit_log`** — append-only, `ON DELETE RESTRICT`. Every role/domain/active change.
-- **`agent_routing_config`** — round-robin pool switch (`is_active`) + shift windows/days. Auto-created
-  for role `agent` **and** `manager` (0124). Advisory; read by ingestion + the SLA shift overrides.
+**The exposed-schema list** is one role setting, last set by 0211:
+`pgrst.db_schemas = 'public, graphql_public, sia, freshdesk, gia, member'`. `ALTER ROLE ... SET`
+replaces the whole value, so a migration exposing a new schema must restate every existing one,
+then `NOTIFY pgrst, 'reload config'` and `'reload schema'`.
 
-### Leads (Gia)
+**Working across schemas.**
 
-- **`leads`** — lifecycle `new→touched→in_discussion→nurturing→won|lost|junk`. E.164 `phone`; flat
-  `source`/`medium`/`utm_campaign` + immutable `attribution jsonb` (`{}` minimum, never NULL);
-  `assigned_to`; `resolution_reason` (lost/junk); `archived_at` soft-delete; `previous_lead_id` dedup
-  chain; trigger-generated immutable `slug` (`priya-sharma-9182`; the lower()-before-strip bug was
-  fixed in 0147); `search_text` STORED column + trigram index; `service_interests text[]` (0109,
-  never an enum); `last_call_outcome` + `last_call_outcome_at` (0112); `last_activity_at`;
-  `welcomed_at` (0151 — the customer-Elaya one-blast-per-lead flag; bulk imports stamp it so an old
-  contact can never be welcomed).
-- **`lead_activities`** / **`lead_notes`** — append-only ledgers (notes are team-visible; call notes
-  carry `call_outcome`).
-- **`lead_raw_payloads`** — immutable webhook log incl. failures; **full PII** by recorded decision,
-  admin/founder SELECT only → `/error-log`. Written before auth so rejects leave a trace.
-- **`lead_sla_timers`** — service-role only; the SLA engine's timer state.
+1. PostgREST embeds only inside the schema of the request. A cross-schema foreign key is real and
+   enforced, but an embed across it returns PGRST200 and the page renders empty. This emptied the
+   leads pages on 2026-09-17 and broke every task status change for two days after.
+2. The fixes in place: read-only `gia.profiles` and `member.profiles` views (0212, narrowed to
+   `id, full_name` by 0213, `security_invoker`) for staff-name embeds; `gia-task-links.ts` for the
+   `public.tasks` to `gia.task_gia_meta` link (two plain queries, never an embed); a trigger-kept
+   `member.members.wa_group_jid` mirror (0217) so the member list never reaches into `sia`.
+3. Functions did not move. Every routine in `public` had `gia, member` appended to its search path,
+   so no `.rpc()` call changed. Gia's RPCs and the member gate functions live in `public`.
+4. The Python brain has its own PostgREST client (`backend/app/core/supa.py`, `_MOVED_TABLES`). A
+   schema move must update it, the Vercel build and the Trigger.dev tasks in one release.
+
+## Access postures you will meet
+
+| Posture | Where | How |
+| --- | --- | --- |
+| Role and domain RLS | Gia tables, tasks, activity | `get_user_role()` / `get_user_domain()` (InitPlan-hoisted, 0088) |
+| Queendom RLS | `member.*`, the `sia.tickets` family, intake cards | `can_access_member_queendom(queendom_id)` and `member_visible(member_id)`: admin, founder, the caller's own queendom, and (0244) the active Joker head for any non-NULL queendom |
+| Vendor RLS | every vendor table and the `vendor-invoices` bucket | `can_access_vendors()` (0221): an active admin, founder or concierge-domain profile |
+| Service role only | `freshdesk.*`, `sia.wag_*`, profiler and intake state, the member vault, `elaya_query_log`, usage | no user policy; code gate on the admin client |
+| Append-only | activity, audit, message and money ledgers | SELECT at most |
+| Write through an RPC only | `sia.tickets`, vendor merge and remove | the RPC writes row plus history in one transaction; EXECUTE revoked from `authenticated` |
+
+---
+
+## `public`
+
+### Identity and team
+
+- **`profiles`**: one per team member, `id` = `auth.users.id`, the root of all authorization.
+  Created only by the `on_auth_user_created` trigger (`handle_new_user()`, which copies
+  `job_title` (0125) and the seat `sia_role` / `queendom_id` (0201) from signup metadata). Columns:
+  `role` (default agent), `domain` (default concierge), `is_active` (soft-deactivate, never
+  delete), `is_on_leave`, `phone` (E.164; the only way Elaya's WhatsApp gate and the Sia staff link
+  recognise a person), `reports_to`, `timezone`, dormant `last_seen_at`, and preferences `theme`
+  (eight keys, 0157), `appearance` (light / dark / system, 0158), `app_icon` (icon-1..4, 0121).
+- **The concierge seat layer** (0194, 0201, 0242 to 0244): `queendom_id` → `sia.queendoms` and
+  `sia_role` (queen, bishop, genie, joker, joker_head; CHECK `profiles_sia_role_values`). Concierge
+  domain only. Every seat names a queendom except the Joker head, who never has one. Partial unique
+  indexes: one active queen and one active joker per queendom, one active Joker head in the
+  company; bishops and genies are many (0242). The self-update branch of `profiles_update` pins
+  `role`, `domain`, `sia_role` and `queendom_id` (0243): nobody changes their own seat.
+- **`profile_audit_log`**: append-only, `ON DELETE RESTRICT`, via `log_profile_changes()`: role,
+  domain, active, leave, name, email, username. It does **not** log seat or queendom changes (open
+  item).
 
 ### Tasks
 
-- **`tasks`** — one table. `task_category` ∈ `personal`/`group_subtask`; `task_module` enum
-  (gia/sia/core); status `to_do/in_progress/in_review/completed/error/cancelled`; priority
-  urgent/high/normal; checklist in `attachments jsonb`; `tags text[]`; `overdue_at` (0113, stamped
-  once by the overdue job). Lead follow-ups are a `personal` task + a **`task_gia_meta`** link row
-  (the meta row IS the link since 0138; `create_lead_gia_task` is the single writer of both).
-- **`task_groups`** — flat visibility (creator OR assigned a subtask).
-- **`task_remarks`** — append-only narrative; `status_change` CHECK coupled to `tasks.status`; one
-  narrow admin/founder suppression UPDATE exception.
-- **`task_audit_log`** — append-only, 6 fields, CASCADE on task delete.
-- **`task_gia_meta`** — task↔lead link + `call_outcome`.
-- **`task_events`** (0144) — **append-only** oversight stream. `task_event_type` enum
-  (created/status_changed/reassigned/remark_added/overdue), `domain app_domain NOT NULL`,
-  `actor_id`/`subject_id`, `task_title` snapshot, `meta jsonb`, FK→tasks CASCADE. manager+ SELECT,
-  **no INSERT/UPDATE/DELETE policy ever**; Realtime enabled; written only by the task-mutation cores
-  and the overdue job, via the admin client.
+`tasks` is one table. `task_category` is structure only (`personal` | `group_subtask`); what a task
+is about is `tasks.module` plus a meta table.
 
-### Activity (the mobile feed)
+| Table | Purpose | Notes |
+| --- | --- | --- |
+| `tasks` | status `to_do / in_progress / in_review / completed / error / cancelled`; priority urgent / high / normal; `task_type` call / whatsapp_message / other; checklist in `attachments jsonb`; `tags text[]`; `group_id`; `overdue_at` (stamped once, 0113); repeat nudges `nudge_every_minutes` (30..1440), `nudge_until`, `nudge_count` (0232) | `module = 'gia'` if and only if a `gia.task_gia_meta` row exists |
+| `task_groups` | domain-stamped containers | flat visibility: creator or any subtask assignee (0058b) |
+| `task_remarks` | append-only progress timeline, `status_change` CHECK coupled to `tasks.status` | one narrow admin/founder UPDATE for suppression columns |
+| `task_audit_log` | six fields logged | append-only, CASCADE with the task |
+| `task_events` | the `/oversight` stream (0144) | append-only, manager+ SELECT, no write policy, Realtime |
+| `task_ticket_meta` | task → `sia.tickets` link (0195) | SELECT when the caller can see the ticket's queendom |
 
-- **`activity_events`** (0159) — append-only, cloned from `task_events`: domain-stamped,
-  `(domain, created_at DESC)` + subject indexes, RLS (admin/founder all · manager own domain · agent
-  own actions), **no write policies ever**, Realtime published, seeded with a 30-day backfill from
-  `lead_activities` + `task_events` + `deals`. **Emission rule:** lead/deal mutation cores emit
-  directly (`addLeadNoteCore`, `addLeadCallNoteCore`, `createLeadTaskCore`, `updateLeadStatusCore`,
-  `assignLeadCore`, `recordDealCore`, `createWalkInDeal`); **task rows are DERIVED inside
-  `emitTaskEvent`** (created → `task_created`, status→completed → `task_completed`) so task writes
-  are never double-sourced. Never emit from an action or the UI.
+**Single-writer rule:** `create_lead_gia_task` and the nurturing branch of `update_lead_status` are
+the only writers of a `task_gia_meta` row and of `module = 'gia'`, always together. Every other
+insert is `module = 'core'`. "Is this a lead follow-up" = `EXISTS task_gia_meta` or `module='gia'`.
 
-### WhatsApp
+### Notifications and activity
 
-- **`whatsapp_conversations`** — one per phone/lead; `wa_id` + `lead_id` UNIQUE; Realtime.
-  `bot_active` is now live for the customer channel.
-- **`whatsapp_messages`** — append-only except the delivery-receipt status UPDATE; partial-unique
-  `wa_message_id`; Realtime; supports inbound/outbound media (durably copied into a private bucket,
-  0141). `is_bot` marks customer-Elaya turns.
-- **`whatsapp_conversation_reads`** — per-user read position (UPSERT).
-- **`whatsapp_notification_logs`** — one row per template-send attempt; **last-4 phone digits only**;
-  `delivered` = `res.ok` AND body not `{status:'error'}`; admin/founder SELECT only. Log types
-  extended by 0142 (task agent reminders) and 0153 (`task_assigned`).
+- **`notifications`**: the in-app inbox; `type` CHECK restated in full by 0162, six ticket types
+  added in 0195 (renamed `ticket_member_*` in 0202b); `action_url` relative only; Realtime drives
+  the bell.
+- **`push_subscriptions`** (0120): one row per device, `endpoint` UNIQUE; owner-only RLS, no
+  UPDATE; dispatch and dead-endpoint prune on the admin client.
+- **`notification_preferences`** (0133): sparse per-user mutes per category and channel
+  (`in_app`, `whatsapp`). No row = on; the gate fails open. `lead_initiation` and `elaya_reply` have
+  no key and can never be muted.
+- **`activity_events`** (0159): the mobile Activity room's stream; lead / task / deal subjects,
+  domain-stamped; append-only; admin/founder all, manager own domain, others own rows; emitted only
+  by `emitActivityEvent()`; Realtime.
 
-### Commerce / finance
+### Elaya
 
-- **`deals`** (first-class since 0072) — `lead_id` nullable (= walk-in); **`deal_type` is
-  domain-derived** via `DOMAIN_DEAL_CONFIG` (onboarding→membership needs duration; shop→retail needs
-  `deal_category`; house/legacy→sale), set server-side, with 0122 CHECKs coupling retail⇔category;
-  `won_at` immutable; `source`. **No write RLS by design.** `client_id` reserved for the clients
-  module.
-- **`ad_creatives`** — campaign videos keyed by `campaign_key` string-match to `leads.utm_campaign`
-  (no FK; multiple per campaign).
-- **`ad_spend_daily`** (0104) — day-grain Meta spend; `UNIQUE(campaign_key, spend_date, source)`; RLS
-  manager+ read. Zero-spend days are ingested (so a month-to-date re-upload fully overrides).
-- **`ad_account_recharges`** (0139) — per-account recharge ledger; manager+ read / admin/founder write;
-  `method` is a payment-method label (card-PAN-rejected at Zod + DB CHECK). Balance is INR-only.
-- **`domain_targets`** (0105) — founder monthly deals-closed targets.
+Writes are service-role only unless noted; users read their own rows.
 
-### Subscriptions & bills (0163–0168) — the newest module
+| Table | Purpose |
+| --- | --- |
+| `elaya_conversations` / `elaya_messages` | chat sessions (`channel` in_app / whatsapp; 24-hour expiry in code) and every turn (append-only; 0148 partial UNIQUE on `meta->>'wa_message_id'` so a WhatsApp redelivery never runs twice) |
+| `user_context` | the `/profile` persona; the old `learned` blurb folds only until a user's first memory entry |
+| `elaya_user_memory` (0237) | the living memory: one row per thing learned about one user (rule, preference, correction, style, fact, interest), retired never deleted. Context, never permission |
+| `elaya_improvement_requests` (0237) | "Elaya was wrong about the system"; open / fixed / declined / playbook; folded into prompts as known issues |
+| `elaya_actions` | the write-tool ledger: proposed → executed / failed / dismissed (resolve-once admin UPDATE) |
+| `elaya_playbooks` (0234) | the founder's plain-words method per kind of question, picked by the Python router |
+| `elaya_jobs`, `elaya_labels`, `elaya_alerts` (0235) | deep-read jobs; per-row verdicts (UNIQUE subject + label set; visible to the analyst as `elaya_read.labels`); the live alert record (append-only, `dedupe_key`) |
+| `elaya_query_log` (0223) | every SQL the analyst ran; append-only, no policies |
+| `mcp_tool_calls` (0226) | every MCP connector tool call; append-only; owner + admin/founder SELECT |
+| `llm_providers` | job tier → model: `routing`, `reasoning`, `heavy` (0176); read per request |
+| `elaya_settings` | key/value switches read per request: `daily_message_cap`, `pii_masking_depth`, `session_expiry_hours`, `brain_whatsapp`, `brain_in_app`, `member_profiler_enabled`, `ticket_intake_enabled`, `daily_briefing_enabled`, `mcp_audience`, `elaya_alerts_enabled`, `elaya_alerts_state`; code also reads unseeded keys with defaults (`member_assessment_enabled`, `intake_lessons_enabled`, `elaya_labels_refresh_enabled`, `elaya_deep_read_spend_cap_usd`) |
+| `elaya_training_assets` (0150) | customer-facing material Elaya may send; all-authenticated read, manager+ write |
+| `elaya_notes` (0152) | per-user notes Elaya reads as context (`/notes`); owner-only, editable |
 
-- **`subscriptions`** (0163) — the parent. `name`; `departments text[]` (multi-select over
-  `app_domain`, `<@` CHECK mirroring `APP_DOMAINS` — **no new enum**); `type`
-  (monthly/yearly/top_up/other); `currency` (INR/USD/EUR); `amount`; and a **due-date shape enforced
-  by CHECK**: monthly/other → `due_day` (1–31), yearly → `due_date`, top_up → neither. Plus
-  `login`/`password`, `notes`, `is_archived` (soft delete), `created_by`, timestamps, and
-  `tool_id` (0168). SELECT = admin/founder OR a finance/tech member; no write RLS. The same
-  migration provisions the **private `subscription-invoices` bucket** (insert-own-prefix + staff
-  read; rows store the storage **path**, reads mint signed URLs).
-- **`subscription_payments`** (0164) — append-only payment history: `due_date`, `paid_at`, `rate` in
-  the original currency, **`paid_amount_inr` (manual)**, `invoice_path`, `notes`. RLS SELECT mirrors
-  the parent.
-- **`subscription_topups`** (0165) — append-only top-up history, same shape and RLS.
-- **Password encryption** (0166) — pgcrypto `pgp_sym_encrypt` (→ base64) with a 256-bit key generated
-  at migration-run time and stored in **Supabase Vault** (`subscription_password_key`); the key never
-  appears in the migration file and never leaves the DB. `encrypt_subscription_password()` /
-  `decrypt_subscription_password()` are SECURITY DEFINER, **service_role only**. A
-  `BEFORE INSERT/UPDATE` trigger encrypts on write and re-encrypts on UPDATE **only when the value
-  changed** (`IS DISTINCT FROM OLD` — never double-encrypts). Requires the `pgcrypto` +
-  `supabase_vault` extensions. `login` stays plaintext (a username).
-- **`subscription_password_reveals`** (0167) — append-only reveal audit (who, which subscription,
-  when). Written by the admin client **before** the plaintext is returned; the action fails closed if
-  the insert fails. SELECT admin/founder only.
-- **`subscription_tools`** + `subscriptions.tool_id` (0168) — the tool entity for "one tool, many
-  accounts" (Claude: 2 tech accounts + 1 concierge). `name_key = lower(trim(name))` is the dedup
-  identity; tools are created implicitly from the optional Tool field on the form; `tool_id` is
-  nullable so a standalone bill needs no tool.
+### Vendors
 
-**Two invariants:** currency is **never auto-converted** (all analytics use the manually entered
-`paid_amount_inr`; the original-currency figures are stored alongside), and **status is computed,
-never stored** (`utils/subscription-status.ts`, IST-anchored — including the calendar's recurrence
-projection and per-occurrence status).
+One SELECT policy per table on `can_access_vendors()`; no user write policy (writes go through the
+cores in `vendor-mutations.ts`). Scores are computed per read, never stored.
 
-### Notifications
+| Table | Purpose |
+| --- | --- |
+| `vendors` (0183) | identity spine: `name` + generated `name_key` UNIQUE, `aliases`, category, `status` active / paused / blacklisted, `identity_status` unverified → verified (one way), `contacts`, `primary_phone`, `sources` (incl. `freshdesk_live`, 0214), `import_raw`, generated search columns (0187, contacts added 0227), `deleted_at` / `deleted_by` (removed but kept, 0227) |
+| `vendor_capabilities` | offers / declines per category, service, cities |
+| `vendor_engagements` (0185) | the job ledger, UNIQUE (vendor, source, source_ref); outcome, `amount_inr`, invoices. Append-only with three sanctioned writes (close, refine-NULLs-only, the merge fold). `ON DELETE RESTRICT` to the vendor |
+| `vendor_reviews`, `vendor_notes` | append-only ratings (speed, quality, pricing, reliability) and notes |
+| `vendor_agent_preferences` (0191) | one teammate's preferred / avoid stance, editable |
+| `vendor_merges` (0227), `vendor_removals` (0230) | append-only records of merges (the deleted row kept whole) and removals (deleted if nothing attached, else hidden) |
 
-- **`notifications`** — typed CHECK (synced to the full TS `NotificationType` union by 0162 — before
-  that, `sla_breach_*`, `task_overdue_manager` and `suggestion_resolved` inserts were silently
-  failing); `action_url` relative-only; Realtime → bell badge.
-- **`push_subscriptions`** (0120) — one row per device (`endpoint` UNIQUE); owner-only RLS, **no
-  UPDATE**; cross-user read + 404/410 dead-endpoint prune run service-role.
-- **`notification_preferences`** (0133) — per-user × category × channel (`in_app`/`whatsapp`) mutes,
-  sparse rows; **absence = ON, the gate fails OPEN**. Transactional types
-  (`lead_initiation`/`elaya_reply`) have no key and are never silenceable.
+### Subscriptions (0163 to 0168)
 
-### Call Intelligence
+SELECT for admin/founder or the finance and tech domains; writes admin-client only.
+`subscriptions` (billing shape, currency, due day or date, `departments text[]`, `tool_id`;
+`password` is pgcrypto ciphertext under a Vault key, decrypt service-role only; soft delete
+`is_archived`), `subscription_payments` and `subscription_topups` (append-only;
+`paid_amount_inr` entered by hand, never converted), `subscription_password_reveals` (append-only,
+written before any plaintext leaves), `subscription_tools` (one tool, many accounts). Status is
+computed in code (`utils/subscription-status.ts`), never stored.
 
-- **`service_cases`** + **`conversation_hooks`** (0110) — RLS all-authenticated read / admin+founder
-  write; weighted FTS + tags GIN; dormant `embedding vector(1536)` (no HNSW yet). Power `/helpdesk` +
-  the dossier `ServiceInterestCard`; served as a Redis 1hr `{cases,hooks}` envelope.
+### Usage and suggestions
 
-### SLA / Revival
+`usage_heartbeats` / `usage_daily` (0126: RLS on, no policies; jobs write, the page reads through
+`get_agent_usage`). `suggestions` (0134: sender reads own; admin/founder read all with one narrow
+status UPDATE; screenshots as paths in the private `suggestions` bucket).
 
-- **`sla_policies`** (0111) — the SLA rules as data (trigger_kind status/outcome/task_due, threshold,
-  recipient_role, auto_task, channels, hours_mode, active); admin/founder SELECT, service-role writes;
-  read per run. Seeded with the 8 status rules + the CAD cadence + TASK task-due families.
-- **`revival_policies`** (0119) — per-status silence thresholds + daily cap.
-- **`revival_candidates`** (0119) — `open→actioned|dismissed` ledger; verdict revive/unsure/dismiss;
-  denormalised `assigned_to` for the daily-cap count; partial UNIQUE `(lead_id) WHERE status='open'`.
-  Never mutates the leads row.
+---
 
-### Usage (adoption)
+## `gia` (Gia sales)
 
-- **`usage_heartbeats`** (0126) — raw append-only tick log (30-day prune); only the snapshot job
-  writes it (the request path never writes the DB — the hot path is one Redis SET).
-- **`usage_daily`** (0126) — the rollup the dashboard reads; PK `(day, user_id, domain)`; idempotent
-  UPSERT (recompute-and-overwrite, never increment); never pruned.
+- **`leads`**: identity (names, email, E.164 `phone`, `city`, `personal_details`), routing
+  (`domain`, `assigned_to`), lifecycle `new → touched → in_discussion → nurturing → won | lost |
+  junk` with `status_changed_at`, `last_activity_at`, `resolution_reason`, `archived_at` (archived
+  rows immutable, 0091), attribution (flat `source` / `medium` / `utm_campaign` plus the immutable
+  `attribution jsonb`, `{}` minimum; `form_data` written once), call telemetry (`call_count`,
+  `last_call_outcome`, `last_call_outcome_at`), dedup (`previous_lead_id`; the active-phone partial
+  index on `lead_phone_key(phone)`, 0137), a unique human `slug` (fixed to keep capitals, 0147),
+  generated trigram `search_text` (0098), `service_interests text[]` (never an enum, 0109),
+  `lead_intent`, `welcomed_at` (0151).
+- **Lead ledgers:** `lead_activities` and `lead_notes` (append-only), `lead_raw_payloads` (every
+  inbound webhook incl. failures, full PII by recorded decision, admin/founder SELECT),
+  `lead_sla_timers` (service role), `lead_product_enquiries` (0180: shop-app enquiries, many per
+  lead, idempotent on `external_lead_id`, product columns a frozen snapshot), `task_gia_meta`,
+  `agent_routing_config` (round-robin pool for agents and managers, advisory shifts).
+- **Money and targets:** `deals` (first-class since 0072; `lead_id` nullable for walk-ins;
+  `deal_type` derived from the domain: onboarding → membership, shop → retail with a category,
+  house / legacy → sale; `source` CHECK lists every lead source incl. `shop_app` and `self`;
+  `member_id` → `member.members` exists but nothing sets it yet; no user write policy),
+  `ad_creatives`, `ad_spend_daily` (0104, UNIQUE per key, day, source), `ad_account_recharges`
+  (0139, editable, card numbers rejected by CHECK), `domain_targets` (0105).
+- **Follow-up engines:** `sla_policies` (0111, rules as data; not the same as
+  `freshdesk.sla_policies` or `sia.ticket_sla_policies`), `revival_policies` and
+  `revival_candidates` (0119; one open candidate per lead; revival never writes the lead row).
+- **Lead WhatsApp (Gupshup) and call intelligence:** `whatsapp_conversations` (one per lead,
+  Realtime), `whatsapp_messages` (append-only except delivery receipts; media paths in the private
+  `whatsapp-media` bucket), `whatsapp_conversation_reads`, `whatsapp_notification_logs` (last four
+  digits only; 14 type values), `service_cases` / `conversation_hooks` (0110). This Gupshup family
+  never mixes with the Sia group archive.
 
-### Suggestions
+## `member` (the member twin)
 
-- **`suggestions`** (0134) — staff suggestion/bug triage (message + ≤4 screenshot **paths**, never
-  URLs); open→resolved lifecycle, so exactly ONE narrow admin/founder UPDATE policy; no DELETE policy
-  ever. Private **`suggestions`** Storage bucket (0135); `suggestion_resolved` notification type
-  (0136).
+Access through `member_visible()` / `can_access_member_queendom()`: a concierge seat sees its own
+queendom, the Joker head every queendom, admin and founder everything. Sessionless callers (Elaya,
+Trigger.dev) use the admin client and check `canAccessMember()` first.
 
-### AI / Elaya
+| Table | Purpose |
+| --- | --- |
+| `members` | the spine: `full_name`, `primary_phone` UNIQUE, `alt_phones`, `freshdesk_contact_id`, `zoho_customer_id`, `app_member_id`, `queendom_id`, `tier`, the membership summary (type, status, amount, dates), `identity_status`, `sources`, `consent`; `wa_group_jid` is the trigger-kept mirror of the linked Sia group (never written by code). No DELETE |
+| `member_people` | the humans under a membership |
+| `member_facts` | typed facts per facet with source, confidence, evidence, `superseded_by`; append-only (a user may insert only their own `agent_note`); `source` admits `freshdesk_note` (0236) |
+| `member_relations` | people, vendors, places, brands, with strength and evidence |
+| `member_events` | the timeline, partitioned by month (2024-01 to 2027-03 + DEFAULT) |
+| `member_documents` / `member_chunks` | prose and `vector(1024)` chunks; nothing writes them yet |
+| `member_snapshot` | one `data jsonb` per member; writers merge their own key (`pulse`, `assessment`, reserved `narrative`) |
+| `member_health_policy` / `member_health_events` | health signal config (rows, not code) and the append-only ledger |
+| `member_anticipations` | the "right time" queue (occasions, renewals) |
+| `member_access_log` | every card open (DPDP audit), append-only |
+| `member_vault` (0236) | cards and ID documents: label, last-four hint and expiry in the clear, the secret as AES-256-GCM ciphertext under the app-side `MEMBER_VAULT_KEY`. **No policy for signed-in users at all**; only `member-vault.ts` on the service role. Never in a dossier, tool result or prompt |
+| `member_vault_access` | every reveal, add, delete and import, written before the secret leaves |
 
-- **`elaya_conversations`** + **`elaya_messages`** (0116) — append-only; `channel` column (in_app /
-  whatsapp); one active session per user across channels; `sender_id` denormalised for the cap count;
-  WhatsApp dedup via a partial UNIQUE on `meta->>'wa_message_id'` (0148).
-- **`user_context`** (0116) — per-user memory; `context.persona` (user-set) + `context.learned`
-  (Elaya-written); RLS read-own, service-role write.
-- **`elaya_notes`** (0152) — the per-user Notes section (`/notes`) Elaya reads as context. Private to
-  the author.
-- **`elaya_training_assets`** (0150) — the curated customer knowledge base behind
-  `/admin/elaya-training`: videos, brochures, images, docs, URLs, company facts. Admin/founder write.
-- **Customer welcome blast** (0151) — the `leads.welcomed_at` flag + supporting columns for the
-  outward channel.
-- **`elaya_actions`** (0118) — the write-proposal **state-machine** ledger
-  (`proposed→executed|failed|dismissed`); before/after snapshots; partial index on `status='proposed'`;
-  the proposed→terminal flip is a service-role admin-client UPDATE (an A-11 carve-out).
-- **`llm_providers`** + **`elaya_settings`** (0116) — provider config (`routing`→Haiku,
-  `reasoning`→Sonnet) + PII depth / daily cap / session hours; read **per request**, never cached.
+Views and functions: `member.members_list` (0241, members plus pulse and judgement columns, security
+invoker, so `/members` can sort by activity), `member.profiles`, `member.compute_member_pulse()`
+(0241, one statement over the archive, the Freshdesk mirror and tickets; hourly).
 
-## Storage buckets
+## `sia` (the concierge side)
 
-| Bucket | Read | Write |
-| ------ | ---- | ----- |
-| `avatars` | public | own row |
-| `ad-creatives` | public | admin/founder |
-| `suggestions` | **private** (signed URLs only) | own-prefix insert |
-| `subscription-invoices` (0163) | **private** (signed URLs only) | own-prefix insert (`{uid}/`) |
-| WhatsApp inbound media (0141) | private | server (ingestion copies from the Gupshup CDN) |
+- **The WhatsApp group archive (`wag_*`)**, written only by the Baileys watcher in `connector/`
+  with the service role; zero user policies; three laws from 0169: raw first, facts never mutate
+  (an edit is a new row, a delete flips `is_revoked`), inserts never fail (no CHECK on WhatsApp's
+  vocabularies, DEFAULT partitions). Tables: `wag_raw_events` and `wag_messages` (partitioned by
+  month, 2026-08 to 2027-03 + DEFAULT; message identity is the triple chat_jid, wa_message_id,
+  sender_jid), `wag_groups` (`group_kind` member / vendor / internal / unmapped; `member_id` is the
+  one source of the member link; `vendor_id`), `wag_contacts` (`participant_role`,
+  `staff_profile_id` set by phone, `member_id`, `vendor_id`), `wag_group_members` (with history),
+  `wag_media` (storage path is S3, `download_status`), `wag_reactions`, `wag_receipts` (empty by
+  design: the watcher never sends), `wag_pipeline_cursors` (unused), `wag_auth_state` (live session
+  keys: never add a user policy), `wag_watcher_status` (the one-row heartbeat plus QR and restart
+  channel).
+- **`queendoms`** (0194): the org units (three seeded), `freshdesk_group_id` joins the mirror;
+  readable by every signed-in user. Seat holders derive from `profiles` (the seat columns here were
+  dropped by 0201; reading them fails quietly).
+- **`extraction_runs`** (0194): one row per model run over member data (profiler, intake, drafts,
+  sentinel, assessment, lesson writer, brief, alerts, deep reads) with tokens, cost, prompt version.
+- **Tickets** (0195 on): `tickets` (current state: `ticket_no` T-000001, member, queendom, origin,
+  category, brief / checklist / money jsonb, priority and approval, SLA stamps, `vendor_id`, `tags`,
+  sentinel state; queendom SELECT; **written only by `sia.create_ticket` /
+  `sia.apply_ticket_change`**; Realtime), `ticket_events` (the diary, partitioned 2026-09 to
+  2027-12 + DEFAULT, append-only), `ticket_message_links` (append-only), `ticket_sla_policies`
+  (most specific wins), `ticket_settings` (founder-edited status labels and tags), `genie_roster`
+  (unused yet).
+- **Profiler, intake, training:** `codenames` (one stable code name per sender per group, so real
+  names never reach a model), `profiler_group_state`, `intake_proposals` (the suggested-ticket
+  cards, queendom SELECT), `intake_group_state`, `draft_reviews` (0239, append-only human verdicts
+  on machine drafts), `intake_lessons` (0240, one approved and one draft lesson per kind).
 
-## Load-bearing RPCs (selected)
+## `freshdesk` (the mirror)
 
-- **Ingestion / leads:** `get_next_round_robin_agent` (SELECT FOR UPDATE SKIP LOCKED;
-  `role IN ('agent','manager')` since 0124) · `get_active_lead_by_phone` · `update_lead_status` ·
-  `add_lead_call_note` · `get_leads_status_counts` (**v4**, `20260807000161` — the agent branch now
-  honours `p_domain` as an additive AND, so the pills can't drift from the table) ·
-  `generate_lead_slug` (fixed 0147) · `lead_phone_key` + the active-phone partial UNIQUE index (0137).
-- **Dashboard / performance:** `get_dashboard_summary` · `get_agent_performance` /
-  `get_agent_roster_performance` · `get_agent_today_pulse` · `get_agent_performance_trend` (0146) ·
-  `get_agent_first_touch_pairs` (0123) · `get_recent_lead_activity` (0132) ·
-  **`business_minutes_between()`** (`20260710000161`) — the shared 09:00–19:00 IST, Mon–Sat elapsed
-  helper every response-time metric now uses.
-- **Deals / budget:** `get_deals_summary` · `get_budget_summary` (0106) · the domain-health
-  total_deals aggregate (0107).
-- **Oversight (0144, scope-param, admin-client only):** `get_team_task_overview` ·
-  `get_team_agent_breakdown` · `get_agent_tasks_oversight`.
-- **Mobile (0160, scope-param):** `get_domain_task_summary(p_domain, p_from, p_to)` — per-assignee
-  created/completed (period) + open/overdue (live), with the domain derived
-  `COALESCE(task_groups.domain, assignee profiles.domain)` (the `resolveTaskDomain` rule, in SQL).
-- **Revival:** `get_silent_leads_for_revival` (0128, pushes the judge-once anti-join into SQL).
-- **Tasks:** `get_personal_tasks` (0145 widened to carry the linked lead's identity) ·
-  `get_group_task_summaries` · `add_task_remark_with_status`.
-- **Elaya sessionless twins (0149, scope-param, admin-client only):**
-  `get_group_task_summaries_for_user` · `get_agent_today_pulse_for_user` ·
-  `get_agent_roster_performance_for_elaya`.
-- **Subscriptions (0166):** `encrypt_subscription_password` / `decrypt_subscription_password`
-  (SECURITY DEFINER, service_role only — EXECUTE revoked from `authenticated`).
-- **Usage:** `get_agent_usage` (0126).
+Read-only mirror (0193), service role only; the sync overwrites business fields and Serene never
+writes to Freshdesk. `tickets` (current state plus `raw`, `custom_fields`, `attachments`, a soft
+`member_id`), `conversations` (notes and replies; `media_synced_at`; the vendor extractor's queue
+columns `vendor_extracted_at` and `vendor_extract_attempts`, which the sync's upsert must never
+include), `contacts`, `agents`, `groups`, `ticket_fields`, `sla_policies`, `ticket_changes`
+(append-only movement history), `webhook_events` (append-only inbox), `sync_state`, `sync_runs`.
 
-## Migration numbering reality (don't be surprised)
+## `elaya_read` (the analyst's door)
 
-- The migration ledger was **repaired 2026-06-12** (0001–0064 recorded; 0065–0108 catalog-verified
-  and recorded) and **repaired again 2026-07-06** when `supabase db push` first met the MCP-applied
-  history: 14 orphan MCP version stamps were reverted and local versions 0138–0153 marked applied
-  (their DDL was already live — verified by sentinel objects before repairing). After that repair
-  `db push` and the MCP flow are reconciled.
-- **There are two `0161` files** — `20260710000161_business_minutes_response_time.sql` and
-  `20260807000161_status_counts_agent_domain.sql`. The full timestamped filename is the version, so
-  they don't collide, but "migration 0161" is ambiguous in prose. Always cite the full filename when
-  it matters.
-- The docs index in `migrations.md` **jumps 0137 → 0144** (0138–0143 shipped but were never
-  back-added to that docs-side index; the `supabase/migrations/CLAUDE.md` inventory + the SQL files
-  are truth).
-- **Applied-vs-written is a real distinction.** Confirmed applied and verified: 0154–0158 (themes +
-  appearance), 0159 + 0160 (activity events + the mobile task summary, pushed and verified
-  2026-07-06 with 1,584 backfilled rows), 0163–0168 (subscriptions — applied out of band during the
-  PR merge). The changelog flags **`20260710000161` (business minutes) and 0162 (the notifications
-  CHECK sync) as "not yet applied — run `supabase db push`"** at the time of writing; **verify both
-  against the live DB before relying on them.** Never assume a table/column/RPC exists from a file
-  on disk.
-- `lead_health` is **fully removed** (0084) — any reference anywhere is stale. (Unrelated: *Domain
-  Health* — `getDomainHealthMetrics` — is a separate live feature.)
-- `src/lib/types/database.ts` was regenerated from the live schema on 2026-07-02 and again on
-  2026-08-22 (to pick up the subscription tables). It carries a hand-written "Derived type aliases"
-  appendix below the generated block — the app imports `Profile`/`Lead`/`Task` from there, and a
-  regen must splice **above** it, leaving the appendix byte-identical.
+About 40 views with explicit column lists (no phone, email, password, login, raw payload or
+WhatsApp jid; groups and senders as md5 ids; long text cut), the `data_dictionary` view, and
+`labels` (0235). Only the login-less role `elaya_reader` can see this schema.
+`elaya_read.run(sql, max_rows)` runs a query as that role in a READ ONLY transaction, as one
+wrapped sub-select, row-capped (5,000 since 0231; the chat tool keeps 300 in code). The one entry
+point is `public.elaya_run_query()` (service role), behind the founder/admin gate; every query is
+logged. A column added to a base table is invisible here until a migration adds it to a view.
+
+---
+
+## Storage
+
+| Bucket | Access | Notes |
+| --- | --- | --- |
+| `avatars` | public read | own-object writes |
+| `ad-creatives` | public read | admin/founder writes |
+| `elaya-training` (0150) | public read | Gupshup fetches sent media unsigned; manager+ writes |
+| `suggestions` (0135) | private | own `uid/` prefix writes |
+| `whatsapp-media` (0141a) | private | Gia lead media, signed reads |
+| `subscription-invoices` (0163) | private | own `uid/` uploads |
+| `vendor-invoices` (0184) | private | read policy on `can_access_vendors()` |
+| `freshdesk-attachments` (0197) | private | the sync copies files here; one-hour signed links |
+| `hands-media` (0245) | private | not applied yet |
+
+Rows store a storage **path**, never a URL. Sia group media is not in Supabase Storage: the watcher
+writes it to an S3 bucket and the app presigns links.
+
+**Realtime publication:** `notifications`, `task_remarks`, `task_events`, `activity_events`,
+`gia.whatsapp_conversations`, `gia.whatsapp_messages`, `sia.tickets`. RLS still filters rows.
+
+## Load-bearing functions (about 80 in all)
+
+**`public`**
+
+- RLS helpers: `get_user_role`, `get_user_domain`, `get_user_queendom`,
+  `can_access_member_queendom` / `member_visible` (Joker head since 0244), `can_access_vendors`,
+  `can_access_wa_conversation`.
+- Leads: `get_next_round_robin_agent` (SELECT FOR UPDATE SKIP LOCKED; agents and managers),
+  `get_active_lead_by_phone`, `generate_lead_slug`, `lead_phone_key`, `add_lead_call_note`,
+  `update_lead_status`, `add_lead_plain_note`, `create_lead_gia_task`, `get_leads_status_counts`,
+  `get_recent_lead_activity`, `cold_lead_cutoff()` (the one cold threshold, now minus 5 days).
+- Dashboards and performance: `get_dashboard_summary`, `get_campaign_*`,
+  `get_domain_health_metrics`, `get_deals_summary`, `get_budget_summary`,
+  `get_agent_performance`, `get_agent_roster_performance`, `get_agent_today_pulse`,
+  `get_agent_performance_trend`, `get_agent_first_touch_pairs`, and `business_minutes_between()`
+  (response time counted 09:00 to 19:00 IST, Monday to Saturday).
+- Tasks: `get_personal_tasks` (keyset cursor; carries the linked lead's identity),
+  `get_group_task_summaries`, `add_task_remark_with_status`, `get_gia_tasks`,
+  `get_domain_task_summary` (mobile), the oversight trio `get_team_task_overview` /
+  `get_team_agent_breakdown` / `get_agent_tasks_oversight`, and the Elaya sessionless twins (0149).
+- Vendors: `get_vendor_score_inputs` (the one score rollup, at most 500 ids per call),
+  `search_vendors` / `count_vendors`, `get_vendor_candidates` (ordered by id so it can be paged past
+  the 1,000-row cap), `find_vendors_by_history` (past ticket titles; common words dropped 0228; the
+  category boosts, never filters, 0229), `merge_vendors` (0227, one transaction over seven tables),
+  `remove_vendor` (0230).
+- Elaya and more: `elaya_run_query`, `get_agent_usage`, `encrypt_/decrypt_subscription_password`.
+
+**`sia`** (all service role): `create_ticket`, `apply_ticket_change` (the only ticket writers),
+`claim_sentinel_wakes` (a leased pool; one-ticket form 0203), `sentinel_sleep`,
+`wag_group_activity()` (rewritten for speed 0222), `groups_waiting_for_reply(min_minutes,
+max_hours)` (0224), `wag_add_month_partition()`, `profiler_due_groups` (Active members,
+longest-waiting first), `intake_due_groups`, `member_wa_group` + the `sync_member_wa_group`
+trigger, `intake_stats()` (0238), `draft_review_scoreboard()` (0240).
+
+**`member`**: `compute_member_pulse()`, views `members_list`, `profiles`.
+**`freshdesk`**: `ticket_overview(...)` (the overview strip in one scan), `media_backlog()`,
+`flag_threads_for_media()`. **`gia`**: the `profiles` view only.
+
+**The 1,000-row trap:** PostgREST returns at most 1,000 rows per response, RPC results included,
+silently. Return vocabularies as one array row, `ORDER BY` a stable key so the caller can page
+(`callAdminRpcAll`), or count in SQL.
+
+## Migration numbering reality
+
+- A file is `YYYYMMDD` + a six-digit serial + a name; the 14-digit prefix is the **version** the CLI
+  orders and records. A reused version is silently skipped by `db push` (no error, no table), so a
+  branch must renumber onto current `main` before merge. A file dated before the newest applied one
+  needs `--include-all`.
+- **Six serials appear twice** (different dates, so both apply): 0058, 0066, 0122, 0141, 0161,
+  0202. Prose marks them a/b. Cite the full filename when it matters (for example
+  `20260710000161_business_minutes_response_time` vs `20260807000161_status_counts_agent_domain`).
+- **Gaps:** 0131 never ran and was deleted; 0205 to 0209 were skipped on purpose.
+- **Renumbered branches** (always the same cause, a branch numbered from an older `main`):
+  subscriptions (2026-08-21), vendors (2026-09-05 and 09-11), the vendor extractor (to 0214), vendor
+  cleanup (to 0227-0230).
+- The applied ledger was reconciled several times (June for 0065-0108, July for 0138-0153, late
+  August for 0161 and 0169-0176). All consistent now.
+- `lead_health` is fully removed (0084). *Domain Health* (`getDomainHealthMetrics`) is a separate,
+  live feature.
+
+## Open items
+
+- **Partition upkeep:** add monthly partitions before 1 March 2027 (`wag_messages`,
+  `wag_raw_events`, `member_events`) and 1 December 2027 (`ticket_events`); nothing schedules it
+  (`docs/operations/maintenance.md`).
+- Seat and queendom changes are not audited.
+- `sia` has no query helper (inline `.schema('sia')` in many services).
+- Unused so far: `sia.genie_roster`, `sia.wag_pipeline_cursors`, `member_documents`,
+  `member_chunks`, the `sia` value of `task_module`, `gia.deals.member_id`.
+- `FACT_SOURCES` in `lib/constants/member-facets.ts` does not list `freshdesk_note` yet.
+- The 0137 active-phone index: verify on production that it is UNIQUE (it falls back to a plain
+  index if it met old collisions).

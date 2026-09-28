@@ -1,25 +1,57 @@
-# Gia — The CRM Module
+# Gia: The Sales Module
 
-> **Purpose:** what Gia is — the lead lifecycle, the end-to-end flow from ad to deal, the SLA engine, and the map of Gia surfaces.
-> **Audience:** engineers (+ a readable narrative for anyone technical). · **Source-of-truth scope:** module narrative, lifecycle semantics, SLA business rules. Page mechanics live in `../pages/*.md`; ingestion in `../integrations/lead-ingestion.md`; WhatsApp in `../integrations/whatsapp-gupshup.md`.
-> **Last verified:** 2026-07-02 (Gia tab removal, task-due WhatsApp scope now every task, customer chatbot shipped, 0138 category-collapse note). The lifecycle + SLA business rules below are unchanged since the 2026-06-11 rewrite.
+> **Purpose:** what Gia is: the lead lifecycle, the end-to-end flow from ad to deal, the follow-up (SLA) engine, where Gia's data lives, and the map of Gia surfaces.
+> **Audience:** engineers (and a readable narrative for anyone technical).
+> **Source-of-truth scope:** module narrative, lifecycle semantics, SLA business rules, the Gia data home. Page mechanics live in `../pages/*.md`; ingestion in `../integrations/lead-ingestion.md`; WhatsApp sends and templates in `../integrations/whatsapp-gupshup.md`; timer mechanics in `../integrations/trigger-dev.md`.
+> **Last verified:** 2026-09-26 against `src/lib/supabase/schemas.ts`, `src/lib/constants/{domains,route-permissions,lead-sources,whatsapp,notification-categories}.ts`, `src/lib/services/{gia-task-links,lead-mutations,sla-service,lead-assignment-notify}.ts`, migrations 0210 and 0202, and the changelog through 2026-09-26.
 
 ---
 
 ## 1. What Gia is
 
-Gia handles the complete journey of a lead — from a form submitted on a Meta ad, Google
-campaign, website, or an inbound WhatsApp message, through ingestion, validation, assignment,
-conversation, and resolution. Its principle: **no lead falls through the cracks, no agent is
+Gia handles the whole journey of a lead: a form on a Meta ad, a Google campaign, the website,
+the Indulge Shop app, or an inbound WhatsApp message, through ingestion, assignment,
+conversation and resolution. Its principle: **no lead falls through the cracks, no agent is
 overwhelmed, no prospect waits longer than they should.**
 
-Gia is domain-scoped to the four active sales domains — `GIA_DOMAINS`: **onboarding**,
-**house**, **shop**, **legacy** (Q-17; display names from `DOMAIN_LABELS`). An agent sees only
-their own assigned leads; a manager sees their domain; admin/founder see all. Gia does not
-replace WhatsApp or phone calls — it records them. The agent calls outside the system and
-comes back to Gia to log what happened.
+Gia serves the four sales domains in `GIA_DOMAINS` (`src/lib/constants/domains.ts`):
+**onboarding**, **house**, **shop**, **legacy**. The other app domains (concierge, finance,
+marketing, tech, business) are not Gia domains. `business` (the old `b2b` key, renamed
+2026-09-16, migration 0202) can reach `/leads`, `/deals` and `/campaigns` through the route map,
+but it has no deal shape, no interest vocabulary and no lead flow: a stray `TG_B2B` lead is
+coerced into `onboarding` at ingestion (`src/lib/constants/campaign-domain-map.ts`).
 
-## 2. The lead lifecycle
+Who sees what: an agent sees only their own assigned leads; a manager sees their domain (and
+defaults to their own leads on `/leads`); admin and founder see everything. Gia does not replace
+WhatsApp or phone calls, it records them. The agent calls outside Serene and comes back to log
+what happened.
+
+## 2. Where Gia's data lives
+
+Since 2026-09-17 (migration 0210) Gia's 22 tables live in the **`gia` schema**, not `public`:
+`leads`, `lead_activities`, `lead_notes`, `lead_raw_payloads`, `lead_sla_timers`,
+`lead_product_enquiries`, `deals`, `sla_policies`, `agent_routing_config`, `revival_candidates`,
+`revival_policies`, `domain_targets`, `ad_creatives`, `ad_spend_daily`, `ad_account_recharges`,
+`task_gia_meta`, the four `whatsapp_*` tables, `service_cases` and `conversation_hooks`.
+
+What this means in code:
+
+- Every query on these tables goes through `giaDb(client)` from `src/lib/supabase/schemas.ts`
+  (works with the session client and the admin client). ESLint refuses an unscoped
+  `.from('<moved table>')` in `src/`.
+- The RPCs stayed in `public`; migration 0210 widened their `search_path` to include `gia`, so no
+  `.rpc()` call changed.
+- **PostgREST cannot embed across schemas** (error PGRST200). A `gia` table can still embed
+  `profiles(full_name)` because migrations 0212/0213 added a read-only `gia.profiles` view
+  (`id`, `full_name` only). But `public.tasks` cannot embed `gia.task_gia_meta`. Every
+  lead-to-task read goes through `src/lib/services/gia-task-links.ts`: `getTaskIdsForLead`,
+  `getGiaLinksForTasks`, `isLeadTask`. Never re-add a `task_gia_meta` embed on a `public` query.
+- `tasks` and `activity_events` stay in `public`.
+
+The full table narrative is in `../architecture/database.md`; the move itself is in
+`../architecture/schema-restructure-plan.md`.
+
+## 3. The lead lifecycle
 
 ```text
 new → touched → in_discussion → won
@@ -28,51 +60,65 @@ new → touched → in_discussion → won
 
 | Status | Meaning | Auto-action |
 | ------ | ------- | ----------- |
-| `new` | arrived, not yet called | — |
-| `touched` | first call attempt made | auto-set on first call log |
-| `in_discussion` | active conversation | — |
-| `won` | converted to member | `recordDeal` inserts a `public.deals` row **before** the status flip (0072–0074; the old `leads.deal_*` columns are gone — 0097) |
-| `nurturing` | not ready now | auto-creates a Gia follow-up task (due +3 months) inside the same RPC transaction |
-| `lost` / `junk` | won't convert / invalid | requires a `resolution_reason` (0060) |
+| `new` | arrived, not yet called | none |
+| `touched` | first call attempt made | set automatically by the first call log |
+| `in_discussion` | active conversation | none |
+| `won` | converted | `recordDealCore` inserts a `gia.deals` row **before** the status flip (0072 to 0074; the old `leads.deal_*` columns were dropped in 0097) |
+| `nurturing` | not ready now | creates a lead follow-up task (due in 3 months) inside the same RPC transaction |
+| `lost` / `junk` | will not convert / invalid | needs a `resolution_reason` (0060) |
 
-Every transition runs through the atomic `update_lead_status` RPC (0031). Won notifications,
-SLA scheduling/cancellation stay in the action layer (Trigger.dev can't be rolled back by
-Postgres). **Revive** is supported (`junk → in_discussion`), preserving all history and
-clearing `resolution_reason`. Terminal statuses cancel all SLA timers.
+Every transition runs through the atomic `update_lead_status` RPC (0031), called by
+`updateLeadStatusCore` in `src/lib/services/lead-mutations.ts`. Won notifications and SLA
+scheduling or cancelling stay in the application layer (Trigger.dev cannot be rolled back by
+Postgres). A `junk` lead can be revived back to `in_discussion` from the dossier ("Revive
+Lead"), keeping all history and clearing `resolution_reason`; `won` and `lost` have no status
+buttons. Terminal statuses cancel all SLA timers. (Lead Revival, `revival.md`, is a different
+thing: it adds a task and never changes the status.)
 
-## 3. End-to-end flow (ad → deal)
+The lead write cores in `lead-mutations.ts` (`addLeadNoteCore`, `addLeadCallNoteCore`,
+`createLeadTaskCore`, `reviveLeadCore`, `updateLeadStatusCore`, `recordDealCore`,
+`assignLeadCore`) are shared by the server actions and Elaya's write tools, and each emits an
+`activity_events` row for the mobile Activity room (`../modules/mobile-ops.md`).
 
-1. **Ingestion** — webhook (or inbound WhatsApp from an unknown number) → validate → resolve
-   domain → dedup by phone → insert lead (`status='new'`, trigger-generated slug) →
-   atomic round-robin assignment → activities logged. Detail:
+## 4. End-to-end flow (ad to deal)
+
+1. **Ingestion.** Webhook (Pabbly for Meta, Google, website; the Shop app posts direct with its
+   own secret) or an inbound WhatsApp message from an unknown number → validate → resolve domain
+   → dedup by phone → insert the lead (`status='new'`, slug from a trigger) → round-robin
+   assignment → activities. A repeat enquiry from the Shop app lands on the existing lead as a
+   row in `lead_product_enquiries` (0180) instead of a second lead. Detail:
    `../integrations/lead-ingestion.md`.
-2. **Notify + arm SLA** — `after(notifyLeadAssigned(...))`: agent WhatsApp, founder WhatsApp,
-   in-app notification, SLA-01 timers. Detail: `../integrations/whatsapp-gupshup.md` §4.
-3. **First contact** — agent opens the dossier from the notification, calls outside Serene,
-   logs outcome + note via `CalledModal` → `add_lead_call_note` RPC (0030) — note insert,
-   `call_count++`, auto-advance `new → touched`, activities, all in one transaction.
-4. **Progression** — status updates as the lead warms; team notes; Gia follow-up tasks
-   (`create_lead_gia_task`, 0054) appear on the lead dossier. (The `/tasks` Gia tab was
-   removed; a legacy `?tab=gia` falls back to My Tasks. The `getGiaTasksForUser` read is
-   kept for Elaya's `get_my_tasks` tool and the dossier path.)
-5. **Resolution** — Won: `WonDealModal` → `recordDeal` (deals row, then status flip; managers
-   notified). Nurturing: auto follow-up task + SLA-04. Lost/Junk: reason required.
-6. **After won** — the deal lives on `/deals`; the future members module takes over from
-   `deals.member_id` (reserved).
+2. **Notify and arm SLA.** `after(notifyLeadAssigned(...))` sends the agent a WhatsApp and an
+   in-app notification and arms the SLA timers. The founder "new lead" WhatsApp is **paused**
+   (see §6). Detail: `../integrations/whatsapp-gupshup.md`.
+3. **First contact.** The agent opens the dossier, calls outside Serene, and logs the outcome and
+   a note in `CalledModal` → `add_lead_call_note` RPC (0030): note, `call_count + 1`, the
+   `new → touched` advance and activities in one transaction. The same modal can also create a
+   follow-up task with a due date.
+4. **Progression.** Status moves as the lead warms; team notes; lead follow-up tasks
+   (`create_lead_gia_task`, 0054) show on the dossier's tasks card. The `/tasks` page has no Gia
+   tab any more (a legacy `?tab=gia` falls back to My Tasks).
+5. **Resolution.** Won: `WonDealModal` → `recordDeal` (deal row, then the status flip). Nurturing:
+   automatic follow-up task plus SLA-04. Lost or junk: a reason is required.
+6. **After won.** The deal lives on `/deals`. `deals.member_id` has a foreign key to the member
+   spine since 0202 (`member.members`, see `members.md`), but no code writes it yet: the Gia to
+   Sia hand-off (a won deal becoming a membership) is not built.
 
-## 4. The follow-up engine (SLA + cadence + task-due rules)
+## 5. The follow-up engine (SLA, cadence, task-due rules)
 
-Business hours: IST, Mon–Sat 09:00–19:00 (`src/lib/constants/sla.ts`; per-agent shift
-overrides from `/settings` via `buildAgentShiftOverride`).
+Business hours: IST, Monday to Saturday, 09:00 to 19:00 (`src/lib/constants/sla.ts`), with
+per-agent shift overrides from `/settings` (`buildAgentShiftOverride`).
 
-**Config-driven since 2026-06-12 (migration 0111):** every rule is a row in
-`sla_policies` (code, trigger_kind `status|outcome|task_due`, trigger_value,
-threshold_minutes, recipient_role `agent|manager|founder`, auto_task, channels
-`{in_app,whatsapp}`, hours_mode `agent_shift|business|clock`, active). The engine
-reads policies **per job run** via the admin client — never cached at module
-scope, so a threshold edit applies on the next fire without a deploy. `SLA_RULES`
-in `constants/sla.ts` is the parity reference for the seed, not an engine input.
-A deactivated policy (`active=false`) makes pending fires exit as stale.
+**Config-driven (migration 0111).** Every rule is a row in `gia.sla_policies` (code,
+`trigger_kind` `status|outcome|task_due`, `trigger_value`, `threshold_minutes`,
+`recipient_role` `agent|manager|founder`, `auto_task`, `channels` `{in_app,whatsapp}`,
+`hours_mode` `agent_shift|business|clock`, `active`). The engine reads policies **per job run**
+through the admin client, never cached, so an edit applies on the next fire without a deploy.
+`SLA_RULES` in `constants/sla.ts` is the parity reference for the seed, not an engine input. A
+deactivated policy makes pending fires exit as stale.
+
+The seed (the live rows can be edited from `/settings/follow-up-engine`, so the database is the
+truth for current thresholds):
 
 | Code | Kind | Trigger | Threshold | Recipient | Auto-task? |
 | ---- | ---- | ------- | --------- | --------- | ---------- |
@@ -83,117 +129,117 @@ A deactivated policy (`active=false`) makes pending fires exit as stale.
 | SLA-02B | status | `touched` | 36 h | manager | no |
 | SLA-03A | status | `in_discussion` | 24 h | agent | yes (high) |
 | SLA-03B | status | `in_discussion` | 36 h | manager | no |
-| SLA-04A | status | `nurturing` | 4 biz-days | agent | yes (high) |
-| SLA-04B | status | `nurturing` | 4 biz-days | manager | no |
+| SLA-04A | status | `nurturing` | 4 business days | agent | yes (high) |
+| SLA-04B | status | `nurturing` | 4 business days | manager | no |
 | CAD-01A/B/C | outcome | `rnr` / `switched_off` / `wrong_number` | daily | agent | yes (the cadence task) |
-| CAD-02A | status | `in_discussion` | every 48 biz-h | agent | yes (the cadence task) |
-| TASK-01A | task_due | `gia_followup` due | at due | agent | no (in-app + WhatsApp reminder) |
-| TASK-01B | task_due | `gia_followup` due | +30 clock-min | manager | no (overdue escalation) |
+| CAD-02A | status | `in_discussion` | every 48 business hours | agent | yes (the cadence task) |
+| TASK-01A | task_due | lead follow-up due | at due | agent | no (in-app + WhatsApp reminder) |
+| TASK-01B | task_due | lead follow-up due | +30 clock minutes | manager | no (overdue escalation) |
 
-**Note on `gia_followup` (migration 0138, 2026-06-17):** the `gia_followup` task category
-no longer exists. A Gia follow-up is now a `personal` task plus a `task_gia_meta` row with
-`module='gia'` (single writer: the `create_lead_gia_task` RPC). The
-`sla_policies.trigger_value='gia_followup'` strings above were deliberately left in place
-as inert policy labels, so the TASK-01 rows are still correct as seeded.
+**The `gia_followup` label (migration 0138).** The `gia_followup` task category no longer exists.
+A lead follow-up is a `personal` task plus a `gia.task_gia_meta` row (single writer: the
+`create_lead_gia_task` RPC). The `trigger_value='gia_followup'` strings on the TASK-01 rows were
+left in place as inert labels.
 
-**Authoring rules from `/settings` (2026-06-15):** an admin/founder can add a rule over this
-catalog through the Follow-up Engine panel's "New rule" form — no developer, no migration. The
-code is system-generated as an inert `USR-<id>` (never user-supplied; reserved `SLA-`/`CAD-`/`TASK-`
-prefixes rejected structurally — a `CAD-` code would become a self-re-arming task generator), and
-`trigger_value` is validated against `trigger_kind` server-side (a value that can never fire is
-rejected, not armed into a permanent `STALE_FIRE`). A new row arms on the next matching lead. Spec:
-`../pages/settings.md §4`.
+**Authoring rules.** An admin or founder can add a rule from the Follow-up Engine settings page.
+The code is system-generated (`USR-<id>`; the `SLA-`, `CAD-` and `TASK-` prefixes are reserved)
+and `trigger_value` is checked against `trigger_kind`, so a rule that can never fire is refused.
+Spec: `../pages/settings.md`.
 
-**Arming is decoupled from assignment (2026-06-15):** a lead created with **no agent** (round-robin
-pool empty) still arms its manager (`SLA-01B`) and founder (`SLA-01C`) escalation timers — the
-escalation must fire even when nobody owns the lead. `notifyLeadAssigned` arms SLA on `scheduleSla`
-alone (not on `assigned_to`); `ScheduleSlaSchema.assignedTo` is nullable; `resolveAgentShift(null)`
-falls back to `BUSINESS_HOURS`. The agent rule (`SLA-01A`) self-skips at fire when `assigned_to` is
-null; manager/founder rules resolve recipients from the lead's domain. The Trigger.dev idempotency
-key carries no agent, so a later assignment re-arming the same rule dedupes against the unassigned
-timer (no double-arming). *(Before this fix, an unassigned lead armed zero timers — nobody was told
-it was rotting.)*
+**Arming does not need an owner.** A lead created with no agent (empty round-robin pool) still
+arms its manager (SLA-01B) and founder (SLA-01C) timers. The agent rule skips itself at fire time
+when `assigned_to` is null. The Trigger.dev idempotency key carries no agent, so a later
+assignment dedupes against the timers already armed.
 
-**Outcome cadence (CAD-01 family):** when a call note lands with an unreached
-outcome (vocabulary = the rnr/switched_off/wrong_number subset of
-`CALL_OUTCOMES`), `addLeadCallNote` arms a daily tick — scheduled at the start
-of the agent's **next shift day** (an RNR logged 19:30 ticks tomorrow at shift
-open, never 19:30+24h). Each tick re-reads the lead and creates one follow-up
-task (`create_lead_gia_task`, type `call`, due 2 business hours into the shift),
-then re-arms for tomorrow. It repeats daily until the outcome or status changes.
-Three duplicate-storm layers, all required: date-scoped idempotency keys
-(`lead-sla-{lead}-{code}-{IST date}`), the open-task guard
-(`getOpenGiaFollowupTask` — an open gia task for the lead+agent skips creation;
-the overdue rule chases it), and the 7-day freshness window on
-`leads.last_call_outcome_at` (migration 0112 — pre-go-live/backfilled outcomes
-never arm; NULL timestamp = never fresh). Armable statuses:
-`new`/`touched`/`in_discussion` only — junk/lost/nurturing/terminal never
-receive cadence tasks. Status changes disarm structurally: cadence runs ride
-the `lead-sla-${leadId}` tag, so the existing cancel-all sweeps them.
+**Outcome cadence (CAD-01).** A call note with an unreached outcome (`rnr`, `switched_off`,
+`wrong_number`) arms a daily tick at the start of the agent's next shift day. Each tick re-reads
+the lead and creates one follow-up task (type `call`, due two business hours into the shift),
+then re-arms. It repeats until the outcome or status changes. Three guards stop duplicate storms:
+date-scoped idempotency keys (`lead-sla-{lead}-{code}-{IST date}`), the open-task guard
+(`getOpenGiaFollowupTask`, which reads through `gia-task-links.ts`), and a 7-day freshness window
+on `leads.last_call_outcome_at` (0112). Only `new`, `touched` and `in_discussion` leads receive
+cadence tasks. Cadence runs ride the `lead-sla-${leadId}` tag, so a status change cancels them.
 
-**Status cadence (CAD-02A, migration 0114):** every CAD-prefixed code is a
-cadence regardless of trigger_kind (`isCadenceCode` in `constants/sla.ts`).
-CAD-02A arms with the other `in_discussion` status policies on every status
-change / activity refresh and fires 48 business hours later; if the lead is
-STILL `in_discussion` it creates a follow-up task (same `create_lead_gia_task`
-path + open-task guard as CAD-01) and re-arms `threshold_minutes` ahead —
-repeating until the lead leaves the status. A call note resets the 48h clock
-(`refreshActivitySlaTimers` cancel-all + re-schedule); no outcome/freshness
-guards apply — the status itself is the liveness condition.
+**Status cadence (CAD-02A, 0114).** Every `CAD-` code is a cadence (`isCadenceCode`). CAD-02A
+fires 48 business hours after the lead enters `in_discussion`; if the lead is still there it
+creates a follow-up task (same path and open-task guard) and re-arms. A call note resets the
+clock.
 
-**Task-due rules (TASK-01A/B):** at a Gia follow-up task's due time the
-existing `task_due` in-app notification is joined by the lead-shaped
-`task_due_reminder` WhatsApp template to the agent. 30 clock-minutes later, if
-there is no clearing event (task completed/cancelled OR any lead activity
-after due), `tasks.overdue_at` is stamped **exactly once** (UPDATE … WHERE
-overdue_at IS NULL, never a status value; the status CHECK did not grow) and
-the lead's domain managers get `task_overdue_manager` in-app + WhatsApp.
+**Task-due rules (TASK-01A/B).** At a lead follow-up's due time the agent gets the in-app
+`task_due` notification plus the `task_due_reminder` WhatsApp template. Thirty clock minutes
+later, with no clearing event (task done or cancelled, or any lead activity after due),
+`tasks.overdue_at` is stamped once and the domain's managers get `task_overdue_manager` in-app
+and on WhatsApp.
 
-**Task WhatsApp pings are no longer gia-only (migration 0142, 2026-06-24):**
-every task (personal, group subtask, or gia) now sends the assigned agent a
-lead-agnostic "due soon" WhatsApp ping at due minus 30 min and an at-due
-overdue ping (`sendTaskDueSoonAgentNotification` /
-`sendTaskOverdueAgentNotification`; recipient resolved via
-`getTaskWithAssignee`, no `task_gia_meta` dependency). A non-lead task that
-goes overdue also escalates to the assignee's manager(s) via the generic
-template (`sendTaskOverdueManagerGenericNotification`, recipients from
-`getAssigneeManagers`: direct `reports_to` manager when active, else domain
-managers). Task assignment itself pings the assignee on WhatsApp too
-(migration 0153; `sendTaskAssignedNotification`, awaited inside
-`createPersonalTaskCore` / `createSubtaskCore`, gated by the `task_assigned`
-control-plane key).
+**Every task gets WhatsApp pings (0142, 0153).** Not only lead tasks: any task sends its assignee
+a "due soon" ping 30 minutes before due and an overdue ping at due; a non-lead task that goes
+overdue escalates to the assignee's manager; assignment itself pings the assignee. Repeat
+reminders ("remind Karan every 3 hours", 0232) are a tasks feature. Owner: `../pages/tasks.md`.
 
-Mechanics (idempotency keys, tags, stale-fire guard, hook points):
-`../integrations/trigger-dev.md`. Timer state: `lead_sla_timers`
-(service-role only; CAD ticks ride the same table). Breach notifications: the
-SLA Gupshup templates + in-app `sla_breach_*` notifications (founder rules use
-`sla_breach_founder` + the SLA manager template). Activity refreshes SLA-02/03
-only — SLA-01 is never refreshed by activity, only by leaving `new`.
+Mechanics (idempotency keys, tags, stale-fire guard, hook points) are in
+`../integrations/trigger-dev.md`. Timer state lives in `gia.lead_sla_timers` (service-role only).
+Activity refreshes SLA-02 and SLA-03 only; SLA-01 ends only when the lead leaves `new`.
 
-## 5. Gia surfaces
+> **The 2026-09-21 key incident is resolved in practice.** That day the changelog recorded that
+> `TRIGGER_SECRET_KEY` on Vercel did not match the Trigger.dev project, so every run armed
+> **from the website** (lead SLA timers, task reminders, cancel-by-tag) failed quietly. No
+> resolution entry was written, but the engine health check on 2026-09-26 showed 21 SLA timers
+> fired in the last 24 hours, so website-armed runs arrive again. A separate problem remains:
+> about 1,877 timer rows are left `pending` after their fire time (see
+> `../operations/engine-health-check.md`).
+
+## 6. Notifications to founders are paused
+
+Two pauses, both reversible, neither removes code:
+
+- **New-lead WhatsApp to founders** (2026-09-21): `FOUNDER_LEAD_ALERTS_PAUSED = true` in
+  `src/lib/constants/whatsapp.ts`. `notifyLeadAssigned` skips the founder send while it is on.
+  The agent's assignment WhatsApp, the in-app notification and the SLA timers are unchanged.
+- **Founder SLA escalations and `lead_won`** (2026-09-23): per-founder rows in
+  `notification_preferences` (the 0133 control plane) turn off `sla_escalation` (in-app and
+  WhatsApp), `new_lead_founder_alert` (WhatsApp) and `lead_won` (in-app). Each founder can turn
+  them back on from `/profile`. Agent and manager alerts still fire.
+
+Detail and how to resume: `../integrations/whatsapp-gupshup.md`.
+
+## 7. Gia surfaces
 
 | Surface | Spec |
 | ------- | ---- |
-| `/leads` list + export | `../pages/leads.md` |
+| `/dashboard` (Gia widgets) | `../pages/dashboard.md` |
+| `/leads` list, export, bulk edit, revival review view | `../pages/leads.md` |
 | `/leads/[id]` dossier | `../pages/lead-dossier.md` |
 | `/deals` | `../pages/deals.md` |
-| `/campaigns` analytics | `../pages/campaigns.md` |
+| `/campaigns` and `/campaigns/[id]` | `../pages/campaigns.md` |
+| `/budget` (ad spend, recharges) | `../pages/budget.md` |
+| `/admin/ad-creatives` | `../pages/ad-creatives.md` |
 | `/performance` | `../pages/performance.md` |
+| `/helpdesk` (Call Intelligence library) | `../pages/helpdesk.md`, `call-intelligence.md` |
 | `/whatsapp` inbox | `../pages/whatsapp.md` |
-| `/tasks` (the Gia tab was removed; lead follow-ups surface on the dossier) | `../pages/tasks.md` |
-| `/escalations` (SLA breaches · overdue tasks · going cold) | `../pages/escalations.md` |
-| `/oversight` (manager+ 3-tier work-in-progress drill) | `../oversight.md` |
-| Dashboard Gia widgets | `../pages/dashboard.md` |
-| `/error-log` | `../pages/error-log.md` |
+| `/escalations` (SLA breaches, overdue tasks, going cold) | `../pages/escalations.md` |
+| `/oversight` (manager+ work-in-progress drill) | `../pages/oversight.md` |
+| `/tasks` (lead follow-ups show on the dossier, not in a Gia tab) | `../pages/tasks.md` |
+| `/settings/follow-up-engine`, `/settings/lead-revival` | `../pages/settings.md`, `revival.md` |
+| `/m` mobile rooms (founder's pocket view) | `mobile-ops.md` |
+| `/error-log` (failed ingestions) | `../pages/error-log.md` |
 
-## 6. Status
+Elaya reads and writes Gia through the same services and cores (lead search, notes, calls,
+tasks, status, reassign, `log_deal`). Elaya is switched on for the Gia domains
+(`ELAYA_DOMAINS`, 2026-09-26). Tool list: `elaya.md`. For founders and admins, Elaya's
+read-only SQL layer also sees cleaned views of Gia's data in the `elaya_read` schema (`leads`,
+`lead_notes`, `lead_activities`, `lead_sla_timers`, `lead_whatsapp_messages`, `deals`,
+`ad_spend_daily`, `domain_targets`, `product_enquiries`, `revival_candidates`, with no phone,
+email or WhatsApp id): `elaya-analyst.md`. The Gia scheduled jobs (the SLA timers, the task
+reminders, the revival sweep) are listed with the rest in `../integrations/trigger-dev.md`.
 
-**Live in production use.** Shipped: ingestion (both pipelines), round-robin (managers now in the
-pool, 0124), full lifecycle, dossier, deals, campaigns, performance, WhatsApp inbox (incl. inbound/
-outbound media), SLA engine, notifications (+ Web Push), Redis caching, export, `/escalations`,
-`/oversight`, **call intelligence / helpdesk (Phase 1)** (`call-intelligence.md`), and **lead
-revival (R1)** (`revival.md`). The **customer-facing** WhatsApp AI chatbot shipped 2026-06-26
-(migrations 0150/0151): the welcome blast plus a hard-capped prospect Elaya, wired into the
-lead pipeline via `elaya-customer.ts`, live-capable behind the approved Gupshup
-welcome-template id. Spec: `customer-welcome-blast.md`. In design/planned: member records
-(post-won flow). (The Elaya **staff** WhatsApp channel is also live: `elaya.md`.)
+## 8. Status
+
+**Live in production use.** Shipped: ingestion (Pabbly, WhatsApp, the Shop app channel with
+product enquiries, 2026-08-31), round-robin (managers in the pool, 0124), the full lifecycle,
+the dossier, deals, campaigns, budget and recharges, performance, the WhatsApp inbox, the SLA
+engine, notifications and Web Push, Redis caching, export and bulk edit, `/escalations`,
+`/oversight`, Call Intelligence (`call-intelligence.md`), Lead Revival (`revival.md`), the mobile
+rooms (`mobile-ops.md`), and the customer-facing WhatsApp Elaya (`customer-welcome-blast.md`).
+Lead sources include `shop_app` (0180) and `self` (0182).
+
+Not built: the Gia to Sia hand-off on `deals.member_id`; a `business` sales flow.

@@ -1,10 +1,9 @@
 # Lead Revival
 
-> **Purpose:** recover dormant-but-warm leads that silently died. A thin layer over the
-> existing follow-up engine + Elaya provider + lead-mutation cores — **not** a new stack.
-> **Audience:** engineers. · **Source-of-truth scope:** revival architecture + contracts.
-> **Status:** Phase R1 (silence detection → AI suppression gate → confident auto-revive vs.
-> human review). Shipped 2026-06-14. · **Last verified:** 2026-07-02 (full-tree audit; held up end to end).
+> **Purpose:** recover dormant-but-warm leads that went quiet. A thin layer over the existing follow-up engine, the Elaya model provider and the lead write cores, not a new stack.
+> **Audience:** engineers.
+> **Source-of-truth scope:** revival architecture and contracts. Status: Phase R1 (silence detection → AI suppression gate → confident auto-revive or human review), shipped 2026-06-14.
+> **Last verified:** 2026-09-26 against `src/trigger/lead-revival.ts`, `src/lib/services/{revival-service,revival-gate,lead-mutations,gia-task-links}.ts`, `src/lib/constants/revival.ts`, `src/components/leads/{RevivalReviewBanner,RevivalDossierAction,ReviveLeadButton,LeadsTableAsync}.tsx` and migration 0210.
 
 ## What it is
 
@@ -37,18 +36,22 @@ keeps its terminal/dormant status; revival adds a task + a candidate ledger row 
 **Judge-once:** the silence finder anti-joins leads that already hold a candidate of **any** status
 (open/actioned/dismissed) — a judged lead is never re-judged, so a `dismissed` lead doesn't re-enter
 the pool nightly, get re-dismissed, and pile up duplicate rows + burn a gate call. Since **migration
-0128** this anti-join runs **in SQL** (`get_silent_leads_for_revival` — a bounded `NOT EXISTS`,
-scope-param/EXECUTE-revoked, admin-member only); the prior Node version SELECTed every candidate
+0128** this anti-join runs **in SQL** (`get_silent_leads_for_revival`, a bounded `NOT EXISTS`,
+scope-param with EXECUTE revoked, called through the admin client only); the prior Node version SELECTed every candidate
 `lead_id` into a JS Set and inflated the leads LIMIT by its size — both growing unbounded with the
 ledger. Semantics are byte-identical.
 
 ## The hard reuse contracts (sign-off invariants — never weaken)
 
 1. **Revive task = the E2 path, wholesale.** Both the auto-revive (sweep) and the manual Revive
-   button call `createLeadTaskCore` (`lib/services/lead-mutations.ts`) — the SAME core the Elaya
-   `create_lead_task` write tool and the SLA cadence ticks use. New = a `module='gia'` follow-up
-   task tagged `revived` (via `task_gia_meta.call_outcome = 'revived'` marker + the "Revived"
-   badge), plus a `revival_candidates` ledger row. **No new task-creation logic.**
+   button call `reviveLeadCore` (`lib/services/lead-mutations.ts`), which wraps
+   `createLeadTaskCore`, the SAME core the Elaya `create_lead_task` write tool and the SLA cadence
+   ticks use. New = a lead follow-up task re-titled "Revive dormant lead — re-engage" and marked
+   `revived` (`gia.task_gia_meta.call_outcome = 'revived'`, the badge key), plus a
+   `revival_candidates` ledger row. **No new task-creation logic.** `reviveLeadCore` first checks
+   `getOpenRevivedTask` (which reads the lead's task ids through `gia-task-links.ts`, since
+   `public.tasks` cannot embed `gia.task_gia_meta`) and returns the existing open Revived task
+   instead of stacking a second one.
 2. **Note-AI gate = the Elaya provider/PII layer, reused.** `resolveLlmForJob('routing')` →
    `adapter.complete()` with a system prompt + one user message + **no tools** → parse the JSON
    verdict (`revive`/`dismiss`/`unsure`). Notes pass through `maskPii(notes, await getPiiMaskingDepth())`
@@ -62,16 +65,23 @@ ledger. Semantics are byte-identical.
    `schedules.task` (`src/trigger/lead-revival.ts`) queries for silent leads past threshold with no
    open candidate, then runs the gate per lead. Idempotency is date-scoped
    (`revival-sweep-${IST-date}`), mirroring the cadence-tick convention. **No parallel scheduler.**
-4. **Review tab = the existing lead table + filters, reused.** A new `revival` URL predicate on
-   `/leads` (a chip like `going_cold`) filters the list to leads with an OPEN candidate. The
-   predicate resolves candidate `lead_id`s first (indexed `WHERE status='open'`), then
-   `.in('id', ids)` on the leads query; when active, the total is derived from the resolved set
-   length (the status-counts RPC is bypassed for this predicate — it cannot express a cross-table
-   subquery and must not be forced to, C-1). **No new list component, no second dossier.**
+4. **Review tab = the existing lead table + filters, reused.** A `revival` URL predicate on
+   `/leads` (`?revival=true`) filters the list to leads with an OPEN candidate. The predicate
+   resolves candidate `lead_id`s first (indexed `WHERE status='open'`), then reads the rows through
+   the shared `fetchLeadsByIds`; the total is the resolved set length (the status-counts RPC is
+   bypassed for this predicate: it cannot express a cross-table subquery and must not be forced
+   to, C-1). **No new list component, no second dossier.** There is no chip or link to this view
+   anywhere in the app today; it is reached by typing or saving the URL (open item below).
 5. **Revive button = one component, two mount points.** `<ReviveLeadButton>` mounts in the
-   review-context column of `LeadsTable` AND on the dossier. **Never two implementations.**
+   `RevivalReviewBanner` that `LeadsTableAsync` renders above the table on `?revival=true` (one row
+   per candidate, with the AI reasoning), AND in `RevivalDossierAction` under the dossier's status
+   panel. **Never two implementations.**
 
 ## Schema (migration 0119)
+
+Both tables live in the **`gia` schema** since 2026-09-17 (migration 0210); code reads them
+through `giaDb(client)` (`src/lib/supabase/schemas.ts`). Policies, indexes and constraints moved
+with the tables unchanged.
 
 ### `revival_candidates` — the candidate ledger (append-only-ish state machine)
 
@@ -91,8 +101,8 @@ ledger. Semantics are byte-identical.
 - **RLS scoped by role/domain LIKE leads** via `EXISTS (SELECT 1 FROM leads l WHERE l.id =
   revival_candidates.lead_id AND <role/domain predicate>)` — the same pattern as
   `lead_activities`/`lead_notes`. SELECT only; **no user INSERT/UPDATE/DELETE policy** (A-11).
-- **State-machine carve-out (A-11, the elaya_actions precedent):** writes are service-role
-  admin-member only. The `open → actioned/dismissed` flip is a resolve-once admin UPDATE
+- **State-machine carve-out (A-11, the elaya_actions precedent):** writes are service-role only,
+  through the admin client. The `open → actioned/dismissed` flip is a resolve-once admin UPDATE
   (RLS-bypassing). `verdict`/`ai_reasoning`/`lead_id`/`created_at` are write-once; only the
   resolution fields move, and only forward. Documented in the migration COMMENT.
 - **One-open-candidate-per-lead guard (structural):** a partial UNIQUE index
@@ -102,7 +112,8 @@ ledger. Semantics are byte-identical.
 
 ### `revival_policies` — config (the sla_policies pattern)
 
-One row per silenceable status, admin/founder editable from /settings.
+One row per silenceable status, admin/founder editable from `/settings/lead-revival`
+(`RevivalPoliciesPanel` → `updateRevivalPolicyAction` in `lib/actions/revival.ts`).
 
 | Column | Seed |
 | --- | --- |
@@ -119,8 +130,16 @@ never module-cached** (sla_policies convention).
 
 ## The daily sweep (`src/trigger/lead-revival.ts`)
 
+**When it runs.** `cron: { pattern: "0 2 * * *", timezone: "Asia/Calcutta" }`, task id
+`sweep-revival-candidates`, `maxDuration` 300 s. Trigger.dev reads the pattern in the given
+timezone (the briefing's `0 10 * * *` in the same zone fires at 10:00 IST), so the sweep runs at
+**02:00 IST** every night. The comment above the cron says "07:30 IST daily (02:00 UTC)"; the
+comment is wrong. The intent it describes (Revived tasks waiting at shift open) still holds at
+02:00: the tasks are there before anyone starts work. If 07:30 IST is ever wanted, the pattern
+becomes `30 7 * * *`.
+
 ```text
-schedules.task (cron, daily ~07:30 IST) ─► sweepRevivalCandidatesTask
+schedules.task (cron 0 2 * * *, Asia/Calcutta) ─► sweepRevivalCandidatesTask
    1. read revival_policies (active rows, per run)
    2. per trigger_status: find leads in that status whose status_changed_at/last_activity_at
       is older than silence_days AND have NO revival_candidate of ANY status (judge-once anti-join)
@@ -130,7 +149,7 @@ schedules.task (cron, daily ~07:30 IST) ─► sweepRevivalCandidatesTask
         • 'dismiss' (confident junk)  → INSERT candidate status='dismissed' (audit log; NOT review)
         • 'unsure' (ambiguous middle) → INSERT candidate status='open' (review tab)
         • 'revive' + under the agent's daily cap
-                                      → createLeadTaskCore (Revived task) + INSERT candidate 'actioned'
+                                      → reviveLeadCore (Revived task) + INSERT candidate 'actioned'
         • 'revive' + cap reached      → INSERT candidate status='open' (overflow → review,
                                         never dropped, never auto-tasked)
 ```
@@ -159,13 +178,14 @@ schedules.task (cron, daily ~07:30 IST) ─► sweepRevivalCandidatesTask
 
 | Concern | New | Reused (never duplicated) |
 | --- | --- | --- |
-| Task creation | "Revived" badge + `revived` source marker | `createLeadTaskCore` (E2/E3 path) |
+| Task creation | `reviveLeadCore` ("Revived" title + `revived` marker, open-task guard) | `createLeadTaskCore` (E2/E3 path) |
+| Lead ↔ task link | none | `getTaskIdsForLead` in `lib/services/gia-task-links.ts` (the cross-schema read) |
 | AI gate | `lib/services/revival-gate.ts` (one structured call) | Elaya `resolveLlmForJob`/`adapter.complete`/`maskPii` |
 | Scheduling | `src/trigger/lead-revival.ts` (1 daily `schedules.task`) | Trigger.dev (no parallel scheduler) |
-| Candidate ledger | `lib/services/revival-service.ts` + `revival_candidates` | `mapRows`, admin client, append-only convention |
-| Review view | `revival` URL predicate + review column | `LeadsTable`/`LeadsFilters`/`FilterBar`/pagination/`getLeadsByRole` |
-| Revive action | `<ReviveLeadButton>` + `reviveLeadAction` | `createLeadTaskCore`, `requireProfile`, `ActionResult` |
-| Settings | `RevivalPoliciesPanel` + `revival-policies` action/schema | SlaPoliciesPanel optimistic-save pattern, /settings page |
+| Candidate ledger | `lib/services/revival-service.ts` + `gia.revival_candidates` | `mapRows`, admin client, append-only convention |
+| Review view | `revival` URL predicate + `RevivalReviewBanner` | `LeadsTable`/`LeadsFilters`/`FilterBar`/pagination/`getLeadsByRole`/`fetchLeadsByIds` |
+| Revive action | `<ReviveLeadButton>` + `reviveLeadAction` / `dismissRevivalCandidateAction` | `reviveLeadCore`, `requireProfile`, `ActionResult` |
+| Settings | `RevivalPoliciesPanel` on `/settings/lead-revival` + `updateRevivalPolicyAction` | SlaPoliciesPanel optimistic-save pattern |
 
 ## Constants
 
@@ -202,3 +222,15 @@ the gate module under plain `tsx` — the run block is in the script header.)
 separated: confident junk → `dismiss`, the warm-but-stalled Kartik stayed `unsure` (no
 over-correction), Ratlam still `revive` (the revive bar did not shift). Read the eval for *whether
 the piles separate*, not for an exact per-lead prediction.
+
+## Open items
+
+- **The review view has no way in.** Nothing in the app links to `/leads?revival=true`: no
+  toolbar chip, no link on the dossier card, no link from `/settings/lead-revival`. Reviewers need
+  the URL. Decide whether a chip on the leads toolbar or a count on the settings page should open it.
+- **The cron comment is wrong.** `src/trigger/lead-revival.ts` says 07:30 IST; the pattern fires at
+  02:00 IST. Fix the comment (or the pattern, if 07:30 is wanted).
+- **Re-revival.** A judged lead is never re-judged, whatever happens to it later (judge-once). If
+  re-revival after status churn is wanted, it is a policy change in `get_silent_leads_for_revival`.
+- `RevivalPoliciesPanel` keeps its sideways table on a phone (left as is in the 2026-09-26 mobile
+  audit; it needs a card-per-policy layout).

@@ -1,84 +1,81 @@
-# Error Log — Page Spec
+# Error Log: Page Spec
 
-> **Purpose:** spec for `/error-log` — the admin/founder view of failed lead-ingestion payloads.
-> **Audience:** engineers. · **Source-of-truth scope:** this route. The raw-payload pipeline and retention policy live in `../integrations/lead-ingestion.md`.
-> **Last verified:** 2026-07-02 (full-tree audit) against `src/app/(dashboard)/error-log/page.tsx` + `src/components/error-log/ErrorLogTable.tsx`.
+> **Purpose:** spec for `/error-log`, the admin/founder view of lead-ingestion payloads that failed.
+> **Audience:** engineers. · **Source-of-truth scope:** this route. The raw-payload pipeline and the retention policy live in `../integrations/lead-ingestion.md`.
+> **Last verified:** 2026-09-26 against `src/app/(dashboard)/error-log/{page,loading}.tsx`, `src/components/error-log/{ErrorLogTable,ErrorLogTableSkeleton}.tsx`, `getErroredPayloads` in `src/lib/services/leads-service.ts`, `src/lib/utils/route-access.ts`, and migrations 0004, 0005, 0088, 0210.
 
 ## 1. Purpose
 
-A read-only audit surface over `lead_raw_payloads` rows whose `ingestion_error` is set —
-every webhook payload that failed auth, validation, or insert, with the original payload
-preserved for debugging/replay.
+A read-only audit list of `gia.lead_raw_payloads` rows whose `ingestion_error` is set: every
+webhook payload that failed auth, validation or insert, with the original payload kept for
+diagnosis and replay.
 
 ## 2. Who sees it
 
-Admin and founder only — the page redirects all other roles to `/dashboard` (mirroring the
-table's RLS); unauthenticated → `/login`. The route is not in the Sidebar's main nav.
+- **Page gate:** `hasElevatedPageAccess` (admin, founder, or a member of the tech workbench);
+  anyone else goes to `/dashboard`, no session to `/login`. The page comment still says "only admin
+  and founder".
+- **The tech workbench sees an empty page.** `/error-log` is in no domain's route map, so only
+  admin, founder and the workbench reach it. But the read uses the session client and the table's
+  SELECT policy is admin/founder only, so a tech account always gets zero rows and the "All clear"
+  state.
+- **Not in the sidebar.** No nav section lists `/error-log`; it is reached by URL. (It is in the
+  Sidebar's `MOBILE_TRIGGER_PATHS`, the pages that show the floating mobile drawer trigger.)
+- No `PageControls` bell in the header.
 
 ## 3. Data sources
 
 | Layer | Key items |
 | ----- | --------- |
-| Service | `getErroredPayloads()` in `leads-service.ts` — selects every `lead_raw_payloads` row where `ingestion_error IS NOT NULL`, ordered `received_at DESC`. **Returns `[]` on any error** (it short-circuits to `return []` when the query errors or returns no data) — it swallows failures, never throws. |
-| Table | `lead_raw_payloads` (immutable, admin/founder SELECT — `../architecture/database.md`). RLS provenance: table + base SELECT policy + append-only-at-policy-level in `20260527000004_lead_raw_payloads.sql`; the `ingestion_error` column in `20260527000005_lead_raw_payloads_error.sql` (changelog "Migration 0005"); the policy InitPlan-hoist in `20260608000088_rls_initplan_hoist.sql`. |
+| Service | `getErroredPayloads()` in `leads-service.ts`: every `lead_raw_payloads` row with `ingestion_error IS NOT NULL`, newest `received_at` first, through `giaDb()` on the session client. It returns `[]` on any error or no data; it never throws |
+| Table | `gia.lead_raw_payloads` (moved from `public` by 0210): immutable, admin/founder SELECT. Provenance: the table and its SELECT policy in `20260527000004_lead_raw_payloads.sql`, the `ingestion_error` column in `20260527000005_lead_raw_payloads_error.sql`, the InitPlan hoist in 0088, the schema move in `20260917000210_gia_schema.sql` |
 
 ## 4. Components
 
-The page (`src/app/(dashboard)/error-log/page.tsx`) is a server component that `await`s
-`getErroredPayloads()` **before** rendering, then composes:
+The page (`src/app/(dashboard)/error-log/page.tsx`, metadata title "Error log") awaits
+`getErroredPayloads()` and renders:
 
-- **Header** — `AlertTriangle` icon tile + `type-page-title` h1 (with `page-title-dot`) + a
-  subtitle paragraph: *"Every webhook payload that failed ingestion is recorded here. Use the
-  raw payload viewer to diagnose the problem."*
-- **Stats strip** — four inline `StatCard`s (a display-only component defined locally in
-  `page.tsx`, **not** the shared `ui/StatTile`): Total errors (danger) · Unauthorised (warning,
-  `ingestion_error === 'unauthorized'`) · DB failures (danger, `startsWith('db_insert_failed')`)
-  · Validation (neutral, `validation_failed`). Counts derived from the resolved `rows`.
-- **`ErrorLogTable`** (`src/components/error-log/ErrorLogTable.tsx`, `'use client'`) — receives
-  the already-resolved `rows` array as a prop. Owns a **client-side filter bar** (a text
-  `SearchBar` matching id/source/error/lead_id, a Source `<select>` whose options derive from
-  the data, and a live filtered count) above a **5-column table**: Received · Source · Error ·
-  Lead linked · Payload. Each `ErrorRow` categorises `ingestion_error` into a pill
-  (Unauthorized / Server misconfiguration / Validation failed / DB insert failed / Backfill
-  failed) with a danger/warning variant, prints the raw error string for
-  `db_insert_failed`/`backfill_failed`, truncates `lead_id` to 8 chars (`—` when unlinked), and
-  exposes an expandable inline JSON viewer (`PayloadCell` — "View payload" toggle → `<pre>`).
-
-`ErrorLogTableSkeleton` (`src/components/error-log/`) exists but is **effectively dead in this
-flow** — see States/Loading below.
+- **Header:** an `AlertTriangle` icon tile, the `type-page-title` h1 with the page-title dot, and a
+  subtitle ("Every webhook payload that failed ingestion is recorded here…").
+- **Stat strip:** four local `StatCard`s (defined in `page.tsx`, not the shared `ui/StatTile`):
+  Total errors, Unauthorised (`ingestion_error === 'unauthorized'`), DB failures
+  (`startsWith('db_insert_failed')`), Validation (`validation_failed`), counted from the rows.
+- **`ErrorLogTable`** (client): a filter bar (a `SearchBar` over id, source, error and lead id; a
+  Source `FormSelect` built from the data; a live count) above a five-column table: Received,
+  Source, Error, Lead linked, Payload. Each error is shown as a pill (Unauthorized, Server
+  misconfiguration, Validation failed, DB insert failed, Backfill failed), with the raw string for
+  the insert and backfill failures, the lead id cut to 8 characters (or a dash when unlinked), and
+  an expandable JSON viewer ("View payload").
 
 ## 5. States
 
-- **Loading:** there is no real loading state. Although the page wraps the table in
-  `<Suspense fallback={<ErrorLogTableSkeleton />}>`, the data is `await`ed at the top of the
-  server component and the child receives a plain (non-async) `rows` array, so the boundary
-  never suspends and the skeleton never renders. The skeleton is kept for future use but is
-  not on the live path.
-- **Empty:** two distinct branches inside `ErrorLogTable` (both serif-italic per V-09). When
-  there are **no errors at all** (`rows.length === 0`): a green `CheckCircle2` + *"All clear —
-  no ingestion errors."* + *"Every payload received so far has been ingested successfully."*
-  When errors exist but the search/source filter excludes all of them: an `AlertTriangle` +
-  *"No errors match your filters."* + *"Try clearing the search or changing the source filter."*
-- **Error:** **no inline error UI exists.** `getErroredPayloads()` returns `[]` on failure, so a
-  service error is indistinguishable from the "All clear" empty state (zero rows). The page
-  never throws and never redirects on a data error.
+- **Loading:** `error-log/loading.tsx` (added 2026-09-16) draws the icon header, a stat strip and
+  `ErrorLogTableSkeleton` while the page's awaited read runs. It shows three stat placeholders
+  against the page's four cards. The page also wraps the table in a Suspense with the same
+  skeleton, but that boundary never suspends (the data is already resolved).
+- **Empty:** two `<EmptyState variant="hero">` branches inside the table, both with the Serene mark
+  (no icon): with no errors at all, the all-clear state ("All clear", "Every payload received so
+  far has been ingested successfully."); with errors hidden by the filters, "No errors match your
+  filters." / "Try clearing the search or changing the source filter.".
+- **Error:** there is no error state. A failed read returns `[]` and shows the all-clear state.
 
 ## 6. Invariants
 
-Rows are append-only and never deleted — `lead_raw_payloads` carries SELECT-only RLS for
-admin/founder and no UPDATE/DELETE policy (Rule 08), so the error log is a durable audit record.
-Full payloads may contain PII — this page is therefore role-gated to the two audit roles and
-must never widen.
+`lead_raw_payloads` rows are append-only and never deleted: admin/founder SELECT only, no UPDATE
+or DELETE policy (Rule 08), so the log is a durable audit record. Payloads can hold personal data,
+so the rows must stay limited to the two audit roles.
 
 ## 7. Open items
 
-No replay/re-ingest action exists yet — failed payloads are fixed manually. There is also no
-distinct error/failure state in the UI (a service read failure renders as "All clear"); add a
-genuine error branch if `getErroredPayloads()` is ever changed to surface failures.
+- No replay or re-ingest action; failed payloads are fixed by hand.
+- A read failure looks the same as "All clear". Add a real error branch if the service ever
+  surfaces failures.
+- The page gate admits the tech workbench, which then sees an empty log (RLS). Either keep the page
+  admin/founder only (a literal check, as `/books` does) or accept the empty view.
+- The loading skeleton has three stat placeholders; the page has four cards.
 
 ## 8. Out of scope
 
-The 2026-06-17 "Engine health check (ops)" work (`scripts/engine-health-check.sql` +
-`docs/operations/engine-health-check.md`) is unrelated to this route — it is an ops query +
-runbook + one-time data cleanup, with no app-code, schema, or `/error-log` change. This spec
-deliberately does not cover it.
+The "Engine health check" runbook (`scripts/engine-health-check.sql`,
+`../operations/engine-health-check.md`) is an ops query with no app code, schema or `/error-log`
+change.

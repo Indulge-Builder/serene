@@ -1,667 +1,640 @@
 # Elaya
 
-> **Purpose:** the AI presence inside Serene — chat surface today, the substrate for every future AI feature (lead revival, reports, agentic writes, customer bot).
-> **Audience:** engineers. · **Source-of-truth scope:** Elaya architecture + phase contracts.
-> **Last verified:** 2026-07-02 (migrations 0116–0121 + the "Jarvis" build: 0148 WhatsApp dedup index, 0149 sessionless RPC twins, 0150 training assets, 0151 customer welcome blast, 0152 notes, 0153 task-assigned log type) · **Status:** Foundation chat + WhatsApp staff channel + **Phase 2 lead agentic writes (E3)** + **Phase 3 task agentic writes** + **voice input (E4a)** + **"Jarvis" Phases 1–4** (channel-parity data layer · per-user persona · durable learned-memory · role-gated capability tools) + **the Notes section** (0152) + **the customer WhatsApp channel** (built 2026-06-26, `customer-welcome-blast.md`). Now **12 read tools** (role-gated) + **12 write tools**, plus a separate hard-capped 2-tool customer registry. This file is the single as-built home for Elaya: the 2026-06-25 Jarvis design proposal (`docs/architecture/elaya-jarvis-architecture.md`) was **deleted** after every phase shipped, and its load-bearing concepts (the four-concern model, the Golden Rule, the parity rule) now live in the "Jarvis" build section below. That section is the current authority where it differs from the phase-history sections.
+> **Purpose:** the single as-built home for Elaya's core: who can use her, the models, the two brains, the tools, confirmation, the PII gateway, the channels, the daily cap, the persona, the living memory, playbooks, the Teach Elaya pages and the evals.
+> **Audience:** engineers, and anyone who needs to know how Elaya really works.
+> **Source-of-truth scope:** Elaya's architecture and contracts. The founder/admin intelligence layer (ask the database, pulse, brief, alerts, deep read) lives in [elaya-analyst.md](elaya-analyst.md). The per-tool table with every wrapped function lives in `src/lib/elaya/CLAUDE.md`.
+> **Last verified:** 2026-09-26 against `src/lib/elaya/`, `src/lib/mcp/`, `src/app/api/elaya/`, `backend/app/` (the Python brain), the Elaya services and actions in `src/lib/`, and migrations through 0244.
 
-Historical note: this presence was tracked as both "Elaya" (the original design vision) and
-"Elaya" (the roadmap name) before shipping; the canonical name is **Elaya** (matching the
-presence card in `src/lib/constants/elaya.ts`). The old `elaya.md` / `elaya.md` module docs were
-consolidated into this file during the Serene→Serene / Elaya→Elaya rename — the original design
-vision lives in the "Design vision" section at the end of this doc.
+---
 
-## What shipped in the foundation (2026-06-12)
+## 1. What Elaya is
 
-Read-only, in-app chat at `/elaya` (all roles), built so later phases plug in without rework.
-Full implementation record: `docs/changelog.md` (2026-06-12 Elaya foundation entry).
+Elaya is the AI presence inside Serene. For staff she is an assistant that reads and acts on
+Serene's data as the person asking, in the app, on WhatsApp, and from outside AI apps (Claude,
+ChatGPT) through the MCP connector. For prospects she is a separate, much narrower salesperson on
+WhatsApp.
 
-### Architecture
+Where each part is documented:
 
-```text
-/elaya page (RSC seed) ──► ElayaChatShell ──► POST /api/elaya/chat (SSE)
-                                                   │  auth → burst limit → Zod → DAILY CAP (all server-side)
-                                                   ▼
-                                            lib/elaya/brain.ts  (tool loop, ≤10 iterations)
-                                              │ system prompt: persona.ts + user_context
-                                              │ history: last 10 messages verbatim
-                                              ▼
-                  lib/elaya/registry.ts ──► llm_providers row (per turn, no cache)
-                                              │              └─► adapters/anthropic.ts (ONLY SDK import)
-                                              ▼
-                  lib/elaya/tools/registry.ts — read tools, executed AS the principal
-                                              │  every result → pii.ts maskPii() before the model
-                                              ▼
-                              lib/elaya/elaya-data.ts (the single read seam; see the "Jarvis" build)
-                                              │  admin client + code-side scoping → parity both channels
-                                              ▼
-                              existing lib/services functions (explicit identity, no auth.uid())
-```
-
-> The diagram shows the foundation shape. Since the **"Jarvis" build** (2026-06-25, below) every read
-> flows through `elaya-data.ts`, the read set grew from 6 → **12** (`find_teammate` + the 4 role-gated
-> capability reads), and `user_context` is now actively written (persona + learned memory). Read the
-> "Jarvis" section for the current architecture; the phase-history sections below remain accurate for
-> what each phase shipped.
-
-### Persona currency contract (2026-06-15)
-
-The staff persona (`persona.ts`, "Data rules" block) pins **every monetary amount to Indian
-Rupees** — `₹` symbol + Indian digit grouping (₹1,00,000), never AED/USD/`$`/`€`/"Rs", never western
-grouping. Amounts from tools are already rupees, so the rule states the currency rather than
-converting. This mirrors the `formatCurrency()` INR convention (`₹`, `en-IN`); it is a prompt rule,
-not a formatter — Elaya emits text, the contract just stops the model guessing a non-INR currency.
-Prompt-only; no tool/schema/formatter change.
-
-### The five hard contracts (sign-off invariants — never weaken)
-
-1. **Tools execute as the caller.** `principal.ts` resolves the verified session profile to
-   role + persona + permitted toolset. Identity args to services are principal-derived;
-   the model supplies filter values only. An agent asking for another agent's leads is
-   refused by the tool layer (`getLeadsByRole` role constraint + `canAccessLead` re-check
-   in `get_lead_details` — explicit because the lead row Redis cache is shared).
-2. **No provider shape leaks past its adapter.** `lib/elaya/provider.ts` is the one
-   `complete()` contract; `adapters/anthropic.ts` is the only `@anthropic-ai/sdk` import.
-   A new provider = one adapter file + one `llm_providers` row.
-3. **Config over deploy.** `llm_providers` and `elaya_settings` are read per request
-   (sla_policies pattern). Switching `reasoning` from `claude-sonnet-4-6` to another model
-   is a DB edit. An unimplemented provider fails loud — never a silent fallback.
-4. **Caps and expiry are server-side.** The 200/day message cap (`elaya_settings.daily_message_cap`)
-   is counted from IST midnight and rejected in the route BEFORE persisting or calling a model.
-   The 24h conversation window is resolved in `elaya-service`, never client-side.
-5. **PII gateway in the pipeline.** Every tool result passes `maskPii()` (light mode default,
-   depth via `elaya_settings.pii_masking_depth`). The vault (D-01 reversible pseudonymisation)
-   mounts at this same gateway when it lands.
-
-### Schema (migration 0116)
-
-| Table | Role |
+| Topic | Doc |
 | --- | --- |
-| `elaya_conversations` | One row per chat session; `channel` (`in_app` today, `whatsapp` later) |
-| `elaya_messages` | Append-only transcript (A-11); `sender_id` denormalised for the cap count |
-| `user_context` | Per-user `context jsonb` injected into the system prompt. Since "Jarvis" P2/P3 it carries `persona` (user-set style) + `learned` (Elaya-accumulated memory) — **now actively written** (no longer "later phase"). See the "Jarvis" build |
-| `elaya_actions` | Agentic-write ledger — filled by Phase 2/E3 (proposed → executed/failed/dismissed + before/after audit). Migration 0118 added the pending partial index + lifecycle COMMENT |
-| `llm_providers` | `routing` → claude-haiku-4-5 · `reasoning` → claude-sonnet-4-6 (seeds) |
-| `elaya_settings` | `daily_message_cap` 200 · `pii_masking_depth` 'light' · `session_expiry_hours` 24 |
+| Core: access, models, brains, tools, confirmation, PII, channels, persona, memory, playbooks, evals | this file |
+| Founder/admin intelligence: ask the database, live pulse, twice-daily brief, alert sweep, deep read | [elaya-analyst.md](elaya-analyst.md) |
+| Customer WhatsApp Elaya (welcome blast, prospect replies) | [customer-welcome-blast.md](customer-welcome-blast.md) |
+| Speech-to-text (Deepgram) | [voice-dictation.md](voice-dictation.md) |
+| The `/elaya` page, floating button, dashboard widget, `/m/elaya` | [../pages/elaya.md](../pages/elaya.md) |
+| `/notes` (context Elaya reads) | [../pages/notes.md](../pages/notes.md) |
+| `/admin/elaya-training` (customer knowledge base) | [../pages/elaya-training.md](../pages/elaya-training.md) |
+| The MCP connector | [../integrations/mcp.md](../integrations/mcp.md), [../integrations/mcp-team-guide.md](../integrations/mcp-team-guide.md) |
+| Per-tool detail and the non-negotiables for code | `src/lib/elaya/CLAUDE.md` |
+| Plan (not built): Elaya hands jobs to outside agents | `../architecture/hands-plan.md` |
 
-The `routing` job row (Haiku) is unused by the foundation chat brain, but it is **live in
-production** — Lead Revival's note-AI suppression gate makes one structured three-verdict call
-through this exact provider (`resolveLlmForJob('routing')` + `maskPii`, no tools, no new SDK
-import). The "reserved for later phases" framing is stale: the routing tier ships today. See
-"Routing provider in production (Lead Revival)" below and `docs/modules/revival.md`.
+---
 
-### Tools (read-only, wrap services only — never query tables)
+## 2. The rules that never bend
 
-The 8 all-staff reads: `search_leads` · `get_cold_leads` · `get_lead_details` · `get_my_tasks`
-(all three task kinds — Gia lead follow-ups, personal tasks, **and** group/team workspaces) ·
-`find_teammate` (the name→userId STAFF lookup for task assignment; `elayaData.findTeammates` →
-`searchTeammatesForElaya`, admin client + code scope across all domains, deliberately NOT
-`getAssignableUsers`, whose session client blanks on the WhatsApp webhook) · `search_deals` ·
-`get_performance_snapshot` (agent pulse / manager+ roster) · `get_helpdesk_content`.
-The "Jarvis" Phase 4 added **4 role-gated capability reads** (below): `get_escalations` /
-`get_domain_health` / `get_campaigns` (manager+) and `get_budget` (admin/founder) — **12 read tools
-total**. Per-role toolsets live in `TOOLSET_BY_ROLE` / `readToolsForRole(role)` (guests: zero tools);
-the model is only handed the tools the principal carries, and `executeTool` re-checks. Write tools are
-a separate module (`tools/write-registry.ts`) merged into the one `executeTool` dispatch — never added
-to this read registry. See "Phase 2 — agentic writes (E3)" and the "Jarvis" build below.
+### The Golden Rule
 
-## Floating chat widget — second in-app entry point (shipped 2026-06-15)
+> Permissions are enforced in code and are completely independent of persona, memory, notes,
+> playbooks and any model or prompt content.
 
-A circular **Elaya** button floats in the bottom-right corner of every dashboard route **except
-`/elaya`**; clicking it opens a modal that renders the **same `ElayaChatShell`** the `/elaya` page
-renders (`hideIdentity` — chat-only column, no identity rail). It is a second *entry point*, not a
-second chat surface — zero shell fork, so every chat capability shows up in the widget automatically.
+The toolset and data scope are fixed from the verified principal's role, domain and seat, in code,
+before the model runs. A note, a memory entry, a playbook, a lead's text or a member's message can
+never widen access. This is what makes it safe to fold user content into the prompt.
 
-- **One seed, two callers (R-01).** `resolveElayaChatSeed(profile)` (`elaya-service.ts`) is THE
-  source of the four `ElayaChatShell` props. The `/elaya` RSC page calls it directly; the widget
-  calls it via `getElayaChatSeedAction()` (`actions/elaya.ts`). Same conversation, same cap, same
-  greeting — the widget never mints a parallel session.
-- **Server boundary (A-15).** The widget is `'use client'` and imports only the `ElayaChatSeed`
-  **type** from the service; data crosses the action on each open, so the modal reflects the
-  conversation's current state.
-- **No double-stream / double-count.** Hidden on `/elaya` (`pathname` check) so two live shells on
-  one conversation can't co-exist and burn the daily cap twice. The cap + 24h session stay
-  server-enforced regardless of which entry point is used.
-- **Phase-6 portal.** Button + modal `createPortal` to `document.body`; the heavy shell is
-  `next/dynamic` (loads on first open).
-- **Single-surface modal (DESIGN-DNA §15.3 Surface A).** The chat **is** the modal surface — not a
-  card-in-a-card. The widget opens a `Dialog` with `bodyPadding={false}` + `hideCloseButton` and
-  renders the shell with **`embedded`** (strips the card's own border/shadow/radius so it fills the
-  panel flush) + **`onClose`** (the lone close X sits in the shell's own refined presence header:
-  breathing glyph in an accent disc with the signature glow, Playfair name). The `/elaya` page passes
-  neither → free-standing card, no close X (byte-identical to before). The refined presence header +
-  the §15.4 bubble polish (sender-side "tail" corner, hairline lift, centered 46rem reading column)
-  apply to **both** surfaces — the chat surface stays consistent everywhere, never forked.
+### The four concerns (kept apart)
 
-## WhatsApp staff channel (shipped 2026-06-12)
-
-Staff can message Elaya on the existing shared Gupshup number. WhatsApp is a second channel,
-not a second system: same brain, same principal resolver, same tools, same PII gateway.
-
-```text
-Gupshup webhook POST ──► 200 ack immediately; processing inside after()
-                              │
-                  normalizeWaPhone(sender)  ← THE shared normalizer (lead pipeline uses it too)
-                              │
-            getActiveProfileByPhone (profiles-service)
-                 │ match                        │ no match
-                 ▼                              ▼
-   lib/services/elaya-whatsapp.ts      processInboundMessage — lead pipeline, UNTOUCHED
-   (staff turn, runs to completion)
-```
-
-Contracts (extend the five foundation invariants — never weaken):
-
-- **Routing precedence is explicit:** a number on both a profile AND an active lead row goes to
-  Elaya (profile wins); the collision is warn-logged. Once a profile matches, the gate returns
-  handled on every path — including failures — so a staff message can never mint a lead.
-- **Caller-scoped despite the admin client:** the webhook context uses `createAdminClient()`
-  mechanically, but the principal is resolved from the matched profile
-  (`resolveStaffPrincipal`) and every tool executes as that principal — identical guarantees
-  to the in-app route.
-- **No streaming:** the brain runs to completion (`emit` no-op), one reply via
-  `sendElayaWhatsAppReply` (free-form session message — the staff member just messaged us, so
-  the 24h Gupshup session window is open). Every reply attempt writes one
-  `whatsapp_notification_logs` row (`type 'elaya_reply'`, migration 0117). Send failures are
-  logged, never retried.
-- **One cap, one session, across channels:** `countUserMessagesToday` counts per user
-  regardless of channel; `getOrCreateActiveConversation` deliberately does NOT filter on
-  channel — a WhatsApp message continues a live in-app session (and vice versa), so context
-  follows the user. Per-message `channel` records where each message happened. Cap reached →
-  polite static refusal, nothing persisted, no model call (same as the route).
-- **Persona knows the surface:** `buildElayaSystemPrompt(principal, ctx, 'whatsapp')` appends
-  a channel block — very short replies, WhatsApp-native emphasis only. Belt-and-braces: the
-  reply also passes `markdownToWhatsApp()` (`lib/utils/whatsapp-format.ts`) before sending —
-  models emit markdown regardless of prompts, so `**x**`→`*x*`, `*x*`→`_x_`, headings → bold
-  line, md bullets → "- ", links → `text (url)`. The transcript keeps the raw model text;
-  only the wire format is converted.
-- **Isolation:** the Elaya branch never writes `whatsapp_conversations` / `whatsapp_messages` /
-  `leads`. Its only writes are `elaya_messages` inserts + the audit row. Idempotency mirrors
-  the lead pipeline: `hasProcessedWaMessage` dedups on the Gupshup message id
-  (`elaya_messages.meta->>wa_message_id`).
-- Non-text messages get a polite "text only" reply — no cap burn, no model call.
-
-### Two brains, one gate (2026-08-31)
-
-The gate above is unchanged, but the THINKING can now happen in the Python brain
-(`backend/app`, the Fargate `api` service). One config row decides per message:
-
-```text
-elaya_settings.brain_whatsapp = "node"   → runElayaTurn in-process (the original path)
-elaya_settings.brain_whatsapp = "python" → lib/elaya/python-brain.ts → POST {ELAYA_BRAIN_URL}/v1/elaya/chat
-                                           (bearer BRAIN_API_SECRET, channel "whatsapp", wa_message_id)
-                                           the brain owns cap / session / rows / resolver / turn
-                                           and streams the same meta/delta/tool/done frames back;
-                                           the gate collects the text and sends the one reply
-```
-
-What stays identical whichever brain answers: identity by phone, the Gupshup-id dedup
-(pre-check in the gate, the partial UNIQUE index behind it, answered as 409 by the Python
-brain), voice transcription, media captions, the WhatsApp formatting pass, the single
-`sendElayaWhatsAppReply`, the `elaya_reply` audit row, and the learned-memory update (the
-Python `meta` frame carries `messagesToday` for the throttle). The Python persona carries
-the same WhatsApp channel block, the same per-user style block and the same notes block.
-
-Rules of the switch: read per message (a flip moves the next message, no deploy); anything
-missing or failed reads as `node`; NO automatic fallback between brains on a failed turn (a
-half-persisted turn must never run twice); a `python` row on a box without `ELAYA_BRAIN_URL`
-+ `BRAIN_API_SECRET` answers from Node with a warning. The Node → brain hop is HTTPS only in
-production (the CloudFront front on the brain's load balancer; a plain `http://` URL is
-refused). Rollback: `UPDATE elaya_settings SET value = '"node"' WHERE key = 'brain_whatsapp';`.
-
-### Two brains, one route — the in-app channel (2026-09-03)
-
-The same switch pattern now covers the in-app channel: `POST /api/elaya/chat` reads
-`elaya_settings.brain_in_app` per message. On `node` the route runs exactly as before. On
-`python` the route stays the auth, burst-limit and Zod boundary, then becomes a frame proxy:
-
-```text
-route → openPythonBrainStream (lib/elaya/python-brain.ts, channel "in_app")
-        pre-flight rejections come back as the SAME JSON the browser already handles
-          cap → 429 { error, capReached: true }   unowned conversationId → 404 (S-06)
-        a live stream re-emits the brain's meta/delta/tool/done frames verbatim;
-        error frames are REWRITTEN to user-safe copy (the brain's text is log-only)
-```
-
-On the python path the brain owns the daily cap, session resolve, both message rows, the E3
-resolver and the turn — the route persists nothing (running its own steps too would
-double-count the cap and double-write rows). Learned memory stays a Node concern on every
-channel: the route runs it after the stream completes, throttled by the `meta` frame's
-`messagesToday`. The browser transport (`elaya-stream.ts`) is untouched — same wire, and
-unknown extra keys in the brain's frames pass through harmlessly.
-
-For evals only, non-production builds honour `ELAYA_BRAIN_OVERRIDE_IN_APP` /
-`ELAYA_BRAIN_OVERRIDE_WHATSAPP` so the harness can drive the real route against a local brain
-without touching the shared config rows; production ignores the override by construction.
-Rollback: `UPDATE elaya_settings SET value = '"node"' WHERE key = 'brain_in_app';`.
-
-### Two brains, one ranker — bridged reads (2026-09-12)
-
-The Python brain owns its read tools locally, with one exception: the vendor pair
-(`find_vendors`, `get_vendor_details`). The vendor ranker is the one ranking in the codebase
-(`docs/modules/vendors.md`: Elaya's tool, the Sia ticket screen and the extension all call it and
-none re-rank), it spends a model call reading the request, and its score math lives in one TS
-file. A Python twin would be a second ranker that drifts, so these two run THROUGH the bridge:
-
-```text
-Python loop → bridge op=definitions   → write tools + BRIDGED_READ_TOOL_NAMES (role-gated in Node)
-            → bridge op=execute_tool  → the same executeTool dispatch, the same PII seam,
-                                        rankVendorsForRequest / getVendorDetail in Node
-```
-
-`BRIDGED_READ_TOOL_NAMES` is declared once in Node (`lib/elaya/tools/registry.ts`) and mirrored
-as names only in the Python registry (`backend/app/tools/registry.py`), the same way the write
-names are. The Python router has a `vendors` specialist for supplier questions, and `general`
-carries both tools as its safety net; both are cut by the admin/founder role gate. A bridge
-outage degrades the turn to local reads, never to a dead turn.
-
-## Routing provider in production (Lead Revival)
-
-The `routing` (Haiku) provider — seeded in 0116 and long described as "reserved" — is **live in
-production today**, first consumed by Lead Revival (R1, shipped 2026-06-14). The note-AI
-suppression gate (`src/lib/services/revival-gate.ts`) reuses the Elaya provider + PII layer
-unchanged: `resolveLlmForJob('routing')` + `maskPii`, **no tools, no new SDK import**. It makes
-ONE structured three-verdict call (`revive` / `dismiss` / `unsure`) over a lead's recent notes,
-failing **closed** to `unsure` on any bad verdict — never auto-reviving and never
-auto-dismissing a warm lead. This is the first real use of the routing tier; the foundation chat
-brain still runs on `reasoning` (Sonnet). Full contract: `docs/modules/revival.md`.
-
-## Phase 2 — agentic writes (E3, shipped 2026-06-13)
-
-Elaya can mutate CRM state on the sender's behalf — but only through the same action-shaped
-mutations the UI calls (never raw tables), and only under a confirmation protocol split by risk.
-Four write tools, two tiers:
-
-| Tool | Tier | Roles | Wraps |
+| Concern | Meaning | Source of truth | Controlled by |
 | --- | --- | --- | --- |
-| `add_lead_note` | low-risk — executes inline | all staff | `addLeadNoteCore` → `add_lead_plain_note` |
-| `create_lead_task` | low-risk — executes inline | all staff | `createLeadTaskCore` → `create_lead_gia_task` (a zoneless `dueAt` is interpreted as **IST** at the tool boundary via `normalizeDueAtToIstInstant` before it becomes an instant; an already-zoned ISO string passes through) |
-| `update_lead_status` | state-changing — propose → confirm | all staff | `updateLeadStatusCore` → `update_lead_status` |
-| `reassign_lead` | state-changing — propose → confirm | manager/admin/founder | `assignLeadCore` |
+| Identity | Who are you? | the verified principal | the system, never the model |
+| Permissions | What may you see and do? | role, domain and seat → toolset + data scope | code only |
+| Persona | How should I talk to you? | style settings + the living memory | the user, and what Elaya learns |
+| Memory | What do I know about you and your work? | memory entries, notes, conversation history | grows over time |
 
-```text
-user turn ─► runElayaTurn
-              │
-              ├─ RESOLVER PRE-STEP  (the ONLY place a state-change executes)
-              │    pending = getLatestProposedAction(conversationId, userId)
-              │    classifyConfirmation(latest *human* message)   ← pure code, never the model
-              │      affirmative → re-resolve slug, re-check access + before-snapshot,
-              │                     run core, mark executed|failed, emit code-gen line
-              │      anything else → mark dismissed (ambiguity NEVER executes), process fresh
-              │
-              └─ TOOL LOOP  (ctx = {conversationId, channel} threaded into executeTool)
-                   low-risk tool  → access re-check → core → INSERT executed audit row
-                   state tool     → access re-check → supersede prior → INSERT proposed row
-                                    → "awaiting confirmation"  (NO lead mutation this turn)
-```
+### The hard contracts
 
-### The E3 hard contracts (extend the foundation invariants — never weaken)
+1. **Tools run as the caller.** Identity arguments are always taken from the principal; the model
+   only supplies filter values. Every per-record gate (`canAccessLead`, `canMutateTask`,
+   `canAccessMember`, `getSiaViewerScope`) runs inside the tool.
+2. **No provider shape leaks past its adapter.** `src/lib/elaya/provider.ts` is the one
+   `complete()` contract; `src/lib/elaya/adapters/anthropic.ts` is the only file that imports
+   `@anthropic-ai/sdk` (lint enforces it). The Python brain has the same split
+   (`backend/app/llm/provider.py`, `anthropic_adapter.py`).
+3. **Config over deploy.** `llm_providers` and `elaya_settings` are read on every request, never
+   cached in a module. A model switch or a feature switch is an UPDATE. An unimplemented provider
+   fails loud, never a silent fallback.
+4. **Caps and sessions are server-side.** The daily cap and the 24-hour session are enforced
+   before any model call.
+5. **Every tool result passes the PII gateway** before a model sees it (section 8).
 
-1. **Wrap, never re-query (R-01 / Q-13).** Every write tool calls a shared mutation core in
-   `src/lib/services/lead-mutations.ts`, which wraps the exact RPC + context-free side-effects
-   (`invalidateLeadCaches` awaited per P-08, SLA, won-notify, Trigger.dev reminder) the UI action
-   uses. Both the `leads.ts` action (session caller) and the tool (Elaya principal, admin client)
-   are thin callers, so a tool-driven write inherits cache invalidation + activity logging + SLA +
-   notifications identically. `revalidatePath`/`after()` are request-context-only and stay in the
-   callers (the WhatsApp path has none; the executor plain-awaits `notifyLeadAssigned` inside a
-   context that already keeps the lambda alive — A-16).
-2. **The confirmation gate is in code, not the prompt.** State-changing tools record a `proposed`
-   `elaya_actions` row and return "awaiting confirmation" — they never mutate. Execution happens
-   only in the resolver pre-step (inside `runElayaTurn`, so both channels inherit it), only on
-   `classifyConfirmation(...) === 'affirmative'`. "Execute a state-change in its proposal turn" is
-   structurally impossible — the tool's `run()` has no branch that reaches a core.
-   `classifyConfirmation` (`src/lib/elaya/confirmation.ts`) is pure, deterministic, English+Hinglish
-   allow-list, tokenized whole-string match; default branch `'other'` (safety bias). Ambiguity /
-   a new instruction / "no" → `dismissed`, processed fresh. Stale/moved target → `failed`.
-   Acknowledgements are code-generated, never model-authored — and they tell the truth about
-   what actually happened: `updateLeadStatusCore` returns `result.changed`, so the resolver
-   emits "Done — now {status}" **only** when the row actually moved; a no-op (the lead was
-   already in the target status — `ok: true, changed: false`) resolves the proposal `executed`
-   but emits an honest "{lead} was already {status} — nothing to change" instead of claiming a
-   change that never occurred. (The core already skips `invalidateLeadCaches` on the no-op — nothing moved.)
-3. **`elaya_actions` is the trust + rollback ledger** (`elaya-actions-service.ts`, admin client).
-   Every executed write (both tiers) appends a row: `user_id`, `action_type` (tool name),
-   `payload.target` (slug+id), `payload.channel`, and targeted before/after snapshots. Low-risk →
-   one terminal `executed` row (`before: null`); state-changing → `proposed` → `executed`/`failed`/
-   `dismissed`. One live proposal per conversation (supersede on new proposal). State-machine +
-   audit row, not a pure append-only log (migration 0118 COMMENT; A-11 carve-out — resolve-once
-   admin-member UPDATE, no user write policy by design).
-4. **Lead resolution for writes is stricter than reads.** Write tools take a **slug**, re-check
-   access via `getLeadBySlug` + `canAccessLead(principal)`. The persona instructs `search_leads`
-   first + ask-on-0/multiple; the tool layer is the hard backstop. Ambiguous name halts the write.
-5. **Injection cannot reach an executed write.** Lead-sourced text in context (notes via
-   `get_lead_details`/`search_leads`) can at most cause a `proposed` row; execution needs an
-   affirmative the resolver reads from the human's user-role message ONLY (never tool/lead text),
-   and the toolset is derived from the verified profile, never model output. Role gating is the
-   dispatch-level toolset-membership check (agents have no `reassign_lead`).
+### The parity rule
 
-### Schema (migration 0118)
+Anything Elaya can do in the app she can do on WhatsApp and through MCP, by construction. Every
+read goes through `src/lib/elaya/elaya-data.ts`: it takes the principal, uses the admin client, and
+scopes by role, user, domain and seat in code, never by `auth.uid()` (which is empty on WhatsApp,
+on the Python bridge and on MCP). A tool never calls a `*-service.ts` directly. The trap that keeps
+coming back: a helper that a read calls indirectly is still on the session client (the 2026-09-26
+audit fixed three: ticket name maps and the Call Intelligence reads). Details and the fix pattern:
+`src/lib/elaya/CLAUDE.md`.
 
-`elaya_actions` was reserved empty in 0116; 0118 fills it for use. Adds the partial index
-`idx_elaya_actions_pending (conversation_id, created_at DESC) WHERE status='proposed'` (the
-resolver's per-turn query) and a `COMMENT ON TABLE` documenting the lifecycle. The `proposed →
-executed/failed/dismissed` status flip is a service-role admin-member UPDATE (RLS-bypassing) — no
-user UPDATE policy, by design.
+---
 
-## Phase 3 — task agentic writes (shipped 2026-06-15)
+## 3. Who can use her
 
-Closes the "Elaya only works on leads" gap. She can now create and manage **general tasks** —
-not just lead-attached follow-ups. Five tools wrap the `task-mutations.ts` cores (the same bodies
-`actions/tasks.ts` calls — R-01), gated by `canMutateTask` (the per-resource access check the
-caller owns; the core stays ungated — Q-13). Same two-tier confirmation model as E3, applied to
-tasks: four execute inline, `delete_task` alone proposes and waits.
+**The door.** Elaya is switched on for admin, founder, the tech workbench, and the domains in
+`ELAYA_DOMAINS` (`src/lib/constants/route-permissions.ts`): concierge plus the four Gia domains
+(onboarding, house, shop, legacy). Finance, marketing and business have no Elaya for now: with only
+tasks and notes in reach the model drifted toward promising things it could not do (founder's
+call, 2026-09-26). Guests never have her.
 
-| Tool | Tier | Roles | Wraps |
+`hasElayaAccess(profile)` in `src/lib/utils/route-access.ts` is the one predicate, asked at every
+door:
+
+| Door | What happens without access |
+| --- | --- |
+| `/elaya` page and the nav (`canAccessRoute`) | redirect to `/dashboard`, no nav item |
+| Floating Elaya button (`src/app/(dashboard)/layout.tsx`) | not rendered |
+| Dashboard Elaya widget (`domains: ELAYA_DOMAINS`) | not offered |
+| `POST /api/elaya/chat` | 403 `formErrors.elayaNotEnabled` |
+| WhatsApp staff gate (`elaya-whatsapp.ts`) | one plain line back; the message is still swallowed, never a lead |
+| MCP connector (`src/lib/mcp/auth.ts`) | signed in, zero tools and a sentence |
+| `/m/elaya` | redirect to `/m` |
+| Python brain (`has_elaya_access` in `backend/app/brain/principal.py`) | no principal, no turn |
+
+Opening a domain later is one entry in `ELAYA_DOMAINS` plus the Python mirror.
+
+**The principal.** `resolveStaffPrincipal(profile)` (`src/lib/elaya/principal.ts`) turns the
+verified profile into a `StaffPrincipal`: user id, role, domain, display name, the concierge seat
+(`siaRole`) and `queendomId` (both used for the reach hint only; every tool re-reads the seat from
+the database), and the role-gated `toolset` from `TOOLSET_BY_ROLE`. `ElayaPrincipal` is a
+union with `CustomerPrincipal` (a lead, not a profile, with the two customer tools), so staff code
+can never be reached from a customer turn. The Python brain builds the same principal from
+`profiles` and refuses unknown or inactive users.
+
+**Role toolsets** (Node `TOOLSET_BY_ROLE`, mirrored by names in `backend/app/tools/registry.py`):
+
+| Role | Read tools | Write tools | Total |
 | --- | --- | --- | --- |
-| `create_personal_task` | low-risk — executes inline | all staff (assign-to-another: manager+) | `createPersonalTaskCore` |
-| `create_group_task` | low-risk — executes inline | all staff | `createGroupTaskCore` |
-| `update_task_status` | low-risk — executes inline | all staff | `updateTaskStatusCore` |
-| `update_task` | low-risk — executes inline | all staff | `updateTaskCore` |
-| `delete_task` | **state-changing — propose → confirm** | all staff | `deleteTaskCore` (in the resolver only) |
+| agent | 27 | 14 | 41 |
+| manager | 31 | 15 | 46 |
+| admin, founder | 36 | 16 | 52 |
+| guest | 0 | 0 | 0 |
 
-```text
-TOOL LOOP (tasks)
-  create_personal_task  → assignee-policy gate (manager+ to assign another) → core → INSERT executed
-  create_group_task     → core (domain locked to actor unless admin/founder) → INSERT executed
-  update_task_status /   → admin-member fetch → canMutateTask(admin, principalCaller) → core → INSERT executed
-    update_task
-  delete_task           → admin-member fetch → canMutateTask → supersede prior → INSERT proposed
-                          → "awaiting confirmation"  (NO delete this turn)
+The toolset is only the first gate. Inside the tools, the person decides the rows: an agent sees
+their own leads, a manager their domain, a seated concierge teammate their queendom (the Joker head
+every queendom, without members' money), and `sia-access.ts` decides Sia groups and Freshdesk. See
+[members.md](members.md), [sia.md](sia.md) and `../architecture/auth-and-rbac.md`.
 
-RESOLVER PRE-STEP (delete_task on an affirmative)
-  executeProposedAction routes a task-shaped target → executeProposedTaskDelete:
-    re-fetch by taskId → if gone: resolve executed + "already removed" (NOT an error)
-                       → else: re-run canMutateTask → deleteTaskCore → "Done — deleted …"
-```
+---
 
-### The Phase-3 hard contracts (extend E3 — never weaken)
+## 4. Providers and model tiers
 
-1. **Same core, same gate posture.** Each tool builds a `MutationActor` (`actorFromPrincipal`) and a
-   `CallerProfile` (`callerFromPrincipal`) from the **principal**, never model output. `canMutateTask`
-   takes the **admin client** (the tool has no session) — safe, because it uses the member only for a
-   read-only `task_groups` domain lookup and never reads `auth.uid()`/RLS; the `{id,role,domain}`
-   caller object IS the identity. Create tools have no existing row to gate, so the policy is on the
-   *assignee*: assigning a personal task to **another** user is manager+ (mirrors
-   `createPersonalTaskAction`); a **group** task has no assignee (it is a container — subtasks carry
-   assignees), so `create_group_task` is all-staff and deliberately does **not** inherit
-   `reassign_lead`'s MANAGER_UP gate.
-2. **Tiering is structural.** The four inline tools call the core in `run()` then `insertExecutedAction`.
-   `delete_task`'s `run()` has **no branch that reaches `deleteTaskCore`** — it only records a
-   `proposed` row and returns "awaiting confirmation". The delete lands solely in
-   `executeProposedTaskDelete`, reached only when `classifyConfirmation(human message) === 'affirmative'`.
-3. **Optimistic-concurrency on delete (failure mode c).** `deleteTaskCore`'s `.delete().eq(id)` returns
-   `ok: true` even on a **missing** row (Supabase reports no error for a zero-row delete) — so a stale
-   delete would falsely claim "Done". `executeProposedTaskDelete` therefore re-fetches by `taskId`
-   **first**; a gone row resolves the proposal `executed` and emits an honest *"… was already removed —
-   nothing to delete"* rather than running the core or erroring.
-4. **The delete label is code-derived.** The `proposed` payload stores the task's `taskId` + a
-   sanitized **title** read from the DB row (never model/lead/note text), so the confirmation line
-   names the right task and no injected text can sit in it. The delete target is the stored `taskId` —
-   prompt-injection text can neither become the affirmative (resolver reads the human message only) nor
-   redirect the delete to a different task.
-5. **IST at every boundary.** Every `dueAt` a task tool accepts passes through `normalizeDueAtToIstInstant`
-   (R-01 — the helper E3 already uses): a zoneless `"2026-06-16T15:00"` is interpreted as **IST** (→
-   `09:30Z`) before it becomes an instant; an already-zoned ISO string passes through. Zoneless = IST, always.
-6. **The model needs a handle.** `get_my_tasks` now surfaces `taskId` (followUps + personalTasks) and
-   `groupId` (groupTasks) so the model can target update/delete — without an id it cannot name a task.
-   This exposed a latent PII-gateway bug: `maskPii`'s `PHONE_RE` matches a UUID's digit/dash run and
-   corrupted the id. Fixed at the gateway — an **exact-UUID string leaf** is now skipped (a UUID is an
-   opaque identifier, not PII), so any tool surfacing an id is safe.
+Model choice is a row in `llm_providers`, read per call. `resolveLlmForJob(jobType)`
+(`src/lib/elaya/registry.ts`) returns the adapter, model and token budget; the Python twin is
+`backend/app/llm/registry.py`.
 
-The `elaya_actions` ledger is unchanged at the DB level — `ElayaActionType` gains the five task types
-and `payload.target` becomes a union (lead `{slug, leadId}` | task `{taskId?, groupId?}`); jsonb column,
-**no migration**, TS contract only.
+The models below are the last recorded values; the live value is always the row (the repo cannot
+see production data).
 
-## Phase 4a — voice input (E4a, shipped 2026-06-14)
+| Tier (`job_type`) | Model (last recorded) | Set by | Used by |
+| --- | --- | --- | --- |
+| `routing` | `claude-haiku-4-5` | 0116 seed | the Python router; Node single judgements: the memory reader, alert tone reads, deep-read judging, revival gate, vendor request reader and extractor, member observation reader, ticket intake, sentinel |
+| `reasoning` | `claude-sonnet-5` | data edit 2026-08-27 (was `claude-sonnet-4-6`) | most Python specialists; the frozen Node brain; the customer brain; brief writer, deep-read plan and answer, playbook drafter, member profiler and judgement, ticket drafts, lesson writer |
+| `heavy` | `claude-opus-5` | migration 0176 | Python only: the `analytics` and `analyst` specialists. Falls back to `reasoning` when the row is missing or inactive |
 
-Staff can speak to Elaya on both surfaces. **Voice is an input transform only** — audio is
-transcribed to text, then fed into the **exact same `runElayaTurn`** the typed path uses. No
-change to the brain, tools, the E3 propose→confirm protocol, the PII gateway, the daily cap, the
-session, or replies. Replies stay text. Concrete stack: **Deepgram NOVA-2**, language `hi-Latn`
-(Hinglish / Roman-script Hindi), **3 MB max audio** (`MAX_VOICE_NOTE_BYTES`), 2-min recording cap
-(`DEFAULT_MAX_RECORDING_MS`). In-app capture is the shared **`DictationButton`** component
-(`variant="composer"`) over `useAudioRecorder` → **`transcribeAudioAction`**.
+The Sonnet 5 flip was measured: full eval run before, one-row edit, full run after (28 of 28).
+Node's `LlmJobType` knows only `routing` and `reasoning`. The provider contract carries an optional
+`effort` (low, medium, high) because the Claude 5 models think by default and thinking counts
+against `maxTokens`; a single structured judgement passes `low`. A user turn may carry `files`
+(base64 plus media type, used by the vendor extractor for bills); an adapter that cannot show a
+file drops it rather than failing.
 
-```text
-WhatsApp voice note ─► webhook builds type:'audio' MetaInboundMessage (Gupshup CDN url + contentType)
-                        │
-                        ▼  elaya-whatsapp.ts  transcribeWhatsAppAudio(url, mime)
-                        │     fetch(url) → transcribeAudio()  ← THE shared notes STT, never a 2nd path
-                        ▼     (empty/non-speech → graceful nudge, BEFORE cap/model/persist)
-                  ── identical to a typed message from here ──► cap → session → insert → runElayaTurn → reply
+The Python router, the analyst and the background jobs all share one Anthropic account with the
+member profiler, so a reached spend limit stops them all. The brain says so plainly (section 5.2).
 
-In-app mic (ElayaChatShell) ─► useAudioRecorder → transcribeAudioAction → transcript fills the composer
-                                as an EDITABLE DRAFT + focus → user reviews and presses send (never auto-send)
-```
+---
 
-### The E4a hard contracts (extend the foundation/E3 invariants — never weaken)
+## 5. The two brains
 
-1. **One STT path, reused.** Both surfaces use `transcription-service.transcribeAudio` (the notes
-   section's Deepgram call site) — the in-app mic through `transcribeAudioAction` (the same action
-   `LeadNotesInput`/`CalledModal` use), the WhatsApp path server-to-server. No second integration.
-2. **Voice changes nothing downstream.** Once audio is text, the cap, dedup
-   (`hasProcessedWaMessage`), session, persist, brain, reply, and E3 confirmation gate are
-   byte-identical to a typed message. A voice-note status-change still records a `proposed`
-   `elaya_actions` row and waits for an affirmative — a mistranscribed write is caught by the same
-   E3 gate, so no separate echo/confirm step exists.
-3. **A voice note = one message.** It burns exactly one slot of the shared daily cap, like typing.
-4. **In-app never auto-sends.** The transcript lands in the composer `input` state as an editable
-   draft (reusing the starter-prompt prefill+focus path); only the user's send dispatches it. A
-   garbled prompt cannot reach a brain that can write to the CRM without human review.
-5. **Empty / non-speech / failure is graceful.** An empty transcript replies "couldn't catch that"
-   **before** the cap, model, or any persist — never an empty prompt at the brain. A download or
-   transcription failure throws to the gate's try/catch → `REPLY_UNAVAILABLE`, still handled, no
-   lead minted, webhook still 200s.
-6. **Audio PII is the same interim D-01 stance as text.** External STT accepted; audio is
-   transcribed in-memory and discarded, never persisted. The transcript flows through the existing
-   `maskPii` gateway exactly as typed text. Documented, not gated.
+Both channels think in the **Python brain** (`backend/app/`, FastAPI on AWS ECS Fargate in
+`ap-south-1`, behind a CloudFront HTTPS front). The in-process **Node brain**
+(`src/lib/elaya/brain.ts`) is frozen and kept only as the rollback. "Python thinks, Node mutates":
+every write, and every read whose logic lives in Node, runs through a bridge into the same Node
+registry.
 
-**ElevenLabs** is locked for E5/E4b (voice *replies* / TTS) and is **not used here** — E4a is
-input transcription only (Deepgram), replies stay text.
+### 5.1 The switch
 
-## Web Push delivery (notifications, shipped 2026-06-14)
+Two `elaya_settings` rows (migration 0179) pick the brain per message, read per request:
 
-Orthogonal to the chat brain but worth noting here for delivery completeness: **Web Push (VAPID,
-the `web-push` lib, no SaaS; migration 0120) is now a second delivery channel layered behind
-`createNotification`.** The fan-out seam lives *inside* `createNotification` — after the in-app
-row insert it calls `dispatchPush(recipient_id, {title, body, url})`, so every existing caller
-(lead-assignment-notify, lead-mutations, sla, tasks, task-reminders) gets push for free with zero
-call-site edits. `dispatchPush` is non-fatal (never throws; the in-app row stays source of truth)
-and prunes dead 404/410 endpoints. Full contract: `docs/changelog.md` (2026-06-14 Web Push entry).
+| Row | Value | Since |
+| --- | --- | --- |
+| `brain_whatsapp` | `"python"` | 2026-09-03 |
+| `brain_in_app` | `"python"` | 2026-09-04 |
 
-## The "Jarvis" build — Phases 1–4 (shipped 2026-06-25)
+Anything missing or malformed reads as `node`. There is no automatic fallback between brains
+mid-turn (a half-persisted turn must never run twice). A `python` row on a server without
+`ELAYA_BRAIN_URL` and `BRAIN_API_SECRET` answers from Node with a warning. Rollback is one line:
+`UPDATE elaya_settings SET value = '"node"' WHERE key = 'brain_in_app';` (or `brain_whatsapp`).
+Non-production builds honour `ELAYA_BRAIN_OVERRIDE_IN_APP` / `_WHATSAPP` so the eval harness can
+point the real route at a local brain; production ignores them.
 
-Elaya became a true **per-user personal assistant**. The 2026-06-25 design proposal
-(`docs/architecture/elaya-jarvis-architecture.md`) has been **deleted**: every phase shipped, so this
-section is both the build record and the as-built home for the concepts the code still cites.
+**The transport** is `src/lib/elaya/python-brain.ts`: `openPythonBrainStream()` (pre-flight
+rejection or the live SSE stream, used by the in-app route as a frame proxy) and
+`runPythonBrainTurn()` (pump to completion, used by the WhatsApp gate), bearer `BRAIN_API_SECRET`
+to `ELAYA_BRAIN_URL/v1/elaya/chat`. It refuses a plain `http://` URL in production. Rejections are
+typed: cap (429), duplicate WhatsApp id (409), unauthorized (401/403), unowned conversation (404),
+unavailable. It passes only a verified profile id. The SSE frame vocabulary
+(`meta`/`delta`/`tool`/`done`/`error`) lives once in `src/lib/elaya/sse.ts`.
 
-### The four-concern model (keep them strictly apart)
+### 5.2 The Python brain
 
-A great assistant keeps four separate concerns strictly apart. Mixing them is exactly what makes
-assistants insecure or unscalable.
+| File | Role |
+| --- | --- |
+| `backend/app/api/chat.py` | `POST /v1/elaya/chat`: bearer check → principal → daily cap → conversation (ownership) → persist the user message → resolver → turn → persist the reply → `done` frame. `classify_turn_failure()` turns a provider error into a plain line saved as her reply (`model_limit`, `model_busy`, `model_timeout`, `failed`) |
+| `backend/app/brain/principal.py` | profile → principal, `has_elaya_access` mirror |
+| `backend/app/brain/router.py` | one `routing`-tier call picks a specialist per message and, in the same call, the matching playbook. A short subject-less follow-up ("try now", "anyone?") borrows the earlier user messages' subject. Validated in code; unknown → `general` |
+| `backend/app/brain/specialists.py` | ten specialists: `leads`, `tasks`, `analytics` (heavy), `vendors`, `tickets`, `analyst` (heavy, admin/founder only), `freshdesk`, `groups`, `members`, `general`. Each is a hot tool set, a focus line and a tier. A specialist is a menu entry, never a permission |
+| `backend/app/brain/loop.py` | the turn loop: up to 10 tool rounds, reads run in parallel, writes in call order, PII mask on every local result, 12,000-char result cap (24,000 for `get_member_360`) |
+| `backend/app/brain/persona.py` | the system prompt, byte-identical in its shared blocks to `persona.ts` |
+| `backend/app/brain/resolver.py`, `confirmation.py` | the confirmation resolver, ported with every invariant (section 7) |
+| `backend/app/brain/pii.py` | the PII gateway port |
+| `backend/app/tools/registry.py` | the 12 read tools ported locally, plus the names of the bridged reads and writes |
+| `backend/app/tools/write_bridge.py` | the bridge client |
+| `backend/app/core/elaya_store.py`, `supa.py` | persistence, the daily cap, persona, notes, memory and known-issues reads; `supa.py` maps every table moved to `gia` or `member` to its schema |
 
-| # | Concern | Plain meaning | Source of truth | Who controls it |
+**The tool catalog (2026-09-24).** The router no longer decides what she may call. Every tool the
+role allows is in the catalog on every turn. The chosen specialist's tools load up front (the hot
+set); the rest are deferred and the model finds them with the provider's server-side tool search
+(the BM25 variant). A wrong route costs one search instead of a dead turn. A name outside the
+principal's toolset is never sent to the model. The assistant's own content blocks are replayed
+untouched inside a turn so a discovered tool stays loaded.
+
+**The bridge** (`POST /api/elaya/bridge`, bearer `BRAIN_API_SECRET`, a sanctioned P-02
+exception). The profile is re-fetched and the principal re-derived on every call. Three ops:
+
+- `definitions`: the write tools and bridged reads this role carries, so the model sees the exact
+  Node schemas (Node is the single source of the tool surface).
+- `execute_tool`: one write or bridged read through the same `executeTool` dispatch and PII seam.
+- `execute_proposed`: run a still-live proposal the Python resolver has already confirmed.
+
+24 reads run through the bridge (vendors, tickets, members, Freshdesk, books, Sia groups, the
+analyst tools, lead WhatsApp chat, subscriptions, activity feed). All 16 writes do. The 12 ported
+local reads are: `search_leads`, `get_cold_leads`, `get_lead_details`, `get_my_tasks`,
+`find_teammate`, `search_deals`, `get_performance_snapshot`, `get_helpdesk_content`,
+`get_escalations`, `get_domain_health`, `get_campaigns`, `get_budget`. A bridge outage degrades a
+turn to local reads, never a dead turn.
+
+**Deploy.** `copilot svc deploy` from `backend/` (see `../operations/deployment.md`). A new Node
+tool reaches the Python brain without a deploy when it is bridged (definitions are re-read every
+60 seconds), but a new NAME must be added to the Python lists and the brain redeployed.
+
+### 5.3 The Node brain (frozen)
+
+`runElayaTurn` in `src/lib/elaya/brain.ts`: the resolver pre-step, then a tool loop of up to 10
+rounds over `executeTool`, with the last 10 messages as history. Decision Log 2026-09-16
+(`../rules/The_Rules.md`): frozen, retirement targeted **2026-10-16**, gated on thirty clean days on
+Python with the switch unused and the exam steady. The retirement deletes the loop, the Node staff
+persona, the two channel branches, the switch rows and `getElayaBrainForChannel`. What stays
+forever because the Python brain runs on it: the tool registries and `executeTool`, the PII
+gateway, the mutation cores, the bridge, the provider layer, the memory reader, and every Node
+feature with its own model call (customer brain, analyst jobs, profiler, intake, sentinel and so
+on). Playbooks are folded only by the Python brain.
+
+---
+
+## 6. The tools
+
+Staff tools: **36 read** (`src/lib/elaya/tools/registry.ts`) and **16 write**
+(`src/lib/elaya/tools/write-registry.ts`), one dispatch (`executeTool`). Customer tools: **2**
+(`src/lib/elaya/tools/customer-registry.ts`), a separate dispatch that refuses everything else.
+
+Legend: **inline** = executes in its own turn and logs an `executed` row; **propose** = records a
+proposal and waits for a human yes. "All staff" = agent, manager, admin, founder.
+
+| Area | Tool | Kind | Who carries it | Notes |
 | --- | --- | --- | --- | --- |
-| 1 | **Identity** | Who are you? | the verified `ElayaPrincipal` | the system (verified; never the model) |
-| 2 | **Permissions** | What may you see and do? | role → toolset + data scope | **code only** |
-| 3 | **Persona** | How should I talk to you? | the per-user style file (`user_context.context.persona`) | the user (editable) + learned |
-| 4 | **Memory** | What do I know about you and your work? | notes + durable learned context + history | grows over time |
+| Leads and deals | `search_leads` | read | all staff | role scope; tells whose lead it is when it belongs to a teammate; hides the eval test lead |
+| | `get_cold_leads` | read | all staff | |
+| | `get_lead_details` | read | all staff | `canAccessLead` re-check |
+| | `get_lead_whatsapp_chat` | read | all staff | the official Gupshup line with a lead; `canAccessLead` |
+| | `search_deals` | read | all staff | |
+| | `add_lead_note` | inline | all staff | `addLeadNoteCore` |
+| | `log_call` | inline | all staff | `addLeadCallNoteCore` (outcome, new→touched, SLA cadence) |
+| | `create_lead_task` | inline | all staff | `createLeadTaskCore` |
+| | `update_lead_status` | propose | all staff | `updateLeadStatusCore` |
+| | `reassign_lead` | propose | manager+ | `assignLeadCore` |
+| | `log_deal` | propose | all staff | `recordDealCore`; deal type derived from the lead's domain |
+| Tasks and people | `get_my_tasks` | read | all staff | follow-ups, personal and group tasks, with ids |
+| | `find_teammate` | read | all staff | company directory; a sound-alike match carries no user id |
+| | `create_personal_task` | inline | all staff (assigning someone else: manager+) | repeat reminders; says how the assignee was reached |
+| | `create_group_task` | inline | all staff | |
+| | `create_subtask` | inline | all staff | one assignee per subtask |
+| | `update_task_status` | inline | all staff | |
+| | `update_task` | inline | all staff | repeat reminders |
+| | `delete_task` | propose | all staff | re-fetches before deleting |
+| Oversight | `get_performance_snapshot` | read | all staff | agent pulse or manager roster |
+| | `get_escalations` | read | manager+ | |
+| | `get_domain_health` | read | manager+ | |
+| | `get_campaigns` | read | manager+ | |
+| | `get_activity_feed` | read | manager+ | a manager is pinned to their domain |
+| | `get_budget` | read | admin, founder | |
+| Knowledge | `get_helpdesk_content` | read | all staff | Call Intelligence library |
+| Members | `get_member_360` | read | all staff | the first call for any member question; 24,000 chars |
+| | `get_member_overview` | read | all staff | name or id in, `member_id` out; candidates; "outside your seat" |
+| | `list_members` | read | all staff | roster by city, company, tier, status, queendom |
+| | `get_member_profile` | read | all staff | the dossier: facts, people, team, health, requests |
+| | `get_member_finance` | read | all staff | live Zoho; `canSeeMemberFinance` (never the Joker head) |
+| | `get_member_recent_messages` | read | all staff | the member's group, 60 messages a page |
+| | `search_member_history` | read | all staff | topic search; the model supplies related words |
+| WhatsApp groups | `list_sia_groups` | read | all staff carry; `sia-access.ts` decides | the model gets a letters-only handle, never a jid |
+| | `get_sia_group_messages` | read | same | by handle or by name |
+| | `search_sia_messages` | read | same | |
+| Freshdesk | `get_freshdesk_overview` | read | same | the /freshdesk page's numbers |
+| | `search_freshdesk_tickets` | read | same | |
+| | `get_freshdesk_ticket` | read | same | Serene never writes to Freshdesk |
+| Sia tickets | `list_tickets` | read | all staff | queendom scope from the profile; the Joker head sees every queendom's tickets, and a ticket with no queendom is admin/founder only. See [tickets.md](tickets.md) |
+| | `get_ticket` | read | all staff | returns the allowed moves |
+| | `add_ticket_note` | inline | all staff | `addTicketNoteCore` |
+| | `move_ticket_status` | propose | all staff | `moveTicketStatusCore` in the resolver |
+| Vendors | `find_vendors` | read | all staff carry; `canAskAboutVendors` lets admin, founder and the concierge domain use it | the one vendor ranking (never re-ranked); flags an unverified extractor-written vendor; removed vendors are not offered. See [vendors.md](vendors.md) |
+| | `get_vendor_details` | read | same | a merged-away id answers with the vendor it was merged into; a removed vendor is flagged "do not recommend" |
+| Money | `get_books_overview` | read | admin, founder | live Zoho |
+| | `get_subscriptions` | read | all staff carry; the tool admits admin, founder and the finance and tech domains | in practice admin, founder and tech, since finance has no Elaya today. Never a login or password |
+| Analyst | `describe_database`, `query_database`, `get_live_pulse` | read | admin, founder | see [elaya-analyst.md](elaya-analyst.md) |
+| | `start_deep_read` | inline | admin, founder | queues a background job |
+| Self-correction | `raise_improvement_request` | inline | all staff | section 12 |
+| Customer | `get_company_material`, `note_customer_interest` | customer only | the customer principal | [customer-welcome-blast.md](customer-welcome-blast.md) |
 
-### THE GOLDEN RULE (governs everything below — never weaken)
+Results are serialized after masking and cut at 12,000 characters (a tool may carry a larger
+`maxResultChars`, like `get_member_360`; the MCP connector raises every cap to 60,000).
 
-> **Permissions are enforced in code and are completely independent of persona, memory, notes, and
-> any model/prompt content.**
+Adding a read: a function in `elaya-data.ts`, then the tool. Adding a write: pick the tier, wrap an
+existing core, gate with the principal before the core. Both checklists: `src/lib/elaya/CLAUDE.md`.
+A new tool name must also be added to the Python lists (`BRIDGED_READ_TOOL_NAMES` or
+`WRITE_TOOL_NAMES` and the role map) before the Python brain will offer it.
 
-Toolset + data scope are fixed from the verified principal's **role, in code, before the model runs**
-— so an injected persona note, learned memory, a future scraped page, or lead-sourced text can never
-widen access. This is the single property that makes it safe to inject user content into the prompt
-and (later) to let Elaya talk to external customers.
+---
 
-### Phase 1 — the data layer + channel parity (`src/lib/elaya/elaya-data.ts`)
+## 7. Writes and confirmation
 
-**THE PARITY RULE** (the name `elaya-data.ts` and `src/lib/elaya/CLAUDE.md` cite): anything Elaya
-can do in-app she can do on WhatsApp, **by construction**. Every Elaya read goes through one
-function in `elaya-data.ts`, and each one (1) takes the verified principal (identity is never
-channel- or model-derived), (2) uses the **admin client** (works in the sessionless WhatsApp
-webhook AND in-app), (3) scopes by the principal's role/userId/domain **in code**, never
-`auth.uid()`.
+**Two tiers, split in code.** An inline tool calls its mutation core in `run()` and appends one
+`executed` row. A propose tool's `run()` has no branch that reaches a core: it supersedes any older
+proposal in the conversation, records a `proposed` row with a before-snapshot, and returns
+"awaiting confirmation". The five propose tools are `update_lead_status`, `reassign_lead`,
+`log_deal`, `delete_task` and `move_ticket_status`.
 
-The single seam **every** Elaya read flows through: principal-in → **admin client** → scoped by the
-principal's role/userId/domain **in code** → `maskPii()`. Tools call `elayaData.*` only, never a
-`*-service.ts` directly — so a session dependency (`auth.uid()`, which is NULL on WhatsApp) is
-*physically impossible* to re-introduce, and channel parity is structural rather than remembered.
-Three reads genuinely self-scoped in SQL got sessionless admin twins (**migration 0149**,
-`*_for_user` / `*_for_elaya`, Q-13 revoked tier — see `../architecture/auth-and-rbac.md` §13):
-`get_group_task_summaries`, `get_agent_today_pulse`, `get_agent_roster_performance`. The per-resource
-gate (`canAccessLead`/`canMutateTask`) stays the trust boundary. The parity rule is written into
-`src/lib/elaya/CLAUDE.md`.
+**The resolver** runs first in every turn (`brain.ts` in Node, `backend/app/brain/resolver.py` in
+Python). It reads the latest proposal and classifies the human's latest user message with
+`classifyConfirmation` (`src/lib/elaya/confirmation.ts`, ported word-for-word to Python): a pure
+English and Hinglish allow-list, whole-message match, default `other`. Only `affirmative`
+executes, through `executeProposedAction` in Node (the bridge's `execute_proposed` op for Python).
+Anything else dismisses the proposal and the message is handled fresh. A proposal older than 15
+minutes is dismissed without executing. The executor re-resolves the target, re-checks access and
+that the before-snapshot still matches; a moved target fails, an already-deleted task resolves as
+"already removed". The confirmation line is written by code, never by the model, and says the truth
+("was already Touched, nothing to change").
 
-### Phase 2 — per-user persona ("how Elaya talks to me")
+**The ledger** is `elaya_actions` (`elaya-actions-service.ts`, admin client): who, which tool,
+target, channel, before and after. Proposed rows move once to `executed`, `failed` or `dismissed`
+(an A-11 carve-out: resolve-once, no user write policy).
 
-A per-user style file: `language` (mirror/english/hinglish), `tone` (warm/direct/playful), `depth`
-(simple/standard/technical), `length` (brief/standard/detailed) + a 600-char free-text note. Stored
-in `user_context.context.persona`; edited from `/profile` (`ElayaPersonaSettings` →
-`updateElayaPersonaAction`, `requireProfile` + sanitize). Injected via `buildPersonaPromptBlock` as a
-**fenced STYLE-ONLY block** that emits only non-default picks, so it rides the cached prompt prefix
-(~0 marginal tokens after turn 1). The block literally says "never a permission" — defence in depth
-on top of the code gate. No migration (reuses `user_context`).
+**Other write rules.**
 
-### Phase 3 — durable memory ("gets smarter the more you use it")
+- Writes wrap the same cores the UI actions call (`lead-mutations.ts`, `task-mutations.ts`,
+  `ticket-mutations.ts`), so cache invalidation, SLA, notifications and reminders are identical.
+- A lead write takes a slug and re-checks `canAccessLead`; lead or note text can at most cause a
+  proposal, never an execution.
+- Every `dueAt` passes `normalizeDueAtToIstInstant`: a zoneless time is IST.
+- Repeat reminders (migration 0232): `create_personal_task` and `update_task` take
+  `remindEveryHours` (0.5 to 24) and `remindForHours` (up to 72). `setTaskNudgeCore` arms the
+  first nudge; `sendTaskNudgeTask` (`src/trigger/task-reminders.ts`) pings the assignee in-app and
+  on WhatsApp until the task closes or the window ends. The tools return
+  `assignee_notified_via` / `assignee_has_phone` and she must say when someone has no phone.
+- Assigning a task to someone else pings them on WhatsApp (`task_assigned` template, gated by the
+  `task_assigned` notification key).
 
-`src/lib/elaya/memory.ts`. `summarizeLearnedMemory` makes ONE bounded **Haiku** call
-(`resolveLlmForJob('routing')` + `maskPii`, no tools) merging the prior learned note + recent
-transcript into a ≤900-char note, and **fails soft to null** (a glitch never corrupts existing
-memory). `maybeUpdateLearnedMemory` is throttled (every 4th user message), fire-and-forget, off the
-hot path (runs in the post-reply window on both channels). `writeLearnedMemory` merge-writes
-`user_context.context.learned` **without touching `persona`**. The former retrieval seam,
-`retrieveMemoryContext`, was **removed 2026-07-02** (zero callers): the brain now reads the learned
-blurb + notes directly via `getUserPersona` + `getNotesForElaya`, and a future semantic/embedding
-retrieval layer starts from those call sites (the `vector` extension is already installed). No
-migration.
+---
 
-### Phase 4 — capability tools (role-gated reads)
+## 8. The PII gateway
 
-`ElayaTool` gained a `roles` field; `readToolsForRole(role)` gates the read set. Added (all wrap
-existing services through `elaya-data`, no new SQL): **`get_escalations`** / **`get_domain_health`** /
-**`get_campaigns`** (manager+) and **`get_budget`** (admin/founder only). A manager never sees
-`get_budget`; an agent never sees the oversight reads. **`get_usage` is deferred** (its `getAgentUsage`
-is session-bound — needs a sessionless refactor first). No migration.
+`maskPii(value, depth)` (`src/lib/elaya/pii.ts`, port in `backend/app/brain/pii.py`) walks every
+tool result before it reaches a model. Depth comes from the `pii_masking_depth` row:
 
-### `log_deal` — a propose→confirm write tool
+| Depth | Effect |
+| --- | --- |
+| `off` | passthrough, debugging only |
+| `light` (default) | phones keep the last 4 digits; emails keep the first letter and the domain; names stay |
+| `strict` | as light, and emails fully masked |
 
-Elaya can record a won deal from chat ("I closed Akhil on the gold annual membership for ₹1,20,000").
-It wraps the shared **`recordDealCore`** (extracted into `lead-mutations.ts` so the `recordDeal` action
-and the tool share one insert — R-01), derives `deal_type` from the lead's domain
-(`DOMAIN_DEAL_CONFIG`), and is **state-changing** (money + flips the lead to Won) → it proposes and
-waits for an affirmative, exactly like `update_lead_status`. It validates the deal SHAPE at propose
-time (domain → membership needs a duration / retail needs a category) so the model can ask for the
-missing piece BEFORE the proposal; the resolver re-runs the resolved shape, never raw model input.
-`action_type` has no DB CHECK, so it needed no migration.
+An exact UUID string is never masked (a UUID is an id, not PII, and the phone pattern would
+corrupt it). A WhatsApp group id is a long digit run, so it would be masked like a phone: tools
+that must hand an id to the model and take it back use a handle that survives the mask
+(`siaGroupHandle()`). Any new tool that round-trips an id must check this. Background jobs (memory
+reader, alerts, deep read, profiler) also pass their input through `maskPii`; the member profiler
+adds its own name vault (see [members.md](members.md)).
 
-### `log_call`, `create_subtask`, `find_teammate` — the later additions
+---
 
-Three tools joined after the initial Jarvis batch (all present in the registries today):
+## 9. Channels
 
-- **`log_call`** (write, inline, all staff) wraps `addLeadCallNoteCore`: records a call with an
-  outcome, auto-advances a `new` lead to `touched`, and arms the SLA cadence. It is NOT a plain
-  note; `add_lead_note` stays the note tool.
-- **`create_subtask`** (write, inline, all staff) wraps `createSubtaskCore`: adds ONE assigned
-  subtask to a group. The other half of the team-task workflow: `create_group_task` makes the
-  container, then one `create_subtask` per person, each resolved via `find_teammate`. Access gate =
-  `getVisibleGroupById` (the principal must be in the group; admin/founder see all). A task row has
-  ONE assignee; multiple people = multiple subtasks.
-- **`find_teammate`** (read, all staff) is the name→userId staff lookup described in the Tools
-  section above.
+| Channel | Entry | Brain | Streams | Writes |
+| --- | --- | --- | --- | --- |
+| In-app (`in_app`) | `POST /api/elaya/chat` from `/elaya`, the floating button, the dashboard widget, `/m/elaya` | Python (Node on rollback) | yes, SSE | yes |
+| WhatsApp staff (`whatsapp`) | Gupshup webhook → `tryHandleElayaWhatsAppMessage` | Python (Node on rollback) | no, one reply (split if long) | yes |
+| MCP (`mcp`) | `/api/mcp` | none: tools only, the outside AI app thinks | n/a | no (read tools only) |
+| Customer WhatsApp | end of the lead pipeline | the separate Node customer brain | no | only the lead's own interests |
 
-Elaya-created task assignments also ping the ASSIGNEE on WhatsApp: `createPersonalTaskCore`
-(assigned to another) and `createSubtaskCore` await `sendTaskAssignedNotification` beside the
-in-app + push `createNotification` (awaited inside the core, never a detached `.catch()`, A-16).
-Gated by the `task_assigned` control-plane key (0133); logged as `task_assigned` (migration 0153).
+**In-app.** The route order: session → `hasElayaAccess` → burst limit (20 a minute per user) →
+Zod → the brain switch. On `python` the route proxies frames; the brain owns the cap, the session,
+both message rows and the resolver, and error frames are rewritten to user-safe copy. On `node`
+the route does the cap, session, persist and turn itself. `maxDuration` is 180 seconds. After the
+reply is saved the route runs the memory reader (section 12).
 
-The write set therefore stands at **12 tools** (8 inline + 4 propose→confirm: `update_lead_status`,
-`reassign_lead`, `log_deal`, `delete_task`). The full per-tool table lives in
-`src/lib/elaya/CLAUDE.md`.
+**WhatsApp staff gate** (`src/lib/services/elaya-whatsapp.ts`):
 
-### Net effect
+- The sender's number is normalized and matched to an active profile
+  (`getActiveProfileByPhone`). A match is always handled by Elaya, on every path, so a staff
+  message can never become a lead; no match goes to the lead pipeline untouched. A profile with a
+  blank phone therefore turns that person's messages into a lead: fill the phone.
+- Dedup on the Gupshup message id (a partial UNIQUE index; the Python brain answers 409).
+- Voice notes are transcribed first (Deepgram, with the active staff first names as keyword
+  boosts), stored with `meta.voice = true`; the audio is never stored. Images and files get a
+  "text only" reply.
+- A turn still thinking after 15 seconds sends one holding line ("On it. This one needs a proper
+  look, give me a minute.").
+- The reply passes `markdownToWhatsApp()` and is sent whole, split into several messages on
+  paragraph breaks when long (`splitWhatsAppText`), never truncated. Each send writes one
+  `whatsapp_notification_logs` row (`elaya_reply`).
+- The staff member just messaged, so the 24-hour Gupshup window is open and free text is allowed.
+  `waFreeTextWindowOpen()` in `elaya-service.ts` is the same check the brief and alerts use.
 
-12 read tools (role-gated) + 12 write tools, identical on both channels by construction, with a
-per-user persona + accumulating memory — all under the Golden Rule. The Phase 1–4 skeleton is
-complete. "Phase 5", the Notes section, shipped 2026-06-26 (below); semantic retrieval (embeddings)
-and web super-powers remain the future layer.
+**MCP.** Elaya's third channel: the connector publishes the principal's read toolset and calls
+`executeTool` with `channel: 'mcp'`. No chat turn runs in Serene (the outside app's own model
+does the thinking) and no message is stored. Full contract:
+[../integrations/mcp.md](../integrations/mcp.md).
 
-## The Notes section (shipped 2026-06-26, migration 0152)
+**Customer.** A different principal, persona, brain and two-tool registry; never reaches staff
+code. Full contract: [customer-welcome-blast.md](customer-welcome-blast.md).
 
-The per-user Notes surface ("Jarvis" Feature 3). `elaya_notes` is an owner-only-RLS table (own
-SELECT/INSERT/UPDATE/DELETE policies, `(user_id, updated_at DESC)` index). The `/notes` page (all
-signed-in staff; in `ALWAYS_ALLOWED_PREFIXES`) lists and edits the caller's notes via `getMyNotes`
-(session client). At turn time the brain reads them via `getNotesForElaya(userId)`
-(`elaya-notes-service.ts`: admin client + explicit `user_id` scope, the parity rule) and
-`persona.ts` folds them in through `buildNotesPromptBlock` as **CONTEXT to remember, never
-permission** (the Golden Rule). The fold is capped at `ELAYA_NOTES_PROMPT_BUDGET` (6000 chars) so
-it rides the cached prompt prefix; per-note bounds are a 120-char title, a 4000-char body, and 50
-notes per user (`constants/elaya-notes.ts`). Route-level rules:
-`src/app/(dashboard)/notes/CLAUDE.md`.
+---
 
-## The customer WhatsApp channel (FEATURE 2, shipped 2026-06-26)
+## 10. Sessions and the daily cap
 
-Elaya now also talks OUTWARD to prospects on WhatsApp. Full as-built record:
-`docs/modules/customer-welcome-blast.md` (migrations 0150 + 0151). The shape, in brief:
+- **One active conversation per user across channels.** `getOrCreateActiveConversation` does not
+  filter by channel, so a WhatsApp message continues an in-app session and the other way round.
+  Each message records its own `channel`. The window is `session_expiry_hours` (24).
+- **The daily cap** is `daily_message_cap` (200 user messages), counted from IST midnight across
+  both chat channels, checked before anything is persisted or a model is called. The count fails
+  closed. On the Python path the brain enforces it (`core/elaya_store.py`); on Node the route and
+  the gate do. At the cap the composer shows a quiet notice; WhatsApp gets a polite line.
+- **MCP calls are not messages** and do not count against the cap; the connector has its own limit
+  of 60 tool calls a minute per person.
+- `elaya_messages` is append-only.
 
-- **`ElayaPrincipal` is a discriminated union**: `StaffPrincipal | CustomerPrincipal`.
-  `resolveCustomerPrincipal(lead)` (`principal.ts`) returns a real customer principal: identity =
-  the LEAD row (never a profile), persona `'customer'`, and the hard-capped `CUSTOMER_TOOLSET`. It
-  no longer throws. The staff brain/persona/tools take `StaffPrincipal` specifically, so the
-  customer path cannot reach staff code.
-- **A separate, simpler brain**: `customer-brain.ts` `runCustomerTurn` (no confirmation resolver,
-  no staff persona/memory, no `elaya_actions`). Voice + hard guardrails live in
-  `customer-persona.ts` (KB-only facts, ₹ only, no AI/Serene reveal, no other-customer or internal
-  talk).
-- **Exactly two customer tools** (`tools/customer-registry.ts`): `get_company_material` (read-only
-  KB pull from `elaya_training_assets`) and `note_customer_interest` (writes ONLY the principal's
-  own lead's `service_interests`). `executeCustomerTool` refuses everything else: the Golden Rule's
-  hard edge. No staff tool, `executeTool` path, or CRM read is reachable from a customer turn.
-- **Wired INTO the lead pipeline, never replacing it**: `elaya-customer.ts`
-  (`maybeSendCustomerWelcome` + `handleCustomerReply`) is dynamic-imported at the end of
-  `processInboundMessage`. The welcome template fires exactly once per lead via the stamp-once
-  `leads.welcomed_at` guard (migration 0151); replies are gated on `bot_active` (an agent reply
-  takes over). The customer transcript lives in the EXISTING lead WhatsApp tables, never
-  `elaya_conversations` (that table is profile-keyed, staff-only).
-- **Training assets** (migration 0150): `elaya_training_assets` (10 kinds mirrored from
-  `constants/elaya-training.ts`; manager/admin/founder write RLS; all-authenticated read) + the
-  PUBLIC `elaya-training` storage bucket (Gupshup fetches sent media by url). Curated on the
-  `/admin/elaya-training` page (manager+).
+---
 
-## Later phases (not built)
+## 11. Persona and the prompt
 
-- **In-app proposal cards:** the confirmation today is a plain yes/no reply on both channels.
-  The Elaya two-action Approve/Dismiss card (over the same `elaya_actions` proposal rows) is a
-  later UI affordance — the gate and ledger are already in place for it.
-- **Routing job in the chat brain:** Haiku-tier intent triage in front of the reasoning brain is
-  still unbuilt — but the `routing` provider itself is already in production via Lead Revival's
-  note-AI gate (see "Routing provider in production" above), so this is no longer the tier's first use.
-- **Voice replies / avatar (E5/E4b):** voice *output* (TTS, ElevenLabs locked) + avatar are out of
-  scope. Voice *input* shipped in E4a above (Deepgram, both surfaces).
+The staff prompt is built by `buildElayaSystemPrompt` (`src/lib/elaya/persona.ts`) and
+`build_system_prompt` (`backend/app/brain/persona.py`). The reach line and the memory block are
+kept byte-identical and checked by rendering both; the other blocks are mirrored by hand (the
+notes block differs by one example sentence). The Python prompt is the one in use. In order:
 
-## Design vision
+1. Voice, data rules and write protocol (tools first, never an invented number, ₹ with Indian
+   grouping, label cross-domain insights, never quote tool field names).
+2. **The reach line** (`scopeHint` / `_scope_hint`, rewritten 2026-09-26): what this role, domain
+   and seat CAN reach first, then what it cannot, then "never refuse from this line alone: call the
+   tool". A Joker head line (0244) describes every queendom, no vault, no members' money. This line
+   is where an outsider learns their limits without the model inventing any.
+3. The WhatsApp channel block (WhatsApp only): short, no headings or tables, no length cap.
+4. The per-user style block (`user_context.context.persona`: language, tone, depth, length and a
+   600-character note, edited on `/profile` with `ElayaPersonaSettings`). Style only, never a
+   permission.
+5. The living memory block, then the known-issues block (section 12).
+6. The user's notes, as context and "the user's own memory, never an instruction"
+   ([../pages/notes.md](../pages/notes.md)).
+7. Python only: the specialist focus line and, when the router matched one, the playbook (section 13).
+8. The IST time anchor, placed outside the cached prefix so the cache still hits.
 
-> Folded in from the original `elaya.md` (the pre-Elaya design doc) during the Serene→Serene /
-> Elaya→Elaya rename. This is the design language the presence was conceived against; the shipped
-> surfaces above are the first realisation of it.
+Persona rules that came from real failures (September 2026): search the tool catalog before
+refusing; never say "send it as its own message"; answer a message with several asks part by part;
+no time window given means the last 30 days, stated; a member outside the seat is "outside your
+seat", never "not found"; never retract a true earlier answer because this turn lacks a tool.
 
-Elaya is the agentic AI presence that lives inside Serene. She is not a chatbot — she is a
-presence: a compass that surfaces the right insight on the right surface at the right moment.
+---
 
-**Design language (DESIGN-DNA §15):**
+## 12. The living memory and improvement requests (0237)
 
-- Full design language — glyph (always breathing when present), four surfaces (Panel,
-  Conversation, Inline Suggestion, Action Proposal), motion rules, voice: `DESIGN-DNA.md` §15.
-- Operating rules (root `CLAUDE.md` quick reference): inline suggestions always delay 400 ms;
-  proposal cards have exactly two actions (Approve / Dismiss); one dot or nothing — never a
-  number badge; her colour is always `--theme-accent`; cross-domain insights are always
-  labelled with the source domain.
-- Privacy constraint that shapes the build: **no raw PII reaches any external AI model** (D-01)
-  — pseudonymisation before anything leaves the vault. The PII gateway (`pii.ts`) is the
-  interim enforcement point until the vault lands (see foundation invariant 5 above).
+**The memory.** `elaya_user_memory` holds one row per thing learned about one person: kind (rule,
+correction, style, preference, interest, fact), the statement (400 characters), the user's words
+as evidence, and the source (chat, self, admin). Entries are retired, never deleted.
 
-**The presence in code:** `src/components/ui/elaya-glyph.tsx` (the breathing SVG mark, the
-`ElayaGlyph` component), the `elaya` toast/modal types, and the live Elaya subsystem
-(`src/lib/elaya/`) documented above.
+- **The reader**, `learnFromTurn` (`src/lib/elaya/memory.ts`), runs after every turn on both
+  channels and both brains, called by the in-app route and the WhatsApp gate once the reply is
+  saved. A cheap word gate skips plain questions; otherwise one `routing`-tier call reads the
+  entries on record and the last 6 messages and returns entries to add and ids to retire.
+  `applyMemoryReading` merges them. It fails soft and never touches the reply.
+- A complaint that an answer was wrong is never memory; that is an improvement request.
+- **The memory block** (`formatMemoryBlock` / `getMemoryBlock` in `elaya-memory-service.ts`, and
+  `build_memory_prompt_block` in Python) folds entries into every prompt ranked rules → corrections
+  → style → preference → interest → fact, within 6,000 characters. The old 900-character learned
+  blurb in `user_context` folds only until a user's first entry exists.
+- **UI:** "What Elaya has learned about you" (`components/profile/ElayaMemoryCard.tsx`) on
+  `/profile` (remove an entry, add a rule) and on `/admin/users/[id]` for admin and founder.
+  Actions: `addMemoryEntryAction`, `retireMemoryEntryAction` (own, or anyone's as admin/founder).
+- Memory is context, never permission. It never records identity, role or access.
+
+**Improvement requests.** When a user tells Elaya she was wrong about the system (wrong data, wrong
+time frame, a missing tool, a wrong answer, behaviour), she calls `raise_improvement_request` in
+the same turn, answers the corrected question with her tools, and says in one line it is logged.
+The row lands in `elaya_improvement_requests` with the question, her answer, the correction and her
+own guess at the cause. The tier-1 responders are pinged on WhatsApp through the Sia alert
+template and in-app: a named list of people (`SIA_ALERT_TIER1_PROFILE_IDS` in
+`src/lib/constants/sia-alerts.ts`), not a role; see [sia.md](sia.md). Admin and founder decide each on
+`/settings/elaya-requests` (fixed, declined, or became a playbook) with a note.
+`getKnownIssuesBlock()` folds open requests from the last 30 days and fixed ones with a note from the
+last 14 days (at most 12) into every prompt, so she stops repeating a mistake and can say the team
+is on it. Vocabulary: `src/lib/constants/elaya-memory.ts`.
+
+---
+
+## 13. Playbooks and the Teach Elaya pages
+
+### Playbooks (0234)
+
+A playbook is the founder's method for a KIND of question, in plain words: title, example
+questions the way people really ask, and instructions (which window, which records, what to lead
+with). It is a method, never a source of facts.
+
+- Table `public.elaya_playbooks`; RLS admin/founder read, writes through the gated action on the
+  service role. `elaya-playbooks-service.ts`, `actions/elaya-playbooks.ts` (admin/founder).
+- The Python router reads the active rows (`supa.get_active_playbooks`, cached a minute), returns
+  the matching one with the specialist, and `build_playbook_block` folds it under the specialist
+  focus. The turn's row records `meta.playbook`; the `done` frame carries `playbook`, `specialist`
+  and `toolsUsed`.
+- When an answer is wrong in SHAPE (window, emphasis, scope), write a playbook. When it is wrong in
+  DATA, fix the tool.
+
+### The pages
+
+| Route | Who | What |
+| --- | --- | --- |
+| `/settings/teach-elaya` | manager and above (`hasManagerPageAccess`, which also admits the tech workbench) | the hub (`components/settings/TeachElayaHub.tsx`), four doors, each saying what it does and who edits it. Sidebar: "Teach Elaya" in the configuration group |
+| `/admin/elaya-training` (door: Training) | manager+ | the customer knowledge base: [../pages/elaya-training.md](../pages/elaya-training.md) |
+| `/settings/elaya-playbooks` (door: Playbooks) | admin, founder (page gate `hasElevatedPageAccess`) | the list, one editor, **Speak a playbook** (the shared `DictationButton` into a notes box, then "Draft with Elaya": `draftPlaybookFromNotes` in `elaya-playbook-drafter.ts`, one `reasoning` call, lands as an unsaved preview), and **Try it** (asks the real Elaya in the viewer's conversation and shows the playbook, specialist and tools that fired). `components/settings/ElayaPlaybooksPanel.tsx` |
+| `/settings/elaya-requests` (door: Requests) | admin, founder | each request with the question, answer, correction and cause; decide fixed / declined / playbook with a note. `components/settings/ElayaRequestsPanel.tsx`, `resolveImprovementRequestAction` |
+| (door: Exam) | engineering | not in the app yet; the evals in section 15 |
+
+The playbook and request pages admit the tech workbench at the page gate, but their data and
+actions are admin/founder only, so a non-admin tech teammate sees an empty list.
+
+---
+
+## 14. Notes
+
+Every staff member has private notes at `/notes` (`elaya_notes`, migration 0152). Both brains fold
+the user's notes into the prompt as context (`getNotesForElaya` in Node, `get_notes_for_elaya` in
+Python), capped at 6,000 characters. Full spec: [../pages/notes.md](../pages/notes.md).
+
+---
+
+## 15. Evals (the exam)
+
+`evals/` is a Python harness that drives the real app from outside: it signs in an eval user,
+sends each case to `POST /api/elaya/chat`, and checks the reply, the persisted tool calls with
+their arguments, and the `elaya_actions` rows. It runs against either brain.
+
+| Piece | What |
+| --- | --- |
+| `evals/run.py` | the runner (`--allow-writes`, `--include-tags`, `--only`, `--golden`, `--target`) |
+| `evals/golden/core.yaml` | 35 cases from real messages (Hinglish, voice-name artifacts, confirmation flows, an injection probe); `needs-seed` cases use the test lead "Testak Evalson", `needs-concierge` cases need a seated concierge login |
+| `evals/golden/founders.yaml` | 25 real founder questions (2026-09-24); `tags: [founder]`, run with a founder or admin login |
+| `evals/report.py`, `evals/review.py` | the HTML score report, and a local console to grade real conversations (annotations in `evals/annotations.json`) |
+
+Rules: no AI change ships without a run; every real bug becomes a case first; known gaps stay in
+the file as `known_fail`. The eval account and test lead are hidden from real users' reads
+(`isTestLead` / `hideTestLeads` in `src/lib/elaya/access.ts`). Setup and commands:
+`evals/README.md`.
+
+---
+
+## 16. Data and settings
+
+| Table | Migration | Role |
+| --- | --- | --- |
+| `elaya_conversations`, `elaya_messages` | 0116 | sessions and the append-only transcript (`channel`, `meta` with `wa_message_id`, `voice`, `brain`, `playbook`) |
+| `elaya_actions` | 0116, 0118 | the write ledger and proposals |
+| `user_context` | 0116 | per-user style settings and the legacy learned blurb |
+| `llm_providers` | 0116, 0176 | the model per tier |
+| `elaya_settings` | 0116 and later | the switches below |
+| `elaya_notes` | 0152 | personal notes |
+| `elaya_training_assets` | 0150 | the customer knowledge base |
+| `elaya_playbooks` | 0234 | playbooks |
+| `elaya_user_memory`, `elaya_improvement_requests` | 0237 | living memory, requests |
+| `elaya_query_log`, `elaya_jobs`, `elaya_labels`, `elaya_alerts` | 0223, 0235 | the analyst layer: [elaya-analyst.md](elaya-analyst.md) |
+| `mcp_tool_calls` | 0226 | the connector's call ledger |
+
+`elaya_settings` rows Elaya reads (all through `src/lib/services/llm-providers-service.ts`, per
+request):
+
+| Key | Default when missing | What it controls |
+| --- | --- | --- |
+| `daily_message_cap` | 200 | messages per user per IST day |
+| `pii_masking_depth` | `light` | section 8 |
+| `session_expiry_hours` | 24 | the conversation window |
+| `brain_whatsapp`, `brain_in_app` | `node` (both rows say `python`) | section 5.1 |
+| `mcp_audience` | founder, admin | roles the MCP connector admits (seeded to every role but guest) |
+| `daily_briefing_enabled`, `elaya_alerts_enabled`, `elaya_alerts_state`, `elaya_labels_refresh_enabled`, `elaya_deep_read_spend_cap_usd` | see the analyst doc | [elaya-analyst.md](elaya-analyst.md) |
+
+Other modules keep their own switches in the same table (`member_profiler_enabled`,
+`ticket_intake_enabled`, `member_assessment_enabled`, `intake_lessons_enabled`); see
+[members.md](members.md) and [tickets.md](tickets.md).
+
+---
+
+## 17. Not built, and open items
+
+- **In-app proposal cards.** Confirmation is a typed yes or no on every channel. The
+  Approve/Dismiss card (DESIGN-DNA §15) over the same proposal rows is not built.
+- **MCP writes** (Phase 4 of `../architecture/mcp-plan.md`) are not built; the connector is read
+  only.
+- **Semantic search.** No embeddings provider is chosen; topic search uses model-supplied related
+  words over whole-word matching.
+- **Voice replies** (text to speech) are out of scope; voice is input only.
+- **The Node brain's retirement** is targeted for 2026-10-16.
+- **The Exam page** on Teach Elaya is a label, not a feature.
+- **Hands** (Elaya handing member jobs to outside agents like Instinct) is a plan only:
+  `../architecture/hands-plan.md`.
+- **Notes for teams without Elaya.** `/notes` is open to every staff member, but finance,
+  marketing and business have no Elaya to read them.
+
+---
+
+## 18. Design language
+
+Elaya is a presence, not a chatbot. Her glyph (`src/components/ui/elaya-glyph.tsx`) always
+breathes when she is present; her colour is always `--theme-accent`; inline suggestions wait
+400 ms; proposal cards have exactly two actions; one dot or nothing, never a number badge;
+cross-domain insights name their source domain. She is the only presence allowed to animate text
+(`ElayaStatusText`, the tool-status line). Full design language: `../design/DESIGN-DNA.md` §15.
+
+---
+
+## 19. History at a glance
+
+| Date | What shipped |
+| --- | --- |
+| 2026-06-12 | Foundation: provider layer, principal, PII gateway, read tools, `/elaya` SSE chat (0116); the WhatsApp staff channel (0117) |
+| 2026-06-13 to 06-15 | Lead writes with confirmation (E3, 0118), task writes, voice input, the floating button |
+| 2026-06-25 to 06-26 | "Jarvis": the data seam and parity rule (0149), per-user style, learned blurb, role-gated oversight reads, `log_deal`, `create_subtask`, notes (0152), the customer channel (0150, 0151) |
+| 2026-08-27 to 08-31 | Evals; Sonnet 5; the Python brain on Fargate with the router, specialists and three tiers (0176); read parity; the write bridge; the WhatsApp brain switch (0179) |
+| 2026-09-03 / 09-04 | Both channels switched to the Python brain |
+| 2026-09-08 to 09-19 | Bridged reads: vendors, Sia tickets, members and the twin, Freshdesk, books, Sia groups, lead WhatsApp chat, subscriptions, activity feed; `get_member_360`; the analyst layer (0223 to 0225); the MCP connector (0226) |
+| 2026-09-16 | Node loop frozen, retirement targeted 2026-10-16 |
+| 2026-09-21 | MCP phases 2 and 3 (0231, 0233); repeat reminders (0232); playbooks (0234) |
+| 2026-09-22 | Teach Elaya hub |
+| 2026-09-24 | Tool search replaces router gating; `list_members`; verified metrics; the deep read and alerts (0235) |
+| 2026-09-25 | Living memory and improvement requests (0237) |
+| 2026-09-26 | Company-wide authorization audit; the rewritten reach line; `ELAYA_DOMAINS`; the Joker head line (0244) |
+
+Full detail: `../changelog.md`.

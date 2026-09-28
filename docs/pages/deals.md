@@ -1,13 +1,15 @@
 # Deals — Page Spec
 
-> **Purpose:** spec for `/deals` — every closed commercial transaction (lead-won and walk-in), list + summary strip + New Deal write path.
-> **Audience:** engineers. · **Source-of-truth scope:** the deals page, `deals-service.ts`, `deals.ts` actions, `get_deals_summary`. Table schema: `../architecture/database.md` § deals; the dossier's Won flow UI: `lead-dossier.md`.
-> **Last verified:** 2026-07-02 (This Month default landing + `?dates=all` escape hatch, `revalidatePath('/deals','page')` on both write actions, `recordDealCore` refactor + `resolveDealShapeForDomain` move to `constants/deal-types.ts`, `SourcePill` on `DealCard`, Elaya `log_deal` as the third creation path; earlier: post 0122 domain-derived `deal_type`, `deal_created` notification, summary-strip domain scoping).
+> **Purpose:** spec for `/deals`, every closed commercial transaction (lead-won and walk-in): the list, the summary strip and the New Deal write path.
+> **Audience:** engineers.
+> **Source-of-truth scope:** the deals page, `deals-service.ts`, `deals.ts` actions, `get_deals_summary`. Table narrative: `../architecture/database.md`; the dossier's Won flow UI: `lead-dossier.md`.
+> **Last verified:** 2026-09-26 against `src/app/(dashboard)/deals/{page,DealsAsync}.tsx`, `src/components/deals/*`, `src/components/leads/WonDealModal.tsx`, `src/lib/services/deals-service.ts`, `src/lib/actions/deals.ts`, `src/lib/constants/lead-sources.ts`, migrations 0182, 0202 (deals section) and 0210.
 
 ## 1. Purpose
 
-A deal is a closed commercial transaction — every `public.deals` row is one by definition (no
-`status='won'` gate). First-class table since migration 0072 (reverses the 2026-05-31
+A deal is a closed commercial transaction: every `gia.deals` row is one by definition (no
+`status='won'` gate). The table was created in `public` (0072) and moved to the `gia` schema on
+2026-09-17 (0210); code reads it through `giaDb(client)`. First-class table since migration 0072 (reverses the 2026-05-31
 "deals = won leads" model; Decision Log in `../rules/The_Rules.md`). Three creation paths:
 **lead → deal** (`recordDeal` from the dossier's Won flow; it runs the shared `recordDealCore`,
 which inserts the deal then flips Won via `updateLeadStatusCore` for all side-effects),
@@ -21,16 +23,18 @@ activity logs.
 
 ## 2. Who sees it
 
-Agents: own `assigned_to` deals. Managers: domain. Admin/founder: all (+ domain filter).
-Walk-in creation: agents self-assigned in own domain; managers any agent in own domain;
-admin/founder any Gia domain. Full matrix + the intentional no-write-RLS-policy note
-(migration 0094): Deep dive §10.
+Agents: own `assigned_to` deals. Managers: domain. Admin/founder: all, narrowed by the **global
+domain selector** in the header (the page's own Domain dropdown was removed 2026-07-10; the
+selector writes the same `?domain=`). Walk-in creation: agents self-assigned in own domain;
+managers any agent in own domain; admin/founder any Gia domain. The route is reachable from every
+Gia domain and from `business` (route map). Full matrix and the intentional no-write-RLS-policy
+note (migration 0094): Deep dive §10.
 
 ## 3. Data sources
 
 | Layer | Key items |
 | ----- | --------- |
-| Service | `deals-service.ts` — `getDealsByRole` (joins `lead(slug)` + assignee), `getDealsSummary` (RPC wrapper), `getLeadDeal(leadId)` (dossier card) |
+| Service | `deals-service.ts`: `getDealsByRole` (embeds `lead(slug)` inside `gia`, and the assignee name through the read-only `gia.profiles` view, 0212/0213), `getDealsSummary` (RPC wrapper), `getLeadDeal(leadId)` (dossier card) |
 | RPC | `get_deals_summary` (0052/0053/0074) — totals/revenue/membership/retail; `p_caller_domain` vs `p_filter_domain` split |
 | Actions | `deals.ts` — `recordDeal`, `createWalkInDeal` (domain-locked server-side for agents), `listAgentsForDealDomain` |
 | Shared write body | `recordDealCore` in `services/lead-mutations.ts`: the ONE deal-insert + Won-flip body; `recordDeal` and Elaya's `log_deal` both call it (R-01) |
@@ -38,26 +42,33 @@ admin/founder any Gia domain. Full matrix + the intentional no-write-RLS-policy 
 
 ## 4. Components
 
-`page.tsx` + Suspense async child · `DealsFilters` (composes `<FilterBar>` + `useUrlFilters`) ·
-`DealsSummaryStrip` (composes `StatTile variant="cell"`) · `DealCard` (card-list mode,
-motion.div) · `AddDealButton` (`MotionButton`) + `NewDealModal` (on-intent dynamic) ·
-`LeadDealCard` is the dossier's distinct display component — not this list's `DealCard`.
+`page.tsx` (`CondensingPageHeader` with `AddDealButton` and `PageControls`) + the Suspense
+async child `DealsAsync` · `DealsFilters` (composes `<FilterBar>` + `useUrlFilters`: search,
+Type, Category in the shop slice, Agent, the date range) · `DealsSummaryStrip` (composes
+`StatTile variant="cell"`) · `DealCard` (card-list mode, `motion.div`; plays the gold petal
+celebration once when you land from a fresh Won, 2026-07-10) · `AddDealButton` + `NewDealModal`
+(on-intent dynamic; the `Modal` `error` prop for whole-form errors, `.serene-form-row` rows) · `LeadsPagination` ·
+`LeadDealCard` is the dossier's distinct display component, not this list's `DealCard`.
 
 ## 5. States
 
 - **Loading:** `deals/loading.tsx` (PageSkeletons composition).
-- **Empty:** `<EmptyState>` serif-italic (no deals yet / no matches).
+- **Empty:** `<EmptyState framed>` with the Deals icon: "Nothing matches these filters." / "The first win is still on its way."
 - **Error:** `{ error }` branches → inline message bars; summary strip degrades to zeros with a logged warning.
 
 ## 6. Invariants
 
 Deep dive §11 — `won_at` immutable; `lead_id` nullable only for walk-ins; membership requires
-duration; deal writes admin-member-only; revenue always reads `public.deals` (never the
+duration; deal writes go through the admin client only; revenue always reads `gia.deals` (never the
 dropped `leads.deal_*`).
 
 ## 7. Open items
 
-`member_id` is a reserved column — FK lands with the future members module (post-won flow).
+- `member_id` has had its foreign key to the member spine since 0202 (now `member.members`, see
+  `../modules/members.md`), but no code writes it: walk-ins insert `null` and `recordDealCore`
+  leaves it unset. The Gia to Sia hand-off (a won deal becoming a membership) is not built.
+- Won-deal capture is still two steps (insert, then the status flip); a single SECURITY DEFINER
+  RPC was noted, not built.
 
 ---
 
@@ -67,10 +78,10 @@ dropped `leads.deal_*`).
 
 ### 1. Module Overview
 
-**What deals are:** A deal is a closed commercial transaction. Every row in `public.deals` is a
+**What deals are:** A deal is a closed commercial transaction. Every row in `gia.deals` is a
 deal. There is no `status = 'won'` gate — the table contains only deals by definition.
 
-**`public.deals` is a first-class table** (migration 0072, 2026-06-05). This reverses the
+**`deals` is a first-class table** (migration 0072, 2026-06-05; in the `gia` schema since 0210). This reverses the
 2026-05-31 decision that stored deal data on `public.leads`. Reason: one lead has one terminal
 `won` and cannot hold repeat/renewal deals; walk-in sales (direct purchases without a CRM lead
 lifecycle) cannot be represented at all in the old model. Decision Log: `../rules/The_Rules.md` (2026-06-05 entry).
@@ -100,13 +111,16 @@ to authenticated non-guest roles and opens `NewDealModal` for walk-in deal creat
 
 ---
 
-### 2. Data Model — `public.deals` Table (migration 0072)
+### 2. Data Model: the `deals` table (migration 0072, now `gia.deals`)
+
+The SQL below is the shape as created (then `public.deals`) plus the later columns and checks
+noted inline. 0210 moved it to `gia` with its policies, indexes and constraints.
 
 ```sql
 CREATE TABLE public.deals (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   lead_id       uuid NULL REFERENCES public.leads(id) ON DELETE SET NULL,
-  member_id     uuid NULL,        -- FK deferred to members module; always null for now
+  member_id     uuid NULL,        -- created as client_id; renamed + FK to members (ON DELETE SET NULL) in 0202; no code writes it yet
   contact_name  text NOT NULL,
   contact_phone text NOT NULL,    -- E.164, normalised before insert
   contact_email text NULL,
@@ -134,14 +148,14 @@ CREATE TABLE public.deals (
 `src/lib/constants/deal-types.ts`): `onboarding → membership`, `shop → retail` (+ a required
 `deal_category`), `house`/`legacy` → `sale`. The type is set server-side in `recordDeal` (from the
 lead's domain) and `createWalkInDeal` (from the server-forced deal domain) via
-`resolveDealShapeForDomain`; a member-sent `deal_type` is ignored. The `deals_retail_category_check`
+`resolveDealShapeForDomain`; a browser-sent `deal_type` is ignored. The `deals_retail_category_check`
 couples `retail ⇔ category`. The category filter on `/deals` surfaces only inside the `shop` slice.
 
 **Key column rules:**
 
 - `lead_id` is **nullable**. Walk-in deals have `lead_id = null`. Lead-sourced deals have it set.
   On `ON DELETE SET NULL` — deleting a lead nullifies the FK but preserves the deal row.
-- `member_id` is **always null** until the members module is built. Column exists as the future FK hook.
+- `member_id` references the member spine (`deals_member_id_fkey`, 0202; `member.members` since 0211), `ON DELETE SET NULL`, indexed where set. No code writes it yet, so it is null on every row the app creates.
 - `won_at` is **immutable** after insert, but no longer always `now()`. Lead-sourced deals
   (`recordDeal`) set it to insert time. Walk-in deals (`createWalkInDeal`) may supply a
   user-picked **Deal Date** (`NewDealModal` → `DatePicker`, capped at today); it falls back to
@@ -181,7 +195,10 @@ deal type from it** (`DOMAIN_DEAL_CONFIG`) — the type is shown read-only, no p
 the type-dependent extra (Product Category for shop/retail, Duration chips for onboarding/membership,
 nothing for house/legacy/sale) + Amount. `onConfirm` passes `{ deal_duration, deal_category,
 deal_amount }` (no `deal_type`) to `recordDeal` from `src/lib/actions/leads.ts` (re-export from
-`deals.ts`), which re-derives the type from the lead's domain.
+`deals.ts`), which re-derives the type from the lead's domain. The category picker is the shared
+`FormSelect` (2026-09-25, replacing a native select); the amount is parsed strictly (a malformed
+amount no longer half-parses, 2026-09-25). On success `StatusActionPanel` stamps
+`DEAL_CELEBRATE_STORAGE_KEY` so the matching `DealCard` plays the petals once on `/deals`.
 
 #### 3c. `recordDeal` action
 
@@ -200,7 +217,7 @@ deal_amount }` (no `deal_type`) to `recordDeal` from `src/lib/actions/leads.ts` 
 
 > **No `deal_type` field (2026-06-15).** The type is derived from the lead's domain via
 > `resolveDealShapeForDomain` (moved 2026-06-26 from `actions/deals.ts` to
-> `src/lib/constants/deal-types.ts`, alongside the `DealShape` types), never sent by the member.
+> `src/lib/constants/deal-types.ts`, alongside the `DealShape` types), never sent by the browser.
 > The schema carries only the type-dependent extras (`deal_duration` for membership,
 > `deal_category` for retail); the core picks the right one for the resolved domain.
 
@@ -263,7 +280,7 @@ purely the picker chrome, same values committed).
 - Agent: `domain = caller.domain`, `assigned_to = caller.id` — always forced server-side.
 - Manager: `domain = caller.domain`; `assigned_to` may be any agent in their domain (verified).
 - Admin/founder: any Gia domain; assignee verified in chosen domain.
-- **`deal_type` is derived from the resolved domain** (`resolveDealShapeForDomain`) — a member-sent
+- **`deal_type` is derived from the resolved domain** (`resolveDealShapeForDomain`); a browser-sent
   type is ignored. `CreateWalkInDealSchema` carries no `deal_type` field, only the extras
   (`deal_duration`, `deal_category`), which are cross-validated against the domain's type.
 
@@ -304,7 +321,7 @@ recipients, and firing both would double-notify the single event.
 | --- | --- |
 | 0052 | Initial RPC over `leads` table |
 | 0053 | Manager domain fix — `p_caller_domain` / `p_filter_domain` split |
-| 0074 | **Rewritten over `public.deals`** — structural WHERE → `archived_at IS NULL`; date filters on `won_at` |
+| 0074 | **Rewritten over `public.deals`** (now `gia.deals`; 0210 re-declared the function with `gia` on its search path): structural WHERE → `archived_at IS NULL`; date filters on `won_at` |
 
 #### Current signature (migration 0074)
 
@@ -330,7 +347,7 @@ get_deals_summary(
 | `retail_count` | `int` | Rows with `deal_type = 'retail'` |
 
 **Structural WHERE:** `archived_at IS NULL` only. No `status` or `deal_amount IS NOT NULL` gate —
-every row in `public.deals` is a deal by definition.
+every row in `gia.deals` is a deal by definition.
 
 **Security:** `STABLE SECURITY DEFINER SET search_path = public`. Role gates explicit in SQL
 body. `GRANT EXECUTE` to `authenticated`.
@@ -356,7 +373,7 @@ boundary. A tampered `filter_domain` in the URL cannot widen a manager's scope.
 
 **Defined in:** `src/lib/types/database.ts`
 
-First-class row type for `public.deals`. Key fields: `id`, `lead_id` (nullable), `member_id`
+First-class row type for `gia.deals`. Key fields: `id`, `lead_id` (nullable), `member_id`
 (nullable), `contact_name`, `contact_phone`, `contact_email`, `domain`, `deal_amount`,
 `deal_type` (typed union), `deal_duration` (typed union or null), `assigned_to`,
 `source` (`string | null` — migration 0075), `won_at`, `archived_at`, `created_at`, `updated_at`.
@@ -393,7 +410,7 @@ export type DealFilters = {
 }
 ```
 
-**No `status` field** — every row in `public.deals` is a deal. Status was never a filter; now
+**No `status` field**: every row in `gia.deals` is a deal. Status was never a filter; now
 it's structurally impossible to add one.
 
 #### `DealsResult`
@@ -423,7 +440,7 @@ export type DealsSummary = {
 #### `getDealsByRole(role, userId, domain, filters?)`
 
 - **Returns:** `Promise<DealsResult>`
-- **Source:** `public.deals` (NOT `leads`)
+- **Source:** `gia.deals` through `giaDb(supabase)` (NOT `leads`)
 - **Join:** `lead:leads!deals_lead_id_fkey(slug)` + `assignee:profiles!deals_assigned_to_fkey(full_name)`
 - **Structural:** `archived_at IS NULL`, order `won_at DESC`
 - **Role gates (applied first, cannot be overridden):**
@@ -438,7 +455,7 @@ export type DealsSummary = {
   in service), `search` ILIKE on `contact_name`, `contact_phone`, `contact_email`.
 - **Count:** `{ count: 'exact', head: false }` on the same query — never a second `COUNT(*)`.
 - **Pagination:** `.range(offset, offset + pageSize - 1)` always applied. Default `pageSize` 50, `page` min 1.
-- **Member:** Session member (`createClient()`); RLS still applies.
+- **Client:** session client (`createClient()`); RLS still applies.
 - **Type cast:** `data as unknown as DealWithRelations[]` — `deals` table not yet in generated types.
 
 #### `getDealsSummary(role, userId, domain, filters)`
@@ -455,9 +472,9 @@ strip disagrees with the card list.
 
 #### `getLeadDeal(leadId)`
 
-- **Returns:** `Promise<Deal | null>` — the single non-archived `public.deals` row for a lead, or `null`.
+- **Returns:** `Promise<Deal | null>`: the single non-archived `gia.deals` row for a lead, or `null`.
 - **Query:** `SELECT * FROM deals WHERE lead_id = $1 AND archived_at IS NULL LIMIT 1` (`.maybeSingle()`).
-- **Member:** Session member (`createClient()`); RLS applies — an agent who doesn't own the deal gets `null` (correct, not a bug).
+- **Client:** session client (`createClient()`); RLS applies: an agent who doesn't own the deal gets `null` (correct, not a bug).
 - **Type cast:** `data as unknown as Deal` — `deals` not yet in generated types.
 - **Never throws** — returns `null` on empty result or any Supabase error.
 - **Called by:** the lead dossier (`/leads/[id]`) to render `LeadDealCard`. Not used by `/deals`.
@@ -474,8 +491,8 @@ strip disagrees with the card list.
 
 ```text
 <main>
-  <h1>Deals + page-title-dot</h1>   [left]   <AddDealButton />   [right]
-  <DealsFilters role showDomainFilter showAgentFilter agents />
+  <CondensingPageHeader title="Deals">  <AddDealButton />  <PageControls isPrivileged />  </CondensingPageHeader>
+  <DealsFilters role showDomainFilter showAgentFilter agents />   (paper strip; showDomainFilter only unlocks the shop Category)
   <Suspense fallback={<DealsSkeleton />}>
     <DealsAsync role userId domain filters pageSize />
   </Suspense>
@@ -495,21 +512,22 @@ month.
 
 #### 8b. `DealsFilters`
 
-**File:** `src/components/deals/DealsFilters.tsx` — `'use client'`.
+**File:** `src/components/deals/DealsFilters.tsx` (`'use client'`). Since 2026-07-10 there is no
+Domain dropdown in the bar: admin/founder narrow with the global `DomainSelector` in
+`PageControls` (the same `?domain=` param), resolved on the page by `resolveDomainParam`.
 
 | Control | URL param | Notes |
 | --- | --- | --- |
 | Search | `search` | 350ms debounce (`useUrlFilters` default); resets page |
 | Deal type | `deal_type` | Single-select `FilterDropdown` (`membership`/`retail`/`sale`) |
-| Category | `deal_category` | Single-select `FilterDropdown`; **shown only when `domain=shop`** (the retail slice); cleared atomically on any domain change |
-| Domain | `domain` | Admin/founder only; change clears `agent_id` + `deal_category` |
+| Category | `deal_category` | Single-select `FilterDropdown`; **shown only when the global domain is `shop`** (the retail slice). The bar reads `?domain=` read-only; it never writes or counts it, so its Clear never resets the global scope |
 | Agent | `agent_id` | Manager+ only |
 | Date range | `date_from`, `date_to` | Applied to `won_at` (previously `status_changed_at`). Setting a date or preset also clears the `dates` marker; the panel's Clear pushes `{ date_from: null, date_to: null, dates: 'all' }` so the page does not re-default to This Month |
 
 #### 8c. `DealsAsync`
 
 Parallel fetch of `getDealsByRole` + `getDealsSummary`. Renders `DealsSummaryStrip`, card list,
-`LeadsPagination`. Empty state: "Nothing matches these filters." vs "No deals recorded yet."
+`LeadsPagination`. Empty state (`EmptyState framed`, Deals icon): "Nothing matches these filters." vs "The first win is still on its way."
 
 #### 8d. `DealCard`
 
@@ -573,21 +591,21 @@ re-exports it — no call sites need to change.
 | Capture deal (dossier Won flow) | If assigned to lead | If lead in domain | Yes | Yes |
 | Create walk-in deal | Own domain, assigned to self | Own domain, any agent | Any Gia domain | Any Gia domain |
 
-RLS on `public.deals` still applies to the session client list query (three SELECT policies:
+RLS on `gia.deals` still applies to the session client list query (three SELECT policies:
 agent → `assigned_to = auth.uid()`, manager → `domain = get_user_domain()`, admin/founder → all).
 RPC summary uses explicit SQL role gates with server-verified `p_caller_domain`.
 
-**Write-policy gap is intentional (migration 0094):** `public.deals` has **no INSERT, UPDATE, or
+**Write-policy gap is intentional (migration 0094):** `gia.deals` has **no INSERT, UPDATE, or
 DELETE RLS policy**. All writes go through `recordDeal` / `createWalkInDeal` using the admin
-(service-role) member, which bypasses RLS. The application-layer access checks in those actions
-are the security equivalent. `COMMENT ON TABLE public.deals` documents this. Never add a
+(service-role) client, which bypasses RLS. The application-layer access checks in those actions
+are the security equivalent. The table comment documents this. Never add a
 user-scoped INSERT/DELETE policy for deals.
 
 ---
 
 ### 11. Known Invariants (must never be violated)
 
-1. **`DealFilters` has no `status` field** — every row in `public.deals` is a deal by definition.
+1. **`DealFilters` has no `status` field**: every row in `gia.deals` is a deal by definition.
 
 2. **`getDealsByRole` returns `{ deals: DealWithRelations[], totalCount: number }`** — never a bare array.
 
@@ -615,17 +633,17 @@ user-scoped INSERT/DELETE policy for deals.
     managers/admins/founders (after-wrapped, non-fatal, `notificationKey: 'deal_created'`). The
     lead → deal path does not fire it (its `lead_won` flip already notifies the same recipients).
 
-13. **`member_id` is always null** — FK deferred to members module. Never populate it from application code until the members migration runs.
+13. **`member_id` is not written by the app yet.** The FK exists (0202). Setting it belongs to the Gia to Sia hand-off when that is built; do not set it ad hoc from a deal action.
 
 14. **`won_at` is immutable after insert** — never issue an UPDATE on this column.
 
 15. **Filter/search navigation resets page** — `buildFilterParams(..., { resetKeys: ['page'] })` on every push.
 
-16. **`public.deals` has no INSERT/UPDATE/DELETE RLS policy** — the gap is intentional (migration 0094). All writes use the admin client in the action layer. Never add a user-scoped write policy.
+16. **`gia.deals` has no INSERT/UPDATE/DELETE RLS policy**: the gap is intentional (migration 0094). All writes use the admin client in the action layer. Never add a user-scoped write policy.
 
 17. **`won_at` on a walk-in may be back-dated** — `createWalkInDeal` accepts an optional `won_at` (the Deal Date, capped at today in the UI). It still defaults to `now()` and is still immutable after insert. Lead-sourced deals always use insert time.
 
-18. **`leads.deal_amount` / `deal_type` / `deal_duration` no longer exist** — dropped in migration 0097. Deal data lives only on `public.deals`. Never read deal fields off a `leads` row.
+18. **`leads.deal_amount` / `deal_type` / `deal_duration` no longer exist**: dropped in migration 0097. Deal data lives only on `gia.deals`. Never read deal fields off a `leads` row.
 
 ---
 
@@ -652,5 +670,5 @@ user-scoped INSERT/DELETE policy for deals.
 | Back-compat re-export | `src/lib/validations/lead-schema.ts` (`RecordDealSchema` re-export) |
 | Types | `src/lib/types/database.ts` (`Deal`, `DealWithRelations`, `DealFilters`) |
 | Constants | `src/lib/constants/deal-types.ts` (incl. `resolveDealShapeForDomain` + `DealShape` types, moved here from `actions/deals.ts` 2026-06-26) |
-| Migrations | `0072` (table), `0073` (backfill), `0074` (`get_deals_summary` rewrite over deals), `0075` (add `source` column), `0076` (`get_domain_health_metrics` revenue → deals), `0094` (intentional INSERT/DELETE policy gap), `0097` (drop dead `leads.deal_*` columns), `0122` (`deal_category` + domain-derived `deal_type` CHECKs: `'sale'`, `deals_deal_category_check`, `deals_retail_category_check`), `0133` (notification preferences — defines the `deal_created` category the walk-in fan-out gates on; see §4c) |
-| Pagination reuse | `src/components/leads/LeadsPagination.tsx` |
+| Migrations | `0072` (table), `0073` (backfill), `0074` (`get_deals_summary` rewrite over deals), `0075` (add `source` column), `0076` (`get_domain_health_metrics` revenue → deals), `0094` (intentional INSERT/DELETE policy gap), `0097` (drop dead `leads.deal_*` columns), `0122` (`deal_category` + domain-derived `deal_type` CHECKs: `'sale'`, `deals_deal_category_check`, `deals_retail_category_check`), `0133` (notification preferences — defines the `deal_created` category the walk-in fan-out gates on; see §4c), `0180` / `0182` (`source` CHECK gains `shop_app` / `self`), `0202` (`client_id` → `member_id` + its FK), `0210` (the table moves to `gia`) |
+| Pagination reuse | `src/components/leads/LeadsPagination.tsx` (a wrapper over `ui/Pagination`) |

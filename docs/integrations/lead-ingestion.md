@@ -1,37 +1,50 @@
 # Lead Ingestion (Pabbly / Meta webhook)
 
-> **Purpose:** the inbound form-lead pipeline — webhook contract, source adapters, domain resolution, dedup, round-robin assignment, raw-payload policy.
-> **Audience:** engineers. · **Source-of-truth scope:** Pipeline A (form/webhook leads). The WhatsApp-origin pipeline (Pipeline B) lives in `whatsapp-gupshup.md`; the lead lifecycle after ingestion lives in `../modules/gia.md`; notification dispatch lives in `whatsapp-gupshup.md` § Orchestrator.
-> **Last verified:** 2026-08-31 against `src/app/api/webhooks/leads/route.ts`, `src/lib/services/lead-ingestion.ts`, `src/lib/leads/adapters.ts`, `src/lib/services/lead-enquiries-service.ts`, `src/lib/constants/campaign-domain-map.ts`, `src/lib/utils/phone.ts`.
+> **Purpose:** the inbound form-lead pipeline: webhook contract, source adapters, domain resolution, dedup, round-robin assignment, the shop app's product enquiries, raw-payload policy.
+> **Audience:** engineers. · **Source-of-truth scope:** Pipeline A (form/webhook leads). The WhatsApp-origin pipeline (Pipeline B) lives in `whatsapp-gupshup.md`; the lead lifecycle after ingestion lives in `../modules/gia.md`; notification dispatch lives in `whatsapp-gupshup.md` §4.
+> **Last verified:** 2026-09-26 against `src/app/api/webhooks/leads/route.ts`, `src/lib/services/lead-ingestion.ts`, `src/lib/leads/adapters.ts`, `src/lib/services/lead-enquiries-service.ts`, `src/lib/services/lead-assignment-notify.ts`, `src/lib/constants/lead-sources.ts`, `src/lib/constants/campaign-domain-map.ts`, `src/lib/constants/whatsapp.ts`, `src/lib/supabase/schemas.ts`, `src/lib/utils/phone.ts`.
 
 ---
 
+**Where the tables live.** Every table on this page is in the `gia` schema since 2026-09-17
+(migration 0210): `gia.leads`, `gia.lead_raw_payloads`, `gia.lead_activities`,
+`gia.lead_product_enquiries`, `gia.agent_routing_config`. Code reaches them through
+`giaDb(client)` (`src/lib/supabase/schemas.ts`). The two RPCs the pipeline calls,
+`get_active_lead_by_phone` and `get_next_round_robin_agent`, stayed in `public`; 0210 appended
+`gia` to their search path.
+
 ## 1. Webhook contract
 
-**Endpoint:** `POST /api/webhooks/leads?source=meta|google|website|shop_app`
-**Route:** `src/app/api/webhooks/leads/route.ts` — exports `maxDuration = 60` (headroom for the
+**Endpoint:** `POST /api/webhooks/leads?source=<lead source>`. In practice Pabbly posts `meta`,
+`google` or `website`, and the Indulge Shop app posts `shop_app`.
+**Route:** `src/app/api/webhooks/leads/route.ts`, `maxDuration = 60` (headroom for the
 `after()` notification sends).
 
-Order of operations (the order matters — it is an auditability decision):
+Order of operations (the order matters; it is an auditability decision):
 
-1. Resolve the `source` query param (unknown values default to `website` with a warn; validated
-   against `LEAD_SOURCES`).
+1. Resolve the `source` query param against `LEAD_SOURCES` (`src/lib/constants/lead-sources.ts`:
+   meta, google, website, whatsapp, referral, ypo, events, shop_app, self). An unknown value
+   becomes `website` with a warning. Only `meta`, `google` and `shop_app` have their own adapter;
+   every other source uses `adaptWebsite`.
 2. **Rate limit before reading the body** — `createRateLimiter({ windowMs: 60_000, max: 100 })`
    per IP, in-memory per worker (`src/lib/utils/webhook.ts`).
 3. Parse JSON via the shared guard (`readJsonBody` — 400 on parse failure; never hand-roll the
    try/catch in a webhook route).
-4. **Log the raw payload to `lead_raw_payloads` *before* the auth check** so auth failures are
-   auditable. `sanitizeRawPayload` strips sensitive envelope keys (`res2` — the Meta page access
-   token).
+4. **Log the raw payload to `gia.lead_raw_payloads` *before* the auth check** so auth failures
+   are auditable. `sanitizeRawPayload` strips sensitive envelope keys (`res2`, the Meta page
+   access token).
 5. Bearer-token check, timing-safe via `safeSecretCompare`. The secret is picked **per
    sender**, not per endpoint: `SHOP_APP_WEBHOOK_SECRET` when `source=shop_app`,
    `PABBLY_WEBHOOK_SECRET` otherwise. They are separate so a leak on one sender can be
    rotated without breaking the other. On failure, mark the raw row
    `ingestion_error: 'unauthorized'`, return 401.
 6. `ingestLead(rawPayload, source, rawPayloadId)`.
-7. On success: `after(notifyLeadAssigned({ … }))` then return `201 { leadId }` — Pabbly is
-   acked immediately; Vercel keeps the lambda alive until the awaited Gupshup sends settle
-   (A-16). Dispatch details: `whatsapp-gupshup.md` §4.
+7. A shop redelivery (the enquiry's external id is already recorded) returns `200 { leadId,
+   duplicate: true }` and notifies nobody.
+8. Otherwise: `after(notifyLeadAssigned({ … }))` then return `201 { leadId }`. The sender is
+   acked at once; Vercel keeps the lambda alive until the awaited Gupshup sends settle (A-16).
+   A new enquiry on a lead that already exists goes out as a repeat enquiry (in-app only). Dispatch
+   details: `whatsapp-gupshup.md` §4.
 
 ## 2. Source adapters — `src/lib/leads/adapters.ts`
 
@@ -46,6 +59,13 @@ All produce a typed `NormalizedLeadPayload`. `sanitizeText()` on every text fiel
 The adapter's phone normalisation is best-effort and never rejects; the hard identity check
 happens later, inside `ingestLead()` (see §3 step 3).
 
+**Sources with no sender.** `whatsapp`, `referral`, `ypo`, `events` and `self` exist for leads
+made other ways: WhatsApp-origin leads (Pipeline B), the Add Lead form and the dossier's source
+picker. `self` (2026-09-10) marks a lead a team member brought in from their own network. Nothing
+posts these to the webhook today; if something did, it would go through `adaptWebsite`. Adding a
+value to `LEAD_SOURCES` requires extending the `gia.deals` `source` CHECK in the same change (0180
+did it for `shop_app`, 0182 for `self`).
+
 `adaptMeta` specifics: `medium` ← `res3.platform` (`fb`/`ig`/`msg`/`an`; display labels via
 `getMetaMediumLabel()` in `lib/constants/lead-sources.ts`); ad metadata lands in the
 `attribution` JSONB, not in columns: `attribution.platform` is hardcoded to `'meta'`, plus
@@ -56,12 +76,12 @@ migration 0065). Every non-standard `field_data` answer lands in `form_data` aut
 
 ### The shop app adapter
 
-The Indulge Shop app is a React Native member with a NestJS API on EC2. It posts to us
+The Indulge Shop app is a React Native app with a NestJS API on EC2. It posts to us
 directly, with no Pabbly in between. Pabbly only exists for Meta, which will not POST to an
 arbitrary URL.
 
-It is a first-party sender, so the payload is flat and server-built. The member cannot forge
-identity: phone, name and product are all resolved from the authenticated member on their
+It is a first-party sender, so the payload is flat and server-built. The app user cannot forge
+identity: phone, name and product are all resolved from the authenticated shop member on their
 side before the webhook fires. Phone arrives as verified E.164, because a phone OTP is the
 only way to have an account there at all.
 
@@ -106,9 +126,9 @@ dossier card, and both `new URL()` and Zod's `.url()` accept `javascript:` witho
 5. **Round-robin assignment** — `getNextRoundRobinAgent(domain)` →
    `get_next_round_robin_agent()` (migration 0007): SECURITY DEFINER,
    `SELECT FOR UPDATE SKIP LOCKED`, race-free under concurrent webhooks, O(agents).
-   Pool: active agents in the lead's domain with `agent_routing_config.is_active = true`.
-   An empty pool leaves the lead unassigned (founder alert still fires — see
-   `whatsapp-gupshup.md` §10).
+   Pool: active agents in the lead's domain with `gia.agent_routing_config.is_active = true`.
+   An empty pool leaves the lead unassigned; the SLA manager and founder rules still arm (see
+   `whatsapp-gupshup.md` §4 and §7).
 6. INSERT the lead (`status='new'`, `status_changed_at=now()`, attribution snapshot written
    once — `{}` minimum, never SQL NULL; migration 0096 contract). Two best-effort captures ride
    the INSERT: `form_data.city` is lifted into `leads.city` (and removed from `form_data`), and
@@ -124,7 +144,9 @@ dossier card, and both `new URL()` and Zod's `.url()` accept `javascript:` witho
    { lists: true, dashboard: true })`, so the assigned agent sees the lead immediately instead
    of after the 30s list TTL. Redis failure is non-fatal (the helper warns).
 9. Return `IngestionResult`: `{ success, leadId, rawPayloadId, assigned_to, agent_name,
-   domain, lead_name, lead_phone, is_duplicate }`.
+   domain, lead_name, lead_phone, is_duplicate, enquiry, enquiry_product_name }`. `enquiry` is
+   `none` | `new` | `duplicate` | `failed`: what happened to a shop enquiry (`duplicate` is a
+   redelivery the route answers with a silent 200; §3b).
 
 Notifications and SLA scheduling are **not** done here — the route's
 `after(notifyLeadAssigned(...))` owns all four assignment side-effects.
@@ -151,7 +173,7 @@ SLA timers, and one person counted three times in the pipeline.
 
 | Case | Lead | Enquiry row | Activity | Notification |
 | ---- | ---- | ----------- | -------- | ------------ |
-| New person | created | written | `lead_created` + `agent_assigned` | agent WhatsApp + founder alert + SLA timers |
+| New person | created | written | `lead_created` + `agent_assigned` | agent WhatsApp + in-app + SLA timers (the founder WhatsApp is paused since 2026-09-21) |
 | Known person, new product | none, phone dedup holds | written | `duplicate_submission` carrying `product_name` and `enquiry_type` | in-app only, naming the product. No WhatsApp |
 | Redelivery of a known enquiry | none | none, 23505 on `external_lead_id` | none | none, and the route returns 200 |
 
@@ -179,19 +201,24 @@ the shop URL. A dead link is honest. An empty card is not.
 ### Rate limiting note for the shop
 
 The limiter is 100 requests per minute per IP, in-memory per worker. The shop runs a single
-EC2 box behind a fixed Elastic IP, so all of its traffic counts as one member. Normal
+EC2 box behind a fixed Elastic IP, so all of its traffic counts as one caller. Normal
 enquiry volume is nowhere near the cap. The risk is their recovery sweep re-driving a
 backlog of failed deliveries, which must be paced at roughly 60 per minute with a cap per
 run.
 
 ## 4. Raw payload policy (security-audit F-5 — the recorded decision)
 
-`lead_raw_payloads` retains the **full original payload including lead PII** (name, phone,
-email), immutably, with admin/founder-only SELECT. `sanitizeRawPayload` strips only secret
-envelope keys (`res2`), not PII. **This is deliberate:** the raw log exists to debug and replay
-failed/disputed ingestions, which requires the original payload; access is restricted to the
-two audit roles; rows are never updated or deleted. Revisit if a data-retention policy with
-TTL/erasure obligations lands.
+`gia.lead_raw_payloads` retains the **full original payload including lead PII** (name, phone,
+email), with admin/founder-only SELECT. `sanitizeRawPayload` strips only secret envelope keys
+(`res2`), not PII. **This is deliberate:** the raw log exists to debug and replay failed or
+disputed ingestions, which needs the original payload; access is restricted to the two audit
+roles. Rows are never deleted; the only writes after the insert are the pipeline's own
+`lead_id` backfill and `ingestion_error` mark. Revisit if a data-retention policy with TTL or
+erasure obligations lands.
+
+The raw payloads are kept out of the AI read paths: the `elaya_read` views behind Elaya's
+read-only SQL (migration 0223) carry no raw payload, phone or email columns
+(`../modules/elaya-analyst.md`).
 
 ## 5. Failure surface
 

@@ -2,44 +2,51 @@
 
 > **Purpose:** spec for `/admin/ad-creatives` — campaign-video upload/management, plus the two read surfaces that consume creatives.
 > **Audience:** engineers. · **Source-of-truth scope:** the admin route, `ad-creatives-service.ts`, `ad-creatives.ts` actions, the `ad-creatives` Storage bucket usage.
-> **Last verified:** 2026-07-02 (2026-06-24 full pass; 2026-06-09 original; 2026-06-11 restructure).
+> **Last verified:** 2026-09-26 against `src/app/(dashboard)/admin/ad-creatives/page.tsx`, `src/components/admin/{AdCreativesManager,AdCreativeFormModal}.tsx`, `src/components/campaigns/{CampaignAdPanel,AdCreativeCarousel,AdCreativePlayer}.tsx`, `src/components/ui/RowActions.tsx`, `src/lib/services/ad-creatives-service.ts`, `src/lib/actions/ad-creatives.ts`, `src/components/layout/Sidebar.tsx` and migration 0210.
 
 ## 1. Purpose
 
-`public.ad_creatives` rows are campaign videos uploaded by admin/founder, keyed by a normalised
-`campaign_key` matching `leads.utm_campaign` — string equality, **no FK**. A campaign may have
+`gia.ad_creatives` rows (in `public` until migration 0210; read through `giaDb`) are campaign
+videos uploaded by admin/founder, keyed by a normalised `campaign_key` matching
+`leads.utm_campaign`: string equality, **no FK**. A campaign may have
 multiple videos (UNIQUE dropped in migration 0058). The videos surface read-only on the lead
 dossier and campaign detail.
 
 ## 2. Who sees it
 
-Admin page: admin/founder only (page redirect + RLS write policies + storage RLS 0092).
-Reads: any authenticated user (`ad_creatives_select_authenticated` — agents need dossier
-videos). Sidebar item appears only for admin/founder, above Settings in Configuration.
+Admin page: `hasElevatedPageAccess(profile)` or `redirect('/dashboard')`: admin, founder, and
+the tech workbench (2026-09-16). **Writes stay admin/founder** (`requireProfile(ADMIN_ROLES)` in
+both actions, the table's write RLS, and the storage RLS 0092), so a workbench teammate can open
+the page but not save. Reads: any authenticated user (`ad_creatives_select_authenticated`;
+agents need dossier videos). Sidebar: "Ad Creatives" in the Configuration section, above Teach
+Elaya and Settings, for `hasElevatedPageAccess` viewers. The founder's curated sidebar does not
+list it, so founders open it by URL; admins and the workbench see it.
 
 ## 3. Data sources
 
 | Layer | Key items |
 | ----- | --------- |
-| Service | `ad-creatives-service.ts` — exactly two exports: `getAdCreativesForCampaign` (one campaign → `AdCreative[]`) and `getAllAdCreatives`. The old batch API `getAdCreativesForCampaigns` was deleted in the 2026-07-02 dead-code purge (it had no live caller since 2026-06-16); if a batch read is ever needed again, rebuild it as ONE `.in()` query, never a per-campaign loop. **No Redis** — freshness via `revalidatePath` (the former cache was removed as a P-08 bug; do not re-add) |
+| Service | `ad-creatives-service.ts` (session client, `giaDb`): exactly two exports: `getAdCreativesForCampaign` (one campaign → `AdCreative[]`) and `getAllAdCreatives`. The old batch API `getAdCreativesForCampaigns` was deleted in the 2026-07-02 dead-code purge (it had no live caller since 2026-06-16); if a batch read is ever needed again, rebuild it as ONE `.in()` query, never a per-campaign loop. **No Redis**; freshness via `revalidatePath` (the former cache was removed as a P-08 bug; do not re-add) |
 | Actions | `ad-creatives.ts` — `upsertAdCreative` (normalises `campaign_key` via `normalizeCampaignKey()`; 23505 → friendly error), `deleteAdCreative`. Both admin/founder via `requireProfile(ADMIN_ROLES)`; adminClient writes |
 | Storage | `ad-creatives` bucket — public read; INSERT/DELETE admin/founder (0092) |
 | Validation | `ad-creative-schema.ts` (`upsertAdCreativeSchema` — id optional = create/update) |
 
 ## 4. Components
 
-`AdCreativesManager` (+ `<ConfirmDialog>` for deletes) · `AdCreativeFormModal` · video
-primitives (Deep dive §8) · read surfaces: `CampaignVideoModal` (lead dossier),
-`CampaignAdPanel` (campaign detail left column; `AdCreativeCarousel` inside, plus an inline
-upload tile via `AdCreativeFormModal` for admin/founder) · raw campaign keys for display
-names (no decoration). The campaign list (`/campaigns`) no longer surfaces creatives —
+`AdCreativesManager` (row actions through the shared `EditDeleteActions` from
+`ui/RowActions.tsx`, 2026-09-25: a `control` Edit and a labelled `ghost-danger` Delete; deletes
+confirm through `<ConfirmDialog>`) · `AdCreativeFormModal` · video primitives (Deep dive §8) ·
+read surfaces: `CampaignVideoModal` (lead dossier), `CampaignAdPanel` (at the foot of the
+campaign detail page since 2026-09-25; `AdCreativeCarousel` inside, or the shared `UploadButton`
+"Add a video" surface that opens `AdCreativeFormModal` for admin/founder) · raw campaign keys
+for display names (no decoration). The campaign list (`/campaigns`) no longer surfaces creatives —
 `CampaignCard` is a `MotionLink` straight to `/campaigns/{name}` (the old `CampaignPreviewModal`
 was deleted 2026-06-16).
 
 ## 5. States
 
 - **Loading:** `admin/ad-creatives/loading.tsx` (PageSkeletons composition).
-- **Empty:** `<EmptyState>` hero variant (no creatives uploaded yet).
+- **Empty:** `<EmptyState icon={Film} framed>`: "No ad creatives yet." / "Nothing matches your search."
 - **Error:** upsert duplicate-key → friendly inline error; upload failures toast; deletes confirm via `<ConfirmDialog>`.
 
 ## 6. Invariants
@@ -69,19 +76,19 @@ None recorded.
 | Surface | Route / context | Component |
 | --- | --- | --- |
 | Lead dossier | `/leads/[id]` | `CampaignVideoModal` |
-| Campaign detail | `/campaigns/[id]` | `CampaignAdPanel` (left column; inline upload via `AdCreativeFormModal` for admin/founder) |
+| Campaign detail | `/campaigns/[id]` | `CampaignAdPanel` (below the leads table; inline upload via `AdCreativeFormModal` for admin/founder) |
 
 The campaign **list** (`/campaigns`) is no longer a creative read surface. `CampaignCard` is a
 `MotionLink` (`motion.create(Link)`) that navigates straight to `/campaigns/{name}` on click;
 the intermediate `CampaignPreviewModal` (and its carousel) was deleted 2026-06-16.
 
-**Access gate — admin page:** `page.tsx` calls `getCurrentProfile()`; missing profile → `/login`; role not `admin` or `founder` → `/dashboard`.
+**Access gate (admin page):** `page.tsx` calls `getCurrentProfile()`; missing profile → `/login`; `!hasElevatedPageAccess(profile)` → `/dashboard` (admin, founder, tech workbench reach the page; only admin/founder can write).
 
 **RLS — reads:** `ad_creatives_select_authenticated` — any authenticated user may `SELECT` (agents need creatives on dossiers).
 
 **RLS — writes:** `INSERT` / `UPDATE` / `DELETE` policies require `profiles.role IN ('admin', 'founder')`. Server actions also use `adminClient` after the same role check.
 
-**Sidebar:** Section **Configuration** (rendered when `isManager` — manager, admin, founder). Nav item **Ad Creatives** (`Film`, `/admin/ad-creatives`) is inserted **only** when `isPrivileged` (`admin` or `founder`), **above** Settings in `getConfigurationNav()`.
+**Sidebar:** Section **Configuration** (rendered when `hasManagerPageAccess`). Nav item **Ad Creatives** (`Film`, `/admin/ad-creatives`) is inserted **only** when `isPrivileged` (`hasElevatedPageAccess`), first in `getConfigurationNav()` (above Teach Elaya and Settings), then filtered by `isNavVisible` (so not for founders, whose curated list omits it).
 
 ---
 
@@ -287,7 +294,7 @@ Zod failures map to `formErrors.generic` in actions — never raw Zod text in UI
 
 **Search:** Client-side `useMemo`; haystack = `campaign_key`, `ad_name`, `notes` (joined, case-insensitive substring).
 
-**Cards:** Thumbnail (`<video>` muted cover or `Film` placeholder); title = `row.ad_name?.trim() || row.campaign_key` (raw key fallback); subtitle = `row.campaign_key` **always** (raw key, never beautified — `beautifyCampaignTitle` was deleted 2026-06-23); optional notes line. Edit/Delete: bordered ghost buttons (UsersTable-style hover). Hover: `translateY(-1px)` + `--shadow-2`. Framer Motion: `opacity 0→1`, `y 4→0`, stagger `min(index * 80, 320) ms`, `EASE_OUT_EXPO`.
+**Cards:** Thumbnail (`<video>` muted cover or `Film` placeholder); title = `row.ad_name?.trim() || row.campaign_key` (raw key fallback); subtitle = `row.campaign_key` **always** (raw key, never beautified: `beautifyCampaignTitle` was deleted 2026-06-23); optional notes line. Edit/Delete: the shared `EditDeleteActions` (`ui/RowActions.tsx`; before 2026-09-25 an `iconOnly` Delete spilled its label out of a 32px square). Hover: `translateY(-1px)` + `--shadow-2`. Framer Motion: `opacity 0→1`, `y 4→0`, stagger `min(index * 80, 320) ms`, `EASE_OUT_EXPO`.
 
 **State:** `useState(initialCreatives)` — on save/delete, updates local array (`handleSaved` / filter delete). **No `router.refresh()`** on success — avoids round trip; parent owns list.
 
@@ -374,10 +381,11 @@ campaigns/[id]/page.tsx
 
 **Props:** `adCreatives: AdCreative[]` (newest-first, may be empty) · `campaignKey: string` (normalised; the inline-upload lock key) · `canUpload: boolean` (admin/founder gate for the empty-tile Plus).
 
-**Layout:** The page grid (`lg:grid-cols-[320px_1fr]`) puts the panel in a **320px left column** beside the 2×4 metrics grid; stacks below `lg`. The panel **always renders** the `SectionCard` "AD CREATIVE" (the card frame stays so the two columns balance whether or not a video exists) — it **never returns `null`**.
+**Layout (2026-09-25):** the panel sits **below the leads table**, full width; the metrics and the leads lead the page and the video is the reference beneath them. (It used to open the page in a 320px column beside the metrics, where it crowded the numbers.) It never returns `null`.
 
 - **Has creatives** → `<AdCreativeCarousel creatives showMeta align="center" />` (the player itself caps at `maxWidth: 270px`). Header shows a `{N} ads` count only when `creatives.length > 1`.
-- **No creatives** → an `EmptyAdTile` with the same 9:16 footprint (`maxWidth: 270px`, dashed border). `canUpload` → a Plus button that opens the **same `AdCreativeFormModal`** (`next/dynamic`, R-01 — no second uploader) with this campaign pre-selected + locked via `defaultCampaignKey`; new uploads prepend to local state without a refetch. `!canUpload` → the tile shows serif-italic "No video yet." with no Plus.
+- **No creatives, `canUpload`** → the shared `UploadButton` surface ("Add a video"), which opens the **same `AdCreativeFormModal`** (`next/dynamic`, R-01, no second uploader) with this campaign pre-selected and locked via `defaultCampaignKey`; new uploads prepend to local state without a refetch. (It was a `Button iconOnly` whose locked 32px height crushed the 9:16 tile.)
+- **No creatives, no `canUpload`** → one inline `<EmptyState title="No video yet.">`.
 
 Framer Motion wrapper: `opacity 0→1`, `y 8→0`, 350ms `EASE_OUT_EXPO`.
 
@@ -405,13 +413,13 @@ the campaign detail H1, budget tables.
 
 | Action | agent | manager | admin | founder |
 | --- | --- | --- | --- | --- |
-| View `/admin/ad-creatives` | ✗ (redirect) | ✗ | ✓ | ✓ |
+| View `/admin/ad-creatives` | ✗ (redirect; ✓ in the tech workbench) | ✗ (same) | ✓ | ✓ |
 | Upload / edit / delete creative | ✗ | ✗ | ✓ | ✓ |
 | SELECT creative (RLS) | ✓ | ✓ | ✓ | ✓ |
 | View on lead dossier | ✓ | ✓ | ✓ | ✓ |
-| View on campaign list/detail | ✗ page | ✓ | ✓ | ✓ |
+| View on campaign detail | ✗ page | ✓ | ✓ | ✓ |
 
-Campaign pages: agent/guest redirected from `/campaigns`; manager+ can see read surfaces. Sidebar **Ad Creatives** link: admin/founder only (Configuration section visible to manager+ but link gated).
+Campaign pages: `hasManagerPageAccess`, so agents and guests are redirected; the list page reads no creatives, the detail page does. Sidebar **Ad Creatives** link: admins and the tech workbench (founders reach the page by URL; see §2).
 
 ---
 
@@ -428,7 +436,7 @@ Campaign pages: agent/guest redirected from `/campaigns`; manager+ can see read 
 9. **Multiple videos per `campaign_key` are allowed** since migration 0058 — any code assuming `.single()` or one row per campaign is a bug.
 10. **Admin list uses optimistic local state** after upsert/delete — do not rely on full-page refetch for manager UX.
 11. **`video_url` comes from Storage public URL** — bucket must allow public read for playback surfaces.
-12. **Writes are role-gated then admin-member** — `requireProfile(ADMIN_ROLES)` (A-18) is the trust boundary; the DB write uses `adminClient` (bypasses RLS, but RLS still mirrors the same admin/founder gate as defence in depth). `deleteAdCreative` reads the row back (`.select('campaign_key').maybeSingle()`) and fails when no row matched.
+12. **Writes are role-gated, then go through the admin client** — `requireProfile(ADMIN_ROLES)` (A-18) is the trust boundary; the DB write uses `adminClient` (bypasses RLS, but RLS still mirrors the same admin/founder gate as defence in depth). `deleteAdCreative` reads the row back (`.select('campaign_key').maybeSingle()`) and fails when no row matched.
 
 ---
 
@@ -445,7 +453,8 @@ Campaign pages: agent/guest redirected from `/campaigns`; manager+ can see read 
 | `src/components/campaigns/AdCreativePlayer.tsx` | Video primitive |
 | `src/components/campaigns/AdCreativeCarousel.tsx` | Multi-video UI |
 | `src/components/leads/CampaignVideoModal.tsx` | Dossier modal |
-| `src/components/campaigns/CampaignAdPanel.tsx` | Campaign-detail left-column panel (carousel + inline upload tile) |
+| `src/components/campaigns/CampaignAdPanel.tsx` | Campaign-detail panel below the leads (carousel, or the `UploadButton` add surface) |
+| `src/components/ui/RowActions.tsx` | `EditDeleteActions`, the row's Edit + Delete pair |
 | `src/components/campaigns/CampaignCard.tsx` | List card — `MotionLink` to `/campaigns/{name}` (no creative read; `CampaignPreviewModal` deleted 2026-06-16) |
 | `supabase/migrations/20260528000012_ad_creatives.sql` | Table + RLS |
 | `supabase/migrations/20260601000058_ad_creatives_multi_video.sql` | Drop UNIQUE |

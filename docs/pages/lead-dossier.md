@@ -1,38 +1,49 @@
 # Lead Dossier — Page Spec
 
-> **Purpose:** spec for `/leads/[id]` — the per-lead workspace: lifecycle actions, call/team notes, inline field edits, Gia tasks, WhatsApp card, journey timeline, activity log, linked deal.
-> **Audience:** engineers. · **Source-of-truth scope:** the dossier route and its async children. List page + actions tables + invariants: `leads.md`; lifecycle/status semantics: `../modules/gia.md`.
-> **Last verified:** 2026-07-02 (dossier width cap dropped + the "Why we're perfect." card internal scroll folded in; earlier: streaming rewrite of perf-audit item B reflected; stale scratchpad rows corrected — the scratchpad was removed in migration 0061; the two post-2026-06-11 dossier surfaces folded in — `ServiceInterestCardAsync` (Call Intelligence, 2026-06-12) and `RevivalDossierAction` (Lead Revival R1, migration 0119); `city` corrected to a dedicated `leads.city` column).
+> **Purpose:** spec for `/leads/[id]`, the per-lead workspace: lifecycle actions, call and team notes, inline field edits, lead tasks, the WhatsApp card, the journey timeline, the activity log, the linked deal, Shop app product enquiries, and the Call Intelligence card.
+> **Audience:** engineers.
+> **Source-of-truth scope:** the dossier route and its async children. List page, actions tables and invariants: `leads.md`; lifecycle and status semantics: `../modules/gia.md`.
+> **Last verified:** 2026-09-26 against `src/app/(dashboard)/leads/[id]/page.tsx`, `src/components/leads/*` (the dossier cards, `CalledModal`, `LeadNotesInput`, `ProductEnquiryCard*`), `src/lib/services/{tasks-service,gia-task-links,lead-enquiries-service}.ts` and the changelog through 2026-09-26.
 
 ## 1. Purpose
 
 The single place an agent works a lead. Slug-first lookup (`priya-sharma-9182`; UUID fallback
-for legacy links), wave-1 blocking fetch for header + status panel only, everything else
-streamed behind per-section `<Suspense>` boundaries. Won-deal capture writes `public.deals`
-via `recordDeal`; the linked deal renders in `LeadDealCard`.
+for legacy links), a wave-1 blocking fetch for the header and status panel only, everything else
+streamed behind per-section `<Suspense>` boundaries. Won-deal capture writes `gia.deals` through
+`recordDeal`; the linked deal renders in `LeadDealCard`. A lead from the Shop app shows its
+product enquiries (`ProductEnquiryCard`, 2026-08-31).
 
 ## 2. Who sees it
 
-Same row-access as the list (agent: own; manager: domain; admin/founder: all) — no access →
-`redirect('/leads')`. Per-capability matrix (who can edit fields, reassign, record deals):
-Deep dive §7g.
+Same row access as the list (agent: own; manager: domain; admin/founder: all). No access →
+`redirect('/leads')`; a slug or id that matches no lead → `notFound()`, which renders the
+in-shell 404 page (2026-09-25). The Back button returns to `?from=` when it starts with `/leads`
+(so a filtered list comes back where it was), else to `/leads`. The performance drills link with
+`?from=/performance`, which this button ignores (the browser's back still works).
+Per-capability matrix (who can edit fields, reassign, record deals): Deep dive §7a.
 
 ## 3. Data sources
 
 Wave 1: `getCurrentProfile()` + `getLeadBySlug(id)` → `getLeadById(id)` fallback
-(Redis 120s, dual-key — `../architecture/caching.md`). Streamed children fetch by `lead.id`
+(Redis 120 s, dual-key, `../architecture/caching.md`). Streamed children fetch by `lead.id`
 (UUID, **never the URL param**): `getAdCreativesForCampaign`, `getAssignableUsers`,
-`getLeadDeal`, `getLeadNotesFull`, `getLeadActivitiesFull`, `getConversationByLeadId`,
-`getAllLeadTasks`, `getOpenCandidateForLead` (Lead Revival — `revival-service.ts`),
-`getCasesForLead` + `getHooksForCategories` (Call Intelligence — `intelligence-service.ts`).
-Mutations: the `leads.ts` actions table in `leads.md` §5 (Deep dive); Lead Revival mutations
-(`reviveLeadAction` / `dismissRevivalCandidateAction`) are in `revival.ts` (`../modules/revival.md`).
+`getLeadDeal`, `getLeadProductEnquiries` (`lead-enquiries-service.ts`), `getLeadNotesFull`,
+`getLeadActivitiesFull`, `getConversationByLeadId`, `getAllLeadTasks` (task ids from
+`getTaskIdsForLead` in `gia-task-links.ts`, then the rows; `public.tasks` cannot embed the
+`gia` link table), `getOpenCandidateForLead` (Lead Revival, `revival-service.ts`),
+`getCasesForLead` + `getHooksForCategories` (Call Intelligence, `intelligence-service.ts`).
+All lead tables are in the `gia` schema and read through `giaDb(client)`.
+Mutations: the `leads.ts` actions table in `leads.md` (Deep dive §5); Lead Revival's
+`reviveLeadAction` / `dismissRevivalCandidateAction` are in `lib/actions/revival.ts`
+(`../modules/revival.md`).
 
 ## 4. Components
 
 All in `src/components/leads/`: `StatusActionPanel` (lifecycle CTAs + `CalledModal` /
-`WonDealModal` / resolution confirms), `RevivalDossierAction` (Lead Revival R1 — surfaces an
+`WonDealModal` / resolution confirms), `RevivalDossierAction` (Lead Revival R1: surfaces an
 open `revival_candidate` + `ReviveLeadButton`; renders `null` otherwise),
+`ProductEnquiryCardAsync`→`ProductEnquiryCard` (Shop app enquiries; renders `null` for every
+other lead), `CardHeader` (THE card header strip every dossier card composes),
 `LeadInfoCardAsync`→`LeadInfoCard` (inline per-field edits via `InlineSelectField`/`InfoRow` —
 incl. `InterestsInlineField` for `service_interests`), `PersonalDetailsCard`, `DynamicFormResponses`,
 `ServiceInterestCardAsync`→`ServiceInterestCard` (Call Intelligence Surface A — top of the right
@@ -44,8 +55,8 @@ column, always mounted), `LeadNotesInput` + `LeadNotesSectionAsync`, `LeadActivi
 ## 5. States
 
 - **Loading:** `leads/[id]/loading.tsx` dossier-shaped navigation skeleton; per-section `DossierCardSkeleton` fallbacks while streaming.
-- **Empty:** per-card `<EmptyState>` inline variants (no notes yet, no tasks, no conversation).
-- **Error:** no access/not found → `redirect('/leads')`; action errors return `{ error }` → inline message bars (fields never cleared).
+- **Empty:** per-card `<EmptyState>` inline variants (the one anatomy since 2026-09-25: "No tasks yet.", "No activity yet.", no conversation, no notes).
+- **Error:** no access → `redirect('/leads')`; unknown lead → the in-shell 404; action errors return `{ error }` → inline message bars (fields never cleared).
 
 ## 6. Invariants
 
@@ -55,7 +66,9 @@ immutability, dual-key cache deletes, streaming boundaries) lives in `leads.md` 
 
 ## 7. Open items
 
-None recorded beyond the list-page items in `leads.md` §7.
+- The Call Intelligence card's library is seeded only for onboarding; on house, shop and legacy
+  leads it often shows the search-first view (`../modules/call-intelligence.md`).
+- Otherwise the list-page items in `leads.md` §7.
 
 ---
 
@@ -67,7 +80,7 @@ None recorded beyond the list-page items in `leads.md` §7.
 
 #### 7a. Page Component
 
-**Lookup:** `getLeadBySlug(id)` then `getLeadById(id)` if null. No access → `redirect('/leads')`.
+**Lookup:** `getLeadBySlug(id)` then `getLeadById(id)` if null. No lead → `notFound()`; no access → `redirect('/leads')`.
 
 **Streaming shape (perf audit 2026-06-11 item B):** the page blocks only on wave 1 —
 `Promise.all(getCurrentProfile(), lead slug→UUID lookup)`. The header, `StatusActionPanel`,
@@ -79,10 +92,11 @@ which may be a slug. `leads/[id]/loading.tsx` provides the dossier-shaped naviga
 | Async child | Fetch | Fallback |
 | ----------- | ----- | -------- |
 | `LeadInfoCardAsync` | `Promise.all`: `getAdCreativesForCampaign(utm_campaign)` (skipped if no campaign) + `getAssignableUsers({ domain: lead.domain, roles: LEAD_ASSIGNABLE_ROLES })` (only if `canReassign`; agents **and** managers — managers carry leads) | `DossierCardSkeleton` |
-| `LeadDealCardAsync` | `getLeadDeal(lead.id)` — non-null only for won leads with a linked `public.deals` row; RLS-scoped (null if caller can't see the deal) | `null` — most leads have no deal; a skeleton would flash + shift layout |
+| `LeadDealCardAsync` | `getLeadDeal(lead.id)`: non-null only for won leads with a linked `gia.deals` row; RLS-scoped (null if caller can't see the deal) | `null`: most leads have no deal, and a skeleton would flash and shift the layout |
+| `ProductEnquiryCardAsync` | `getLeadProductEnquiries(lead.id)` (session client; RLS scopes to whoever can see the lead), the only dossier call site. Renders `null` when there are none, which is every non-Shop-app lead | `null`, the same reasoning as the deal card |
 | `RevivalDossierAction` | `getOpenCandidateForLead(lead.id)` — non-null only when the lead holds an OPEN `revival_candidate` (Lead Revival R1); renders `null` otherwise. Mounted directly under `StatusActionPanel`, above the deal card | `null` — most leads have no open candidate; a skeleton would flash for nothing |
 | `ServiceInterestCardAsync` | `Promise.all`: `getCasesForLead(service_interests, city, domain)` + `getHooksForCategories(service_interests, domain)` (hooks skipped when `service_interests` empty — a city-only tag match shows cases, no hooks). Call Intelligence Surface A; **top of the right column, always mounted** | `DossierCardSkeleton` (`headerWidth=150`, `rows=2`) |
-| `LeadTasksAsync` | `getAllLeadTasks(lead.id)` | `LeadTasksCardSkeleton` |
+| `LeadTasksAsync` | `getAllLeadTasks(lead.id)`: `getTaskIdsForLead` (gia) then `tasks .in('id', ids)` (public), active before terminal | `LeadTasksCardSkeleton` |
 | `LeadWhatsAppCardAsync` | `getConversationByLeadId(lead.id)` then (serial, **inside the boundary** — never a page-level wave) `getMessages(conversation.id, { limit: 30 })` | `DossierCardSkeleton` |
 | `LeadNotesSectionAsync` | `getLeadNotesFull(lead.id)` | `DossierCardSkeleton` |
 | `LeadActivitiesAsync` | `getLeadActivitiesFull(lead.id)` — one fetch renders both `LeadJourneyTimeline` and `LeadActivityLog` (never split: same data) | two `DossierCardSkeleton`s |
@@ -101,7 +115,7 @@ Agent = own leads; manager = domain; admin/founder = all. *(Corrected 2026-06-11
 `canEditScratchpad` row and a reference to the deleted `gia-workflow.md` doc were removed —
 the private scratchpad was dropped in migration 0061.)*
 
-**Layout:** `StatusActionPanel` → `RevivalDossierAction` (`Suspense fallback={null}`; renders only when an open `revival_candidate` exists) → `LeadDealCardAsync` (renders only when the lead has a deal; full-width, Framer fade-in, links to `/deals`) → 2-col grid (**left:** LeadInfoCardAsync, Form data, PersonalDetails | **right:** ServiceInterestCardAsync, LeadTasksAsync, LeadNotesInput, LeadWhatsAppCardAsync) → Notes → Journey → Activity log.
+**Layout:** header (`BackButton` + name with the page-title dot + mono phone) → `StatusActionPanel` → `RevivalDossierAction` (`Suspense fallback={null}`; renders only when an open `revival_candidate` exists) → `LeadDealCardAsync` (renders only when the lead has a deal; full-width, Framer fade-in, links to `/deals`) → `ProductEnquiryCardAsync` (only for Shop app leads) → 2-col grid (`.serene-dossier-grid`, one column below lg) (**left:** LeadInfoCardAsync, Form data, PersonalDetails | **right:** ServiceInterestCardAsync, LeadTasksAsync, LeadNotesInput, LeadWhatsAppCardAsync) → Notes → Journey → Activity log.
 
 The dossier `<main>` is full-width: plain `flex-1 p-4 sm:p-6 lg:p-8`, like sibling detail pages.
 The old `maxWidth: 1280px` inline cap was dropped 2026-07-02 from both `page.tsx` and
@@ -130,7 +144,7 @@ Terminal = `won` \| `lost` \| `junk` for Called disable only.
 
 #### 7c. LeadInfoCard
 
-**Read-only:** Full Name, Phone, Call count, Received, Last modified — not inline-edited (name/phone are not mutable in UI).
+**Read-only:** Full Name, Phone, City (edited in `PersonalDetailsCard`), Call count, Received, Last modified. Name and phone are not editable in the UI. The card composes `CardHeader` and `InfoRow`; an editable value uses `ui/InlineEdit` (`EditableValueText` + `FieldSaveFeedback`: the dashed underline, the saving mandala, a check after).
 
 **Inline-editable (`canEdit`):** Email → `updateLeadEmail`; Source (`source`) → `updateLeadSource` via inline select pattern; Interests → `updateLeadInterests` via `InterestsInlineField` (FormChip multi-select in the `LeadFieldShell` chrome, explicit Save/Cancel; options from the lead's domain vocabulary, server re-drops unknowns; activity logs old → new; `onSaved` → `router.refresh()` so `ServiceInterestCard` re-renders with new matches).
 
@@ -148,27 +162,34 @@ Terminal = `won` \| `lost` \| `junk` for Called disable only.
 
 **`city` is a dedicated `leads.city` column (migration 0066), NOT a JSONB key.** It carries its own component state (`cityValue` / `savedCity`) and is saved through a **separate** action. `PERSONAL_DETAIL_FIELDS` / `JSONB_GRID_FIELDS` explicitly omit `city` — the file comments "city is intentionally absent (it lives in `leads.city`)".
 
-**Edit mode:** Click dormant card → form with Save/Cancel footer.
+**Edit mode:** Click the dormant card → a form with a Save/Cancel footer; the card lifts while editing (no accent border since 2026-09-25). The fields sit in `.serene-form-row` rows, stacked on a phone.
 
 **Storage:** the JSONB keys → `leads.personal_details` via `updatePersonalDetails`; `city` → `leads.city` via `updateLeadCity`. Save runs **both actions in parallel** (`Promise.all`) inside one `startTransition`; either `error` aborts the save and surfaces inline (fields never cleared).
 
 #### 7f. CalledModal
 
-**Required:** call outcome (`CALL_OUTCOMES`) + note content (`AddCallNoteSchema`).
+**Required:** call outcome (`CALL_OUTCOMES`, a `FilterDropdown` whose menu is portaled) + note content (`AddCallNoteSchema`).
+
+**Two ways to save:** **Log Update** (`addLeadCallNote` only) and **Log Update + Task**, which
+logs the call and then creates a lead follow-up through `createLeadTaskAction` with the chosen
+type (Call, WhatsApp, Other) and a required due date and time (`DatePicker` with time; the
+assignee gets an in-app reminder at that moment). If the note saves but the task fails, the modal
+says so and keeps the call. A whole-form error renders through the `Modal` `error` prop, above the
+buttons (2026-09-26).
 
 **`call_count`:** RPC increments `call_count` by 1 on `leads`.
 
 **Activities:** `call_logged` `{ outcome, call_count }`; `note_added` `{ call_outcome }`; if status was `new`, also `status_changed` `{ old_status: 'new', new_status: 'touched' }`.
 
-**Voice dictation (2026-06-12):** the Note field carries the same mic cluster as `LeadNotesInput` — `useAudioRecorder` + `transcribeAudioAction`, transcript appended to the textarea as an editable draft, saved through the unchanged `addLeadCallNote` path. Both footer buttons are disabled while recording/transcribing. Closing the modal mid-recording unmounts the component and the hook's unmount cleanup discards the take and releases the mic.
+**Voice dictation (2026-06-12):** the Note field carries the shared `ui/DictationButton` (`variant="inline"`, the same cluster as `LeadNotesInput`; `useAudioRecorder` + `transcribeAudioAction` inside it), transcript appended to the textarea as an editable draft, saved through the unchanged `addLeadCallNote` path. Both footer buttons are disabled while recording/transcribing. Closing the modal mid-recording unmounts the component and the hook's unmount cleanup discards the take and releases the mic.
 
 **Status:** Auto `new` → `touched` when first call on `new` lead (in RPC). The optimistic pill update for this transition is handled entirely by `StatusActionPanel` before the modal opens — `CalledModal` has no `initialStatus` or status-callback props.
 
 #### 7g. LeadNotesInput vs LeadNotesSection
 
-**LeadNotesInput:** Plain team note → `addLeadNote` → RPC `add_lead_plain_note`; `call_outcome` null; does not increment `call_count`. Submit button or ⌘+Enter. Header uses `var(--color-info-dark-*)` tokens.
+**LeadNotesInput:** Plain team note → `addLeadNote` → RPC `add_lead_plain_note`; `call_outcome` null; does not increment `call_count`. Submit button or ⌘+Enter. Header is the shared `CardHeader` ("Notes").
 
-**Voice dictation (2026-06-12):** a mic button in the composer footer records via `useAudioRecorder` (`src/hooks/useAudioRecorder.ts` — MediaRecorder codec negotiation, 2-minute auto-stop, mic-track release) and transcribes server-side via `transcribeAudioAction` (`lib/actions/transcription.ts` → `transcription-service.ts`, Deepgram Nova-2 `hi-Latn` for Hinglish). The transcript is **appended to the textarea as an editable draft** — never auto-submitted; the save is the same `addLeadNote` path as a typed note (sanitisation, activity log, cache invalidation identical). Audio is transcribed in-memory and discarded — never stored (D-01 carve-out, Decision Log 2026-06-12). The mic renders only when `MediaRecorder` is supported; the recording's actual MIME type travels with the blob (Safari mp4/aac, Chrome webm/opus).
+**Voice dictation (2026-06-12):** `ui/DictationButton` (`variant="inline"`) in the composer footer records via `useAudioRecorder` (`src/hooks/useAudioRecorder.ts` — MediaRecorder codec negotiation, 2-minute auto-stop, mic-track release) and transcribes server-side via `transcribeAudioAction` (`lib/actions/transcription.ts` → `transcription-service.ts`, Deepgram Nova-2 `hi-Latn` for Hinglish). The transcript is **appended to the textarea as an editable draft** — never auto-submitted; the save is the same `addLeadNote` path as a typed note (sanitisation, activity log, cache invalidation identical). Audio is transcribed in-memory and discarded — never stored (D-01 carve-out, Decision Log 2026-06-12). The mic renders only when `MediaRecorder` is supported; the recording's actual MIME type travels with the blob (Safari mp4/aac, Chrome webm/opus).
 
 **LeadNotesSection:** Read-only timeline from props; author `note.author.full_name`; **call outcome badge** when `note.call_outcome` set (styled via `OUTCOME_BADGE` tokens e.g. `var(--color-warning-light)`). Chronological display from server order (newest first in service). **Timeline markup mirrors `LeadActivityLog`** (2026-06-15): each note is a `display: flex` row with a fixed 15px dot/connector column — `alignItems: center` centers the dot and the 1px rule, no absolute positioning or negative margins. Never reintroduce the absolute-dot scheme.
 
@@ -192,11 +213,11 @@ Terminal = `won` \| `lost` \| `junk` for Called disable only.
 
 #### 7j. LeadTasksAsync + LeadTasksCard + CreateLeadTaskModal
 
-**Fetch:** `getAllLeadTasks(leadId)` in `tasks-service.ts` — a lead's tasks are detected via the `task_gia_meta` link (inner join `task_gia_meta`, **not** a category check), sort active before terminal in JS. (`task_gia_meta` is the task→lead link; its presence IFF the task is a lead follow-up — `module = 'gia'` — so the inner join is what scopes the card to this lead.)
+**Fetch:** `getAllLeadTasks(leadId)` in `tasks-service.ts`. A lead's tasks are found through the `gia.task_gia_meta` link, **not** a category check: `getTaskIdsForLead` (`gia-task-links.ts`) returns the lead's task ids, then `public.tasks` is read with `.in('id', ids)`, ordered by due date, active before terminal in JS. It used to be an inner-join embed; since the schema move (0210) PostgREST cannot embed across schemas, and for a day after 2026-09-17 this card came back empty until the 2026-09-18 fix.
 
 **Task types (CreateLeadTaskModal / `TASK_TYPE_LABELS`):** `call` → "Call", `whatsapp_message` → "WhatsApp", `other` → "Other".
 
-**Action:** `createLeadTaskAction` → RPC `create_lead_gia_task` — atomically writes a **personal** task (`task_category = 'personal'`, `module = 'gia'`) **plus** its `task_gia_meta` row (the task→lead link) together; `create_lead_gia_task` is the sole writer of both. The card's behaviour is otherwise unchanged: it shows only this lead's tasks and creates tasks for this lead. The card title may still read "Gia Tasks" in the UI — the underlying model is a personal task + meta row, not a former `'gia_followup'` category. `revalidatePath(/leads/${slug ?? id})`; optional `scheduleTaskReminder`.
+**Action:** `createLeadTaskAction` → RPC `create_lead_gia_task` — atomically writes a **personal** task (`task_category = 'personal'`, `module = 'gia'`) **plus** its `task_gia_meta` row (the task→lead link) together; `create_lead_gia_task` is the sole writer of both. The card's behaviour is otherwise unchanged: it shows only this lead's tasks and creates tasks for this lead. The card title may still read "Gia Tasks" in the UI; the underlying model is a personal task + meta row, not a former `'gia_followup'` category. `revalidatePath(/leads/${slug ?? id})` and `revalidatePath('/tasks')`; optional `scheduleTaskReminder`. Empty card: `<EmptyState title="No tasks yet.">`.
 
 **Overdue due date colour:** `var(--color-danger)` when overdue; else `var(--theme-text-tertiary)`.
 
@@ -256,3 +277,24 @@ Full contract: `../modules/revival.md`.
 
 ---
 
+#### 7n. ProductEnquiryCardAsync + ProductEnquiryCard (Shop app channel, migration 0180)
+
+**Mount:** under the deal card, above the two-column grid, behind `<Suspense fallback={null}>`.
+Server component, display-only.
+
+**Fetch:** `getLeadProductEnquiries(leadId)` (`lead-enquiries-service.ts`, session client; RLS
+scopes the rows to whoever can see the lead). Returns `[]` for every lead that did not come
+from the Shop app, and the card renders `null`: it is additive to the dossier, so it needs no
+empty state.
+
+**Shows:** one row per enquiry, newest first: thumbnail, product name, brand, price (or "price
+on request"), sold-out flag, the enquiry-type pill (enquire / price request / source request),
+the member's note when present, and links out to the listing and to the member's record in the
+shop's own admin. Everything renders from the frozen snapshot in `gia.lead_product_enquiries`;
+the card never re-fetches the shop's product URL (the shop hard-deletes listings, so a dead link
+is expected and honest).
+
+**Why the card exists:** one person can ask about several products. Phone dedup keeps one lead
+per person; each product is an enquiry on that lead, so the agent sees every piece the member
+asked about. Channel contract: `../integrations/lead-ingestion.md`; module note:
+`../modules/gia.md` §4.

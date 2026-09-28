@@ -1,262 +1,259 @@
-# Profile — Page Spec
+# Profile: Page Spec
 
-> **Purpose:** spec for `/profile` — every user's self-management page (identity fields, avatar, theme, password).
-> **Audience:** engineers. · **Source-of-truth scope:** the `/profile` route. Admin edits of *other* users: `user-management.md`; theme system law: `../design/DESIGN-DNA.md` §1–2.
-> **Last verified:** 2026-07-02 (six-theme vocabulary after migration 0156; Elaya persona card; SSR theme cookie); 2026-06-24 (page-structure patch — header is a single "Profile" `<h1>`, no eyebrow; responsive `serene-dossier-grid--340` + `p-4 sm:p-6 lg:p-8` layout); 2026-06-20 (per-category notification controls — `NotificationPreferences`, migration 0133); 2026-06-15 (PWA install + app-icon picker + web-push reconcile); 2026-06-09 full pass; 2026-06-11 restructure.
-> **Source files verified:** `src/app/(dashboard)/profile/page.tsx`, `src/components/profile/NotificationPreferences.tsx`, `src/lib/constants/notification-categories.ts`, `src/lib/services/notification-prefs-service.ts`.
+> **Purpose:** spec for `/profile`, every user's own settings page: identity fields, avatar, appearance (Light / Dark / Auto), theme, home-screen icon, notifications, how Elaya talks to you and what she has learned about you, the AI apps you connected, and your password.
+> **Audience:** engineers. · **Source-of-truth scope:** the `/profile` route and the components in `src/components/profile/`. Admin edits of *other* people: `./user-management.md`. Theme and dark-mode law: `../design/DESIGN-DNA.md`. Web Push internals: `../modules/web-push.md`. Elaya's persona and living memory: `../modules/elaya.md`. The MCP connector and its OAuth server: `../integrations/mcp.md`.
+> **Last verified:** 2026-09-26 against `src/app/(dashboard)/profile/page.tsx` + `loading.tsx`, `src/components/profile/*`, `src/lib/actions/{profiles,oauth-grants,elaya-memory,notification-prefs,push}.ts`, `src/lib/services/{oauth-server-service,elaya-memory-service,notification-prefs-service}.ts`, `src/lib/constants/{themes,appearance,app-icons,notification-categories}.ts`, `scripts/pad-app-icons.mjs`, and migrations 0121, 0133, 0157, 0158, 0237.
 
 ## 1. Purpose
 
-Any authenticated user edits **only their own** `profiles` row: name/username/phone/job title,
-avatar (Storage `avatars` bucket), theme (DB-stored — follows the user across devices), and
-password. Role and domain are never self-editable (S-14).
+Anyone signed in edits **only their own** `profiles` row and their own preferences here:
+
+- name, phone, job title, username (email is read-only: the truth is `auth.users`);
+- avatar (Storage bucket `avatars`);
+- appearance (Light, Dark, Auto), theme (eight), and the home-screen icon, all stored in the
+  database so they follow you across devices;
+- which notifications reach you and on which channel, Web Push on this device, and the
+  notification chime;
+- how Elaya speaks to you, and her living memory of how you want things;
+- which AI apps (Claude, ChatGPT and others) you let read Serene as you;
+- your password.
+
+Role, domain, seat and queendom are never self-editable (S-14; the database refuses it too, see
+`./user-management.md` §8.7).
 
 ## 2. Who sees it
 
-Every authenticated role — `/profile` is in `ALWAYS_ALLOWED_PREFIXES`. Each user sees only
-themselves; there is no user switcher here.
+Every signed-in user: `/profile` is in `ALWAYS_ALLOWED_PREFIXES`. There is no user switcher; the
+page always shows the caller. The Elaya cards and Connected AI apps render for everyone, including
+teams Elaya is switched off for (§7).
 
 ## 3. Data sources
 
 | Layer | Key items |
 | ----- | --------- |
-| Actions | `profiles.ts` — `updateProfile` (self fields), `updateProfileAvatar` (2 MB member-validated upload → `avatars` bucket) |
-| Client-side | `PasswordChangeForm` uses the **browser** Supabase client directly (documented exception — Supabase auth API, not a DB write) |
-| Theme | saved to `profiles.theme`; `ThemeSelector` writes `data-theme` instantly and mirrors the pick into the `serene-theme` cookie (`persistThemeCookie`). Zero-flash is server-side: the ROOT layout reads the cookie and stamps `data-theme` on `<html>` from the first byte; `ThemeInitializer` only re-syncs a missing/stale cookie against the DB truth |
-| Elaya persona | `getMyElayaPersona(profile.id)` (`elaya-service.ts`) seeds `ElayaPersonaSettings`; saved via `updateElayaPersonaAction` (`lib/actions/elaya.ts`) |
-| Validation | self-edit schemas (Deep dive appendix) |
+| Page seed | `getCurrentProfile()`, then one `Promise.all`: `getMyNotificationPrefs()`, `getMyElayaPersona(profile.id)`, `listConnectedApps()`, `listUserMemoryForPage(profile.id)` |
+| Actions | `profiles.ts`: `updateProfile` (name, username, phone, job title, theme, app icon, appearance, timezone), `updateProfileAvatar`, `signOutUser`. `notification-prefs.ts`, `push.ts`, `elaya.ts` (`updateElayaPersonaAction`), `elaya-memory.ts` (`addMemoryEntryAction`, `retireMemoryEntryAction`), `oauth-grants.ts` (`revokeConnectedAppAction`) |
+| Browser-side | `PasswordChangeForm` uses the browser Supabase client (`lib/supabase/client.ts`) directly: a documented exception, since it is the Auth API, not a table write. `ProfileAvatarSection` uploads to Storage from the browser |
+| Theme, appearance, icon | Stored on `profiles`. Each also has a cookie mirror (`serene-theme`, `serene-appearance`, `serene-app-icon`) so the root layout paints the right look on the first byte. `ThemeInitializer` and `IconInitializer` (dashboard layout) re-sync a stale cookie against the database |
+| Validation | `profile-schema.ts` (`updateProfileSchema`, `updateProfileAvatarSchema`) |
 
 ## 4. Components
 
-Composed on `SectionCard` (the canonical detail-surface shell): `ProfileDetailsForm`
-(email read-only — truth is `auth.users`), `ProfileAvatarSection` (uses `--overlay-scrim`),
-`ThemeSelector` (six theme cards: Earth, Air, Water, Fire, Martini, Candy),
-`NotificationPreferences` (per-category notification controls, migration 0133) +
-`PushNotificationSettings` (web-push opt-in), `ElayaPersonaSettings` (per-user Elaya voice,
-Jarvis Phase 2), `PasswordChangeForm` + `PasswordStrengthBar`.
+Layout: `serene-dossier-grid--340`. The left column holds the editable sections; the right column is
+a sticky identity sidebar. Below `lg` the identity card comes first. The title row is "Profile."
+with the `PageControls` bell.
 
-> **Appearance also holds `IconSelector`** (2026-06-15) — the PWA home-screen icon picker,
-> saved to `profiles.app_icon` via the SAME `updateProfile` action (no new action). It is honest
-> about reach: a theme repaints the live app, but an installed home-screen icon is OS-owned, so
-> saving here shows a manual-reinstall note and bakes the choice into the NEXT install. The
-> separate **"Add to Home Screen"** SectionCard holds `InstallPrompt` — the first-install picker
-> that swaps the manifest `<link>` + apple-touch-icon to the pick and triggers install
-> (`beforeinstallprompt` on Chromium; Add-to-Home-Screen nudge on iOS). A **"Notifications"**
-> SectionCard now also exists — superseding the "no Notifications section" note further down
-> (kept for history; that claim is stale). It renders **`NotificationPreferences`** (the
-> per-category notification-control matrix, migration 0133, 2026-06-20) **above**
-> **`PushNotificationSettings`** (web-push opt-in, 2026-06-14), separated by a full-width rule.
+**Left column, in order:**
+
+| Section (`SectionCard`) | Component(s) | Notes |
+| ----------------------- | ------------ | ----- |
+| Personal Details | `ProfileDetailsForm` | Read view with an Edit button; editing lifts the card. Email read-only |
+| Appearance | `AppearanceSelector`, then `ThemeSelector` (with the Notification sound toggle at its foot), then `IconSelector` | §8.2 to §8.4 |
+| Add to Home Screen | `InstallPrompt` | §8.4 |
+| Notifications | `NotificationPreferences`, then `PushNotificationSettings` | §8.5 |
+| Elaya | `ElayaPersonaSettings` | "Personalise how Elaya talks to you." |
+| What Elaya has learned about you | `ElayaMemoryCard` (`own`) | §8.6 |
+| Connected AI apps | `ConnectedApps` | §8.7 |
+| Security | `PasswordChangeForm` | §8.8 |
+
+**Right column:** Identity (`ProfileAvatarSection`, name, email, job title, role and domain pills,
+"Member since" strip) and Session (the Sign out form).
 
 ## 5. States
 
-- **Loading:** page is a fast single fetch; button-level pending states.
-- **Empty:** avatar fallback = initials via `getInitials()`/`hashString()`.
-- **Error:** inline per-form message bars; fields never cleared.
+- **Loading:** `profile/loading.tsx` (2026-09-16): header, the 340px dossier grid, three section
+  cards and the identity card.
+- **Empty:** the avatar falls back to initials (`getInitials()` / `hashString()`). Connected AI apps
+  shows "No apps connected yet" (`<EmptyState>`), and also shows nothing connected when the OAuth
+  server is off (the list read never errors). The memory card lists nothing until Elaya learns
+  something.
+- **Error:** inline message bars per form; fields are never cleared. Theme, appearance and icon
+  apply at once in the browser and save in the background.
 
 ## 6. Invariants
 
-Theme source of truth is the DB (never localStorage); invalid/missing theme → `earth`;
-email immutable here; username uniqueness enforced by the DB constraint (race-safe);
-avatar ≤ 2 MB validated before upload.
+- The database is the source of truth for theme, appearance and icon; the cookies are mirrors,
+  never localStorage. An unknown value falls back to `earth`, `light`, `icon-1`.
+- Email is read-only here.
+- Username uniqueness is enforced by the database (race-safe); the action pre-checks for a better
+  message.
+- The avatar is at most 2 MB and must be an image, checked before upload.
+- A self-edit can never change role, domain, seat or queendom.
+- Only the notification categories a role can receive render, and only the channels a category
+  can fire on get a checkbox.
 
 ## 7. Open items
 
-Notification-sound preference lives in localStorage (`serene:notifications:sound:v1`) with **no
-`/profile` control yet** — deliberate gap, noted in the original doc.
+- The Elaya persona and memory cards, and Connected AI apps, render for everyone, but Elaya (and
+  the MCP connector) is off for finance, marketing and business since 2026-09-26
+  (`hasElayaAccess`). Consider hiding them for those teams.
+- `updateProfileAvatar` checks only that the value is a URL, not that it points at the `avatars`
+  bucket.
+- Connected AI apps needs the Supabase OAuth server switched on for the project. It is on in
+  production (its public discovery document answers, with dynamic client registration, checked
+  2026-09-26); the local `supabase/config.toml` has it off. See `../integrations/mcp.md`.
+- The ticket rows in the notification matrix offer a WhatsApp checkbox, but no WhatsApp sender
+  exists for ticket alerts (they go in-app and by Web Push only), and
+  `ticket_daily_digest_founder` has no job behind it. See `../modules/tickets.md`.
 
 ---
 
 ## 8. Deep dive
 
-> Preserved from the original intelligence document (§7 + appendix).
+### 8.1 Page structure
 
-### 7. `/profile` — Self-Management Page
+`src/app/(dashboard)/profile/page.tsx` (server component, metadata title "Profile").
+`getCurrentProfile()` → redirect `/login` when null. No `id` parameter: the page is always the
+caller. `<main className="flex-1 p-4 sm:p-6 lg:p-8">` with `maxWidth: 1280px`. Header: `<h1
+className="type-page-title m-0">Profile.</h1>` and `PageControls` (bell only).
 
-#### 7a. Page structure
+### 8.2 Appearance: Light, Dark, Auto
 
-**File:** `src/app/(dashboard)/profile/page.tsx` — async server component.
+`AppearanceSelector` (a `TabSelector` segmented control) writes `profiles.appearance`
+(migration 0158, CHECK `light` / `dark` / `system`, default `light`; the UI label for `system` is
+"Auto").
 
-| Item | Detail |
-| ---- | ------ |
-| **Access** | `getCurrentProfile()`; redirect `/login` if null. Own record only — no `id` param; admins use `/admin/users/[id]` for others |
-| **Layout** | Two-column grid via the `serene-dossier-grid serene-dossier-grid--340` responsive utility (the 340px identity-sidebar variant — single column below `lg`). `<main>` is `className="flex-1 p-4 sm:p-6 lg:p-8"` with inline `paddingBottom: var(--space-16)` + `maxWidth: 1280px`. No inline `gridTemplateColumns`/flat padding anymore |
-| **Header** | A single `<h1 className="type-page-title m-0">Profile<span className="page-title-dot">.</span></h1>` inside a `div` with `marginBottom: var(--space-6)`. **No eyebrow** — there is no `type-eyebrow` element on the page, and the title is just **"Profile"** (not "Profile Settings") |
+1. `applyAppearanceToDom(id)`: THE only place `data-neu` flips (it also rewrites `<meta
+   name="theme-color">`, #ECE8E1 in light, #28241C in dark).
+2. `persistAppearanceCookie(id)`: the SSR mirror, so the root layout stamps `data-neu="dark"` on
+   the first byte. `system` cannot be decided on the server, so the root layout renders a tiny
+   pre-paint script that checks `prefers-color-scheme`.
+3. `updateProfile` with `{ id, appearance }` in the background.
 
-**Left column** (`SectionCard` stack — six sections):
+`ThemeInitializer` owns the live OS listener while `system` is active. Vocabulary:
+`src/lib/constants/appearance.ts`.
 
-1. Personal Details → `ProfileDetailsForm`
-2. Appearance → `ThemeSelector` + `IconSelector` (separated by a full-width rule)
-3. Add to Home Screen → `InstallPrompt` (its own `SectionCard`, per §7j)
-4. Notifications → `NotificationPreferences` (per-category controls, migration 0133; §7l) **above** `PushNotificationSettings` (web-push opt-in, 2026-06-14)
-5. Elaya → `ElayaPersonaSettings` (per-user persona prefs, Jarvis Phase 2; §7m)
-6. Security → `PasswordChangeForm`
+### 8.3 Theme
 
-> Notification **sound** is a separate device-local preference (localStorage) toggled via the `useNotificationSound` hook, surfaced from the notification bell UI (in `PageControls` on the page title row while `TOP_BAR_ENABLED` is true; the Sidebar footer bell is the flag-off path) — not from this page. The push opt-in above and the sound flag are independent. See §7f.
+`ThemeSelector` renders one swatch per `THEME_OPTIONS` entry (`src/lib/constants/themes.ts`):
+**Earth, Air, Water, Fire, Candy, Rose, Moss, Lilac** (0157 CHECK). Cosmos, coffee and macha were
+retired on 2026-07-02 (0156) and martini on 2026-07-03 (0157 moved it to lilac). A theme changes
+only the accent family; surfaces, text, status chips and chart colours never re-tint. Every accent
+holds dark ink (`--theme-accent-fg`), never white.
 
-**Right column** (sticky `aside`, `top: var(--space-6)`):
+- Each swatch wraps a `data-theme` div, so its preview resolves the real tokens.
+- On pick: set `data-theme` on `<html>` at once, `persistThemeCookie(theme)`, then `updateProfile`
+  with `{ id, theme }` in a transition.
+- **Notification sound** lives at the foot of this component (a `Toggle`, "A short chime when new
+  notifications arrive."). It is a device-local flag in `localStorage`
+  (`serene:notifications:sound:v1`, default on) through `useNotificationSound`; the chime itself
+  plays from `NotificationsProvider` in the dashboard layout. It is not a `profiles` column.
 
-1. Identity → avatar upload + name/email/job + role/domain `status-pill`s + member-since strip
-2. Session → sign-out form
+### 8.4 Home-screen icon and install
 
-#### 7b. `ProfileDetailsForm`
+**`IconSelector`** writes `profiles.app_icon` (0121, CHECK `icon-1` to `icon-4`, default
+`icon-1`) through `updateProfile`. Vocabulary: `src/lib/constants/app-icons.ts` (`ICON_KEYS`,
+`DEFAULT_ICON`, `isIconKey()`, `iconSrc(value)`, the only key-to-path resolver, which falls back to
+the default so a raw parameter never becomes a path; `APP_ICON_COOKIE = 'serene-app-icon'`). A
+theme repaints the live app, but an installed icon belongs to the phone: saving shows a
+"reinstall to see it" note and bakes the choice into the next install.
 
-| Field | Editable | Notes |
-| ----- | -------- | ----- |
-| `full_name` | Yes | Required on submit |
-| `phone` | Yes | Normalized server-side |
-| `job_title` | Yes | Optional |
-| `username` | Yes | Lowercase/alphanumeric/underscore; uniqueness checked in action |
-| `email` | **Read-only** | `value={profile.email}`, `readOnly`, hint: contact administrator |
+**Assets** (`scripts/pad-app-icons.mjs` is the one place these rasters come from): each
+`public/icon-N.webp` is a 1254px square. `icon-1`, the default, is the Serene mark on a solid
+**white** plate (2026-09-26, the founder's pick for the phone shortcut); `icon-2` to `icon-4` are
+decorative picks on the cream plate (#ECE8E1). A solid plate keeps the manifest's `maskable` entry
+valid. The browser tab uses `src/app/favicon.ico` (the bare mark, no plate). A shortcut already on a
+phone keeps its old icon until it is removed and added again.
 
-- **Action:** `updateProfile` via `useActionState`
-- **Schema:** `updateProfileSchema` — partial fields allowed (theme-only updates use same action from `ThemeSelector`)
-- **Phone:** `normalizeToE164(phone, "IN")` in action; invalid → `formErrors.phoneInvalid`
-- **Success/error:** Inline banners; `revalidatePath("/profile")` in action
+**Cookie sync:** the root layout's `generateMetadata()` reads `serene-app-icon` and points `<link
+rel="manifest">` at `/api/manifest?icon=<saved>` and the apple-touch-icon at the same image.
+`IconInitializer` re-syncs the cookie from the database on each load.
 
-#### 7c. `ThemeSelector`
+**`InstallPrompt`** (its own card): swaps the live manifest link and apple-touch-icon to the saved
+pick, then triggers install (`beforeinstallprompt` on Chromium, an Add to Home Screen nudge on
+iOS). It does not own icon state. The manifest twin: `src/app/manifest.ts` (`buildManifest(icon,
+appearance)`) and `src/app/api/manifest/route.ts` (a sanctioned PWA carve-out; the proxy bypasses
+it). Install guide for staff: `../operations/pwa-install-guide.md`.
 
-- **Swatches:** Earth, Air, Water, Fire, Martini, Candy (`THEME_OPTIONS` from `lib/constants/themes.ts`). Cosmos, Coffee, and Macha were retired 2026-07-02; migration 0156 moved profiles on them back to earth.
-- **Preview trick:** Each swatch wraps a `div` with `data-theme={theme.key}` so `var(--theme-*)` resolve to that theme without hardcoded hex
-- **On select:**
-  1. `document.documentElement.setAttribute("data-theme", theme)` — instant
-  2. `persistThemeCookie(theme)`, the SSR mirror, so the next server paint is already correct
-  3. `startTransition` → `updateProfile` with `FormData { id, theme }` only (background DB persist)
-- **Active ring:** Uses **current page** theme accent for selection outline; checkmark inside preview uses preview theme's `--theme-accent-fg`. Note the pastel accents (Martini `#191a38`, Candy `#2b1420`) hold dark ink, never white.
+### 8.5 Notifications
 
-#### 7d. `PasswordChangeForm`
+**`NotificationPreferences`** (0133): a matrix of category × channel (`in_app`, `whatsapp`),
+seeded by `getMyNotificationPrefs()`. The catalog is `NOTIFICATION_CATEGORIES` in
+`src/lib/constants/notification-categories.ts`, the one list the UI, the SQL CHECK and the gate
+key on. Each category lists the `channels` it can fire on (the only checkboxes drawn) and the
+`roles` that see it. Today's keys: `lead_assigned`, `new_lead_founder_alert`, `lead_won`,
+`deal_created`, `task_assigned`, `task_due`, `task_overdue_manager`, `sla_breach`,
+`sla_escalation`, and the ticket ones (`ticket_proposed_for_approval`, `ticket_sla_warning`,
+`ticket_sla_breach_manager`, `ticket_member_unhappy`, `ticket_daily_digest_founder`). Ticks are
+the shared `Checkbox`.
 
-| Step | Detail |
-| ---- | ------ |
-| **Re-auth** | `getUser()` → `signInWithPassword({ email: user.email, password: current })` **before** `updateUser({ password: next })` |
-| **Why re-auth** | Supabase requires proving knowledge of the current password for sensitive session changes; server actions cannot replace this flow |
-| **Member** | `createClient()` from `src/lib/supabase/member.ts` only — **no** server action for password change |
-| **Fields** | Current, new, confirm — Eye/EyeOff toggles (`lucide-react`, 15×15 stroke 1.5) |
-| **Strength** | Renders the shared `<PasswordStrengthBar password={next} />` (`src/components/ui/PasswordStrengthBar.tsx`) under the new-password field — the **same** component used on `/update-password`. Not a bespoke scorer |
-| **Errors** | Wrong current → "Current password is incorrect."; mismatch, too short, same-as-current — inline messages; Supabase update errors surfaced as generic or message text |
+- **Absence means on.** The gate (`notification-prefs-service.ts`) fails open: a missing or
+  unreadable row still sends. A row exists only to record an off choice; turning a category back
+  on deletes it (the sparse-row rule in `actions/notification-prefs.ts`).
+- **Never muteable:** `lead_initiation` (opens the 24-hour WhatsApp window) and `elaya_reply` (a
+  direct answer to a staff message) are transactional and absent from the catalog.
+- Example of use: on 2026-09-23 the founders' lead and SLA alerts were paused by writing off rows
+  here, not by code; each founder can turn them back on from this card.
 
-#### 7e. `ProfileAvatarSection`
+**`PushNotificationSettings`**: Web Push on this device (VAPID, `push_subscriptions`, one row per
+device; gesture-gated, never auto-prompts; iOS needs the app installed). Details:
+`../modules/web-push.md`.
 
-| Item | Detail |
-| ---- | ------ |
-| **Tile** | 96×96, `--radius-md`, `--shadow-1`, hover camera overlay, `Spinner` while uploading |
-| **Flow** | `createClient()` → Storage `avatars` bucket → `upload(profile.id, file, { upsert: true })` → `getPublicUrl` → cache-bust `?t=${Date.now()}` → `updateProfileAvatar` action |
-| **Validation** | Member: `image/*` only, **max 2 MB** before upload starts |
-| **Fallback** | Initials from `full_name` on `--theme-accent-surface` when `avatar_url` null |
-| **Storage contract** | Bucket `avatars`; path = `{user_id}`; public read + authenticated write (project RLS) |
+### 8.6 Elaya: persona and living memory
 
-**Action validation:** `updateProfileAvatarSchema` — `avatar_url` must be valid URL. **No** explicit Supabase bucket-prefix check in the action layer as of 2026-06-09 (an intended defence noted in the retired The_Profile doc; not implemented in `profiles.ts` — TODO if avatar URLs are ever attacker-controllable).
+- **`ElayaPersonaSettings`** ("Elaya" card): the three style choices and the free note that shape
+  how she talks to you, stored in `user_context.context.persona` through `updateElayaPersonaAction`.
+  They stay as manual overrides beside the living memory.
+- **`ElayaMemoryCard`** ("What Elaya has learned about you", 0237): one line per entry (rule,
+  correction, style, preference, interest, fact) with its kind, a remove on each (retired, never
+  deleted), and a kind + sentence box to add a rule by hand. Writes: `addMemoryEntryAction`,
+  `retireMemoryEntryAction`. Read: `listUserMemoryForPage` (session client; RLS lets the owner and
+  admin/founder read). The same card sits on `/admin/users/[id]` for admin and founder. How she
+  learns and how the memory reaches every prompt: `../modules/elaya.md`.
 
-#### 7f. Notification sound preference (device-local, alongside the Push `SectionCard`)
+### 8.7 Connected AI apps
 
-The **"Notifications" `SectionCard`** on `/profile` holds `PushNotificationSettings` (§7k — web-push opt-in, DB-backed via `push_subscriptions`). The notification **sound** preference is a *separate, independent* piece: a device-local flag managed entirely through the `useNotificationSound` hook, surfaced from the notification bell UI — never from the profile page. Push reach and sound state are unrelated.
+`ConnectedApps` lists the apps this person let into Serene through the MCP connector (name, what
+they may do, when), each with **Disconnect** behind a `ConfirmDialog`. Disconnecting revokes the
+grant, so every token that app holds for this person stops working at once.
 
-| Item | Detail |
-| ---- | ------ |
-| **Hook** | `src/hooks/useNotificationSound.ts` |
-| **Storage** | `localStorage` key `serene:notifications:sound:v1` (default `true` when absent) |
-| **Where sound plays** | `src/hooks/useNotifications.ts`, mounted from `NotificationBell`. With `TOP_BAR_ENABLED` (currently `true`) the bell lives in `PageControls` on each page's title row (`variant="topbar"`); the Sidebar footer bell is the flag-off path. On a Realtime `INSERT` to `notifications`, calls `sound.play()` — debounced ~1500 ms, Web Audio chime, respects the persisted `enabled` flag |
+- Read: `listConnectedApps()` in `oauth-server-service.ts` (session client,
+  `auth.oauth.listGrants()`; returns an empty list, never an error, when the OAuth server is off).
+- Write: `revokeConnectedAppAction` → `revokeConnectedApp(clientId)`
+  (`auth.oauth.revokeGrant`).
+- The consent screen that creates a grant is `/oauth/consent` (`./auth.md` §8.6). The connector
+  itself: `../integrations/mcp.md`; the team's how-to: `../integrations/mcp-team-guide.md`.
 
-**Rule:** Only `useNotifications` should call `play()` — not feature pages directly.
+### 8.8 Password
 
-**Important:** The notification **sound preference** is localStorage-only — **not** a `profiles` column, and **not** part of `PushNotificationSettings`. Push subscriptions are DB-backed (`push_subscriptions`, per-device); theme and app-icon are DB-backed (`profiles.theme` / `profiles.app_icon`); sound is device-local. They are independent.
+`PasswordChangeForm` ("Security" card) uses the browser client only, no server action:
+`getUser()` → `signInWithPassword({ email, password: current })` to prove the current password →
+`updateUser({ password: next })`. Fields: current, new, confirm, with show/hide toggles. The shared
+`PasswordStrengthBar` sits under the new-password field (the same bar as `/update-password`).
+Errors: "Current password is incorrect.", mismatch, too short, same as current; an Auth update
+error shows its message or the generic one.
 
-#### 7i. `IconSelector` (Appearance card, 2026-06-15)
+### 8.9 Avatar
 
-The PWA home-screen icon picker — one icon grid inside the Appearance `SectionCard`.
+`ProfileAvatarSection` (in the Identity card): a 96px tile with a camera overlay on hover and a
+spinner while uploading. Image files only, at most 2 MB, checked before upload. Flow: browser
+client → Storage `avatars` bucket, path = the profile id, `upsert: true` → `getPublicUrl` →
+`?t=<timestamp>` cache-bust → `updateProfileAvatar`. The bucket is public-read, signed-in write
+(configured in the Supabase dashboard, not in a migration).
 
-| Item | Detail |
-| ---- | ------ |
-| **Component** | `src/components/profile/IconSelector.tsx` |
-| **Persist** | `profiles.app_icon` (`text NOT NULL DEFAULT 'icon-1'`, CHECK `IN ('icon-1'..'icon-4')`) via the **same** `updateProfile` action — no new persist action; mirrors `profiles.theme` exactly |
-| **Vocabulary** | `src/lib/constants/app-icons.ts` (built via `defineEnum` like `themes.ts`): `ICON_KEYS/LABELS/OPTIONS/ENUM`, `DEFAULT_ICON='icon-1'`, `isIconKey()`, `iconSrc(value)` = the only key→path resolver (validates, falls back to `DEFAULT_ICON` so a raw param never becomes an arbitrary `src`), `APP_ICON_COOKIE='serene-app-icon'` + `persistAppIconCookie()` |
-| **Honesty** | A theme repaints the live app, but an installed home-screen icon is **OS-owned** — saving here shows a **manual-reinstall** note and bakes the choice into the NEXT install |
-| **Assets** | 4 single `1254×1254` webp at `/public/icon-1.webp`..`icon-4.webp`; the browser downscales for 192/512 + maskable + apple-touch-icon (maskable valid only because the art is a solid `#0d0c0a` plate) |
-| **Cookie sync** | Root layout `generateMetadata()` reads the cookie → points `<link rel="manifest">` + `icons.apple` at the saved icon (zero-flash). `src/components/layout/IconInitializer.tsx` (a `ThemeInitializer` twin, mounted in the dashboard layout) re-syncs the cookie from `profiles.app_icon` each load |
+### 8.10 Personal details
 
-#### 7j. `InstallPrompt` ("Add to Home Screen" card, 2026-06-15)
+`ProfileDetailsForm` shows a read view (full name, phone, job title, username, email) and an Edit
+button that opens the form. Phone is normalised with `normalizeToE164(phone, 'IN')` in the action
+(an invalid number returns `formErrors.phoneInvalid`); username must match `^[a-z0-9_]+$` and be
+free. The action revalidates `/profile`, `/admin/users` and `/admin/users/[id]`. The company phone
+matters beyond this page: it is how the WhatsApp staff gate recognises you
+(`./user-management.md` §8.5).
 
-The first-install picker — a **separate** `SectionCard` from Appearance.
+### 8.11 Session
 
-| Item | Detail |
-| ---- | ------ |
-| **Component** | `src/components/profile/InstallPrompt.tsx` |
-| **Icon state** | Does **not** own icon state — reads `currentIcon`, then swaps the live manifest `<link>` + apple-touch-icon to the saved pick **before** `prompt()` |
-| **Trigger** | `beforeinstallprompt` on Chromium; an Add-to-Home-Screen nudge on iOS |
-| **Manifest twin** | `src/app/manifest.ts` exports `buildManifest(icon)` + `EARTH_CANVAS`; the async default `manifest()` reads the `serene-app-icon` cookie → `buildManifest(saved)`. `src/app/api/manifest/route.ts` (a sanctioned PWA carve-out to P-02) is the dynamic `/api/manifest?icon=` twin sharing `buildManifest`; the proxy bypasses `/api/manifest` |
+The Session card holds `<form action={signOutUser}>` with a text-only "Sign out" button (the page
+is a server component). `signOutUser` in `lib/actions/profiles.ts` is the only sign-out action:
+`signOut()` then `redirect('/login')`.
 
-#### 7k. `PushNotificationSettings` (Notifications card, 2026-06-14)
-
-Web-push opt-in (VAPID, `web-push` lib, no SaaS; migration 0120).
-
-| Item | Detail |
-| ---- | ------ |
-| **Component** | `src/components/profile/PushNotificationSettings.tsx` in the `/profile` "Notifications" `SectionCard` |
-| **Subscribe hook** | `src/hooks/usePushSubscription.ts` — gesture-gated, **never** auto-prompts; iOS detects standalone and reports `'ios-needs-install'` when not installed (never fakes subscribed) |
-| **Actions** | `src/lib/actions/push.ts` — `savePushSubscriptionAction` (upsert) / `removePushSubscriptionAction`; Zod → `requireProfile`; session client, owner-only |
-| **Table** | `push_subscriptions` `(id, profile_id FK, endpoint UNIQUE, p256dh, auth, user_agent, created_at)` — one row per device, many per user. Owner-only RLS (`profile_id = auth.uid()`, SELECT/INSERT/DELETE, no UPDATE); `idx_push_subscriptions_profile` |
-| **Fan-out seam** | Inside `createNotification` (`notifications-service.ts`): after the in-app row insert it calls `dispatchPush(recipient_id, {title,body,url})` — **zero** call-site edits, so every existing caller (lead-assignment-notify, lead-mutations, sla, tasks, task-reminders) gets push free |
-| **Server seam** | `src/lib/services/push-service.ts` (server + Node only — `web-push` throws on Edge): `dispatchPush` reads subscriptions via the **admin** member, sends to all devices in parallel, and **prunes** endpoints answering 404/410 in one batched delete. Non-fatal: it **never throws** — the in-app row is the source of truth. VAPID configured once lazily; absent keys → logged no-op |
-| **Service worker** | `public/sw.js` gained `push` + `notificationclick` handlers (additive; offline-shell bytes unchanged, `CACHE_VERSION` not bumped) |
-| **Env** | `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` (server-only, S-11) + `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (browser). `web-push@3.6.7` + `@types/web-push@3.6.4` — all already in `.env.example` |
-
-#### 7l. `NotificationPreferences` (Notifications card, migration 0133)
-
-The per-category notification-control matrix — renders **above** `PushNotificationSettings` inside
-the same "Notifications" `SectionCard`, separated by a full-width rule.
-
-| Item | Detail |
-| ---- | ------ |
-| **Component** | `src/components/profile/NotificationPreferences.tsx` |
-| **Seed** | `page.tsx` calls `getMyNotificationPrefs()` (`notification-prefs-service.ts`, owner-scoped session read) and passes it as `initialPrefs`; the user's `role` filters which category rows render |
-| **Catalog** | `src/lib/constants/notification-categories.ts` (`NOTIFICATION_CATEGORIES`) — THE single source the UI, the SQL `CHECK` on `notification_preferences.notification_key`, and the gate all key on. One entry per **category** = an (event × recipient-role-that-differs) pair: `key`, `label`, `channels` (the only checkboxes rendered — no dead toggles), `roles` (the only users who see the row) |
-| **Granularity** | per-user × category × channel (`in_app` / `whatsapp`). Muting one channel of one category never touches the others |
-| **Absence = ON** | the gate (`notification-prefs-service.ts`) **fails OPEN** — a missing/malformed/thrown pref row means the notification still sends. A row exists only to record an OFF choice |
-| **Owner edits** | `src/lib/actions/notification-prefs.ts` (session client, owner-only) |
-| **Never muteable** | `lead_initiation` (opens the legal 24h WhatsApp window) and `elaya_reply` (a direct reply to a staff message) are **transactional**, deliberately ABSENT from the catalog — the gate has no key for them, so they can never be silenced. Never gate either |
-
-#### 7m. `ElayaPersonaSettings` ("Elaya" card, Jarvis Phase 2, 2026-06-25)
-
-Per-user control over how Elaya speaks to you. Its own `SectionCard` ("Personalise how Elaya
-talks to you.") between Notifications and Security.
-
-| Item | Detail |
-| ---- | ------ |
-| **Component** | `src/components/profile/ElayaPersonaSettings.tsx` |
-| **Seed** | `page.tsx` fetches `getMyElayaPersona(profile.id)` (`elaya-service.ts`) in the same `Promise.all` as `getMyNotificationPrefs()`; passed as `initialPersona` |
-| **Persist** | `updateElayaPersonaAction` (`src/lib/actions/elaya.ts`) → `updateElayaPersona` in `elaya-service.ts`; validated by `UpdateElayaPersonaSchema` |
-| **Vocabulary** | `src/lib/constants/elaya-persona.ts`, the persona option catalog |
-| **Storage** | persona prefs live in `user_context.context.persona`, read by the Elaya brain on every turn (both app and WhatsApp channels) |
-
-#### 7g. Identity `SectionCard` (right column)
-
-- `ProfileAvatarSection` (upload only — identity text owned by page)
-- `full_name`, `email`, optional `job_title`
-- Role pill (`ROLE_LABELS`) + domain pill (`DOMAIN_LABELS`)
-- Member since: `formatDate(created_at, "MMM yyyy")` on `--theme-paper-subtle` footer strip
-
-#### 7h. Session `SectionCard` (right column)
-
-```tsx
-<form action={signOutUser}>
-  <Button type="submit" variant="secondary" size="sm">
-    Sign out
-  </Button>
-</form>
-```
-
-- **Action:** `signOutUser` in `src/lib/actions/profiles.ts` — `signOut()` then `redirect("/login")`
-- **No LogOut icon:** Page is a **server component**; Lucide icons cannot be passed into the server-action form boundary without a member wrapper. Text-only button is intentional.
-- **The only sign-out:** the duplicate `signOut()` in `src/lib/actions/auth.ts` was deleted in the 2026-07-02 dead-code purge; `signOutUser` is now the single sign-out action.
-
----
-
-### Appendix — Self-edit validation schemas
+### 8.12 Validation
 
 From `src/lib/validations/profile-schema.ts`:
 
-- **`updateProfileSchema`** — `id` (uuid); optional `full_name`, `username`, `job_title`, `phone`, `theme` enum, `app_icon` (`ICON_ENUM` from `app-icons.ts`), `timezone`
-- **`updateProfileAvatarSchema`** — `id`, `avatar_url` (url)
+- **`updateProfileSchema`**: `id` (uuid); optional `full_name`, `username`, `job_title`, `phone`,
+  `theme` (`THEME_ENUM`), `app_icon` (`ICON_ENUM`), `appearance` (`APPEARANCE_ENUM`), `timezone`.
+  Partial updates are the norm: the appearance, theme and icon pickers each send only `{ id,
+  <field> }`.
+- **`updateProfileAvatarSchema`**: `id`, `avatar_url` (URL).
 
-Auth schemas in `src/lib/validations/auth.ts`: `loginSchema`, `forgotPasswordSchema`, `updatePasswordSchema` (with confirm + mismatch refine).
-
-All user-facing errors map through `src/lib/validations/form-errors.ts` — never raw Zod strings.
+Every user-facing error maps through `src/lib/validations/form-errors.ts`.

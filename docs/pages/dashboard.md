@@ -1,78 +1,107 @@
 # Dashboard — Page Spec
 
-> **Purpose:** spec for `/dashboard` — the personalised spatial-grid home surface.
-> **Audience:** engineers. · **Source-of-truth scope:** this route's behaviour, data flow, components, invariants. Widget queries live in `dashboard-service.ts` (home: this doc); shell/theming live in `../architecture/overview.md`.
-> **Last verified:** 2026-07-02 - full pass against code. Covers the v4 spatial grid + react-grid-layout + drag-to-resize + density tiers (2026-06-24), the Recent Leads rollup + Mine/Team toggle (migration 0132), the Elaya widget going live (2026-06-16), the gia_followup category collapse (migration 0138), the cold-lead cutoff DRY (migration 0140), the cold-leads domain scoping fix (migration 0143), the 2026-06-24/25 widget wave (Campaign Budget rebuilt as the admin/founder-only fuel gauge, snapshot widgets shrunk to 2x2 with identity watermarks, Lead Pipeline collapsed to 5 cards, AddWidgetMenu), the manager full-roster pipeline (migration 0129), and the global founder domain selector replacing per-widget tabs (2026-06-17).
+> **Purpose:** spec for `/dashboard`, the personalised spatial-grid home surface.
+> **Audience:** engineers.
+> **Source-of-truth scope:** this route's behaviour, data flow, components and invariants. Widget queries live in `dashboard-service.ts` (home: this doc); the shell and theming live in `../architecture/overview.md`; the phone view at `/m` is `../modules/mobile-ops.md`.
+> **Last verified:** 2026-09-26 against `src/app/(dashboard)/dashboard/{page,loading}.tsx`, `src/components/dashboard/**`, `src/lib/constants/dashboard-widgets.ts`, `src/hooks/useDashboardLayout.ts`, `src/lib/services/dashboard-service.ts`, `src/lib/actions/dashboard.ts`, `src/lib/services/ad-spend-service.ts` and the changelog through 2026-09-26. The RPC lineage in the deep dive was not re-read line by line; no migration after 0143 recreates `get_dashboard_summary`.
 
 ## 1. Purpose
 
-Serene's home surface: a personalised **spatial grid** of Gia widgets. Each widget is an
+Serene's home surface: a personalised **spatial grid** of widgets. Each widget is an
 independently code-split client component placed as an `{x,y,w,h}` rectangle on a 12-column grid,
-freely moved/resized/auto-packed (react-grid-layout). Summary data arrives on first paint via one
-server-side `get_dashboard_summary` RPC (React `cache()`) plus a dedicated Recent-Leads rollup RPC;
-a global URL-param date filter (`DashboardDateFilter`) scopes pipeline/campaign/volume/budget to a
-cohort window (by `leads.created_at`, IST — Decision Log 2026-06-04). Widgets share no mutable state.
-Each widget's **content adapts to its cell size** (a count card shows just the number when tiny, the
-full card when large — `useWidgetDensity`).
+freely moved, resized and auto-packed (react-grid-layout). The summary data comes from one
+server-side `get_dashboard_summary` RPC (React `cache()`) plus a Recent-Leads rollup RPC and the
+volume and budget reads. Since 2026-09-16 the page does **not await** that seed: it hands the
+promise to the canvas, the header paints at once, and the grid resolves the seed behind its own
+Suspense through `<Await>`. A global URL-param date filter (`DashboardDateFilter`) scopes the
+pipeline, campaign, volume and budget widgets to a cohort window (by `leads.created_at`, IST;
+Decision Log 2026-06-04). Widgets share no mutable state. Each widget's **content adapts to its
+cell size** (`useWidgetDensity`).
+
+Most widgets are Gia (sales) widgets. A person in a domain the Gia widgets do not serve
+(concierge, finance, marketing, tech, business) gets a two-widget first screen: My Tasks and
+Elaya (2026-09-25).
 
 ## 2. Who sees it
 
-| Role | Widgets in default layout | Data scope |
-| ---- | ------------------------- | ---------- |
-| `agent` | `agent-tasks`, `elaya-presence`, `agent-pending-calls`, `agent-new-leads`, `agent-activity` | own tasks/counts/leads; date filter does not apply to any of them; no date filter rendered |
-| `manager` | six widgets (the shared `MANAGER_GRID` minus `manager-budget` - see §3) | domain-pinned leads/status/campaigns/volume/cold-leads (pinned server-side); tasks/activity own. No budget data is seeded or rendered for managers (2026-06-25) |
-| `admin` / `founder` | the full `MANAGER_GRID` seven, including the Campaign Budget fuel gauge | cross-domain, narrowed by the **global `serene-domain` selector** in the canvas header (additive WHERE, not RLS); the fuel gauge is ALWAYS org-wide (recharges carry no domain) |
-| `guest` | none (`DEFAULT_GRID_BY_ROLE.guest = []`) | — |
+Which widgets a person may hold is one predicate, `widgetAllowedFor(def, role, domain)` in
+`src/lib/constants/dashboard-widgets.ts`: the role must be in the widget's `roles`, and unless
+the person is admin or founder, their domain must be in the widget's `domains` (`'*'` = every
+domain). The layout hook, the stored-layout sanitiser and the Add-widget menu all ask it.
+`defaultGridFor(role, domain)` gives the first screen.
 
-The `DashboardDateFilter` is rendered **only** for `manager`/`admin`/`founder` (role gate in
-`DashboardCanvas`); agents never see it. There are **no per-widget domain tabs** — the global
-selector (rendered via `PageControls`, gated by `TOP_BAR_ENABLED`) is the single source, threaded
-page → canvas → widget as `scopeDomain`.
+| Who | Default layout | Data scope |
+| --- | -------------- | ---------- |
+| `agent` in a Gia domain | `agent-tasks`, `elaya-presence`, `agent-pending-calls`, `agent-new-leads`, `agent-activity` | own tasks, counts and leads; no date filter |
+| `manager` in a Gia domain | the shared `MANAGER_GRID`: tasks, Recent Leads, Lead Pipeline, Lead Volume, Campaigns, Campaign Budget, Going Cold | pinned to their own domain server-side. Since 2026-07-10 the Campaign Budget widget is back for managers as a **domain spend** card (no recharges, no gauge arc) |
+| `admin` / `founder` | the full `MANAGER_GRID` (anywhere, whatever their domain) | cross-domain, narrowed by the **global `serene-domain` selector** in the header (an additive WHERE, not RLS). The budget fuel gauge is always org-wide (recharges carry no domain) |
+| anyone in a non-Gia domain | `NON_GIA_GRID`: My Tasks and Elaya | own tasks. The Elaya card only when the domain is in `ELAYA_DOMAINS` (concierge yes; finance, marketing, business no), so a finance agent sees My Tasks alone |
+| `guest` | none | none |
 
-Route guards: dashboard layout session gate; `/dashboard` is in `ALWAYS_ALLOWED_PREFIXES`.
-Per-widget enforcement table: Deep dive §12.
+The `DashboardDateFilter` renders for admin/founder and for managers of a Gia domain (it drives
+the Gia cohort widgets only). There are **no per-widget domain tabs**: the global selector
+(inside `PageControls`, admin/founder only) is the single source, threaded page → canvas → widget
+as `scopeDomain`.
+
+Route guards: the dashboard layout's session gate; `/dashboard` is in `ALWAYS_ALLOWED_PREFIXES`.
+An admin or founder landing on a bare `/dashboard` from a phone is redirected to `/m` unless they
+chose "View desktop site" (`../modules/mobile-ops.md` §7). Per-widget enforcement: Deep dive §12.
 
 ## 3. Data sources
 
 | Layer | File | Notes |
 | ----- | ---- | ----- |
-| RPC (summary) | `get_dashboard_summary` (0029→…→**0143**, canonical) | single jsonb, summary widgets + `cold_leads_count` + agent snapshot counts |
-| RPC (recent leads) | `get_recent_lead_activity` (migration 0132) | lead rollup over `leads ORDER BY last_activity_at DESC LIMIT 25` — the `agent-activity` widget seed |
-| Service | `src/lib/services/dashboard-service.ts` | `getDashboardSummary` (React `cache()`), `getAgentRecentActivity`, `getLeadVolumeByRange`/`getLeadVolumeByDomains`/`getLeadVolumeForDomain`; Redis cache-aside per `../architecture/caching.md` |
-| Service (budget) | `src/lib/services/ad-spend-service.ts` | `getBudgetSummary` + `getAccountRecharges` (the /budget pipeline) → `buildBudgetGaugeSummary` (the org-wide fuel-gauge roll-up, `budget_gauge` seed); `filterBudgetRowsByDomain` still filters the `budget_summary` rows. Admin/founder only |
-| Actions | `src/lib/actions/dashboard.ts` | 7 widget-refresh actions, all via `requireProfile()`; manager pinned via `effectiveWidgetDomain()` |
-| Hooks | `useDashboardLayout`, `useWidgetData`, `useWidgetDensity`, `useDashboardCohortSync`, `useMediaQuery` | layout persistence (v4 grid), fetch lifecycle, cell-density measurement, cohort URL sync |
+| RPC (summary) | `get_dashboard_summary` (0029 → … → **0143**, canonical) | single jsonb: summary widgets, `cold_leads_count`, agent snapshot counts. Stays in `public`; reads the `gia` tables through the search path widened by 0210 |
+| RPC (recent leads) | `get_recent_lead_activity` (0132) | lead rollup, `ORDER BY last_activity_at DESC LIMIT 25`, the `agent-activity` seed |
+| Service | `src/lib/services/dashboard-service.ts` | `getDashboardSummary` (React `cache()`), `getAgentTasksSummary` (the Tasks refresh; lead labels through `getGiaLinksForTasks`, since `public.tasks` cannot embed `gia.task_gia_meta`), `getAgentRecentActivity`, `getLeadStatusSummary`, `getLeadsByCampaign`, the three volume reads; Redis cache-aside per `../architecture/caching.md` |
+| Service (budget) | `src/lib/services/ad-spend-service.ts` | `getBudgetSummary`, `getAccountRecharges`, `filterBudgetRowsByDomain`, `buildBudgetGaugeSummary` (admin/founder: the org fuel gauge, `scope: 'org'`), `buildDomainSpendGaugeSummary` (manager: domain spend, `scope: 'domain'`) |
+| Actions | `src/lib/actions/dashboard.ts` | 7 widget-refresh actions, all via `requireProfile()`; managers pinned via `effectiveWidgetDomain()` |
+| Hooks | `useDashboardLayout`, `useWidgetData`, `useWidgetDensity`, `useDashboardCohortSync`, `useMediaQuery` | layout persistence (v5), fetch lifecycle, cell-density measurement, cohort URL sync |
 
 ## 4. Components
 
-`page.tsx` (RSC orchestrator) · `DashboardCanvas` (react-grid-layout) · `DashboardWidgetSlot`
-(static `React.lazy` map + density measurement) · `WidgetSkeleton` · `DashboardDateFilter` ·
-`AddWidgetMenu` (edit-mode picker, 2026-06-25: lists role-available widgets not currently placed
-and calls `addWidget`; anchored via `usePortalAnchor` + `FloatingPanel`) ·
-`PageControls` (notification bell + global domain selector) · widgets: `AgentTasksWidget`,
-`AgentActivityWidget` (Recent Leads), `AgentPendingCallsWidget`, `AgentNewLeadsWidget`,
-`ElayaPresenceCard` (the live embedded `/elaya` chat), `ManagerLeadStatusWidget`,
-`ManagerLeadVolumeWidget`, `ManagerCampaignWidget`, `ManagerColdLeadsWidget`, `ManagerBudgetWidget`
-(+ the shared `SnapshotCountWidget` base, rewritten 2026-06-25: `.serene-stat-tile` Link chrome,
-micro label + mono hero number, a required `icon` prop rendered as an oversized faint corner
-watermark, and the compact tier drops the hint; cold-leads, pending-calls, and new-leads all
-compose it). Registry: `src/lib/constants/dashboard-widgets.ts` (pure data).
+`page.tsx` (RSC orchestrator) · `DashboardCanvas` (header + react-grid-layout) ·
+`DashboardGridSkeleton` (THE bento skeleton, shared by `loading.tsx` and the canvas's Suspense
+fallback) · `ui/Await` (resolves the seed promise) · `DashboardWidgetSlot` (static `React.lazy`
+map + density measurement) · `WidgetSkeleton` · `DashboardDateFilter` · `AddWidgetMenu` (edit
+mode: lists widgets `widgetAllowedFor` allows that are not placed; `usePortalAnchor` +
+`FloatingPanel`) · `PageControls` (the notification bell, plus the global domain selector for
+admin/founder) · widgets: `AgentTasksWidget`, `AgentActivityWidget` (Recent Leads),
+`AgentPendingCallsWidget`, `AgentNewLeadsWidget`, `ElayaPresenceCard` (the live embedded chat),
+`ManagerLeadStatusWidget`, `ManagerLeadVolumeWidget`, `ManagerCampaignWidget`,
+`ManagerColdLeadsWidget`, `ManagerBudgetWidget`, and the shared `SnapshotCountWidget` base (the
+three 2x2 count tiles). Registry: `src/lib/constants/dashboard-widgets.ts` (pure data).
 
 ## 5. States
 
-- **Loading:** `loading.tsx` composes `PageSkeletons` + a bespoke skeleton; per-widget `WidgetSkeleton fill` behind `MinSkeletonBoundary` (≥150 ms, V-08) inside `DashboardWidgetSlot`. The slot also withholds a widget until its cell has a real measured box (density gate) — until then the skeleton holds the seat.
-- **Empty:** each widget renders its own `<EmptyState>`-style copy (Playfair italic, V-09) on zero data.
-- **Error:** page never throws/redirects on RPC failure — renders zeroed `initialData` with a `[dashboard/page]` log; widget refresh errors surface via toast.
+- **Loading:** `loading.tsx` draws a header skeleton plus `DashboardGridSkeleton`. Once the page
+  renders, the header is real and the grid shows the same `DashboardGridSkeleton` until the seed
+  resolves. Per widget, `WidgetSkeleton fill` sits behind `MinSkeletonBoundary` (at least 150 ms,
+  V-08) and the slot withholds a widget until its cell has a measured box (the chart `-1` guard).
+  On a date or scope change React keeps the current grid visible through the transition.
+- **Empty:** each widget renders `<EmptyState>` (the one anatomy, `variant="inline"` inside a
+  card) on zero data.
+- **Error:** the page never throws or redirects on a failed read. The seed promise `.catch`es to
+  an empty summary with a `[dashboard/page]` log; widget refresh errors surface as a toast.
 
 ## 6. Invariants
 
-The must-never-be-violated rules are maintained in Deep dive §13 (RSC no-POST-on-load rule,
-React `cache()` not `unstable_cache`, stable widget ids, v4 storage-version bump rule, GRANT after
-`CREATE OR REPLACE`, cohort-date semantics, …). Read them before touching any widget.
+The must-never-be-violated rules are in Deep dive §13 (RSC no-POST-on-load rule, React `cache()`
+not `unstable_cache`, stable widget ids, the storage-version bump rule, GRANT after
+`CREATE OR REPLACE`, cohort-date semantics, `widgetAllowedFor` as the only gate). Read them
+before touching any widget.
 
 ## 7. Open items
 
-None recorded.
+- The Pending Calls tile links to `/tasks?tab=gia`; that tab no longer exists and the link falls
+  back to My Tasks. Point it at a view that lists lead follow-ups, or drop the query.
+- Non-Gia domains get only My Tasks (and Elaya where switched on). The queendom widgets for the
+  concierge floor were named as the next step on 2026-09-25 and are not built.
+- The `get_dashboard_summary` RPC still computes an old event-shaped `agent_activity` CTE that
+  the page throws away (§2c); harmless, but dead work.
+- The tech workbench has Elaya (`hasElayaAccess` admits it) but not the dashboard Elaya card:
+  `widgetAllowedFor` checks `ELAYA_DOMAINS` only, and `tech` is not in it. Decide whether the card
+  should follow `hasElayaAccess`.
 
 ---
 
@@ -102,6 +131,11 @@ None recorded.
 | `20260623000140_cold_lead_cutoff_dry.sql` | The cold predicate now calls `cold_lead_cutoff()` (the single SQL cutoff anchor) instead of the bare `interval '5 days'` literal; recreated from the live body (reconciles file ⇆ DB). |
 | `20260624000143_dashboard_cold_leads_honor_domain.sql` | `cold_leads_count` now honours the global domain selector for admin/founder: the cold predicate uses the SAME scoping CASE as the `lead_status`/`campaigns` CTEs (manager → `p_domain`, `p_initial_domain` set → that domain, else all-org). Everything else byte-identical to 0140. **Canonical current definition.** |
 
+> **Schema move (0210, 2026-09-17).** The function stayed in `public`; the tables it reads
+> (`leads`, `task_gia_meta`, …) moved to `gia`. 0210 appended `gia` to the `search_path` of every
+> non-extension routine in `public`, so the body's bare table names still resolve. No new
+> definition was written.
+
 **Signature (exact, current):**
 
 ```sql
@@ -126,7 +160,7 @@ GRANT EXECUTE ON FUNCTION public.get_dashboard_summary(text, app_domain, uuid, a
 >
 > **Access note:** despite the `authenticated` GRANT, `getDashboardSummary` calls this RPC via `createAdminClient()` in the service (the four scope-param wrappers moved to the admin client in migration 0102 / audit F-1). Scope args must stay session-derived (Q-13) — the page/action is the trust boundary.
 
-**SECURITY:** `SECURITY DEFINER SET search_path = public` — RLS does not fire; role/domain/user scoping is enforced inside the function body via `p_role`, `p_domain`, `p_initial_domain`, and `p_user_id`.
+**SECURITY:** `SECURITY DEFINER`, search path `public` (plus `gia`, appended by 0210). RLS does not fire; role, domain and user scoping is enforced inside the function body via `p_role`, `p_domain`, `p_initial_domain` and `p_user_id`.
 
 **Domain-scoping logic (manager / admin / founder):**
 
@@ -219,7 +253,7 @@ Scalar int. `COUNT(*)` of leads where `archived_at IS NULL` AND `status NOT IN (
 
 **File:** `src/lib/types/index.ts`
 
-**Assembled on the page:** RPC result spread + `agent_activity` (the rollup RPC) + `lead_volume` / `lead_volume_multi` (volume service) + `budget_summary` / `budget_gauge` (ad-spend service, admin/founder only).
+**Assembled on the page:** RPC result spread + `agent_activity` (the rollup RPC) + `lead_volume` / `lead_volume_multi` (volume service) + `budget_summary` (admin/founder only) / `budget_gauge` (manager+, see below).
 
 ```typescript
 export type DashboardSummary = {
@@ -238,13 +272,17 @@ export type DashboardSummary = {
   new_leads_count?: number;
   /** Budget rows for the active range (page-assembled from getBudgetSummary; scoped rows pre-filtered). Seeded for admin/founder only. */
   budget_summary?: BudgetCampaignRow[] | null;
-  /** The org-wide ad-account fuel gauge (recharged / spent / remaining roll-up) via buildBudgetGaugeSummary(). ALWAYS org-wide. Seeded for admin/founder only. */
+  /** The Campaign Budget widget's seed. scope 'org' (admin/founder): the org-wide fuel gauge
+   *  via buildBudgetGaugeSummary(). scope 'domain' (manager): the manager's domain spend via
+   *  buildDomainSpendGaugeSummary(), recharge fields null. */
   budget_gauge?: BudgetGaugeSummary | null;
 };
 ```
 
-Both budget keys are seeded only when the caller is admin or founder (the page's
-`isAdminFounder` gate, 2026-06-25); managers get `budget_summary: null` and `budget_gauge: null`.
+`budget_summary` is seeded only for admin/founder. `budget_gauge` is seeded for manager+ on a
+Gia surface since 2026-07-10: admin/founder get the org tank (unfiltered spend plus org
+recharges), a manager gets their own domain's spend with no recharge plane. A non-Gia dashboard
+seeds neither, nor the volume or rollup seeds (the page's `giaSurface` flag).
 
 `DashboardAgentTask.task_category` is `'personal' | 'group_subtask'` (two values, 0138). The
 `agent_activity` key is now `DashboardRecentLead[]` — `DashboardAgentActivity` is a `@deprecated`
@@ -322,26 +360,28 @@ export type DashboardRecentLead = {
 #### All ten widget entries
 
 `WidgetDefinition` carries `id`, `label`, `description`, `roles`, `domains`, the legacy
-`defaultSize`/`colSpan` (back-compat seed fields only), the v4 **`defaultGrid: WidgetGrid`**
-(`{ w, h, minW?, minH? }`, in grid units), and `module`.
+`defaultSize`/`colSpan` (back-compat seed fields only), the **`defaultGrid: WidgetGrid`**
+(`{ w, h, minW?, minH? }`, in grid units), an optional `mobileH` (row height in the phone
+column), and `module`.
 
-| `id` | `label` | `roles` | `defaultGrid {w,h,minW,minH}` | `module` |
-| ---- | ------- | ------- | ----------------------------- | -------- |
-| `agent-tasks` | My Tasks | `agent`, `manager`, `admin`, `founder` | `{6, 9, 4, 6}` | `gia` |
-| `agent-activity` | Recent Activity (renders "Recent Leads") | `agent`, `manager`, `admin`, `founder` | `{6, 11, 4, 6}` | `gia` |
-| `agent-pending-calls` | Pending Calls | `agent` | `{2, 2, 2, 2}` | `gia` |
-| `agent-new-leads` | New Leads | `agent` | `{2, 2, 2, 2}` | `gia` |
-| `elaya-presence` | Elaya | `agent` | `{6, 11, 4, 8}` | `gia` |
-| `manager-lead-status` | Lead Pipeline | `manager`, `admin`, `founder` | `{6, 11, 4, 7}` | `gia` |
-| `manager-lead-volume` | Lead Volume | `manager`, `admin`, `founder` | `{6, 11, 4, 7}` | `gia` |
-| `manager-campaigns` | Campaign Performance | `manager`, `admin`, `founder` | `{12, 11, 6, 7}` | `gia` |
-| `manager-cold-leads` | Going Cold | `manager`, `admin`, `founder` | `{2, 2, 2, 2}` | `gia` |
-| `manager-budget` | Campaign Budget ("Ad-account fuel gauge") | `admin`, `founder` | `{6, 8, 4, 5}` | `finance` |
+| `id` | `label` | `roles` | `domains` | `defaultGrid {w,h,minW,minH}` | `module` |
+| ---- | ------- | ------- | --------- | ----------------------------- | -------- |
+| `agent-tasks` | My Tasks | agent, manager, admin, founder | `'*'` | `{6, 9, 4, 6}` | `gia` |
+| `agent-activity` | Recent Activity (renders "Recent Leads") | agent, manager, admin, founder | Gia | `{6, 11, 4, 6}` | `gia` |
+| `agent-pending-calls` | Pending Calls | agent | Gia | `{2, 2, 2, 2}` | `gia` |
+| `agent-new-leads` | New Leads | agent | Gia | `{2, 2, 2, 2}` | `gia` |
+| `elaya-presence` | Elaya | agent, manager, admin, founder | `ELAYA_DOMAINS` (concierge + Gia) | `{6, 11, 4, 8}` | `gia` |
+| `manager-lead-status` | Lead Pipeline | manager, admin, founder | Gia | `{6, 11, 4, 7}` | `gia` |
+| `manager-lead-volume` | Lead Volume | manager, admin, founder | Gia | `{6, 11, 4, 7}` | `gia` |
+| `manager-campaigns` | Campaign Performance | manager, admin, founder | Gia | `{12, 11, 6, 7}`, `mobileH: 8` | `gia` |
+| `manager-cold-leads` | Going Cold | manager, admin, founder | Gia | `{2, 2, 2, 2}` | `gia` |
+| `manager-budget` | Campaign Budget | manager, admin, founder | Gia | `{6, 8, 4, 5}` | `finance` |
 
-`domains` is `'*'` for every entry. The three snapshot counts were shrunk to a
-2x2 footprint on 2026-06-25. `manager-budget` lost its manager role the same day
-(mirrors the /budget page access) and grew to a half-width gauge (`minW: 4` so
-the stat trio never cramps).
+"Gia" = `[...GIA_DOMAINS]`. The domain lists were added 2026-09-25 (before that every entry was
+`'*'`); the Elaya card's list became `ELAYA_DOMAINS` on 2026-09-26 and it is open to every role
+(it was agent-only). `manager-budget` was admin/founder-only from 2026-06-25 to 2026-07-10, then
+went back to manager+ with a domain-spend body for managers. Admin and founder skip the domain
+check entirely (`widgetAllowedFor`).
 
 #### Grid + density constants
 
@@ -367,7 +407,7 @@ sm → 200 · md → 300 · lg → 420 · xl → 540   (Record<WidgetSize, numbe
 
 #### `DEFAULT_GRID_BY_ROLE` (the designed first-paint placements + reset targets)
 
-Coordinates are grid units; `react-grid-layout` compacts vertically. **One shared `MANAGER_GRID`** is reused by `founder`, `admin`, and `manager`. The grid includes `manager-budget`, but the registry `roles` for that widget no longer include `manager`, so both role-gates (`sanitizeStored()` on stored layouts and `applyLayout()` on every commit) drop it for managers:
+Coordinates are grid units; `react-grid-layout` compacts vertically. **One shared `MANAGER_GRID`** is reused by `founder`, `admin`, and `manager` (managers keep `manager-budget` since 2026-07-10):
 
 ```text
 MANAGER_GRID:
@@ -387,11 +427,18 @@ agent:
   agent-activity      x0 y14 w6 h11
 
 guest: []
+
+NON_GIA_GRID (a domain the Gia widgets do not serve, 2026-09-25):
+  agent-tasks         x0 y0  w6 h9
+  elaya-presence      x6 y0  w6 h11   (dropped where the domain is not in ELAYA_DOMAINS)
 ```
 
-`DEFAULT_LAYOUT_BY_ROLE` (the ordered id list) still exists for back-compat, but the spatial first
-paint reads `DEFAULT_GRID_BY_ROLE`. The manager entry in `DEFAULT_LAYOUT_BY_ROLE` explicitly
-drops `manager-budget` (admin/founder only).
+**`defaultGridFor(role, domain)`** is THE default a person gets: admin/founder and anyone in a
+Gia domain get `DEFAULT_GRID_BY_ROLE[role]`; anyone else gets `NON_GIA_GRID` filtered through
+`widgetAllowedFor`. It returns clones, so callers can never mutate the shared arrays.
+
+`DEFAULT_LAYOUT_BY_ROLE` (the ordered id list) still exists for back-compat (the manager entry
+includes `manager-budget` again), but the first paint reads `defaultGridFor`.
 
 > **Removed — do not recreate:** the `col = index % 2`, `row = floor(index / 2)` auto-flow formula. Placements are now explicit designed `{x,y,w,h}` rectangles.
 
@@ -409,14 +456,18 @@ drops `manager-budget` (admin/founder only).
 #### localStorage key
 
 ```text
-serene:dashboard:layout:${userId}:v4
+serene:dashboard:layout:${userId}:v5
 ```
 
-(`STORAGE_KEY_PREFIX` + `:` + `userId` + `:` + `STORAGE_VERSION`. **`STORAGE_VERSION = 'v4'`** — the
-2026-06-24 spatial grid. v2 (size enum) and v3 (free `heightPx`, still a 2-column flow) are
-superseded: a flow layout can't map to arbitrary 2-D placement, so the key bump **resets** stale
-layouts to the role default — the honest move (a flow→grid reconcile would be worse than the designed
-default). Bump it again whenever the default grid changes shape.)
+(`STORAGE_KEY_PREFIX` + `:` + `userId` + `:` + `STORAGE_VERSION`. **`STORAGE_VERSION = 'v5'`**:
+bumped when the Campaign Budget widget grew from `{w:3,h:5}` to `{w:6,h:8}`, because a stored v4
+layout would have kept the cramped footprint. v4 was the 2026-06-24 spatial grid; v2 (size enum)
+and v3 (free `heightPx`, still a flow) were superseded because a flow layout cannot map to 2-D
+placement. A key bump **resets** stale layouts to the role default, the honest move. Bump it
+again whenever the default grid changes shape.)
+
+The hook is `useDashboardLayout(userId, role, domain)`; the domain feeds `defaultGridFor` and
+`widgetAllowedFor`.
 
 #### Stored shape
 
@@ -429,7 +480,7 @@ type StoredLayout = { placements: WidgetPlacement[] };
 
 #### Hydration behaviour
 
-1. **First render:** `useState(() => getDefaults(role))` — synchronous defaults from `DEFAULT_GRID_BY_ROLE` so widgets appear immediately (no empty canvas).
+1. **First render:** `useState(() => getDefaults(role, domain))`, synchronous defaults from `defaultGridFor` so widgets appear immediately (no empty canvas).
 2. **After mount:** `useEffect` reads `localStorage` via `readFromStorage()` → `sanitizeStored()` → compares JSON to current state; **`setStored` only if different** — keeps the widget subtree alive when the stored layout matches defaults.
 3. **`isHydrated`:** set `true` after the effect runs. Exposed for consumers; **`DashboardCanvas` does not gate rendering on it** (do not re-add a hydration gate). `DashboardCanvas.handleLayoutChange` does, however, ignore RGL's pre-hydration `onLayoutChange` echo (`if (!isHydrated) return`) so the synchronous default can't overwrite the saved localStorage layout before it loads.
 
@@ -439,10 +490,10 @@ type StoredLayout = { placements: WidgetPlacement[] };
 | ---- | --------- |
 | `layout` | Current `WidgetPlacement[]` |
 | `isHydrated` | `false` until post-mount localStorage reconciliation completes |
-| `applyLayout(placements)` | RGL hands the **full** layout on every drag/resize/compaction; filters to valid+role-allowed ids and persists **only when geometry actually changed** (no-ops on RGL's mount fire) |
+| `applyLayout(placements)` | RGL hands the **full** layout on every drag/resize/compaction; filters to valid ids that `widgetAllowedFor` allows and persists **only when geometry actually changed** (no-ops on RGL's mount fire) |
 | `addWidget(widgetId)` | No-op if invalid id or already present; appends at `x:0, y:maxY` with the registry `defaultGrid` w/h; RGL compaction tucks it in |
 | `removeWidget(widgetId)` | Filters the placement out; persists |
-| `resetToDefaults()` | `persist(getDefaults(role))` |
+| `resetToDefaults()` | `persist(getDefaults(role, domain))` |
 
 > **Removed — do not recreate:** `moveWidget`, `resizeWidget`, `resizePlacement`, `reorderWidgets`. react-grid-layout owns the geometry and emits the whole layout to `applyLayout`; the manual `useWidgetResize` drag hook was also deleted.
 
@@ -451,9 +502,9 @@ type StoredLayout = { placements: WidgetPlacement[] };
 `sanitizeStored()` inside `readFromStorage()`:
 
 - Invalid root (not an object, or `placements` not an array) → role defaults.
-- Each placement: `widgetId` must pass `isValidWidgetId()` **and** `WIDGET_MAP[widgetId].roles.includes(role)` (a demoted user loses manager-only widgets) or it is **silently dropped**.
+- Each placement: `widgetId` must pass `isValidWidgetId()` **and** `widgetAllowedFor(WIDGET_MAP[widgetId], role, domain)` (a demoted user loses manager-only widgets; a person moved to a non-Gia domain loses the Gia widgets) or it is **silently dropped**.
 - Geometry is coerced + clamped defensively against the registry `defaultGrid`: `w = clampInt(p.w, minW, GRID_COLS, def.w)`, `x = clampInt(p.x, 0, GRID_COLS - w, 0)`, `h = max(minH, toInt(p.h, def.h))`, `y = max(0, toInt(p.y, 0))`. Duplicate `widgetId`s are de-duped.
-- An empty result from a non-empty default role → fall back to defaults.
+- An empty result when `defaultGridFor(role, domain)` is non-empty → fall back to defaults.
 
 > **Removed — do not recreate:** the `size ∈ sm|md|lg|xl` / `colSpan ∈ 1|2` enum validation. Geometry is now numeric x/y/w/h clamped against per-widget `defaultGrid` minimums.
 
@@ -463,38 +514,48 @@ type StoredLayout = { placements: WidgetPlacement[] };
 
 #### Server flow
 
-1. `getCurrentProfile()` — if null → `redirect('/login')`.
-2. **Resolve date range from `searchParams`:** `dash_preset` (`today` | `week` | `month` | `last_month` | `quarter` | `custom`, default `week`); `dash_from` / `dash_to` (YYYY-MM-DD, only when `preset=custom`). `custom` with malformed params falls back to `week`.
-3. **Resolve global domain scope:** `scopeDomain = resolveDomainParam(sp, await cookies(), role)` — the SAME `serene-domain` param/cookie the list pages read. Admin/founder → the chosen Gia domain or `null` (all-org); manager/agent → always `null`.
-4. Agents skip the range for the RPC (`rpcDateRange = undefined`).
-5. **`try/catch`-wrapped seven-element `Promise.all`:**
+1. `getCurrentProfile()`; if null → `redirect('/login')`.
+2. **Phone redirect:** admin/founder, no query params, no `serene-force-desktop=1` cookie, and a
+   phone user agent → `redirect('/m')` (`../modules/mobile-ops.md` §7).
+3. **Resolve the date range** from `searchParams`: `dash_preset` (`today` | `week` | `month` |
+   `last_month` | `quarter` | `custom`, default `week`); `dash_from` / `dash_to` (YYYY-MM-DD, only
+   when `preset=custom`). A malformed custom range falls back to `week`.
+4. **Resolve the global domain scope:** `scopeDomain = resolveDomainParam(sp, await cookies(), role)`,
+   the SAME `serene-domain` param/cookie the list pages read. Admin/founder → the chosen Gia domain
+   or `null` (all-org); manager/agent → always `null`.
+5. Agents skip the range for the RPC (`rpcDateRange = undefined`).
+6. `giaSurface` = admin/founder, or a profile in a Gia domain. Off a Gia surface the rollup, volume
+   and budget seeds are skipped (`Promise.resolve(null)`).
+7. **Start (do not await) a seven-element `Promise.all`:**
    - `getDashboardSummary(role, domain, profile.id, isManager ? undefined : adminFounderScope, rpcDateRange)` where `adminFounderScope = scopeDomain ?? undefined`
-   - `getAgentRecentActivity(profile.id, role, domain, scopeDomain ?? undefined, 'team')` — the Recent-Leads rollup seed (always)
-   - manager → `getLeadVolumeByRange(role, domain, dateRange)`, else `null`
-   - admin/founder **with** a picked domain → `getLeadVolumeForDomain(scopeDomain, dateRange)`, else `null`
-   - admin/founder with **no** pick → `getLeadVolumeByDomains([...GIA_DOMAINS], dateRange)`, else `null`
-   - admin/founder → `getBudgetSummary(dateRange.from, dateRange.to)` (budgetRows), else `null`
-   - admin/founder → `getAccountRecharges(dateRange.from, dateRange.to)` (budgetRecharges, fuel gauge), else `null`
-6. `initialData = { ...rpcData, agent_tasks ?? [], agent_activity: recentLeads ?? [], campaigns ?? [], lead_volume: isManager ? managerVolume : adminSingleVolume, lead_volume_multi: adminMultiVolume, budget_summary, budget_gauge }`. `budget_summary` is pre-filtered server-side to `scopeDomain ?? null` (full rows for the all-domains view) via `filterBudgetRowsByDomain` **before it reaches the member**. `budget_gauge = buildBudgetGaugeSummary(budgetRows, budgetRecharges ?? [])` and is ALWAYS org-wide, never domain-filtered (recharges carry no domain). Managers seed neither key (2026-06-25 - the `isAdminFounder` gate).
-7. `greeting = pickDashboardGreeting()`; `firstName` = first token of `profile.full_name`.
-8. Render `<DashboardCanvas greeting firstName userId role domain scopeDomain initialData activePreset fromParam toParam dateRange notificationsPromise />` inside `<main className="flex-1 p-4 sm:p-6 lg:p-8">`. `notificationsPromise = TOP_BAR_ENABLED ? getNotifications(profile.id) : undefined` (streamed seed for the header bell).
+   - `getAgentRecentActivity(profile.id, role, domain, scopeDomain ?? undefined, 'team')` on a Gia surface (the Recent Leads seed)
+   - manager (Gia) → `getLeadVolumeByRange(role, domain, dateRange)`
+   - admin/founder **with** a picked domain → `getLeadVolumeForDomain(scopeDomain, dateRange)`
+   - admin/founder with **no** pick → `getLeadVolumeByDomains([...GIA_DOMAINS], dateRange)`
+   - manager+ on a Gia surface → `getBudgetSummary(dateRange.from, dateRange.to)`
+   - admin/founder → `getAccountRecharges(dateRange.from, dateRange.to)`
+8. `.then` builds `initialData = { ...rpcData, agent_tasks ?? [], agent_activity: recentLeads ?? [], campaigns ?? [], lead_volume, lead_volume_multi, budget_summary, budget_gauge }`. `budget_summary` (admin/founder only) is pre-filtered to `scopeDomain` by `filterBudgetRowsByDomain` before it reaches the browser. `budget_gauge` is `buildDomainSpendGaugeSummary(filterBudgetRowsByDomain(rows, domain))` for a manager and `buildBudgetGaugeSummary(rows, recharges)` (org-wide, unfiltered) for admin/founder. `.catch` logs `[dashboard/page]` and returns `EMPTY_SUMMARY`, so the promise never rejects.
+9. `greeting = pickDashboardGreeting()`; `firstName` = first token of `profile.full_name`.
+10. Render `<DashboardCanvas greeting firstName userId role domain scopeDomain initialDataPromise activePreset fromParam toParam dateRange />` inside `<main className="flex-1 p-4 sm:p-6 lg:p-8">`. The bell no longer takes a seed: it reads the layout-mounted `NotificationsProvider` (2026-07-10).
 
 #### `initialData` null-coercion (invariant)
 
-`page.tsx` always coerces `rpcData.agent_tasks ?? []`, the rollup `recentLeads ?? []` (the `agent_activity` key), and `rpcData.campaigns ?? []` before spreading. PostgreSQL's `jsonb_agg()` returns NULL on zero rows; the RPC's `COALESCE(..., '[]')` guards this today, but the page-layer coercion is the authoritative defence — a widget's `seed !== null` guard would otherwise fail on `null` and fire a POST on first load. `lead_status` is exempt (its `jsonb_build_object` wrapper is always an object).
+The seed's `.then` in `page.tsx` always coerces `rpcData.agent_tasks ?? []`, the rollup `recentLeads ?? []` (the `agent_activity` key), and `rpcData.campaigns ?? []` before spreading. PostgreSQL's `jsonb_agg()` returns NULL on zero rows; the RPC's `COALESCE(..., '[]')` guards this today, but the page-layer coercion is the authoritative defence — a widget's `seed !== null` guard would otherwise fail on `null` and fire a POST on first load. `lead_status` is exempt (its `jsonb_build_object` wrapper is always an object).
 
 #### Failure behaviour
 
-`getDashboardSummary` **throws** on Supabase RPC error. The page's `try/catch` logs with `[dashboard/page]` prefix and renders **zeroed `initialData`** (`agent_tasks: []`, `agent_activity: []`, `lead_status: { totals: [], byAgent: [] }`, `campaigns: []`, `lead_volume: null`, `lead_volume_multi: null`, `budget_summary: null`, `budget_gauge: null`). **No redirect, no re-throw** - widgets handle empty states gracefully.
+`getDashboardSummary` **throws** on Supabase RPC error. The seed promise's `.catch` logs with the `[dashboard/page]` prefix and resolves to **`EMPTY_SUMMARY`** (`agent_tasks: []`, `agent_activity: []`, `lead_status: { totals: [], byAgent: [] }`, `campaigns: []`, `lead_volume: null`, `lead_volume_multi: null`, `budget_summary: null`, `budget_gauge: null`). **No redirect, no re-throw**: widgets handle empty states.
 
 #### `initialData` + prop threading
 
 ```text
 dashboard/page.tsx
-  → DashboardCanvas (initialData, scopeDomain, activePreset, fromParam, toParam, dateRange, notificationsPromise)
-    → ResponsiveGridLayout maps each placement →
-      → DashboardWidgetSlot (initialData, dateRange, scopeDomain, editMode, dragHandle)
-        → React.lazy widget (initialData, dateRange, scopeDomain, firstName)
+  → DashboardCanvas (initialDataPromise, scopeDomain, activePreset, fromParam, toParam, dateRange)
+    → header renders at once
+    → <Suspense fallback={<DashboardGridSkeleton />}><Await promise={initialDataPromise}>
+      → ResponsiveGridLayout maps each placement →
+        → DashboardWidgetSlot (initialData, dateRange, scopeDomain, editMode, dragHandle)
+          → React.lazy widget (initialData, dateRange, scopeDomain, firstName)
 ```
 
 Each widget receives the **full** `DashboardSummary`, the active `dateRange`, and the global
@@ -512,21 +573,31 @@ A single `flex flex-nowrap md:flex-wrap items-center justify-between` row (mobil
 
 - `type-page-title` greeting: `{greeting},` + accent `firstName` + `page-title-dot` (the name drops to its own line within the `h1` below md).
 - Control cluster (right, `shrink-0`):
-  - **`DashboardDateFilter`** — rendered **only** for `manager`/`admin`/`founder`.
-  - **`PageControls`** (notification bell + global `serene-domain` selector) — rendered when `TOP_BAR_ENABLED && notificationsPromise`. The dashboard has no standard server title row, so these ride the canvas header. A domain pick writes `?domain=` (+ cookie); the page RSC re-seeds every cohort widget for that scope (no per-widget tabs). `isPrivileged = admin || founder` gates the domain selector inside `PageControls`.
-  - **`AddWidgetMenu`** (`Plus`, "Add widget") - visible only in edit mode, beside Reset layout. Lists every registry widget the role can see that is not currently placed (`placedIds` set from the live layout) and calls `addWidget(id)`; the new widget lands bottom-left and RGL compacts it in. Anchored via `usePortalAnchor` + `FloatingPanel`; shows an `<EmptyState>` when nothing is removable.
-  - **Reset layout** (`RotateCcw`) — visible only in edit mode → `resetToDefaults()`.
-  - **Edit toggle** — `LayoutDashboard` + "Edit layout" / "Done" on desktop; a square `Settings` gear (≈32px) below md. `aria-pressed` when active; accent fill when on.
-
-> The `DashboardDateFilter` is **hidden on mobile** by its own internal logic and is only rendered for manager+ (the 2026-06-20 mobile-domain-selector fix).
+  - **`DashboardDateFilter`**: rendered for admin/founder and for a manager of a Gia domain. Below
+    md it collapses to a 36px icon-only trigger with the range in a tooltip.
+  - **`PageControls`** (the bell, plus the global `serene-domain` selector when `isPrivileged`):
+    rendered when `TOP_BAR_ENABLED`. The dashboard has no standard server title row, so these ride
+    the canvas header. A domain pick writes `?domain=` (+ cookie); the page re-seeds every cohort
+    widget for that scope (no per-widget tabs).
+  - **`AddWidgetMenu`** ("Add widget"): edit mode only. Lists every registry widget
+    `widgetAllowedFor` allows that is not placed and calls `addWidget(id)`; `usePortalAnchor` +
+    `FloatingPanel`; an `<EmptyState>` when nothing is left to add.
+  - **Reset layout** (`RotateCcw`): edit mode only → `resetToDefaults()`.
+  - **Edit toggle** ("Edit layout" / "Done", `Button variant="control"`, `aria-pressed`): **hidden
+    below 768px**, because the phone layout is derived and read-only.
 
 #### Spatial grid — react-grid-layout
 
 - **`ResponsiveGridLayout = WidthProvider(Responsive)`** (created once at module scope) measures the container and feeds `width` to `Responsive` — no manual ResizeObserver.
 - **Library:** `react-grid-layout@1.5.3` (the classic line, NOT the 2.x rewrite; installed with **pnpm**). Its CSS is **not** imported — chrome is token-styled in `globals.css` "DASHBOARD SPATIAL GRID".
-- **Breakpoints:** `RGL_BREAKPOINTS = { lg: 768, xs: 0 }`; `RGL_COLS = { lg: 12, xs: 1 }` — the full 12-col grid on tablet+, a single stacked column below 768px.
-- **Geometry:** `layout.map` → RGL `Layout[]` (the `i` key carries the `widgetId`; per-widget `minW`/`minH` from `defaultGrid`). `rowHeight = GRID_ROW_HEIGHT (38)`, `margin = [16, 16]`, `containerPadding = [0, 0]`, `compactType = "vertical"`, `useCSSTransforms`.
-- **`onLayoutChange`** → maps RGL's full `Layout[]` back to `WidgetPlacement[]` and calls `applyLayout` (ignored before hydration).
+- **Breakpoints:** `RGL_BREAKPOINTS = { lg: 768, xs: 0 }` (`GRID_MOBILE_BREAKPOINT`); `RGL_COLS = { lg: 12, xs: 1 }`: the full 12-col grid on tablet+, a single stacked column below 768px.
+- **Geometry:** `layout.map` → RGL `Layout[]` (the `i` key carries the `widgetId`; per-widget `minW`/`minH` from `defaultGrid`). `rowHeight = GRID_ROW_HEIGHT (38)`, margin `[16, 16]` on lg and `[12, 12]` on xs, `containerPadding = [0, 0]`, `compactType = "vertical"`, `useCSSTransforms`.
+- **The phone layout (xs, 2026-07-10)** is derived at render time from the stored desktop
+  placements: sorted by `(y, x)`, one column, height `mobileH ?? h`, every item `static`. It is
+  never persisted (`handleLayoutChange` returns early unless the active breakpoint is `lg`), so a
+  phone visit cannot overwrite the saved desktop layout. Drag and resize are off below 768px.
+- **Ultrawide:** `.serene-dashboard-grid` caps at `max-width: 1760px` with auto margins.
+- **`onLayoutChange`** → maps RGL's full `Layout[]` back to `WidgetPlacement[]` and calls `applyLayout` (ignored before hydration and on xs).
 - **`measureBeforeMount={false}`** (deliberate — `WidthProvider` measures its own `offsetWidth` on mount; the chart `-1` problem is handled independently by the slot's `measured` density gate, not this flag).
 
 #### Edit mode
@@ -549,7 +620,11 @@ coloured one-edge accent here (Never-Do list).
 
 #### Pre-hydration / skeleton
 
-No full-canvas skeleton gate. `useDashboardLayout` seeds defaults synchronously; widgets mount immediately. Per-widget loading uses `WidgetSkeleton fill` inside `DashboardWidgetSlot`.
+No hydration gate. The grid sits behind `<Suspense fallback={<DashboardGridSkeleton />}>` +
+`<Await promise={initialDataPromise}>` until the seed resolves; after that `useDashboardLayout`'s
+synchronous defaults mean widgets mount immediately. Per-widget loading uses `WidgetSkeleton fill`
+inside `DashboardWidgetSlot`. No `key` on the boundary: on a date or scope change React keeps the
+current grid through the transition.
 
 ---
 
@@ -645,7 +720,7 @@ The slot calls `useWidgetDensity<HTMLDivElement>()` → `{ ref, tier, measured }
 **Active statuses:** `to_do`, `in_progress`, `in_review`. **Priority chip:** only `urgent`/`high`. **Context label:** italic tertiary after the title (lead name for a lead task, group title for a `group_subtask`).
 **Sort order (server):** overdue → priority → `due_at`. **Row limit:** 30.
 **Links:** `lead_id` → `/leads/{id}`; else `/tasks`.
-**Refresh service:** `getAgentTasksSummary(profile.id)` — re-verifies `profile.id` server-side (ignores member `userId`). **Redis cache-aside** (`dashboard:agent-tasks:{userId}`, 30s TTL).
+**Refresh service:** `getAgentTasksSummary(profile.id)` re-verifies `profile.id` server-side (ignores the browser's `userId`). It reads `public.tasks`, then the lead labels through `getGiaLinksForTasks` (`gia-task-links.ts`; PostgREST cannot embed `gia.task_gia_meta` on a `public` query, the 2026-09-18 fix); on a link error the tasks still list, without lead labels. **Redis cache-aside** (`dashboard:agent-tasks:{userId}`, 30s TTL).
 **Date filter:** does not apply (tasks are always live).
 
 ---
@@ -664,11 +739,11 @@ The slot calls `useWidgetDensity<HTMLDivElement>()` → `{ ref, tier, measured }
 2. status chip (`LEAD_STATUS_COLORS`/`LEAD_STATUS_LABELS`) + latest call outcome (`CALL_OUTCOME_LABELS`, `Phone` icon) + domain pill (`DOMAIN_LABELS`).
 3. latest note body (≤2 lines, sans + secondary).
 
-The whole card is a `Link` to `/leads/{lead.lead_slug}` (a slug-less lead renders a non-link card). Entrance: framer `opacity 0→1, y -6→0`. The feed runs a gentle CSS-transform marquee (off main thread, ResizeObserver-measured one-copy shift; only when the single copy overflows) — reduced-motion users get a static natively-scrollable list. Empty copy: *"No leads worked yet."* (mine) / *"Nothing logged yet."* (team).
+The whole card is a `Link` to `/leads/{lead.lead_slug}` (a slug-less lead renders a non-link card). Each row is a porcelain card (`--theme-paper`, hairline, `--shadow-1`, 2026-09-25; it used to sit on the grey well, which read violet). Entrance: framer `opacity 0→1, y -6→0`. The feed runs a gentle CSS-transform marquee (off main thread, ResizeObserver-measured one-copy shift; only when the single copy overflows). Reduced-motion users **and touch devices** (mobile audit, 2026-09-26) get a static, natively scrollable list. Empty copy: *"No leads worked yet."* (mine) / *"Nothing logged yet."* (team).
 
 **Mine / Team scope toggle:** a bespoke two-segment pill in the header, **rendered only for `manager`/`admin`/`founder`** (default **Team**). Agents see no toggle (always own leads) and get a "Live" pill instead.
 
-**Lifecycle:** `useWidgetData({ seed: initialData.agent_activity, fetcher: getAgentRecentActivityAction(userId, scopeDomain ?? undefined, scope), deps: [userId] })`. The RSC seed lands as the `'team'` view; flipping to `'mine'` is a member fetch. A **global domain pick** round-trips the page and re-seeds — a `scopeDomain`-keyed `useEffect` re-applies the fresh scoped seed (so it never fights a Mine/Team refetch).
+**Lifecycle:** `useWidgetData({ seed: initialData.agent_activity, fetcher: getAgentRecentActivityAction(userId, scopeDomain ?? undefined, scope), deps: [userId] })`. The RSC seed lands as the `'team'` view; flipping to `'mine'` is a client fetch. A **global domain pick** round-trips the page and re-seeds — a `scopeDomain`-keyed `useEffect` re-applies the fresh scoped seed (so it never fights a Mine/Team refetch).
 
 **Data scope (via the rollup RPC, §2c):**
 
@@ -709,7 +784,7 @@ The whole card is a `Link` to `/leads/{lead.lead_slug}` (a slug-less lead render
 
 **Driven by the global date range** — no local period toggle. Bucket granularity is inferred from the range span in the service layer. **`isMultiMode = !isManager && scopeDomain == null`** picks the seed: `lead_volume_multi` (multi-line) when no domain is picked, else `lead_volume` (single line).
 
-**No mount fetch:** the widget seeds entirely from `initialData` and a domain pick re-seeds via the page round-trip. The volume actions (`getLeadVolumeByDomainsAction` / `getLeadVolumeForDomainAction`) still exist for member refresh paths but are not fired on mount; `useDashboardCohortSync` keeps it aligned with the active cohort.
+**No mount fetch:** the widget seeds entirely from `initialData` and a domain pick re-seeds via the page round-trip. The volume actions (`getLeadVolumeByDomainsAction` / `getLeadVolumeForDomainAction`) still exist for client refresh paths but are not fired on mount; `useDashboardCohortSync` keeps it aligned with the active cohort.
 
 **Chart:** Recharts `LineChart` in `ResponsiveContainer` inside a `position:relative; flex:1; minHeight:0` region (the absolute-inset wrapper avoids the RGL `-1` measure). Colours via `useChartTokens()` / `DOMAIN_LINE_COLORS` resolved with `resolveColorMap` — no hex in chart props.
 **Empty state:** Playfair italic *"No leads in this period."*
@@ -759,7 +834,7 @@ The whole card is a `Link` to `/leads/{lead.lead_slug}` (a slug-less lead render
 | - | - | - |
 | **`initialData` key** | `pending_calls_count` | `new_leads_count` |
 | **Meaning** | open lead follow-up tasks assigned to the agent (`task_gia_meta` presence, non-terminal status) | own non-archived leads at `status='new'` |
-| **Link** | `/tasks?tab=gia` | `/leads?status=new` |
+| **Link** | `/tasks?tab=gia` (that tab is gone; lands on My Tasks, see §7 Open items) | `/leads?status=new` |
 | **Positive colour** | `--color-info-text` | `--color-success-text` |
 
 Both compose `SnapshotCountWidget` (`icon={Phone}` / `icon={UserPlus}` - the faint corner watermark) at the 2x2 default footprint. Roles: `agent` only. **No fetch, no refresh, no date wiring - by construction a date param cannot reach them** (the RPC counts take zero date inputs).
@@ -771,29 +846,42 @@ Both compose `SnapshotCountWidget` (`icon={Phone}` / `icon={UserPlus}` - the fai
 | | |
 | - | - |
 | **File** | `src/components/dashboard/widgets/ElayaPresenceCard.tsx` |
-| **Roles** | `agent` (default layout, right of tasks) |
+| **Roles** | every role (2026-09-25), in the domains of `ELAYA_DOMAINS` (2026-09-26); default layout for agents and for `NON_GIA_GRID`; managers and admins can add it |
 | **Data** | resolves the user's single active Elaya conversation on mount (no AI call until the user speaks) |
 
 > **Major change — it is no longer a shell/teaser.** The card is the **live `/elaya` chat shrunk into the widget**, not a placeholder. It is just the widget-card frame around **`<EmbeddedElayaChat />`** (`src/components/elaya/EmbeddedElayaChat.tsx` — THE shared embedded-Elaya body, also composed by the floating `ElayaWidget`, R-01). `EmbeddedElayaChat` resolves the active conversation via `getElayaChatSeedAction` (A-15) and renders `ElayaChatShell` in `embedded` mode (flush, chat-only — no card-in-a-card, no identity rail), with a breathing `LiaGlyph` holding the seat until the seed lands. The user says hi and gets a reply **inside the widget** — the SSE loop, transcript, cap, and voice all live in the one shell. The chat bundle is lazy (`next/dynamic`, kept out of the dashboard route chunk). No three.js / 3D (lazy-loads post-Elaya-ship).
 
-**Mobile-only overlay:** a "Send feedback" trigger (`MessageSquarePlus`) floats top-right below md, opening the shared suggestion composer (`SuggestionFeedbackProvider`); on desktop the Sidebar item is the entry, so the overlay is hidden.
+**Mobile-only header row:** below md the card has its own slim top row ("Elaya" + a "Send feedback" button that opens the shared suggestion composer). It used to float over the chat header, on top of "Daily limit reached" (mobile audit, 2026-09-26). On desktop the Sidebar item is the entry, so the row is not rendered.
 
 > **Removed — do not recreate:** the old static shell (IST time-of-day greeting via `getElayaTimeGreeting`, the curated daily line via `pickElayaDailyLine`, the disabled placeholder `MessageBar`). Never re-inline a composer or any seed→shell plumbing on the card — compose `EmbeddedElayaChat`.
 
 ---
 
-#### 9j. `ManagerBudgetWidget` - the ad-account fuel gauge (rebuilt 2026-06-24)
+#### 9j. `ManagerBudgetWidget`: the fuel gauge, or a manager's domain spend
 
 | | |
 | - | - |
 | **File** | `src/components/dashboard/widgets/ManagerBudgetWidget.tsx` |
-| **Roles** | `admin`, `founder` only (managers excluded 2026-06-25, mirrors `/budget`) |
-| **`initialData` key** | `budget_gauge` (`BudgetGaugeSummary`, page-assembled - NOT in the RPC) |
-| **Refresh** | `getBudgetGaugeWidgetAction(from, to)` - admin/founder only, no domain arg |
+| **Roles** | `manager`, `admin`, `founder` in the Gia domains (managers were excluded 2026-06-25 and brought back 2026-07-10, mirroring `/budget`) |
+| **`initialData` key** | `budget_gauge` (`BudgetGaugeSummary`, page-assembled, NOT in the RPC) |
+| **Refresh** | `getBudgetGaugeWidgetAction(from, to)`: manager+, no domain argument; a manager is pinned to their own domain server-side |
 
-The org-wide ad-account **fuel gauge**: total recharged is the full tank, spend is fuel burned, remaining (recharged minus spent, INR-only - the same balance rule as the `/budget` per-account report) is the hero number. Below the enlarged hero sit the tank bar and the Recharged / Spent / Remaining stat trio (the ROI sub-line was removed 2026-06-25). Density-adaptive: a tiny cell shows just the remaining headline plus a thin gauge; a taller cell adds the full trio.
+The widget switches on the payload's `scope`:
 
-Data is the `/budget` pipeline rolled into one gauge by `buildBudgetGaugeSummary(rows, recharges)` (layered over `buildAccountReport` so it can never disagree with `/budget`): seeded on first paint from `initialData.budget_gauge`, refetched through `getBudgetGaugeWidgetAction` on range change / refresh. **ALWAYS org-wide** - recharges carry no domain, so a per-domain "remaining" would be a finance error; the global domain selector does not narrow it. Lifecycle: `useWidgetData` (`autoFetch: false`) + `useDashboardCohortSync`. **Date filter applies** (cohort data, like campaigns). Empty state via `<EmptyState>`.
+- **`scope: 'org'` (admin/founder): the org-wide ad-account fuel gauge.** Total recharged is the
+  full tank, spend is fuel burned, remaining (recharged minus spent, INR only, the same balance
+  rule as the `/budget` per-account report) is the hero number, with the tank bar and the
+  Recharged / Spent / Remaining trio. Built by `buildBudgetGaugeSummary(rows, recharges)`, layered
+  over `buildAccountReport` so it can never disagree with `/budget`. **Always org-wide**:
+  recharges carry no domain, so a per-domain "remaining" would be a finance error; the global
+  domain selector does not narrow it.
+- **`scope: 'domain'` (manager): their own domain's spend** (total, campaigns, cost per lead),
+  built by `buildDomainSpendGaugeSummary` from the spend rows filtered to `profile.domain`. No
+  gauge arc, no recharge fields (they are null).
+
+Density-adaptive: a tiny cell shows just the headline. Lifecycle: `useWidgetData`
+(`autoFetch: false`) + `useDashboardCohortSync`. **The date filter applies.** Empty state via
+`<EmptyState>`.
 
 > **Removed - do not recreate:** the old four-StatTile aggregate card (Spend / Leads / Cost-Lead / Deal Revenue + campaign-count footer) and its `getBudgetSummaryWidgetAction(from, to, targetDomain?)` action. That action no longer exists in `actions/dashboard.ts`.
 
@@ -801,7 +889,7 @@ Data is the `/budget` pipeline rolled into one gauge by `buildBudgetGaugeSummary
 
 ### 10. Server Actions — `dashboard.ts`
 
-All return `{ data, error }`. All guard via `requireProfile()` first — **member-supplied `role` / `domain` / `userId` are never trusted** for authorization. Date params validated via Zod (`WidgetScopeSchema` / `VolumeScopeSchema` / `DomainsVolumeSchema` / `BudgetScopeSchema` — collapsed from six near-identical schemas in dry-audit H-5) — inverted ranges rejected; managers are locked to `profile.domain` regardless of the requested domain via the single `effectiveWidgetDomain()` helper.
+All return `{ data, error }`. All guard via `requireProfile()` first — **browser-supplied `role` / `domain` / `userId` are never trusted** for authorization. Date params validated via Zod (`WidgetScopeSchema` / `VolumeScopeSchema` / `DomainsVolumeSchema` / `BudgetScopeSchema` — collapsed from six near-identical schemas in dry-audit H-5) — inverted ranges rejected; managers are locked to `profile.domain` regardless of the requested domain via the single `effectiveWidgetDomain()` helper.
 
 | Action | Service / RPC | Role guard | Return shape |
 | ------ | ------------- | ---------- | ------------ |
@@ -811,7 +899,7 @@ All return `{ data, error }`. All guard via `requireProfile()` first — **membe
 | `getLeadsByCampaignAction(from?, to?, targetDomain?)` | `getLeadsByCampaign(role, domain, effectiveDomain?, range?)` | manager+ | `{ data: CampaignStatusMix[] \| null, error }` |
 | `getLeadVolumeByDomainsAction(from, to, domains)` | `getLeadVolumeByDomains(domains, range)` | manager+ | `{ data: MultiDomainVolumeSummary \| null, error }` |
 | `getLeadVolumeForDomainAction(from, to, targetDomain)` | `getLeadVolumeForDomain(effectiveDomain, range)` | manager+ | `{ data: LeadVolumeSummary \| null, error }` |
-| `getBudgetGaugeWidgetAction(from, to)` | `getBudgetSummary(from, to)` + `getAccountRecharges(from, to)` → `buildBudgetGaugeSummary` | admin/founder only; always org-wide (no domain filtering - recharges carry no domain) | `{ data: BudgetGaugeSummary \| null, error }` |
+| `getBudgetGaugeWidgetAction(from, to)` | admin/founder: `getBudgetSummary` + `getAccountRecharges` → `buildBudgetGaugeSummary` (org-wide). Manager: `getBudgetSummary` → `filterBudgetRowsByDomain(rows, profile.domain)` → `buildDomainSpendGaugeSummary` (no recharge read) | manager+ | `{ data: BudgetGaugeSummary \| null, error }` |
 
 `targetDomain` omitted → role-scoped summary ("All" view). `targetDomain` set → single-domain drill-down (the global selector for admin/founder). The volume pair stays two actions deliberately — `MultiDomainVolumeSummary` vs `LeadVolumeSummary` are different shapes. The file also re-exports `resolvePresetToRange` for client components.
 
@@ -842,19 +930,23 @@ Sound is owned by the **notifications** pipeline, not the dashboard:
 
 ### 12. Access Control Summary
 
-| Widget | Roles (default layout) | Enforcement layer |
-| ------ | ---------------------- | ----------------- |
-| `agent-tasks` | `agent`, `manager`, `admin`, `founder` | `DEFAULT_GRID_BY_ROLE` + registry `roles`; tasks RPC filters `assigned_to = p_user_id` |
-| `agent-activity` | same | Layout + registry; rollup RPC scope (`'mine'`/`'team'`) is session-derived (Q-13) |
-| `manager-lead-status` | `manager`, `admin`, `founder` | Layout + registry; omitted for `agent`; actions require manager+ |
-| `manager-lead-volume` | `manager`, `admin`, `founder` | Layout + registry; volume service filters manager domain |
-| `manager-campaigns` | `manager`, `admin`, `founder` | Layout + registry; RPC domain gate |
-| `manager-cold-leads` | `manager`, `admin`, `founder` | Layout + registry; RPC `cold_leads_count` scoped (manager domain / admin-founder `p_initial_domain` or all-org, migration 0143); agent branch returns 0 |
-| `agent-pending-calls` / `agent-new-leads` | `agent` | Layout + registry; RPC counts filter `assigned_to = p_user_id`; manager+ branch returns 0 |
-| `elaya-presence` | `agent` | Layout + registry; conversation/cap enforced server-side by the Elaya layer |
-| `manager-budget` | `admin`, `founder` | Layout + registry (managers dropped 2026-06-25); page seed and `getBudgetGaugeWidgetAction` both gate on admin/founder; gauge is always org-wide |
+The layout gate for every widget is `widgetAllowedFor(def, role, domain)` (registry `roles` and
+`domains`; admin/founder skip the domain check), applied by `defaultGridFor`, `sanitizeStored`,
+`applyLayout` and `AddWidgetMenu`. The data gate is always server-side:
 
-**Guest:** empty default layout. **Login gate:** page redirects unauthenticated users to `/login`.
+| Widget | Who may hold it | Data enforcement |
+| ------ | --------------- | ---------------- |
+| `agent-tasks` | every role, every domain | tasks RPC and refresh filter `assigned_to` = the verified profile |
+| `agent-activity` | every role, Gia domains | rollup RPC scope (`'mine'`/`'team'`) is session-derived (Q-13) |
+| `manager-lead-status` | manager+, Gia domains | actions require manager+; managers pinned via `effectiveWidgetDomain()` |
+| `manager-lead-volume` | manager+, Gia domains | volume service filters the manager's domain |
+| `manager-campaigns` | manager+, Gia domains | RPC domain gate |
+| `manager-cold-leads` | manager+, Gia domains | RPC `cold_leads_count` scoped (manager domain / admin-founder `p_initial_domain` or all-org, 0143); agent branch returns 0 |
+| `agent-pending-calls` / `agent-new-leads` | agent, Gia domains | RPC counts filter `assigned_to = p_user_id`; manager+ branch returns 0 |
+| `elaya-presence` | every role, `ELAYA_DOMAINS` | conversation, cap and access enforced by the Elaya layer (`hasElayaAccess` on `/api/elaya/chat`) |
+| `manager-budget` | manager+, Gia domains | the page seed and `getBudgetGaugeWidgetAction` pin a manager to their domain's spend; admin/founder get the org gauge |
+
+**Guest:** empty default layout. **Login gate:** the page redirects unauthenticated users to `/login`.
 
 ---
 
@@ -864,29 +956,31 @@ Sound is owned by the **notifications** pipeline, not the dashboard:
 2. **Dashboard summary data is RSC + cached.** Do not split `getDashboardSummary` back into individual server-action calls for summary data.
 3. **PRIMARY ENTRY POINTS:** `getDashboardSummary()` (single cached RPC) + `getAgentRecentActivity()` (the rollup seed) — both per request, both via the admin client with session-derived args.
 4. **Uses React `cache()` (not `unstable_cache`)** for per-request dedup; any function reading `cookies()` still cannot be wrapped in `unstable_cache` (P-09).
-5. **Individual service functions are NOT used for initial page load** except the volume seeders + the rollup seed — refresh buttons / member range changes only.
+5. **Individual service functions are NOT used for initial page load** except the volume seeders + the rollup seed — refresh buttons / client range changes only.
 6. **All dashboard data goes through `src/lib/services/dashboard-service.ts` — never `leads-service.ts`.**
 7. **All client-side fetches go through server actions in `src/lib/actions/dashboard.ts`.**
-8. **Server actions always call `requireProfile()` and use the verified profile** — never trust member-supplied role/domain/userId; scope args to the revoked RPCs stay session-derived (Q-13).
+8. **Server actions always call `requireProfile()` and use the verified profile** — never trust browser-supplied role/domain/userId; scope args to the revoked RPCs stay session-derived (Q-13).
 9. **Widgets receive `userId`, `role`, `domain`, `dateRange`, `scopeDomain` as props** — but server actions re-verify via `requireProfile()`.
 10. **`DashboardWidgetSlot` uses a static map of `React.lazy()` calls.** Never `require()` from a string. Never compute the import path dynamically.
 11. **Widget registry `id` is a stable localStorage key — NEVER rename after shipping.**
 12. **`sanitizeStored()` validates each stored `widgetId` against the registry AND the caller's role**, and clamps x/y/w/h against the registry `defaultGrid`. Unrecognised / role-disallowed / malformed placements are silently dropped.
 13. **`DashboardCanvas` no longer gates on `isHydrated`. Do not add that gate back.** (But `handleLayoutChange` ignores RGL's pre-hydration echo via `if (!isHydrated) return` so the default never overwrites the saved layout.)
-14. **The hook initialises `stored` synchronously with `DEFAULT_GRID_BY_ROLE[role]`** so widgets render immediately with the designed defaults.
+14. **The hook initialises `stored` synchronously with `defaultGridFor(role, domain)`** so widgets render immediately with the designed defaults.
 15. **react-grid-layout owns geometry.** `applyLayout` receives the full layout on every change and no-ops when nothing changed. Do not re-add `moveWidget`/`resizeWidget`/`reorderWidgets` or `@dnd-kit`.
 16. **Min skeleton:** never show a skeleton for less than **150ms** (V-08) — enforced by `MinSkeletonBoundary`; the slot also withholds a widget until its cell is `measured` (the chart `-1` guard).
 17. **Initial data fetch in a widget (when no `initialData`) must live in `useEffect` / `useWidgetData`,** never as a render-phase guard.
-18. **`initialData` null-coercion:** page always coerces `agent_tasks ?? []`, `agent_activity ?? []`, `campaigns ?? []` before spreading. A widget's `seed !== null` guard would otherwise fire a POST on first load.
-19. **Page never throws/redirects on RPC failure** — `try/catch` renders zeroed `initialData` with a `[dashboard/page]` log.
+18. **`initialData` null-coercion:** the seed's `.then` always coerces `agent_tasks ?? []`, `agent_activity ?? []`, `campaigns ?? []` before spreading. A widget's `seed !== null` guard would otherwise fire a POST on first load.
+19. **Page never throws/redirects on RPC failure**: the seed promise `.catch`es to `EMPTY_SUMMARY` with a `[dashboard/page]` log, so `<Await>` never sees a rejection.
 20. **GRANT after every `CREATE OR REPLACE`** of `get_dashboard_summary` — `CREATE OR REPLACE` silently drops the GRANT (this function keeps its `authenticated` GRANT; it is self/role-scoped).
 21. **Date filter scopes by `leads.created_at` (cohort/intake), never `status_changed_at`** — and applies only to `lead_status` + `campaigns` (+ the volume series and `budget_summary`). `agent_tasks`, `agent_activity` (rollup), `cold_leads_count`, `pending_calls_count`, `new_leads_count` are always live — **the snapshot counts take zero date inputs anywhere in the chain; wiring them to the URL date param is conceptually invalid.**
 22. **`cold_leads_count` cutoff comes from `cold_lead_cutoff()` (SQL) mirroring `COLD_LEAD_THRESHOLD_DAYS` = 5** in `src/lib/constants/leads.ts` — change both in the same commit.
 23. **Snapshot count cards compose `SnapshotCountWidget`** — never fork the big-count/label/hint/Link card.
-24. **Layout storage version (`useDashboardLayout` `STORAGE_VERSION`, currently `v4`) must be bumped whenever the default grid changes shape** — stale persisted layouts must be orphaned (reset to the role default), never reconciled against a new grid.
+24. **Layout storage version (`useDashboardLayout` `STORAGE_VERSION`, currently `v5`) must be bumped whenever the default grid changes shape** — stale persisted layouts must be orphaned (reset to the role default), never reconciled against a new grid.
 25. **The `agent-activity` seed is the rollup RPC, not `get_dashboard_summary`'s `agent_activity` CTE.** The page always overwrites the RPC's `agent_activity` key with `getAgentRecentActivity`. Do not wire the widget back to the CTE.
 26. **There are NO per-widget domain tabs.** The global `serene-domain` selector (`resolveDomainParam` → `scopeDomain`) is the single source, threaded page → canvas → widget. A domain pick re-seeds via the page round-trip.
 27. **The Elaya card is the live embedded chat (`EmbeddedElayaChat`)** — never re-inline a composer or a static teaser, and never load 3D there.
+28. **`widgetAllowedFor(def, role, domain)` is the only layout gate.** Every place that decides which widgets a person may hold (default grid, stored-layout sanitiser, `applyLayout`, Add-widget menu) asks it; never check `roles` alone again.
+29. **The page never awaits the widget seed.** It hands `initialDataPromise` to the canvas; only the grid waits (Suspense + `<Await>`), the header never does.
 
 ---
 
@@ -911,13 +1005,14 @@ Dashboard widgets mostly use inline durations or Framer defaults; the spatial-gr
 | `20260604000069_dashboard_date_filter.sql` | 6-param; date filter on the CTEs |
 | `20260604000070_fix_pipeline_agent_total.sql` | `COUNT(*)` → `SUM(cnt)` totals fix |
 | `20260606000081_dashboard_cold_leads.sql` | `cold_leads_count` key (regressed the 0070 SUM totals — fixed in 0115) |
-| `20260611000102_revoke_scope_param_rpcs.sql` | REVOKE EXECUTE from `authenticated` on the scope-param RPCs (incl. `get_recent_lead_activity`) → admin-member only |
+| `20260611000102_revoke_scope_param_rpcs.sql` | REVOKE EXECUTE from `authenticated` on the scope-param RPCs (incl. `get_recent_lead_activity`) → admin client only |
 | `20260612000115_dashboard_agent_snapshot_counts.sql` | `pending_calls_count` + `new_leads_count` keys; SUM(cnt) totals restored |
 | `20260617000129_manager_pipeline_full_roster.sql` | `lead_status.byAgent` for managers = full domain roster LEFT JOINed to the cohort |
 | `20260617000132_recent_lead_activity_rollup.sql` | `get_recent_lead_activity` lead-rollup RPC (Recent Leads); `p_scope` mine/team |
 | `20260617000138_collapse_gia_category_module_enum.sql` | `task_category` → 2 values; `pending_calls_count` via `task_gia_meta` presence |
 | `20260623000140_cold_lead_cutoff_dry.sql` | `cold_lead_cutoff()` anchor; cold predicate repointed |
 | `20260624000143_dashboard_cold_leads_honor_domain.sql` | `cold_leads_count` honours the global domain selector for admin/founder - **canonical current `get_dashboard_summary`** |
+| `20260917000210_gia_schema.sql` | the tables moved to `gia`; RPCs stay in `public` with `gia` appended to their search path (no new definition) |
 
 ---
 

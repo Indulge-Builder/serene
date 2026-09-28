@@ -1,12 +1,13 @@
 # Campaigns — Page Spec
 
-> **Purpose:** spec for `/campaigns` (analytics command center) and `/campaigns/[id]` (single-campaign drill-down).
-> **Audience:** engineers. · **Source-of-truth scope:** both campaign routes, the three campaign RPCs, campaign components. Ad-creative assets: `ad-creatives.md`; lead schema: `../architecture/database.md`.
-> **Last verified:** 2026-07-02: small UI-layer refresh (`CampaignFilters` composes `<FilterBar>` + `useUrlFilters`, shared `<EmptyState>` on the list, `role`/`domain` props on the reused `LeadsTable`). Earlier 2026-06-24 pass: preview-modal removal, `encodeURIComponent` key contract, 8-tile metrics strip, redesigned card, `this_month` default window, 3-way detail `Promise.all`. Data-layer spine (the three RPCs, the `leads-service.ts` functions, the no-Redis posture, the leads-table reuse) verified accurate against code.
+> **Purpose:** spec for `/campaigns` (the analytics command centre) and `/campaigns/[id]` (the single-campaign drill-down).
+> **Audience:** engineers.
+> **Source-of-truth scope:** both campaign routes, the three campaign RPCs, the campaign components. Ad-creative assets: `ad-creatives.md`; spend: `budget.md`; lead schema: `../architecture/database.md`.
+> **Last verified:** 2026-09-26 against `src/app/(dashboard)/campaigns/{page,[id]/page}.tsx`, `src/components/campaigns/*`, `src/lib/services/leads-service.ts` (campaign functions), `src/lib/utils/route-access.ts`, `src/lib/constants/route-permissions.ts`, migrations 0161 (`business_minutes_response_time`) and 0210.
 
 ## 1. Purpose
 
-Campaigns are **not** rows in a table — a "campaign" is a distinct non-null `leads.utm_campaign`
+Campaigns are **not** rows in a table: a "campaign" is a distinct non-null `gia.leads.utm_campaign`
 value. Every metric (list aggregates, detail strip, agent distribution, leads table) derives
 from grouping/filtering `leads` on that column (`archived_at IS NULL` everywhere). The list
 shows one card per `(utm_campaign, domain)` pair; the detail page drills into one campaign with
@@ -14,8 +15,10 @@ an optional ad-creative carousel.
 
 ## 2. Who sees it
 
-manager / admin / founder only — agent and guest are redirected to `/dashboard` on both routes
-before any fetch; the Sidebar additionally hides the link. Managers are domain-locked
+Manager and above: both pages gate on `hasManagerPageAccess(profile)` (manager, admin, founder,
+and the tech workbench, 2026-09-16); anyone else is redirected to `/dashboard` before any fetch,
+and the Sidebar hides the link. Reachability comes from the route map: every Gia domain, plus
+`marketing` and `business`, list `/campaigns`. Managers are domain-locked
 (page + service force `callerDomain`); admin/founder get an optional domain scope resolved by the
 global `resolveDomainParam(searchParams, cookieStore, role)` selector (`?domain=` param ?? the
 `serene-domain` cookie ?? null — the same selector the dashboard/leads/deals use). Managers always
@@ -26,24 +29,25 @@ Full matrix: Deep dive §8.
 
 | Layer | Key items |
 | ----- | --------- |
-| RPCs | `get_campaign_metrics` (0014), `get_campaign_detail_metrics` (0015/0087), `get_campaign_agent_distribution` (0015) — SECURITY DEFINER; member EXECUTE revoked (0102); always live, **no Redis** |
+| RPCs | `get_campaign_metrics` (0014/0044), `get_campaign_detail_metrics` (0015/0087/0161), `get_campaign_agent_distribution` (0015): SECURITY DEFINER, EXECUTE revoked from `authenticated` (0102, so the service calls them through the admin client); they stay in `public` and read `gia.leads` through the search path 0210 widened. Always live, **no Redis** |
 | Service | campaign functions live in `leads-service.ts` (campaign data derives from `leads` — logged decision); detail leads table via `getLeadsByRoleCached` |
 | Spend | `getBudgetSummary(from, to)` (`ad-spend-service.ts`) — reused from `/budget`, no new query, always-live (admin client, no Redis). **List:** one batched fetch in `CampaignListAsync`, mapped onto cards by normalised key, skipped when no range. **Detail:** the same fetch runs in `CampaignMetricsAsync`'s `Promise.all`, matched on `normalizeCampaignKey(campaignName)` → the Amount Spent / Cost-per-Lead tiles. |
 | Decoration | None — campaign names display RAW (the `beautifyCampaignTitle` decorator was deleted 2026-06-23; never reintroduce a title beautifier) |
-| Creatives | `getAdCreativesForCampaigns` batch map on the list; `getAdCreativesForCampaign` + `AdCreativeCarousel` inside `CampaignAdPanel` on detail — home: `ad-creatives.md` |
+| Creatives | detail page only: `getAdCreativesForCampaign` + `AdCreativeCarousel` inside `CampaignAdPanel`. The list reads no creatives (the batch `getAdCreativesForCampaigns` was deleted 2026-07-02). Home: `ad-creatives.md` |
 
 ## 4. Components
 
-`CampaignCard` (card-list reference implementation; navigates straight to the detail page — no
+`CampaignCard` (card-list reference implementation; navigates straight to the detail page, no
 preview modal) · `CampaignFilters` (composes `<FilterBar>`) · `CampaignMetricsStrip` (8 tiles via
-`StatTile variant="card"`) · `AgentDistributionBar` (non-semantic `--domain-*` palette — design
+`StatTile variant="card"`) · `AgentDistributionBar` (non-semantic `--domain-*` palette, design
 decision 2026-06-11; single `scaleX` entrance, not a width animation) · `CampaignAdPanel` +
-`AdCreativeCarousel` · detail leads table reusing the leads-table pattern.
+`AdCreativeCarousel` (at the foot of the detail page since 2026-09-25) · the detail leads table
+reusing `LeadsTable` + `LeadsPagination`.
 
 ## 5. States
 
 - **Loading:** `campaigns/loading.tsx` (PageSkeletons); detail metrics behind Suspense.
-- **Empty:** `<EmptyState>` (no campaigns in range / no leads in campaign).
+- **Empty:** `<EmptyState framed>` with the Campaigns icon on the list ("No campaigns match these filters."); the leads table's own empty state on detail.
 - **Error:** a malformed `[id]` (invalid percent-encoding) is caught by the detail page's `try/catch` and falls back to the **raw param** (no `notFound()`); a campaign with no leads → `getCampaignDetailMetrics` returns null → the metrics strip renders nothing and the leads table shows its empty state. RPC errors degrade with logged warnings.
 
 ## 6. Invariants
@@ -54,7 +58,8 @@ per chart (V-rules).
 
 ## 7. Open items
 
-None recorded.
+- `src/app/(dashboard)/campaigns/CLAUDE.md` still describes `getAdCreativesForCampaigns` and a
+  width-animated agent bar; the code has neither (see Deep dive §6d and `ad-creatives.md`).
 
 ---
 
@@ -66,7 +71,7 @@ None recorded.
 
 #### What campaigns are in this system
 
-Campaigns are not rows in a dedicated table. A “campaign” is a distinct non-null value of `leads.utm_campaign` — the UTM campaign string captured at lead ingestion. All list metrics, detail metrics, agent distribution, and the detail-page leads table are derived by grouping or filtering `leads` on that column (with `archived_at IS NULL` everywhere).
+Campaigns are not rows in a dedicated table. A “campaign” is a distinct non-null value of `gia.leads.utm_campaign`: the UTM campaign string captured at lead ingestion. All list metrics, detail metrics, agent distribution, and the detail-page leads table are derived by grouping or filtering `leads` on that column (with `archived_at IS NULL` everywhere).
 
 #### Two routes and their purposes
 
@@ -77,21 +82,21 @@ Campaigns are not rows in a dedicated table. A “campaign” is a distinct non-
 
 #### Access gate
 
-- `agent` and `guest`: `redirect('/dashboard')` on both routes (after `getCurrentProfile()`; unauthenticated users go to `/login`).
-- `manager`, `admin`, `founder`: allowed.
+- Both pages: `getCurrentProfile()` (none → `/login`), then `hasManagerPageAccess(profile)` or `redirect('/dashboard')`.
+- Allowed: `manager`, `admin`, `founder`, and any member of the tech workbench whatever their role.
 
 #### Sidebar
 
 - Label: **Campaigns**
 - Icon: `TrendingUp` (`lucide-react`)
 - Section: **Analytics** (below core nav; Performance is the sibling item above/beside it in the same section)
-- Visibility: rendered only when `isManager` is true (`profile.role === 'manager' \|\| profile.role === 'admin' \|\| profile.role === 'founder'`). Agents and guests see Performance only; Campaigns is filtered out of `ANALYTICS_NAV`.
+- Visibility: rendered only when `isManager` (`hasManagerPageAccess`) and `isNavVisible` (the route map, plus the founder's curated list, which does not include Campaigns, so a founder reaches it by URL).
 
 ---
 
 ### 2. Data Model
 
-There is **no `campaigns` table**. All campaign analytics read from `public.leads`.
+There is **no `campaigns` table**. All campaign analytics read from `gia.leads` (in `public` until 0210).
 
 #### Indexes on `leads` (migration `20260528000014_campaign_analytics.sql`)
 
@@ -107,7 +112,7 @@ These support grouped campaign queries and status-filtered aggregates without sc
 - **Join model:** string match only — no FK from `leads`. Lookup key is `campaign_key`, not `leads.id`.
 - **`campaign_key` normalisation:** DB CHECK `campaign_key = lower(trim(campaign_key))`. Application lookups use `campaignName.toLowerCase().trim()` (same rule in `getAdCreativesForCampaign`, `getAdCreativesForCampaigns`, and list-page map keys).
 - **Connection to campaigns:** `campaign_key` is the normalised form of the raw `utm_campaign` string. A lead’s `utm_campaign` value (spaces/underscores as stored) is normalised at query time to find matching creative rows.
-- **Multi-video (migration 0058):** `ad_creatives_campaign_key_key` UNIQUE dropped. Many rows may share one `campaign_key`; each row is one video. Queries order `created_at DESC` (newest first). List page batch-fetches via `getAdCreativesForCampaigns` (single `.in('campaign_key', uniqueKeys)` query — no N+1); detail page uses `getAdCreativesForCampaign`. Surfaces: the detail-page `CampaignAdPanel` and the lead dossier `CampaignVideoModal`, both via `AdCreativeCarousel`. (The list card no longer surfaces video — `CampaignPreviewModal` was removed 2026-06-16 and `CampaignAdCard` was replaced by `CampaignAdPanel` 2026-06-20.)
+- **Multi-video (migration 0058):** `ad_creatives_campaign_key_key` UNIQUE dropped. Many rows may share one `campaign_key`; each row is one video. Queries order `created_at DESC` (newest first). Only the detail page reads creatives (`getAdCreativesForCampaign`); the list's batch read `getAdCreativesForCampaigns` was deleted 2026-07-02. Surfaces: the detail-page `CampaignAdPanel` and the lead dossier `CampaignVideoModal`, both via `AdCreativeCarousel`. (The list card no longer surfaces video — `CampaignPreviewModal` was removed 2026-06-16 and `CampaignAdCard` was replaced by `CampaignAdPanel` 2026-06-20.)
 - **Storage RLS (migration `20260608000092_fix_ad_creatives_storage_rls.sql`, 2026-06-08):** the `ad-creatives` Storage bucket now restricts INSERT/DELETE to `admin`/`founder` only (`ad_creatives_storage_insert` / `ad_creatives_storage_delete`, role read from `public.profiles`), replacing the older permissive "Ad Creative Modal insert/delete" policies. SELECT is unchanged — public bucket read so campaign + lead-dossier video surfaces can stream without an extra policy. This mirrors the `ad_creatives` table RLS from migration 0012.
 - **No Redis layer:** the ad-creative read functions in `ad-creatives-service.ts` are plain Supabase queries. There is no `redis.get`/`setex` and no `campaign:ad-creative:*` key. Freshness is `revalidatePath('/campaigns')` + `revalidatePath('/admin/ad-creatives')` on `upsertAdCreative` / `deleteAdCreative`.
 
@@ -186,6 +191,12 @@ Single row per matching campaign; empty set if no leads. Same status/outcome big
 
 For each lead, a `LEFT JOIN LATERAL` subquery selects `MIN(la.created_at)` from `lead_activities` where `action_type = 'status_changed'` and **`details->>'new_status' = 'touched'`**. The average is taken across leads in the campaign/date filter. Leads never touched contribute NULL to the average (PostgreSQL `AVG` ignores NULLs).
 
+> **Business hours (migration 0161, 2026-07-10).** The elapsed time is now
+> `business_minutes_between(created_at, first_touched_at) / 60`: only 09:00 to 19:00 IST, Monday
+> to Saturday, count, the same clock as the SLA engine (a Friday-evening lead touched Monday
+> morning no longer reads as ~65 hours). The same migration added the negative-interval guard.
+> The column name and the display (hours) did not change.
+
 > **Migration 0087 key fix (2026-06-08):** the lateral join originally matched `details->>'to' = 'touched'`, but `update_lead_status` writes the activity payload as `jsonb_build_object('old_status', …, 'new_status', p_status)` — there is no `to` key. The old predicate matched **zero** rows, so `avg_hours_to_first_touch` was always NULL (rendering as `—` / "no data" on every campaign). `20260608000087_fix_campaign_first_touch_key.sql` `CREATE OR REPLACE`s the RPC to match `details->>'new_status' = 'touched'`. Any future change to the `status_changed` activity payload shape must keep this predicate in sync.
 
 ##### Division-by-zero
@@ -229,7 +240,7 @@ A single assigned agent means no comparative distribution — bar is omitted by 
 
 ### 4. Services (inside `leads-service.ts`)
 
-All three functions use `createClient()` from `src/lib/supabase/server.ts` and cast `.rpc()` through `unknown` (custom RPCs are not in generated `Database` types).
+All three call their RPC through `createAdminClient()` (EXECUTE is revoked from `authenticated`, 0102; the page and `getCampaignMetrics`' manager pin are the trust boundary, Q-13).
 
 #### `getCampaignMetrics(role, callerDomain, filters)`
 
@@ -262,15 +273,15 @@ All three functions use `createClient()` from `src/lib/supabase/server.ts` and c
 
 #### 5a. `page.tsx`
 
-- **Access gate:** `agent` / `guest` → `redirect('/dashboard')`; no profile → `redirect('/login')`.
-- **Manager domain pre-lock:** `parseFilters()` sets `domain: callerDomain` when `role === 'manager'`; URL `domain` param is ignored. That `CampaignFilters` object is passed to `CampaignListAsync` → `getCampaignMetrics`.
+- **Access gate:** no profile → `redirect('/login')`; `!hasManagerPageAccess(profile)` → `redirect('/dashboard')`.
+- **Domain:** `scopeDomain = resolveDomainParam(params, cookies, role)` (admin/founder: `?domain=` then the `serene-domain` cookie; others `null`). **Manager pre-lock:** `parseFilters()` sets `domain: callerDomain` when `role === 'manager'`; the URL is ignored. That `CampaignFilters` object is passed to `CampaignListAsync` → `getCampaignMetrics`.
 - **Domain filter UI:** `showDomainFilter = role === 'admin' || role === 'founder'`.
 - **Component tree:**
 
 ```text
 <main>
   <h1>Campaigns.</h1>
-  <CampaignFiltersBar role showDomainFilter />   ← stable (member)
+  <CampaignFiltersBar role showDomainFilter />   ← stable (client)
   <Suspense fallback={<CampaignListSkeleton />}>
     <CampaignListAsync role callerDomain filters />
   </Suspense>
@@ -285,11 +296,11 @@ All three functions use `createClient()` from `src/lib/supabase/server.ts` and c
 
 #### 5c. `CampaignListAsync`
 
-- **Fetches (one `Promise.all`):** `getCampaignMetrics(role, callerDomain, filters)` **+** `getBudgetSummary(date_from, date_to)` (only when both dates are present — `hasRange`). Then `getAdCreativesForCampaigns(campaigns.map(c => c.campaign_name))` — one batch query, never per-card.
+- **Fetches (one `Promise.all`):** `getCampaignMetrics(role, callerDomain, filters)` **+** `getBudgetSummary(date_from, date_to)` (only when both dates are present, `hasRange`). No creative read: the list cards carry no video.
 - **Spend join:** the budget rows become a `Map<campaignKey, BudgetCampaignRow>`; the card lookup uses `campaign_name.toLowerCase().trim()` — the same normalisation as the creatives map and the DB `ad_spend_daily.campaign_key`. **One `getBudgetSummary` fetch regardless of campaign count** — never a per-card spend call.
 - **Range discipline:** `getBudgetSummary` and `get_campaign_metrics` get the **identical** `date_from`/`date_to`, so a row's cost (spend ÷ leads) and its lead counts always cover the same window. No range → `getBudgetSummary` skipped, both fields passed as `null`.
-- **Passes to cards:** `campaign`, `index`, `adCreatives` from map key `campaign_name.toLowerCase().trim()`, plus `totalSpend`/`costPerLead` (`number | null` — `null` when no range or no spend row; `costPerLead` already `null` at zero leads upstream).
-- **Empty state:** the shared `<EmptyState title="No campaigns match these filters." size="lg">` component (Playfair italic heading comes from the primitive, never hand-rolled).
+- **Passes to cards:** `campaign`, `index`, plus `totalSpend`/`costPerLead` (`number | null`: `null` when no range or no spend row; `costPerLead` already `null` at zero leads upstream).
+- **Empty state:** the shared `<EmptyState icon={TrendingUp} framed title="No campaigns match these filters." description="Try another date range or clear a filter.">`.
 
 #### 5d. `CampaignCard`
 
@@ -388,7 +399,8 @@ try {
 - **Two independent `Suspense` boundaries:** metrics (`CampaignMetricsStripSkeleton` → `CampaignMetricsAsync`)
   and leads (`LeadsTableSkeleton` → `CampaignLeadsAsync`), so a slow table query never blocks the stat
   cards and vice versa. The creatives are still awaited up-front (one small read).
-- **`CampaignMetricsAsync`** runs a **three-way** `Promise.all` — never sequential:
+- **Access:** `hasManagerPageAccess` or `redirect('/dashboard')`. The header is a `BackButton` to `/campaigns` plus the italic raw campaign name.
+- **`CampaignMetricsAsync`** runs a **three-way** `Promise.all`, never sequential:
 
 ```ts
 const [metrics, distribution, spendRows] = await Promise.all([
@@ -406,17 +418,19 @@ const [metrics, distribution, spendRows] = await Promise.all([
   `filters.view = 'all'` (a manager here sees the whole domain — the analytics view overrides the My-Leads
   default), the resolved `date_from`/`date_to`, `page`, `pageSize: 50`; other filter fields null.
 - **Ad creatives:** `getAdCreativesForCampaign(campaignName)` awaited outside Suspense (small read);
-  `CampaignAdPanel` (replaced `CampaignAdCard` 2026-06-20) is the left column. Its card frame **always
-  renders**; empty + admin/founder → an add-a-video tile that opens the shared `AdCreativeFormModal`
-  (`canUpload = role === 'admin' || 'founder'`, the same gate `upsertAdCreative` enforces server-side).
+  `CampaignAdPanel` (replaced `CampaignAdCard` 2026-06-20) sits **below the leads table** (since
+  2026-09-25). With videos it shows the carousel in a "Ad creative" `SectionCard`; with none and
+  `canUpload` (admin/founder, the same gate `upsertAdCreative` enforces server-side) it shows the
+  shared `UploadButton` surface ("Add a video") that opens `AdCreativeFormModal` with this campaign
+  locked; without `canUpload`, one quiet inline line.
 
 #### 6c. `CampaignMetricsStrip`
 
 - **Server component** — no `'use client'`; zero DB calls; props only (`metrics`, `distribution`, `totalSpend?`).
-- **8 tiles** (6 pipeline + the two spend tiles), each a `StatTile variant="card"`, laid out
-  `grid grid-cols-1 sm:grid-cols-2` — a 2×4 grid from `sm` up that sits in the right column beside the ad
-  video, dropping to a single column below `sm`. The column count lives in classes only (an inline
-  `grid-template-columns` would override the responsive variants).
+- **8 tiles** (6 pipeline + the two spend tiles), each a `StatTile variant="card"` (values in the
+  mono number font, 2026-07-06), laid out `grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4`: full page
+  width, one column on a phone, two from `sm`, a 4×2 block from `lg`. The column count lives in
+  classes only (an inline `grid-template-columns` would override the responsive variants).
 
 | Card label | Field(s) | Formatting |
 | ---------- | -------- | ---------- |
@@ -425,7 +439,7 @@ const [metrics, distribution, spendRows] = await Promise.all([
 | Active Pipeline | `in_discussion + nurturing` | `formatCompact`; sub: static copy |
 | Junk Rate | `junk / total_leads` | primary: `formatPercent(junk / total)` when `total_leads > 0`, else `"—"`; sub: junk rate helper |
 | RNR | `rnr` | `formatCompact`; sub: RNR share of total |
-| Avg. First Touch | `avg_hours_to_first_touch` | `<1h`, `Nh`, or `—`; sub: qualitative label |
+| Avg. First Touch | `avg_hours_to_first_touch` (business hours since 0161) | `<1h`, `Nh`, or `—`; sub: qualitative label |
 | Amount Spent | `totalSpend` | `formatCurrency(Math.round(totalSpend))` when `hasSpend`, else `"—"` (never ₹0) |
 | Cost / Lead | `totalSpend / total_leads` | `formatCurrency(Math.round(…))` when `hasSpend && total_leads > 0`, else `"—"` (the null/zero-leads contract) |
 
@@ -446,7 +460,7 @@ const [metrics, distribution, spendRows] = await Promise.all([
 
 #### 6d. `AgentDistributionBar`
 
-- **Member component** (`'use client'`).
+- **Client component** (`'use client'`).
 - **Stacked bar:** height **8px**, `borderRadius: var(--radius-full)`, `overflow: hidden`, track `var(--theme-paper-subtle)`.
 - **Segments:** static `flex: 0 0 ${pct}%` slices (`pct = lead_count / total * 100`) — they are **not**
   individually animated. The entrance is a **single** `motion.div` wrapper (`transformOrigin: left center`)
@@ -467,11 +481,12 @@ property is a single `scaleX` transform on their wrapper, which is compositor-fr
 reflow). This is a one-time data-visualisation entrance, not resizing UI chrome — but because it uses a
 `transform`, not a layout property, no carve-out is needed. (The area CLAUDE.md's "Agent Distribution Bar
 Rule" still describes an `animate={{ width }}` + `layoutId` shape; the live code is the `scaleX` form
-documented here.)
+documented here.) The palette's fifth entry is `--domain-business` (renamed from `--domain-b2b` on
+2026-09-16).
 
 #### 6e. `CampaignMetricsStripSkeleton`
 
-- **8** stat-card placeholders (mirrors the 8-tile strip) in `grid grid-cols-1 sm:grid-cols-2` — the same 2×4-from-`sm` layout the strip uses (the column count lives in classes only).
+- **8** stat-card placeholders (mirrors the 8-tile strip) in `grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4`, the same layout the strip uses.
 - **Stagger:** `staggerDelays = [0, 80, 160, 240, 320, 320, 320, 320]` ms on the inner `.skeleton` blocks (§11.4 cap).
 
 #### 6f. Leads table reuse (explicit reuse decision)
@@ -480,7 +495,7 @@ documented here.)
 
 | Component | Props passed from `CampaignLeadsAsync` |
 | --------- | -------------------------------------- |
-| `LeadsTable` | `leads`, `userId={userId}`, `role={role}`, `domain={domain}`, `filters={filters}`, `hasActiveFilters={!!campaignName}` |
+| `LeadsTable` | `leads`, `totalCount`, `userId={userId}`, `role={role}`, `domain={domain}`, `filters={filters}`, `hasActiveFilters={!!campaignName}` |
 | `LeadsPagination` | `page`, `pageSize={50}`, `totalCount` — rendered only when `totalCount > pageSize` |
 
 `LeadsTable` **does** receive the full `filters` object — it is a **required** prop on `LeadsTable` (`filters: LeadFilters`), so the campaign detail page passes the same `LeadFilters` it built on the page (with `campaign = campaignName` and all other filter fields `null`). Filtering is still entirely server-side via `getLeadsByRoleCached` — `LeadsTable` does not re-filter. It forwards `filters` to its `<ExportButton filters={filters} />` so a CSV/XLSX export from the campaign table carries the exact same scope as the rendered rows. `pageSize`/`page` are read off `filters` inside `CampaignLeadsAsync` (`filters.pageSize ?? 50`, `filters.page ?? 1`). Column picker, status pills, and row rendering behave exactly as on `/leads`.
@@ -548,7 +563,7 @@ No `page` on list filters. Detail page lead pagination uses `LeadFilters.page` /
 
 | Role | `/campaigns` | `/campaigns/[id]` |
 | ---- | ------------ | ----------------- |
-| agent | redirect `/dashboard` | redirect `/dashboard` |
+| agent | redirect `/dashboard` (unless in the tech workbench) | redirect `/dashboard` (same) |
 | guest | redirect `/dashboard` | redirect `/dashboard` |
 | manager | allowed; domain locked to `profile.domain` (page + service) | allowed; leads/metrics scoped by RLS + `getLeadsByRole` role rules on underlying `leads` |
 | admin | allowed; optional `domain` URL filter | allowed; all domains unless lead query constraints apply |
@@ -558,7 +573,7 @@ No `page` on list filters. Detail page lead pagination uses `LeadFilters.page` /
 
 | Layer | What it does |
 | ----- | ------------ |
-| Page redirect | `campaigns/page.tsx` and `campaigns/[id]/page.tsx` block agent/guest before any data fetch. |
+| Page redirect | `campaigns/page.tsx` and `campaigns/[id]/page.tsx` call `hasManagerPageAccess` before any data fetch. |
 | `getCampaignMetrics` | Manager `p_domain` forced to `callerDomain`. |
 | `leads` RLS | Applies to `getLeadsByRoleCached` on detail page (agent sees assigned leads only, manager domain, etc.). |
 | RPC `SECURITY DEFINER` | Bypasses RLS for aggregate reads; trust boundary is caller-supplied `p_domain` / `p_campaign` from server code, not the browser. |
@@ -591,7 +606,7 @@ Sidebar hides the Campaigns link from agent/guest (UI); direct URL still hits pa
 
 11. **`date_to` end-of-day** — append `T23:59:59.999Z` in service functions before RPC, not in components.
 
-12. **Batch ad creatives on list** — `getAdCreativesForCampaigns` once in `CampaignListAsync`; never `getAdCreativesForCampaign` per card.
+12. **No per-card reads on the list.** The list reads no creatives today; if it ever needs them, one `.in('campaign_key', keys)` query, never `getAdCreativesForCampaign` per card.
 
     **Batch spend on list (same rule):** `getBudgetSummary` is called **once** in `CampaignListAsync` (in the metrics `Promise.all`) and mapped by normalised key; never a per-card spend call. Both `getBudgetSummary` and `get_campaign_metrics` receive the **identical** resolved `date_from`/`date_to` — cost and lead counts must describe the same window. No range → no spend fetch, cost cells render `—`. Spend/cost render `—` (never ₹0) when `null`.
 
@@ -613,14 +628,14 @@ Sidebar hides the Campaigns link from agent/guest (UI); direct URL still hits pa
 
 | File | Role |
 | ---- | ---- |
-| `CampaignFilters.tsx` | List filter bar (member, URL-only) |
+| `CampaignFilters.tsx` | List filter bar (client, URL-only) |
 | `CampaignListAsync.tsx` | List data + cards (async server) |
 | `CampaignListSkeleton.tsx` | List Suspense fallback |
-| `CampaignCard.tsx` | List row card — a `MotionLink` navigating straight to the detail page (member) |
+| `CampaignCard.tsx` | List row card — a `MotionLink` navigating straight to the detail page (client) |
 | `CampaignMetricsStrip.tsx` | Detail stat cards — 8 tiles (server) |
 | `CampaignMetricsStripSkeleton.tsx` | Detail metrics Suspense fallback (8 placeholders) |
-| `AgentDistributionBar.tsx` | Stacked agent bar — `--domain-*` palette, single `scaleX` entrance (member) |
-| `CampaignAdPanel.tsx` | Detail ad carousel / add-a-video panel (left column) |
+| `AgentDistributionBar.tsx` | Stacked agent bar — `--domain-*` palette, single `scaleX` entrance (client) |
+| `CampaignAdPanel.tsx` | Detail ad carousel / add-a-video panel (below the leads table since 2026-09-25) |
 | `AdCreativeCarousel.tsx` | Multi-video carousel |
 | `AdCreativePlayer.tsx` | Single native video player |
 

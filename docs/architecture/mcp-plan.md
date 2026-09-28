@@ -1,6 +1,6 @@
 # MCP plan: Serene as a connector for Claude, ChatGPT and every other AI tool
 
-Written 2026-09-19. Status: **Phase 1 LIVE 2026-09-21. Phase 2 BUILT 2026-09-21 (resources, prompts, export_rows, search/fetch, 60k result cap); 0231 applied. Phase 3 BUILT 2026-09-21: audience = the `mcp_audience` settings row, seeded open to every role; team guide at docs/integrations/mcp-team-guide.md. Next: Phase 4 (writes) when asked.** Decisions the founder must make are
+Written 2026-09-19. Status: **Phases 1 to 3 live since 2026-09-21 (Phase 1 built 2026-09-19, Phases 2 and 3 built 2026-09-21; migrations 0226, 0231, 0233 applied). Read tools only; Phase 4 (writes) is not built. Since 2026-09-26 a person needs their role in the `mcp_audience` row AND Elaya switched on for their team (`hasElayaAccess`, `ELAYA_DOMAINS`). This file is now the plan of record; the as-built home is `../integrations/mcp.md`, with the team guide at `../integrations/mcp-team-guide.md`.** Decisions the founder must make are
 marked **Decide**. The rest is my recommendation and I will build it exactly as written unless
 told otherwise.
 

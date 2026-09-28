@@ -5,8 +5,8 @@
 > **Audience:** engineers. · **Source-of-truth scope:** the budget route, `ad_spend_daily`,
 > the spend parser/upload pipeline, `get_budget_summary`, `ad_account_recharges`, and the
 > account-attribution + report builder.
-> **Last verified:** 2026-07-02 (admin/founder-only gate 2026-06-25 + `BudgetFilterBar`; recharge ledger 0139 + campaign-account backfill 0141).
-> **Route invariants:** `src/app/(dashboard)/budget/CLAUDE.md` (the authoritative file map). This page spec is the single doc home for `/budget`.
+> **Last verified:** 2026-09-26 against `src/app/(dashboard)/budget/{page,BudgetAsync,BudgetFilterBar}.tsx`, `src/components/budget/*`, `src/lib/services/ad-spend-service.ts`, `src/lib/utils/ad-spend-parse.ts`, `src/lib/validations/ad-spend-schema.ts`, `src/lib/constants/{ad-accounts,route-permissions}.ts`, `src/lib/utils/route-access.ts` and migration 0210.
+> **Route invariants:** `src/app/(dashboard)/budget/CLAUDE.md` (the file map). This page spec is the single doc home for `/budget`.
 
 ## 1. Purpose
 
@@ -24,32 +24,38 @@ recharges are hand-entered, and account attribution is the only thing that ties 
 
 ## 2. Who sees it
 
-**Admin/founder only** (read + upload spend + add recharge). Everyone else, including managers,
-gets `redirect('/dashboard')`. Restricted 2026-06-25; managers previously had read access. The
-dashboard Campaign Budget widget was gated to admin/founder the same day.
+**Manager and above** (`hasManagerPageAccess(profile)` in `page.tsx`, else
+`redirect('/dashboard')`): manager, admin, founder, and the tech workbench. History: managers were
+shut out on 2026-06-25 and brought back on 2026-07-10 with a narrower view.
 
-The page gates with a **direct role check** in `page.tsx`
-(`['admin','founder'].includes(profile.role)` → else `redirect('/dashboard')`). It does
-**not** reference `DOMAIN_ROUTE_MAP` — that map governs the layout/sidebar guard, not this page's own
-redirect (`route-permissions.ts` notes "/budget is admin/founder ONLY"). Both header CTAs
-(`AddRechargeButton`, `AdSpendUploadButton`) render behind `canUpload`
-(`role === 'admin' || 'founder'`), which now covers every user who can reach the page.
-Sidebar: Analytics section, admin/founder.
+| Who | What they see | Writes |
+| --- | ------------- | ------ |
+| Admin / founder | both planes: campaign spend for every domain, the recharge ledger, balances, the per-account report | Upload Spend, Add Recharge |
+| Manager | **only their own domain's campaign spend plane**: the totals strip and the campaign table, with a caption saying so. `scopeDomain = profile.domain` is set server-side (never from `?domain=`), rows go through `filterBudgetRowsByDomain`, and the recharge read is skipped: recharges carry no domain, so a per-domain balance would misstate finance | none |
+| Tech workbench teammate (not a manager) | passes `hasManagerPageAccess`; `scopeDomain` is null for any role but manager, so they see the admin/founder view (read only; no CTAs) | none |
 
-The RLS layer is unchanged: both tables (`ad_spend_daily`, `ad_account_recharges`) still grant
-manager+ SELECT and admin/founder write at the DB layer. The page redirect is now the stricter of
-the two layers (A-09), and no manager-facing surface reads these tables.
+Both header CTAs (`AddRechargeButton`, `AdSpendUploadButton`) render behind `canUpload`
+(admin/founder), and both actions re-check `requireProfile(['admin','founder'])`.
+
+Reachability: the Gia domains' route map lists `/budget` (a Gia-domain manager passes
+`canAccessRoute`; a non-Gia manager does not). Sidebar: the Analytics section, for manager+ where
+the route is reachable. The founder's curated sidebar does not list Budget, so a founder opens it
+by URL.
+
+The RLS layer is unchanged: both tables grant manager+ SELECT and admin/founder write. The page is
+the stricter layer for the manager's domain pin (A-09); the reads run through the admin client.
 
 ## 3. Data sources
 
 | Layer | Key items |
 | ----- | --------- |
-| Spend table | `ad_spend_daily` (migration 0104) — day grain, `UNIQUE(campaign_key, spend_date, source)`, RLS manager+ read / admin+founder write. **No account column** — account is derived (§4b). |
-| Recharge table | `ad_account_recharges` (migration 0139) — finance ledger, mirrors `ad_spend_daily`'s table/RLS/trigger pattern. `ad_account` `CHECK IN ('april','gmr','dubai')` (SQL mirror of `AD_ACCOUNT_KEY_VALUES`), `amount numeric(12,2) CHECK (amount > 0)`, `currency` (default `'INR'`), `recharged_at date`, `done_by → profiles`, free-text `method`/`note` with a `no_card_pan` CHECK. RLS manager+ read, admin/founder write/update/**delete** (hard DELETE permitted — recharges are an editable money figure, mirrors `ad_spend_daily`). |
-| RPC | `get_budget_summary(p_date_from, p_date_to)` (0106) — spend per campaign LEFT-joined to lead counts (`created_at` cohort) and deals (count/revenue by `won_at` via `deals.lead_id`); EXECUTE revoked (Q-13), admin-member only. |
+| Spend table | `gia.ad_spend_daily` (migration 0104; moved to `gia` by 0210): day grain, `UNIQUE(campaign_key, spend_date, source)`, RLS manager+ read / admin+founder write. **No account column**; account is derived (§4b). |
+| Recharge table | `gia.ad_account_recharges` (migration 0139; moved by 0210): finance ledger, mirrors `ad_spend_daily`'s table/RLS/trigger pattern. `ad_account` `CHECK IN ('april','gmr','dubai')` (SQL mirror of `AD_ACCOUNT_KEY_VALUES`), `amount numeric(12,2) CHECK (amount > 0)`, `currency` (default `'INR'`), `recharged_at date`, `done_by → profiles`, free-text `method`/`note` with a `no_card_pan` CHECK. RLS manager+ read, admin/founder write/update/**delete** (hard DELETE permitted; recharges are an editable money figure, mirrors `ad_spend_daily`). |
+| RPC | `get_budget_summary(p_date_from, p_date_to)` (0106): spend per campaign LEFT-joined to lead counts (`created_at` cohort) and deals (count/revenue by `won_at` via `deals.lead_id`); EXECUTE revoked (Q-13), admin client only. Stays in `public`; reads the `gia` tables through the search path widened by 0210. |
 | Service | `src/lib/services/ad-spend-service.ts` — `getBudgetSummary` (CPL/CPD computed here, `null` at zero denominators), `getExistingSpendKeys` (inserted-vs-updated counting, **hard-filtered to `.eq('source','meta_csv')`** — the count is scoped to Meta-CSV rows), `getAccountRecharges(from,to)` (date-portion window, joins recharger name), and `buildAccountReport(campaignRows, recharges)` (**pure, no IO** — the per-account report). **No Redis** — always live, like `/campaigns`. |
 | Attribution | `src/lib/constants/ad-accounts.ts` — `AD_ACCOUNTS` (the 3 live accounts), `resolveAccountFromCampaign(key)`, `UNATTRIBUTED_ACCOUNT_KEY`, `accountLabel()`. See §4b. |
 | Parser | `src/lib/utils/ad-spend-parse.ts` — `parseMetaSpendFile`, CLIENT-SIDE ONLY (dynamic `xlsx`, same rule as `export.ts`). See §5. |
+| Page gate | `hasManagerPageAccess` (`src/lib/utils/route-access.ts`); `scopeDomain` for managers (§2) |
 | Spend action | `src/lib/actions/ad-spend.ts` — `uploadAdSpendAction` (Zod → `requireProfile(['admin','founder'])` → re-sanitize + `normalizeCampaignKey()` → upsert). |
 | Recharge action | `src/lib/actions/recharge.ts` — `createRechargeAction` (Zod `createRechargeSchema` → `requireProfile(['admin','founder'])` → re-`sanitizeText` labels → insert → `revalidatePath('/budget')`). |
 | Period system | Shared with `/performance` via `BudgetFilterBar` (`src/app/(dashboard)/budget/BudgetFilterBar.tsx`), which renders the reused `PerformanceFilters` with **search enabled** (`showSearch`, "Search campaigns…") plus the Accounts\|Campaigns `TabSelector` in its `tabSlot`. Tab state lives in `BudgetTabProvider` (`budget-tab-context.tsx`, default `'accounts'`); `BudgetWorkspace` reads it via `useBudgetTab()`. **URL params are `date_from` / `date_to`** (read in `page.tsx`, fed to `resolvePerformanceDateParams`; default = This Month). There is **no** `?period` param on this page. |
@@ -111,17 +117,22 @@ tg_global_april_lead gen_17 june
 double-count against later daily uploads. Never soften this to a per-row skip.
 
 Other parser behaviour: column whitelist (Reporting starts/ends, Campaign name,
-Results, Amount spent (INR), Impressions, Reach, Link clicks — everything else
-discarded); zero-spend inactive rows skipped (counted, reported in the toast);
-duplicate (campaign, day) rows merged before upsert. A file of all-zero rows is rejected
-("nothing to import").
+Results, Amount spent (INR), Impressions, Reach, Link clicks; everything else
+discarded); duplicate (campaign, day) rows merged before upsert.
+
+**Zero-spend days are ingested** (2026-07-10). A re-uploaded month-to-date export must override
+every day it covers, including a day that dropped to zero after a refund or correction, so the
+stale non-zero row gets overwritten. Only unusable rows are skipped (no campaign name, negative or
+not-a-number spend), counted and reported in the toast. A file with no usable rows at all is
+refused ("No campaign rows found in this file."). The Zod schema allows `spend >= 0` and up to
+10,000 rows per upload.
 
 ## 6. Header actions
 
 Both CTAs are admin/founder-only, both load-on-intent (`next/dynamic` + `useMountOnFirstOpen`,
 keeping their bundles out of the initial `/budget` chunk).
 
-**Upload Spend** — `AdSpendUploadButton` → `AdSpendUploadModal` → file picker → member parse
+**Upload Spend:** `AdSpendUploadButton` → `AdSpendUploadModal` → file picker (the shared `UploadButton` surface) → client-side parse
 (`parseMetaSpendFile`) → preview (row count, date range, skipped count) → `uploadAdSpendAction` →
 `{ inserted, updated, skipped }` toast → `router.refresh()`.
 
@@ -129,10 +140,13 @@ keeping their bundles out of the initial `/budget` chunk).
   same export changes zero values; the summary reports those rows as `updated`. An overlapping
   weekly range is safe: matching days are updated in place, never double-counted. So a weekly
   upload cadence is fully supported (a multi-day daily-breakdown export over any range lands as
-  one row per day), and the upload modal copy says this plainly.
+  one row per day), and the upload modal copy says this plainly, including the month-to-date
+  re-upload workflow.
 
-**Add Recharge** — `AddRechargeButton` → `AddRechargeModal` (composes the shared `Modal`) → account
-dropdown (`AD_ACCOUNTS`) + amount + currency (INR/USD) + recharge date + `method`/`note` labels →
+**Add Recharge:** `AddRechargeButton` → `AddRechargeModal` (composes the shared `Modal`; since
+2026-09-25 the selects are `FormSelect`, the date is `DatePicker`, the rows are `.serene-form-row`,
+and a failed save keeps the draft) → account (`AD_ACCOUNTS`) + amount + currency (INR/USD) +
+recharge date + `method`/`note` labels →
 `createRechargeAction` → toast → `router.refresh()`.
 
 - **PII guard (defence in depth):** `method`/`note` are free-text payment-method **labels**
@@ -142,24 +156,32 @@ dropdown (`AD_ACCOUNTS`) + amount + currency (INR/USD) + recharge date + `method
 
 ## 7. Page anatomy
 
-Canonical list-page layout: title row (+ Add Recharge + Upload Spend CTAs) → `BudgetFilterBar`
+Canonical list-page layout: a `CondensingPageHeader` title row (+ Add Recharge + Upload Spend CTAs for admin/founder, + the bell) → `BudgetFilterBar`
 strip (search + Range/Dates + the Accounts|Campaigns `TabSelector` in its `tabSlot`) →
 `Suspense`-wrapped `BudgetAsync`. The whole strip + content sits inside `BudgetTabProvider`
 (`budget-tab-context.tsx`) so the tab switcher in the bar and the content switch in
-`BudgetWorkspace` share one member state across the Suspense boundary. `BudgetAsync` fetches
-`getBudgetSummary` and `getAccountRecharges` in parallel, then:
+`BudgetWorkspace` share one client state across the Suspense boundary (keyed on
+`from:to:scopeDomain`, so a range change shows `BudgetContentSkeleton` again).
+
+**Manager path** (`scopeDomain` set): `BudgetAsync` reads `getBudgetSummary` only, filters the
+rows to the manager's domain, and renders the totals strip, a caption ("Showing <Domain> campaign
+spend…") and `BudgetTable`. No accounts, no recharges. The Accounts | Campaigns tabs still
+render in the filter bar but change nothing on this path (open item). Empty → `BudgetEmptyState`.
+
+**Admin/founder path:** `BudgetAsync` fetches `getBudgetSummary` and `getAccountRecharges` in
+parallel, then:
 
 - **Empty state** — `BudgetEmptyState` (wraps `EmptyState` with the Wallet icon) renders **only**
   when there is NO spend AND NO recharge (`rows.length === 0 && recharges.length === 0`). A recharge
   with no spend still shows the report (the account has a balance). Copy differs for uploaders vs
   readers.
-- **Totals strip** — one shared card of `StatTile variant="cell"`: Total Spend, Leads, Cost/Lead,
+- **Totals strip**: `ui/StatStrip` (2026-09-25) of `StatTile variant="cell"`: Total Spend, Leads, Cost/Lead,
   Deals Closed, Cost/Deal, Revenue. Currency cells use `formatCurrencyCompact`; counts use
   `formatCompact`/`formatCount`. CPL/CPD render "—" when the denominator is 0 (never ₹0).
 - **Attribution caption**: under the totals strip, `BudgetAsync` renders an italic caption stating
   that leads, deals and revenue are attributed to Meta campaigns only; referral, Google and walk-in
   deals are excluded.
-- **`BudgetWorkspace`** (member; reads the active tab from `useBudgetTab()`, the `TabSelector`
+- **`BudgetWorkspace`** (client; reads the active tab from `useBudgetTab()`, the `TabSelector`
   itself lives in `BudgetFilterBar`; default **Accounts**). Campaign search (`?search=`) filters
   client-side: the Campaigns-tab rows and each account block's expandable campaign list only.
   Account totals and the recharge history are deliberately never search-filtered (recharges are
@@ -191,6 +213,32 @@ strip (search + Range/Dates + the Accounts|Campaigns `TabSelector` in its `tabSl
    appears only when it has spend or a (mis-keyed) recharge.
 6. **No Redis namespace;** freshness is `revalidatePath('/budget')` on upload/recharge + always-live
    reads.
+9. **A manager sees only their own domain's spend plane.** `scopeDomain` comes from
+   `profile.domain` on the server, never from the URL, and a manager's path never reads
+   recharges. The dashboard Campaign Budget widget and the mobile Budget room follow the same rule.
 7. **Parser stays client-side only** (xlsx bundle rule) — never import it from an action/service.
 8. **`method`/`note` are labels, never card data** — Zod + action `sanitizeText` + DB
    `no_card_pan` CHECK (§6).
+
+## 9. Components and states
+
+| Piece | File |
+| ----- | ---- |
+| Page, async body, filter strip, tab context, skeleton | `src/app/(dashboard)/budget/{page,BudgetAsync,BudgetFilterBar,budget-tab-context,BudgetContentSkeleton}.tsx` |
+| Workspace, tables, report | `src/components/budget/{BudgetWorkspace,BudgetTable,AccountReportSection,RechargeHistoryTable,BudgetSectionHeader}.tsx` |
+| Writes | `src/components/budget/{AdSpendUploadButton,AdSpendUploadModal,AddRechargeButton,AddRechargeModal}.tsx` |
+| Empty | `src/components/budget/BudgetEmptyState.tsx` (wraps `ui/EmptyState`, the Wallet icon) |
+
+- **Loading:** `loading.tsx` (header + strip + content), then `BudgetContentSkeleton` inside the
+  keyed Suspense on every range or scope change.
+- **Empty:** `BudgetEmptyState` only when there is no spend and (for admin/founder) no recharge.
+- **Error:** reads fail soft to empty arrays with a logged warning; the two write actions return
+  `{ data, error }` to a toast, and the modals keep what was typed.
+
+## 10. Open items
+
+- The Accounts | Campaigns tabs show for managers but do nothing on the manager path.
+- A tech workbench teammate who is not a manager sees the full admin view, recharges and balances
+  included (`scopeDomain` is only set for managers). Decide whether the workbench should get the
+  manager view or none.
+- "Indulge New Gen" waits for its Meta account (one `AD_ACCOUNTS` line + a CHECK migration).

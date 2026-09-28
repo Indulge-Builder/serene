@@ -1,159 +1,188 @@
-# Serene — Roadmap & Open Items (Claude Project digest)
+# Serene: Roadmap and Open Items (Claude Project digest)
 
-> Digest of `docs/01-vision.md`, `docs/TODO.md`, `docs/audits/*`, and `docs/changelog.md` (through
-> 2026-08-22). **This is the canonical built-vs-planned ledger for the pack** — when a feature's
-> status matters, trust this file. The live record of change is `docs/changelog.md`; verify against
-> the live DB before assuming a migration/table/RPC exists.
+> **Purpose:** the built-vs-planned ledger for this pack: module status, what is written but not applied, the current focus, what is next, and the open items worth knowing, grouped by area.
+> **Audience:** a claude.ai Project chat that cannot read the repo.
+> **Source-of-truth scope:** a digest of `docs/01-vision.md`, `docs/TODO.md`, the "Open items" and "Not built" sections of the module, page and integration docs, `docs/design/decision-log.md` (Open), and `docs/audits/`. **When a feature's status matters, trust this file over the others in the pack**, and trust the repo docs over this file.
+> **Last verified:** not re-checked against code (a digest). Regenerated 2026-09-26 from the docs verified against the code that day (migrations through 0245; production has 0244 applied, 0245 not).
 
-## Module status (as of 2026-08-24)
+## The arc
 
-| Module | Status | "Done" means |
-| ------ | ------ | ------------ |
-| **Serene** (base OS) | ✅ LIVE | one login; the neumorphic design system (8 themes + light/dark/auto); 3-layer role/domain auth; dashboard shell; ⌘K palette; in-app + Web Push notifications with per-user channel mutes; tasks; OTP reset; PWA + per-user icon + branded boot. Stable; hardened through the audit cycle. |
-| **Gia** (CRM) | ✅ LIVE, daily use | a lead travels ad → ingestion → fair assignment → worked dossier → resolution → deal without leaving the system, with SLA guardrails and role-correct reporting end-to-end. |
-| **Elaya** (AI presence) | ✅ LIVE (Jarvis 1–4 + the customer channel) | provider-neutral brain; 12 read + 12 write tools; in-app SSE + WhatsApp staff channel + the `/m` screen; the outward customer welcome-blast persona; voice input; propose→confirm; per-user persona, learned memory, and Notes. *Remaining:* in-app proposal cards, semantic retrieval, TTS. |
-| **Call Intelligence / Helpdesk** | ✅ LIVE (Phase 1) | service-interest taxonomy + `service_cases`/`conversation_hooks` + `/helpdesk` + the dossier card. *Phase 2 (embedding similarity / HNSW) deferred.* |
-| **Lead Revival** | ✅ LIVE (R1) | a daily sweep finds silent leads, runs the note-AI gate, revives confident ones with a "Revived" task or sends borderline ones to a review tab — never touching the lead row. |
-| **Oversight** | ✅ LIVE | manager+ three-tier drill over `task_events` + live presence. |
-| **Mobile Ops** (`/m`) | ✅ LIVE | four real rooms on real reads + the Elaya knob on the real brain; admin/founder phones auto-open it. *Remaining:* agent room set, the tech-expense tracker card (a deliberate Coming-Soon placeholder). |
-| **Subscriptions & Bills** | ✅ LIVE (Phase 1) | list/calendar/overview, payments + top-ups, private invoices, encrypted credentials with an audited reveal, per-tool spend. *By contract Phase 1 has no reminders, no WhatsApp, nothing background.* |
-| **Client records** | 🔨 CURRENT FOCUS | a won deal opens a client record; relationship history continues post-win (`deals.client_id` is the reserved hook). Not built yet. |
-| **Sia** (Concierge) | ⏸ NOT STARTED | the concierge team runs post-won client work inside Serene the way sales runs Gia. No scope defined. |
+Run the sales operation (**Gia**), add the intelligence layer (**Elaya**), own the member relationship
+after the sale (**Sia**: members, tickets, vendors), then give Elaya **hands** so she can act in the
+world, not only inside Serene. As of late September 2026 the first three steps are live and the fourth
+has started. Sales runs on Gia. The concierge floor has its WhatsApp archive, member records, its own
+ticketing and its vendor book in Serene, although day-to-day ticket work still happens in Freshdesk.
 
-## What's live vs. what's written but not applied
+## Module status (2026-09-26)
 
-Almost everything in the tree is live. Two known exceptions, both flagged in their changelog entries
-as **"not yet applied — run `supabase db push`"**:
+| Module | Status | What "done" means, and where it stands |
+| --- | --- | --- |
+| **Serene** (base OS) | ✅ live | Module work never touches the foundation. Holds; hardening continues through the audits |
+| **Gia** (sales CRM) | ✅ live | A lead travels ad to deal without leaving Serene, with SLA guardrails. Achieved. Tables in the `gia` schema since 2026-09-17; Shop-app channel added; founder pings paused |
+| **Lead Revival** | ✅ live (R1) | Silent leads revived as tasks or sent to review; never changes the lead |
+| **Call Intelligence** | ✅ live (Phase 1) | Library + dossier card. Only onboarding seeded. Phase 2 (similarity search) not started |
+| **Oversight** | ✅ live | Managers and founders see live task work |
+| **Elaya** | ✅ live | Python brain, 52 tools, three channels plus the customer channel, living memory, playbooks, requests, evals, the analyst. Not built: proposal cards, MCP writes, embeddings, voice replies; Node brain retirement targeted 2026-10-16 |
+| **Sia** (concierge) | ✅ live beside Freshdesk | Done = the floor runs its member work in Serene the way sales runs Gia. Missing: the Freshdesk cutover and the won-deal to member bridge |
+| **Members** | ✅ live | The twin fills itself (profiler, Observation, imports), pulse, weekly judgement, one health number, vault, Zoho money. Not built: the bridge, the member-app feed, money events, most health-signal writers |
+| **Tickets** | 🔨 built, not the main tool yet | Done = the floor works tickets here instead of Freshdesk. Intake proposes cards in production; no human verdicts yet, so no lessons |
+| **Vendors** | ✅ live | One ranking, a live extractor, a review queue. Not built: screens for status, capabilities and manual jobs; Sia vendor groups do not feed vendors |
+| **Subscriptions** | ✅ live (Phase 1) | No reminders, no notifications, nothing in the background, by contract |
+| **Books** (Zoho) | ✅ live, read only | `/books` and member finance |
+| **MCP connector** | ✅ live (Phases 1 to 3) | Phase 4 (writes with confirmation) not built |
+| **Mobile** (`/m`) | ✅ live | Four rooms for founders and Gia managers. Per-role room sets never built; the tech-expense card is a placeholder |
+| **Hands** | 🔨 step 1 committed | Migration 0245 (schema `hands`, `vendors.kind`), `hands-service.ts`, `hands-mutations.ts`, a second Baileys process in `connector-hands/`. **Not applied**; no page, no tool, no traffic. Layers D to F not started |
 
-- **`20260710000161_business_minutes_response_time.sql`** — the `business_minutes_between()` helper
-  and the six RPCs that call it. Until it is applied, response-time figures still include nights and
-  Sundays. (Display units and RPC return shapes are unchanged either way, so the app compiles and
-  runs regardless.)
-- **`20260710000162_notifications_type_check_sync.sql`** — syncs the `notifications.type` CHECK with
-  the full TS `NotificationType` union. Until applied, `sla_breach_agent/manager/founder`,
-  `task_overdue_manager` and `suggestion_resolved` inserts fail silently.
+## What is written but not applied
 
-**Verify both against the live DB before relying on them** — the repo cannot tell you what has been
-pushed since, and migrations are sometimes applied out of band (0163–0168 were, during the
-subscriptions merge). Confirmed applied and verified in the changelog: 0144–0158, 0159 + 0160
-(pushed and verified 2026-07-06, including a one-time `supabase migration repair` that reconciled the
-MCP-applied history with `db push`), and 0163–0168.
+- **Migration 0245 (hands)** is the only one. Every migration through 0244 is applied on production
+  (checked 2026-09-26 with `supabase migration list --linked`). 0245 as first committed dropped `gia` and
+  `member` from PostgREST's exposed schemas; its author fixed it before any push (commit 9f486fc). Apply
+  it only after a dry run, when step 1 is ready. A `supabase db push` applies **every** pending file, so a
+  push for anything else would also apply 0245.
+- The changelog entries for 0242 to 0244 still say "not applied yet"; they are applied.
 
-**One environment step is still outstanding for a shipped feature:**
-`GUPSHUP_CUSTOMER_WELCOME_TEMPLATE_ID` must be set to a real approved Gupshup template id before the
-customer welcome-blast sends anything. The code path exists and no-ops with a skip log until then;
-creating and getting that template approved is a founder-side Gupshup step. Whether it has since been
-set on Vercel is not verifiable from the repo.
+## Current focus (2026-09-26)
 
-## Next up
+1. **The concierge floor on Serene.** The company was onboarded from the roster on 2026-09-26; seats
+   and queendom scoping are in place at every layer; Elaya is on for the floor. Next: real verdicts into
+   the ticket training loop (accept or dismiss cards, so the lesson writer has something to learn from),
+   then plan the Freshdesk cutover.
+2. **Elaya's hands.** Step 1 built; `docs/architecture/hands-plan.md` has the rest and the founder
+   decisions it waits on.
+3. **One brain.** Retire the frozen Node brain (target 2026-10-16) once nothing depends on it.
 
-### 1. Client records (post-won flow) — the current focus
+## Next up, after the focus
 
-A won deal should open a client record; the relationship continues past "won". `deals.client_id` is
-the reserved hook. Nothing is built. This is the prerequisite for Sia.
+- **The post-won bridge:** a won deal opens or links a member record (`gia.deals.member_id` exists with
+  a foreign key and nothing sets it). The relationship then runs in one place from advert to the
+  hundredth request.
+- **Freshdesk cutover pieces:** the pilot queendom, the history import (`origin = freshdesk_import`), the
+  member app reading Serene tickets, WhatsApp delivery of ticket alerts, the daily digest.
+- **MCP Phase 4:** write tools with confirmation.
+- **Elaya's eyes** (`docs/architecture/media-understanding-plan.md`, written 2026-09-26, a **plan,
+  nothing built**): today Elaya and every reader see text only, while tens of thousands of files sit
+  unread (about 28,000 images, 3,400 documents and 1,000 voice notes in the member groups; about
+  59,000 Freshdesk notes with a file). The plan: read every file once, when it lands, into plain text
+  and a few fields in one `media_readings` table, so every reader stays a text reader. The only file
+  reading today is the vendor extractor's bills. Founder decisions are marked in the plan.
+- **Elaya for finance, marketing and business**, once she has tools and data for them.
+- **DPDP Act phase 2** (the largest non-feature obligation; substantive rules in force around 14 May
+  2027, per `docs/audits/2026-07-02-dpdp-compliance-audit.md`): a consent / lawful-basis record at every
+  ingestion point, WhatsApp STOP handling, an erasure core (erasure is structurally impossible today:
+  the July audit counted ten append-only tables holding PII, and the member side has added more), a
+  breach workflow, a data-principal rights flow, read-access logging
+  beyond the member access log, a processor registry. The member `consent` column is reserved and
+  unused; written card-on-file consent for vault cards is not recorded.
 
-### 2. Sia (Concierge module) — after client records
+## Open items by area
 
-The concierge team's post-won work, run inside Serene the way sales runs Gia. Scope undefined; see
-`docs/modules/sia.md`. The `task_module` enum already carries a `sia` value.
+### Security and access (from `docs/TODO.md`)
 
-### 3. DPDP Act 2023 / DPDP Rules 2025 — Phase 2 of the compliance roadmap
+- **The sign-up hole.** `handle_new_user` (last defined in 0201) copies role, domain, seat and queendom
+  from sign-up metadata, which the person signing up controls. Safe only while public sign-up is off on
+  production (checked 2026-09-26: off). Durable fix: stop trusting user metadata, and turn sign-up off
+  in `supabase/config.toml`.
+- `linkMemberGroupAction` checks only that the caller can see the member, not their role or the group's
+  queendom (a seated teammate calling it directly could pull another queendom's group into their scope).
+- Ticket priority approval is enforced only in the page (`setTicketPriorityAction` trusts `approve`).
+- Seat changes (`sia_role`, `queendom_id`) are not written to `profile_audit_log`.
+- The tech workbench sees buttons it cannot use (Sia console, Freshdesk Sync now, vendor Merge and
+  Remove, Teach Elaya saves), and a non-manager workbench teammate sees the full admin budget view.
+- `getElayaChatSeedAction` is the one Elaya entry point without `hasElayaAccess` (returns only the
+  caller's own seed). Elaya training writes are not pinned to a manager's own domain.
+- Decisions left as they are by the founder: two concierge-domain accounts hold the founder role;
+  `find_teammate` is a company-wide directory; a vendor's job history carries member names from every
+  queendom.
 
-The largest known non-feature obligation. The substantive obligations for private Data Fiduciaries
-(notice, security safeguards, breach intimation, retention, rights, cross-border) come into force
-**~14 May 2027**. From the 2026-07-02 audit (`docs/audits/2026-07-02-dpdp-compliance-audit.md`):
+### Bugs and gaps found in the 2026-09-26 refresh
 
-- **What already holds up:** RLS everywhere, `requireProfile`, timing-safe webhook secrets,
-  append-only write audits, `maskPii` before the LLM, in-memory-only audio, and now Vault-encrypted
-  stored credentials with an audited reveal.
-- **What is missing (the 11-item gap register G-01…G-11):** no consent/lawful-basis record at any
-  ingestion point; no WhatsApp STOP/opt-out; no breach-notification workflow (72h Board clock);
-  **erasure is structurally impossible** (no lead delete path, and ten append-only tables hold PII
-  immutably, `lead_raw_payloads` forever); no DSR/grievance/nomination flow; no read-access logging
-  (Rule 6(c)); no processor/DPA registry; hosting regions still `TODO: verify`.
-- **Confirmed not applicable at current scale:** Third-Schedule erasure clocks, Consent-Manager
-  registration, SDF duties.
-- **Planned Phase 2:** a consent/lawful-basis + `do_not_contact` migration on `leads`, STOP-keyword
-  handling in the WhatsApp webhook, and an anonymisation/erasure core.
+- **`public.tasks` is not in the Realtime publication**, so the group workspace's live subtask updates
+  never arrive (a one-line migration, or drop the dead subscription).
+- The dashboard Pending Calls tile links to `/tasks?tab=gia`, a tab deleted on 2026-06-17.
+- Two payment-status vocabularies on tickets (Money card: not started / requested / paid / waived;
+  sentinel: unpaid / partial / paid).
+- The seeded watch and bag ticket SLA rows have no escalation ladder, and the most specific row wins
+  whole, so those tickets never escalate.
+- The ticket board ignores every filter except the queendom.
+- Members: identity facts (birthday, company, city) have no card; the Health filter works on the current
+  page only; the Health sort uses the judgement score, not the live number; Requests shows Freshdesk
+  only; stale "arrives in M2" copy on the Money card.
+- Freshdesk ticket page: the requester is not linked to the member page; "Open in Sia" goes to bare
+  `/sia` instead of the group.
+- Team page: a Gia manager cannot open `/admin/users/[id]` although the page would admit them (the
+  route map blocks it); invited accounts start with a blank phone (and a blank phone turns WhatsApp
+  messages into leads); roster placements left open after onboarding.
+- Oversight: a tech workbench agent gets the unclamped all-teams view.
 
-### 4. Known smaller items
+### Environments and jobs
 
-- **Subscriptions Phase 2** — renewal reminders and notifications. Deliberately excluded from
-  Phase 1; the tables and the computed-status layer are ready for it.
-- **Call Intelligence Phase 2** — embedding similarity over the dormant `embedding vector(1536)`
-  column (no HNSW index yet).
-- **Elaya semantic retrieval** — notes and learned memory load whole today; the swap starts from
-  `getUserPersona`/`getNotesForElaya` (the `vector` extension is installed).
-- **In-app proposal cards** — an SSE `proposal` frame + an Approve/Dismiss modal (audit M8).
-- **WhatsApp closed-window template fallback** — re-opening an expired 24h session (audit H4b).
-- **`get_usage` Elaya tool** — `getAgentUsage` is session-bound; it needs a sessionless twin first.
-- **Voice replies / TTS (ElevenLabs)** — locked for a future phase; voice is input-only.
-- **Mobile agent rooms** — manager/agent stay on the responsive `/dashboard` until their room sets
-  ship; the `/m` Budget room's tech-expense card is a contract-specified placeholder.
-- **`/error-log` replay** — failed webhook payloads are preserved but there is no replay action.
-- **The orphaned `--z-veil` token** — the route veil was deliberately deleted and must never return;
-  the token is dead and can be removed in a cleanup pass.
+- Confirm the `GUPSHUP_*` variables on the Trigger.dev production worker (a 2026-09-22 finding: the
+  brief's WhatsApp send failed there). Without them the brief, the alerts and the Sia watcher alarm lose
+  their WhatsApp leg quietly.
+- Confirm the `ZOHO_*` variables on the Trigger.dev worker (the brief skips money without them).
+- **1,877 lead SLA timers sit in `pending` past their fire time** (oldest about 101 days, about 58 a
+  week). Timers do fire again (the 2026-09-21 Trigger.dev key problem is resolved in practice), so this
+  is likely rows not closed when a run is skipped. It keeps the engine health check's row 2 red. Not
+  diagnosed.
+- `scripts/engine-health-check.sql` fails as written since the `gia` schema move.
+- **Partition upkeep:** nothing creates new monthly partitions. `sia.wag_*` and `member_events` run to
+  2027-03, `sia.ticket_events` to 2027-12; later rows land in the default partition.
+- The revival sweep runs at **02:00 IST** (`0 2 * * *` in `Asia/Calcutta`); comments and `CLAUDE.md`
+  saying 07:30 are wrong (the Trigger.dev doc still asks to confirm on the dashboard).
+- The analyst switches (`daily_briefing_enabled`, `elaya_alerts_enabled`) were seeded off; their live
+  values are rows, so check before assuming the brief or alerts are on.
 
-## Open Elaya audit items (still unfixed)
+### Email and messaging
 
-The Elaya subsystem is fundamentally healthy — **no critical or High-severity bugs remain** (the audit
-doc removes resolved findings, so it lists only what's open). Remaining:
+- **Brevo sender domain** (DKIM / SPF) not fully authenticated, so auth emails can land in spam.
+- **`GUPSHUP_CUSTOMER_WELCOME_TEMPLATE_ID`** not confirmed set; until it is, the customer welcome no-ops.
+- Gupshup delivery receipts are acknowledged but not stored, so ticks beyond "sent" do not show.
+- Founder new-lead WhatsApp alerts are paused in code (`FOUNDER_LEAD_ALERTS_PAUSED`); founder SLA
+  escalations and "lead won" are muted per founder. Both reversible.
 
-**Medium (enhancement, not defects):** M8 (no in-app proposal card) · H4b (no WhatsApp closed-window
-template fallback).
+### Elaya
 
-**Low/nit cluster (~20 items), e.g.:**
+- Not built: the in-app Approve/Dismiss proposal card, MCP writes, embeddings (notes and memory load
+  whole within a 6,000-character budget; build when someone's notes outgrow it), voice replies, the Exam
+  page, reading images and files (the media-understanding plan above).
+- `src/lib/elaya/CLAUDE.md` still says 12 read and 12 write tools (36 and 16 today); `backend/README.md`
+  calls the brain "a FastAPI skeleton".
+- The remaining Low items from `docs/audits/2026-06-25-elaya-full-audit.md` (fixed items are deleted from
+  that doc, not annotated; read it for the current list).
 
-- `get_performance_snapshot` lacks a domain arg for admin/founder on WhatsApp.
-- `supersedePriorProposals` failure could leave two live proposals (a partial UNIQUE index would fix
-  it structurally).
-- `executeProposedAction` can leave a `proposed` row after the write succeeds (stamp at start).
-- No "cancel" acknowledgement on a declined proposal — the injection-critical `classifyConfirmation`
-  gate is deliberately binary, and adding a third verdict is deferred.
-- `delete_task` lacks a before-snapshot (existence re-check only).
-- No per-turn inline-write idempotency (a model double-emit could duplicate a note/task).
-- Cross-channel confirmation (a "yes" on WhatsApp could confirm an in-app proposal) — document or
-  compare channel.
-- Token accounting ignores cache tokens; the `isError` flag isn't threaded into Anthropic `is_error`.
-- The cap check is mildly TOCTOU (concurrent messages can exceed the soft cap by one).
+### Stale code comments and registries (the docs are right)
 
-**Founder preference:** when one of these is fixed, **delete it** from
-`docs/audits/2026-06-25-elaya-full-audit.md` (don't annotate "resolved").
+Root `CLAUDE.md`, `.env.example` and the Freshdesk task header say Freshdesk allows 50 calls a minute
+(it is 400 for the account, 100 for ticket endpoints); the root `CLAUDE.md` vendor rows describe Remove
+and Merge rules that changed; `connector/README.md` and the watcher Dockerfile describe the pre-Fargate
+state; the "no `server-only` because of Trigger.dev" comments give the wrong reason (the Trigger.dev
+build stubs `server-only`; only laptop `tsx` scripts care).
 
-## Design items found and deliberately deferred
+### Design (from `docs/design/decision-log.md`, Open)
 
-- **Quiet-text contrast, app-wide.** `--theme-text-tertiary` measures **2.14:1** and
-  `--theme-text-secondary` **3.26:1** on plain paper — both under the 4.5:1 body bar. Fixing it is a
-  product decision about how quiet Serene's quiet text may be, touching hundreds of surfaces. It was
-  deliberately not bundled into the 2026-08-10 header-contrast fix.
-- **Accent fills stop at ~2:1**, short of the 3:1 non-text-UI bar, because pushing to L≈0.62 would
-  break the whisper-pastel identity. Recorded as a conscious ceiling, not an oversight.
-- **A shadow-definition garnish** (`--neu-dark` → `158 148 130`, alphas +0.03) was audited and
-  deferred pending review on the live app.
-- **Three latent timezone-label bugs** (browser-local or Vercel-UTC labels for an IST business:
-  `MyTasksCalendarView` weekday, `ConversationPanel` date groups, dashboard-service bucket labels)
-  plus two formatter-normalisation choices were node-verified and **left**, because fixing any of
-  them changes displayed output — a product decision, not a refactor.
-- **The WhatsApp conversation-list Redis cache** stays deliberately un-cached: Realtime keeps the
-  panel live and stale unread state is worse than one indexed read.
+Decisions waiting: build `/dev/components` or retire that decision in favour of the specimen scripts;
+sanction or remove two blurs outside the list (`LoadingVeil`, the `/m` scrims); the form label standard
+(sentence case vs uppercase micro-label); Elaya's message shape (DNA says never bubbles; the shipped chat
+uses bubbles); Elaya as a floating button (DNA says not; it ships); the route progress bar and page
+transitions in DNA §14 (not built); CVA for variants (not a dependency); the orphaned `--z-veil` token.
+The 2026-09-25 UI audit and the 2026-09-26 mobile audit are in `docs/audits/`; the mobile audit's main
+findings were fixed the same day.
 
-## Other known TODOs
+### Smaller product gaps
 
-- **Email deliverability (Brevo):** auth emails send via a custom Brevo SMTP but land in spam —
-  `indulge.global` isn't fully authenticated in Brevo. Fix = add/authenticate the domain (DKIM + SPF)
-  and match the Supabase "Sender email" to the verified sender. (`docs/TODO.md`.)
-- **Trigger.dev prod worker:** SLA/task notifications only fire once the worker is deployed against
-  the `tr_prod_` key (`npx trigger.dev@latest deploy` + swap `TRIGGER_SECRET_KEY`). The
-  `/escalations` *surface* computes breaches live regardless; this is about the *alerts* firing.
-- **Installed-PWA icon staleness:** home-screen icons and the OS splash are baked at install time, so
-  devices installed before the 2026-07-10 cream re-plate keep the old black icon until the user
-  re-adds the app.
+- Archived leads are invisible to phone search (RLS bakes in `archived_at IS NULL`).
+- The revival review view has no way in from the UI.
+- A duplicate active lead resubmission does not re-ping the original agent (an open product question).
+- Won-deal capture is two steps (insert, then the status flip).
+- Repeat reminders on tasks have no UI (only Elaya sets them); ticket tasks look like any task.
+- Subscriptions: department-wide access is the permanent model (founder decision); no reminders.
+- `/error-log` has no replay action.
+- Call Intelligence: only onboarding was seeded; no delete path and no UI for hooks.
+- Installed PWA icons from before a re-plate keep the old icon until the app is re-added.
 
-## Per-module open product questions (from the page specs)
+## Counts that go stale (re-count before quoting)
 
-Small, known gaps that aren't bugs: archived leads are invisible to phone search (RLS bakes in
-`archived_at IS NULL`); group accent/icon/member chips are UI-only (no DB columns); a duplicate active
-resubmission doesn't re-ping the original agent; the subscriptions access model is
-department-membership-wide (everyone with access sees every subscription — the `departments` array is
-metadata, **not** a security boundary) and may need narrowing if the data gets more sensitive. These
-live in the individual `docs/pages/*.md` and `docs/modules/*.md` specs.
+WhatsApp groups linked to members (401 on 2026-09-18); how much of the Active members' history the
+profiler has read (67% on 2026-09-21); Serene tickets and human verdicts (none as of 2026-09-25); Call
+Intelligence cases per domain.

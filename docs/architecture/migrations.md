@@ -1,45 +1,165 @@
 # Migrations
 
-> **Purpose:** migration conventions and the full ordered index of every schema migration.
-> **Audience:** engineers. · **Source-of-truth scope:** conventions + history narrative. The migration *files* in `supabase/migrations/` are truth; the code-adjacent inventory in `supabase/migrations/CLAUDE.md` is updated in the same commit as each new migration — this index is the docs-side view and must be synced when migrations ship. If they ever disagree, the SQL files win.
-> **Last verified:** 2026-07-02 against `supabase/migrations/` (files through 0156; serials run
-> 0001–0156 with `maxNumber − 1` ≠ file count for several reasons — the sequence skips 0131 (it was
-> superseded by 0132 before it was ever applied), and a few serials are reused on date-stamped
-> filenames: 0058, 0066, 0122, and **0141** (`whatsapp_media_bucket` 06-23 *and*
-> `backfill_campaign_account_segment` 06-24 — indexed below as 0141a/0141b). Always trust the date
-> prefix). Some recent migrations are flagged **NOT yet applied to prod** below (notably 0146 and
-> the 0154–0156 theme batch) — verify against the live DB before assuming a table/RPC exists.
-> (0144 was applied and verified 2026-06-24 per `supabase/migrations/CLAUDE.md`.)
+> **Purpose:** how a schema change is written, numbered, rehearsed and shipped, and the full ordered index of every migration.
+> **Audience:** engineers.
+> **Source-of-truth scope:** conventions and the history narrative. The SQL files in `supabase/migrations/` are the truth, and each file's header comment carries the full reasoning. `supabase/migrations/CLAUDE.md` is the code-side inventory, updated in the same commit as each migration. If they ever disagree, the SQL files win. What each table is for: `database.md`.
+> **Last verified:** 2026-09-26 against every file in `supabase/migrations/` (0000 to 0245; the headers and created objects of 0157 to 0244 read in full), the changelog's apply notes, and production's applied list (`supabase migration list --linked`, run by the docs lead on 2026-09-26).
 
 ---
 
 ## Conventions (non-negotiable)
 
-- **Never edit a migration that has already run in production (A-14).** Write a new one — even
-  for typos. Repair migrations are normal (see the repair list below).
-- **Every new table** ships with `ALTER TABLE x ENABLE ROW LEVEL SECURITY` (A-08) in the same
-  migration.
-- **Log/activity tables** get no UPDATE or DELETE policies, ever (A-11).
-- **Reuse `update_updated_at()`** (defined in 0001) — never recreate it.
-- **SECURITY DEFINER functions:** always `SET search_path = public` (A-10); never a
-  caller-supplied scope parameter (Q-13) — self-derive scope, or REVOKE client EXECUTE
-  (see `auth-and-rbac.md` §10).
-- **Enum↔text comparisons** always cast: `get_user_domain()::text` (42883 guard).
-- **Idempotency guards** (`IF EXISTS` / `CREATE OR REPLACE` / `ON CONFLICT DO NOTHING`) on any
-  migration that may meet divergent production state — see 0056, 0073, 0084.
+From `supabase/migrations/CLAUDE.md` and `../rules/The_Rules.md`, plus what the last three months
+taught:
 
-## Numbering caveat
+- **Never edit a migration that has run in production (A-14).** Write a new one, even for a
+  typo. 0203 exists because a signature change was written into 0199 after 0199 had run: the file
+  and the database disagreed, and the "Wake now" button failed with PGRST202.
+- **Every new table enables RLS in the same migration (A-08).** Partitions too: Postgres does not
+  pass RLS from a partitioned parent to its children (0170). New `wag_` month partitions go through
+  `sia.wag_add_month_partition()`, which turns RLS on.
+- **Log, activity and ledger tables get no UPDATE or DELETE policy, ever (A-11).** The named
+  exceptions (delivery receipts, remark suppression, `elaya_actions`, `revival_candidates`,
+  `suggestions`, the vendor engagement close) are resolve-once admin-client updates, listed in The
+  Rules.
+- **Reuse `update_updated_at()`** (0001). Never recreate it.
+- **Every SECURITY DEFINER function pins its `search_path` (A-10).** Routines in `public` run on
+  `public, gia, member` since 0210/0211; `sia` routines use a `sia`-first path; a function that
+  names every table with its schema uses `pg_catalog, pg_temp` (0238, 0241).
+- **Scope (Q-13).** A read RPC either derives its scope itself (`auth.uid()`, `get_user_role()`,
+  `get_user_domain()`) and keeps the `authenticated` grant, or takes scope parameters and has
+  EXECUTE revoked from `PUBLIC, anon, authenticated` in the same file, becoming admin-client only.
+  New functions in `sia`, `member` and `freshdesk` default to service role only.
+- **Several writes that must land together go into one RPC** (the 0030/0031 pattern; since then
+  `sia.create_ticket` / `sia.apply_ticket_change`, `merge_vendors`, `remove_vendor`). Access
+  control stays in the action, never inside the RPC.
+- **Compare enums to enums.** `leads.domain` has been `app_domain` since 0041. 0180's first push
+  failed with 42883 because a copied policy compared it to `get_user_domain()::text`.
+- **Idempotency guards** (`IF EXISTS`, `CREATE OR REPLACE`, `ON CONFLICT DO NOTHING`,
+  `DROP CONSTRAINT IF EXISTS` before `ADD`) on anything that may meet divergent production state.
+- **A CHECK that mirrors a TypeScript vocabulary is restated in full** (DROP, then ADD with every
+  value), so nothing is narrowed by accident (0162). Give it a stable name: 0244 had to find the
+  auto-named `sia_role` CHECK by its text.
+- **Changing a function's arguments or return shape needs DROP, then CREATE,** and the old overload
+  must go, or PostgREST refuses the call as ambiguous (0203, 0216, 0218).
+- **PostgREST returns at most 1,000 rows per response, RPC results included,** and says nothing.
+  Return a vocabulary as one array row, `ORDER BY` a stable key so the caller can page, or count in
+  SQL (0192, 0238).
+- **Exposing a schema on the API restates the whole list.** `ALTER ROLE authenticator SET
+  pgrst.db_schemas = '…'` replaces the value; today it must include `public, graphql_public, sia,
+  freshdesk, gia, member` (plus `hands` once 0245 is applied). Follow it with `NOTIFY pgrst, 'reload config'` and `'reload schema'`.
+- **New data for Elaya's analyst is a new `elaya_read` view** with an explicit column list and a
+  COMMENT: never `select *`, never a phone, email, password or WhatsApp jid.
 
-Migrations apply in **filename-timestamp order** (`YYYYMMDD…`), not by trailing serial. Four
-serials were reused: **0058** (`ad_creatives_multi_video` 06-01 *and*
-`task_groups_flat_visibility` 06-05), **0066** (`leads_city_column` 06-03 *and*
-`domain_health_metrics` 06-04), **0122** (`agent_today_pulse_notes` *and*
-`deal_category_and_domain_type`, both 06-15 — indexed below as 0122a/0122b), and **0141**
-(`whatsapp_media_bucket` 06-23 *and* `backfill_campaign_account_segment` 06-24 — indexed below as
-0141a/0141b). Serial **0131 is intentionally skipped** — there is no `0131` file on disk; it was
-superseded by 0132 before it was ever applied (see the 0132 row). Always trust the date prefix.
+## How a migration ships
 
-## Repair migrations (drift fixed by a later migration — the pattern to copy)
+1. **Pick the number last.** Check the highest file on `main` and the highest applied on
+   production (`supabase migration list`) right before committing. Other sessions and PR branches
+   write migrations in parallel (see "Numbering and file names").
+2. **Write the header comment:** why, what, and what it was checked against.
+3. **Rehearse off production.** What has been used:
+   - `supabase db reset` on the local stack, rebuilding from every file (0186, 0192, the vendor
+     PRs);
+   - a throwaway Postgres 17 built to the before-state (0243, 0244);
+   - a container copy of the live schema, including the rollback (0211);
+   - for a schema move, Postgres **plus PostgREST** against the copy, because the embed break lives
+     in PostgREST, not in the database (0212);
+   - for security-sensitive SQL, the whole migration run inside a transaction on production and
+     rolled back (0223: six real questions answered, fourteen attacks refused).
+4. **Push with the Supabase CLI:** `supabase db push --dry-run`, read it, then `supabase db push`.
+   A push applies **every** pending file, including ones another session left uncommitted in the
+   shared folder, so the dry run matters. Use `--include-all` when a pending file sorts before the
+   newest applied one (it was needed for 0000 on 2026-09-11).
+5. **Verify against the catalog, read-only:** the constraint, the policy, `pg_get_functiondef`,
+   a real call. An exit code is not proof.
+6. **Regenerate `src/lib/types/database.ts`** (`supabase gen types typescript --linked` across
+   `public, gia, member, sia, freshdesk`), keeping the hand-written tail below the generated block.
+7. **Record it** in the same change: a `docs/changelog.md` entry, a row in
+   `supabase/migrations/CLAUDE.md`, a row in the index below.
+
+**Deploy order.** When code and SQL depend on each other, say in the changelog which goes first.
+Additive SQL goes first. A REVOKE or a rename goes with or after the code that stops using the old
+shape (0102). A change the app tolerates either way can go in any order (0242).
+
+### Schema moves (the 2026-09-17 lesson)
+
+Moving tables between schemas (0172, 0210, 0211) is a catalog relabel: rows, indexes, policies,
+triggers and foreign keys move for free and nothing is copied. What breaks is everything that
+*names* the tables:
+
+- **The migration and its build are one release.** On 2026-09-17 both halves were pushed before
+  their code was live (gia at 13:41 IST with the build at 13:43; member at about 15:55 with the
+  code at 16:04). Each time, the running app asked for tables that had just moved; the Sia surfaces
+  were down for about ten minutes. Push only when the build that follows is ready to promote.
+- **Every reader follows, not only Vercel.** The Trigger.dev tasks need their own deploy, and the
+  Python brain on Fargate has its own PostgREST client (`backend/app/core/supa.py`, which now routes
+  moved tables through `_MOVED_TABLES`). After 0210 it kept asking for `public.leads` for about two
+  and a half hours.
+- **Rehearse the app's reads, not only the database.** The 0210 rehearsal proved rows, policies and
+  routines intact and missed that cross-schema embeds return PGRST200. That emptied the leads pages
+  (fixed by 0212/0213) and, two days later, was found to have broken every task status change
+  (fixed in code with `gia-task-links.ts`).
+- **Count rows before and after** with `scripts/db/row-counts.ts`. It reads the table list from
+  `database.ts`, so take the "before" run with `--profile <schema>=public` once the types already
+  name the new schema.
+
+Full runbook and what happened: `schema-restructure-plan.md`.
+
+## Numbering and file names
+
+A file is named `YYYYMMDD` + a six-digit serial + `_snake_case_name.sql`, for example
+`20260926000244_joker_head.sql`. The 14-digit prefix is the **version**: the CLI orders migrations
+by it and records it in `supabase_migrations.schema_migrations`. Two consequences:
+
+- **A reused version is silently skipped.** If a file carries a version production has already
+  recorded, `db push` treats it as applied: no error, no table. Every PR branch that adds a
+  migration must renumber onto the current `main` before merge.
+- **A file dated before the newest applied version is refused** unless pushed with `--include-all`.
+
+**Repeated serials.** Six serials appear twice with different dates, so they are different versions
+and both files apply, in date order. The index marks them a/b.
+
+| Serial | Files (in apply order) |
+| --- | --- |
+| 0058 | `20260601000058_ad_creatives_multi_video`, `20260605000058_task_groups_flat_visibility` |
+| 0066 | `20260603000066_leads_city_column`, `20260604000066_domain_health_metrics` |
+| 0122 | `20260615000122_agent_today_pulse_notes`, `20260615113534_deal_category_and_domain_type` (the only file whose prefix ends in a clock time instead of a serial; its header calls itself 0122) |
+| 0141 | `20260623000141_whatsapp_media_bucket`, `20260624000141_backfill_campaign_account_segment` |
+| 0161 | `20260710000161_business_minutes_response_time`, `20260807000161_status_counts_agent_domain` (the second sorts after 0162) |
+| 0202 | `20260916000202_rename_b2b_to_business`, `20260917000202_members_rename` (the second sorts after 0203) |
+
+**Gaps.** 0131 was superseded by 0132 before it ever ran, and the file was deleted. 0205 to 0209
+were skipped on purpose: 0210 was numbered to stay clear of the 020x files another session was
+writing that week.
+
+**Renumbering history.** Every case had the same cause: a branch numbered from an older `main`.
+
+| When | From → to | Why |
+| --- | --- | --- |
+| 2026-08-21 | subscriptions 0154-0157 → 0163-0166 (0167, 0168 added later) | collided with the applied theme migrations and sorted before production's newest |
+| 2026-09-05 | vendors 0179 / 0180 → 0183 / 0184 | 0179 and 0180 were already applied (brain switch, product enquiries); the CLI would have skipped the vendor files |
+| 2026-09-11 | vendors re-dated as 0183-0191 (0191 new) | `main` took 0182 on 09-10 while the branch files were dated 09-05 to 09-08 |
+| 2026-09-18 | vendor live extractor 0205 → 0213 → 0214 | production was past 0212; then `main` landed its own 0213 |
+| 2026-09-21 | vendor cleanup 0223-0226 → 0227-0230 | `main` had applied 0223-0225 and held 0226 (the MCP ledger) |
+
+**Next free number:** 0246 (0245 is `20260926000245_hands.sql`).
+
+## Production status
+
+- **0000 to 0244: all applied.** Checked with `supabase migration list --linked` on 2026-09-26.
+  The "not yet applied" notes in older rows below (and in the 0242 to 0244 changelog entries,
+  written before their push) were true when written and are kept only as history. The ledger has
+  been reconciled several times along the way: 2026-06-12 for 0065 to 0108 (applied out of band),
+  2026-07-06 for 0138 to 0153 (applied through the Supabase MCP), and late August for 0161 and 0169
+  to 0176.
+- **0245 (`hands`): committed, not applied.** It creates the `hands` schema for Elaya's second
+  WhatsApp number (see `hands-plan.md`). As first committed (a11f297) it set `pgrst.db_schemas` to a
+  list without `gia` and `member`, which would have emptied the leads, deals and members pages the
+  moment it was pushed. It was caught in the 2026-09-26 docs review and fixed before any push
+  (9f486fc): the file now restates the full list plus `hands`. The lesson is the rule above: a
+  schema exposure restates the whole list.
+
+## Repair migrations (drift fixed by a later file: the pattern to copy)
 
 | Repair | Fixed | What drifted |
 | ------ | ----- | ------------ |
@@ -52,10 +172,24 @@ superseded by 0132 before it was ever applied (see the 0132 row). Always trust t
 | 0086 | 0017 | `tasks.status` default still `'pending'` after the CHECK migrated to `to_do…` |
 | 0087 | 0031 | campaign first-touch read the wrong jsonb key |
 | 0095 | 0088 | three RLS policies missed by the InitPlan hoist |
+| 0127 | 0003 | live `lead_activities.actor_id` had drifted to NOT NULL; system inserts would have failed |
+| 0147 | 0046 | the slug strip ran before `lower()` and dropped every capital letter |
+| 0162 | 0016 / 0113 / 0136 | `notifications.type` CHECK had fallen behind the TypeScript union; inserts of the missing types failed silently |
+| 0192 | 0187 / 0188 | vocabularies and candidate sets cut at PostgREST's 1,000-row response cap |
+| 0198 | 0197 | `flag_threads_for_media` walked every ticket and hit the statement timeout |
+| 0203 | 0199 | a signature change written into 0199 after it ran; production kept the old function |
+| 0212, 0213 | 0210 / 0211 | cross-schema embeds returned PGRST200; `profiles` views restored them, then narrowed to `id, full_name` |
+| 0216, 0220 | 0215, 0218 | the profiler's due-groups read timed out, then starved groups never started |
+| 0222 | 0173 | `wag_group_activity()` scanned every message, timed out, and the rail showed zero messages everywhere |
+| 0228, 0229 | 0190 | the vendor history search timed out on common words, and the category chip filtered out the vendor who had done the job |
+| 0230 | 0227 | Remove always hid; a row with nothing attached is now really deleted |
+| 0243 | 0095 | `profiles_update` never pinned `sia_role` / `queendom_id`, so a concierge account could move itself into another queendom |
 
 ## Index
 
-> Compact one-liners; full reasoning lives in each SQL file's header comment.
+> Compact one-liners; the full reasoning is in each file's header comment. Rows 0000 to 0156 were
+> written as each migration shipped and keep their original status notes (see "Production
+> status"). From 0157 on, rows are in apply order (by version), one line each.
 
 | # (date) | What it creates / changes |
 | -------- | ------------------------- |
@@ -142,14 +276,14 @@ superseded by 0132 before it was ever applied (see the 0132 row). Always trust t
 | 0111 (06-12) | **`sla_policies` table** (follow-up engine Phase 2) — one row per rule (trigger_kind status/outcome/task_due, threshold, recipient_role, auto_task, channels, hours_mode, active); RLS admin/founder SELECT, service-role writes; seeded with the 8 live SLA rules (parity with `SLA_RULES`; 'active'→'nurturing') + SLA-01C (new·45·founder) + CAD-01A/B/C cadence family + TASK-01A/B task-due rules |
 | 0112 (06-12) | **`leads.last_call_outcome_at`** — timestamp of the latest call outcome; `add_lead_call_note` stamps it alongside `last_call_outcome`; backfilled from the latest outcome-bearing `lead_notes` row (990 of 1096 outcome-carrying leads have no such note → stay NULL → never pass the cadence freshness window) |
 | 0113 (06-12) | **`tasks.overdue_at`** (+ partial index) — stamped exactly once by the overdue job; status CHECK deliberately NOT grown. `notifications.type` CHECK + `sla_breach_founder`, `task_overdue_manager`; `whatsapp_notification_logs.type` CHECK + `task_due_reminder`, `task_overdue_manager` |
-| 0114 (06-12) | **CAD-02A seed** — the In Discussion 48h cadence row (`status` · `in_discussion` · 2880 biz-min · agent · auto_task · channels `{}` · `agent_shift`); idempotent `ON CONFLICT (code) DO NOTHING`. Engine treats every CAD-prefixed code as a cadence (task + re-arm) regardless of trigger_kind. **⚠️ NOT yet applied to prod** — apply = SQL + ledger row in one transaction |
+| 0114 (06-12) | **CAD-02A seed** — the In Discussion 48h cadence row (`status` · `in_discussion` · 2880 biz-min · agent · auto_task · channels `{}` · `agent_shift`); idempotent `ON CONFLICT (code) DO NOTHING`. Engine treats every CAD-prefixed code as a cadence (task + re-arm) regardless of trigger_kind. Not applied when written; applied since (see Production status). |
 | 0115 (06-12) | **`get_dashboard_summary` agent snapshot counts** — `pending_calls_count` + `new_leads_count` added to the agent branch (live snapshots, ignore the date filter); signature unchanged |
 | 0116 (06-12) | **Elaya foundation** — `elaya_conversations`, `elaya_messages` (append-only, `channel` column), `user_context`, `elaya_actions`, `llm_providers`, `elaya_settings`; RLS users read own / assistant·tool·config writes service-role; config SELECT admin/founder |
 | 0117 (06-12) | `whatsapp_notification_logs.type` CHECK + `elaya_reply` |
 | 0118 (06-13) | **Elaya Phase 2 (agentic writes)** — no schema change; partial index `idx_elaya_actions_pending` (`WHERE status='proposed'`) + lifecycle COMMENT. State-machine table (A-11 carve-out), not append-only |
 | 0119 (06-14) | **`revival_candidates` + `revival_policies` tables** (Lead Revival R1) — per-lead revival ledger (`open→actioned/dismissed`) + per-status silence thresholds & daily cap (editable from `/settings`, admin-client read per run, `sla_policies` pattern); the daily sweep layers over leads, never mutates the lead row |
-| 0120 (06-14) | **`push_subscriptions` table** (Web Push / PWA push channel) — per-device VAPID endpoints; `endpoint` UNIQUE (one row per device, many per user); owner-only RLS (`profile_id = auth.uid()`, SELECT/INSERT/DELETE, no UPDATE); the cross-user read + 404/410 dead-endpoint prune in `dispatchPush` are service-role. The second delivery channel behind `createNotification` (fan-out lives inside the function — zero call-site edits); the in-app row stays source of truth. **⚠️ NOT yet applied to prod.** |
-| 0121 (06-15) | **`profiles.app_icon`** (PWA home-screen icon picker) — enum-validated text column (`CHECK app_icon IN ('icon-1'..'icon-4')`), `NOT NULL DEFAULT 'icon-1'`; the `profiles.theme` column pattern exactly. **No new RLS** (the 0001 `profiles_update` self-update policy already covers it; WITH CHECK only guards role/domain); not audited (cosmetic). The chosen PWA install icon; rides the existing `updateProfile` action. **⚠️ NOT yet applied to prod.** Regenerate `database.ts` after applying. |
+| 0120 (06-14) | **`push_subscriptions` table** (Web Push / PWA push channel) — per-device VAPID endpoints; `endpoint` UNIQUE (one row per device, many per user); owner-only RLS (`profile_id = auth.uid()`, SELECT/INSERT/DELETE, no UPDATE); the cross-user read + 404/410 dead-endpoint prune in `dispatchPush` are service-role. The second delivery channel behind `createNotification` (fan-out lives inside the function — zero call-site edits); the in-app row stays source of truth. Not applied when written; applied since (see Production status). |
+| 0121 (06-15) | **`profiles.app_icon`** (PWA home-screen icon picker) — enum-validated text column (`CHECK app_icon IN ('icon-1'..'icon-4')`), `NOT NULL DEFAULT 'icon-1'`; the `profiles.theme` column pattern exactly. **No new RLS** (the 0001 `profiles_update` self-update policy already covers it; WITH CHECK only guards role/domain); not audited (cosmetic). The chosen PWA install icon; rides the existing `updateProfile` action. Not applied when written; applied since (see Production status). |
 | 0122a (06-15) | **`get_agent_today_pulse` v2 — `notes_today`** — adds the genuine since-IST-midnight count of notes the agent logged today to the today-pulse RPC (file `20260615000122_agent_today_pulse_notes`, serial 0122, earlier timestamp than the deal_category file below). |
 | 0122b (06-15) | **`deals.deal_category` + domain-derived `deal_type`** — enforces the domain→type→category rule (decision-log 2026-06-15). Adds `deal_category text`; recreates `deals_deal_type_check` to admit `'sale'` (house/legacy); adds `deals_deal_category_check` (value whitelist) + `deals_retail_category_check` (`retail ⇒ category NOT NULL`, `non-retail ⇒ category NULL` — modelled on `deals_membership_duration_check`). DELETEs the one pre-rule `onboarding+retail` walk-in **before** the CHECKs (table must be rule-clean), backfills surviving retail rows to `'other'`. `deal_type` is derived server-side from `DOMAIN_DEAL_CONFIG`; the CHECKs are the backstop. **Applied to prod + verified.** (File: `20260615113534_deal_category_and_domain_type` — the migration header reads "Migration 0122".) |
 | 0123 (06-15) | **`get_agent_first_touch_pairs` RPC** — raw `(lead, created_at, first_call_at)` pairs for one agent's cohort, feeding the first-touch-speed scorecard on the performance deck. Returns RAW pairs (not bucket counts) because the 5 speed buckets are measured in **business minutes** per the agent's shift, and that calendar/shift math lives only in TS (`lib/utils/sla.businessMinutesBetween` + `buildAgentShiftOverride`) — SQL only returns each lead's creation time + earliest qualifying call note; the service mapper buckets. `first_call_at = MIN(lead_notes.created_at WHERE call_outcome IS NOT NULL)`. Scope-param RPC: **EXECUTE REVOKED** from `authenticated`, admin-client-only (Q-13, the 0102 posture). |
@@ -175,7 +309,7 @@ superseded by 0132 before it was ever applied (see the 0132 row). Always trust t
 | 0143 (06-24) | **`get_dashboard_summary` — going-cold honours the domain selector** — the cold-leads predicate scoped admin/founder as org-wide (`p_role IN ('admin','founder') THEN true`), ignoring `p_initial_domain` while `lead_status` + `campaigns` already honoured it. Recreated from the live 0140 body changing ONLY the cold predicate to the same scoping CASE the other two CTEs use (manager → own domain, admin/founder → picked domain or all). Cutoff stays `cold_lead_cutoff()`; date filter still not applied (going-cold is live state). |
 | 0144 (06-24) | **Oversight — `task_events` stream + 3 read RPCs** (the `/oversight` surface). `task_events` append-only table (`task_event_type` enum: `created`/`status_changed`/`reassigned`/`remark_added`/`overdue`; `domain app_domain NOT NULL`, `actor_id`/`subject_id`→profiles, `task_title` snapshot, `meta jsonb`; FK→`tasks` CASCADE; indexes `(domain, created_at DESC)` + `(subject_id, created_at DESC)`; **manager+ SELECT, NO INSERT/UPDATE/DELETE policy ever** (A-11); Realtime ENABLED) — written ONLY by the task-mutation cores + the overdue job via the admin client. Three SECURITY DEFINER scope-param RPCs (EXECUTE REVOKEd from `PUBLIC/anon/authenticated` → admin-client only, Q-13): `get_team_task_overview` (Tier 1 — per-rostered-domain task tallies + agent count), `get_team_agent_breakdown` (Tier 2 — per-agent tallies in a team), `get_agent_tasks_oversight` (Tier 3 — an agent's task rows + lead identity via `task_gia_meta` LEFT JOIN). All three derive task→domain via `COALESCE(task_groups.domain, assignee.profiles.domain)` (no `tasks.domain` column) and **force-clamp a manager to their own domain in SQL** (the manager tasks RLS is role-only — RLS can't isolate teams). **Applied to prod via MCP + verified 2026-06-24** (interim `lib/types/oversight.ts` hand-types + `as any` casts until `database.ts` regen). |
 | 0145 (06-25) | **`get_personal_tasks` returns linked-lead identity** — widened from `RETURNS SETOF tasks` to the full `tasks` row PLUS four nullable lead-identity columns (`lead_id`/`lead_first_name`/`lead_last_name`/`lead_slug`) via a LEFT JOIN through `task_gia_meta`→`leads`, so My Tasks can show WHICH lead a "Call"/"WhatsApp message" follow-up belongs to. The 0138 single-writer invariant guarantees ≤1 meta row per task (join never fans). WHERE/cursor/ORDER BY/params byte-identical to the live 0026 body — only the SELECT list + return type change (a DROP, not CREATE OR REPLACE). Self-scoped → keeps `GRANT … authenticated`. **Applied to prod + verified.** |
-| 0146 (06-25) | **`get_agent_performance_trend` RPC** — real daily IST trend (`[{ day, leads_won, calls, notes }]`, zero-filled, oldest first) feeding the redesigned agent `/performance` self-scorecard (replaces the fabricated `makeSpark` sparklines + the fixed 14-day call chart). Self-scoped (agent = `auth.uid()`, no scope params) → keeps the client `authenticated` GRANT (the 0108 pattern, NOT the Q-13 revoked tier). Additive. **⚠️ NOT yet applied to prod** (interim `(supabase as any).rpc` cast until `database.ts` regen). |
+| 0146 (06-25) | **`get_agent_performance_trend` RPC** — real daily IST trend (`[{ day, leads_won, calls, notes }]`, zero-filled, oldest first) feeding the redesigned agent `/performance` self-scorecard (replaces the fabricated `makeSpark` sparklines + the fixed 14-day call chart). Self-scoped (agent = `auth.uid()`, no scope params) → keeps the client `authenticated` GRANT (the 0108 pattern, NOT the Q-13 revoked tier). Additive. Not applied when written; applied since (see Production status). |
 | 0147 (06-25) | **Fix the lead-slug uppercase strip** (severe latent bug) — `generate_lead_slug` (0046) ran the `[^a-z0-9\-]` char-class strip BEFORE `lower()`, deleting every capital (`Akhil Deekshith → khil-eekshith`); **4,705 of 5,219 active slugs (90%) were missing their first letter**. Moves `lower()` inside before the strip, then regenerates ALL slugs (NULL-all-first so the collision loop never trips on a stale value; oldest-first so the earliest holder keeps the clean slug). Masked until now only because the dossier route falls back to UUID and search uses `search_text`. **Applied to prod + verified** (corrupted count → 0; 91 residual are legitimately unsupported source data — Devanagari/junk names — that fall back to a phone-suffix slug by design). |
 | 0148 (06-25) | **Elaya WhatsApp idempotency — structural dedup index** (audit M7) — a partial UNIQUE index on `elaya_messages ((meta->>'wa_message_id')) WHERE channel='whatsapp' AND role='user' AND wa_message_id present`. The `hasProcessedWaMessage` SELECT + insert weren't atomic and the marker is written only after profile lookup + (for voice) a multi-second transcription, so two BSP redeliveries could both run a full brain turn + reply. A raced second insert now fails `23505`, which `insertUserMessage` maps to "already processed" — exactly one turn per message. In-app + assistant rows are untouched (not in the index); `elaya_messages` stays append-only (an index, not a policy). **Applied to prod + verified** (no existing dupes). |
 | 0149 (06-25) | **Elaya sessionless RPC twins — channel parity (Jarvis Phase 1)** — explicit-param admin twins of the three self-scoped reads that derive scope from `auth.uid()`/`get_user_*()` inside SQL (so returned empty in the sessionless WhatsApp webhook): `get_group_task_summaries_for_user(p_user_id)`, `get_agent_today_pulse_for_user(p_agent)`, `get_agent_roster_performance_for_elaya(p_domain)`. Each is a byte-faithful copy with the `auth.uid()`/`get_user_*()` reads replaced by params. Q-13 revoked tier — EXECUTE revoked from `PUBLIC/anon/authenticated`, GRANTed `service_role` only (the Elaya data layer's admin client + principal-derived args are the trust boundary). The ORIGINAL self-scoped functions are untouched (in-app UI pages still call them). **Applied to prod + verified.** |
@@ -186,73 +320,92 @@ superseded by 0132 before it was ever applied (see the 0132 row). Always trust t
 | 0154 (07-02) | **`profiles.theme` CHECK extended with `'coffee'`** — the sixth theme (coffee bronze accent `#8a7650`, cream paper `#ece7d1`, sage sidebar `#8e977d`). Drops and re-adds the autonamed `profiles_theme_check` (0001) so the SQL mirror of `THEME_KEYS` (`src/lib/constants/themes.ts`) stays in sync — the 0121 app-icon precedent. No RLS change (theme is a cosmetic self-update field). **Applied to prod (remote ledger verified 2026-07-03).** |
 | 0155 (07-02) | **`profiles.theme` CHECK extended with the pastel trio `'macha'`/`'martini'`/`'candy'`** (themes 07–09 — matcha green `#84b179`, periwinkle `#9fa1ff`, candy pink `#f9b2d7`; all three accents carry dark-ink `--theme-accent-fg`, the Earth precedent). Same drop-and-re-add of `profiles_theme_check` as 0154; the CHECK re-lists all nine keys — the SQL mirror of `THEME_KEYS`. Palettes in `design-tokens.css` + `DESIGN-DNA.md`. No RLS change. **Applied to prod (remote ledger verified 2026-07-03).** |
 | 0156 (07-02) | **`profiles.theme` — retire `'cosmos'`/`'coffee'`/`'macha'`** (same-day roster trim; final vocabulary `earth`/`air`/`water`/`fire`/`martini`/`candy`). **Order load-bearing:** UPDATEs any profile on a retired theme to `'earth'` BEFORE the drop-and-re-add of the narrowed `profiles_theme_check` (live `cosmos` rows exist — the theme shipped in Phase 5). 0154/0155 kept on disk unedited (A-14); the 0154→0155→0156 sequence net-applies cleanly. App side: a retired value fails `isThemeKey()` → `DEFAULT_THEME` fallback. **Applied to prod (remote ledger verified 2026-07-03).** |
-| 0157 (07-03) | **`profiles.theme` — retire `'martini'`; register `'rose'`/`'moss'`/`'lilac'`** (the neumorphic FINAL eight: earth/air/water/fire/candy/rose/moss/lilac). Martini profiles migrate to `lilac` (the design package's stated mapping) BEFORE the narrowed CHECK lands (0156 precedent). No RLS change. **Applied to prod (remote ledger verified 2026-07-03).** |
-| 0158 (07-03) | **`profiles.appearance`** — the light/dark mode preference (dark-mode handoff): `text NOT NULL DEFAULT 'light'` + `profiles_appearance_check` (`'light'`/`'dark'`/`'system'` — the SQL mirror of `APPEARANCE_KEYS` in `lib/constants/appearance.ts`; `'system'` follows `prefers-color-scheme`, UI label "Auto"). Mirrors `profiles.theme` end-to-end: cosmetic self-update field under the existing 0001 update policy, persisted via the existing `updateProfile` action, mirrored in the `serene-appearance` cookie so the root layout stamps `data-neu="dark"` on `<html>` from the first byte. No RLS change. **Applied to prod via MCP + verified.** |
-| 0159–0178 | Not yet indexed here (activity events 0159, subscriptions 0163–0168, Sia foundation 0169–0178). Each has its dated entry in `docs/changelog.md`; the Sia set is summarised in `connector/RUNBOOK.md`. Backfilling these rows is an open docs task. |
-| 0179 (08-31) | **Elaya brain-per-channel switch** — two data rows in the existing `elaya_settings` key/value table: `brain_whatsapp` and `brain_in_app`, each `"node"` \| `"python"`, both seeded `"node"` (deploying the code changes nothing until an operator flips a row). Read per request by `getElayaBrainForChannel()` (`llm-providers-service.ts`); the WhatsApp gate (`elaya-whatsapp.ts`) routes the turn to the Python brain via `lib/elaya/python-brain.ts` when its row says python. `ON CONFLICT DO NOTHING`, no schema change, no RLS change (0116 policies stand). **Applied to prod 2026-08-31 (`supabase db push`).** |
-
-| 0180 (08-31) | **Shop app lead channel** — `lead_product_enquiries`: append-only ledger of product enquiries from app channels, one lead holds many. No UPDATE/DELETE policy and no INSERT policy (service-role webhook writes only, Rule 08); SELECT mirrors the `lead_activities` EXISTS-on-parent-lead policy. `external_lead_id` UNIQUE is the idempotency key against the shop's retry loop (3 automatic + unlimited manual redeliveries, all carrying the same Mongo ObjectId). Product columns are a frozen snapshot — the shop hard-deletes listings, so the dossier card must never re-fetch the source URL. Same migration extends the `deals.source` CHECK with `shop_app` (that CHECK is coupled to `LEAD_SOURCES` and must always move with it). **Applied to prod 2026-08-31 (`supabase db push`).** The first push failed 42883 on the SELECT policy: it compared `l.domain = get_user_domain()::text`, copied from the original 0003 leads policy, but `leads.domain` has been the `app_domain` enum since 0041 (which dropped and recreated every domain-referencing policy for exactly this reason). Fixed to enum-to-enum, plus the `archived_at IS NULL` clause the live `lead_activities_select` carries and this policy was missing. |
-| 0182 (09-10) | **`self` lead source** — `deals_source_check` extended with `self` (a lead the team member sourced themselves; new `LEAD_SOURCES` entry in `lib/constants/lead-sources.ts`). No new table. **Applied to prod 2026-09-10 (`supabase db push`).** |
-| 0181 (09-04) | **Clients identity spine** — `public.clients` (one row per client human; strict membership summary + `import_raw`; admin/founder SELECT, service-role writes) and the 0169 Sia `client_id` hooks become real FKs (ON DELETE SET NULL). Populated by `scripts/import-clients-and-map-groups.py`. **Applied to prod.** |
-| 0183 (09-11) | **Vendors — identity spine + capabilities** — `vendors` (the 0181 pattern: uuid PK, GENERATED `name_key` UNIQUE dedup identity, aliases, category/status/identity_status CHECKs, E.164 `contacts` jsonb + array CHECK, `primary_phone` for Sia, `sources <@` CHECK, `import_raw` = PR #3's computed row kept whole) + `vendor_capabilities` (offers/declines per category + service + cities; UNIQUE expression index on `COALESCE(service,'')`). Scores are NOT columns — computed per read from 0185. Admin/founder SELECT only, no user writes. Wires `sia.wag_groups.vendor_id` / `sia.wag_contacts.vendor_id` → `vendors(id)` SET NULL. **Applied to prod 2026-09-11 (`supabase db push --include-all`) — verified on a clean Postgres 17.6 container.** |
-| 0184 (09-11) | **`vendor-invoices` private bucket** — provisioned in SQL; flat `attachment_id` paths; no write policy (admin client only); the one SELECT policy narrowed to admin/founder to match 0183/0185. Paths live on `vendor_engagements.invoice_paths[]`. **Applied to prod 2026-09-11 (`supabase db push --include-all`) — verified in the same container run.** |
-| 0185 (09-11) | **Vendors — the ledger layer** — `vendor_engagements` (append-only; UNIQUE `(vendor_id, source, source_ref)` idempotency — one engagement per vendor per ticket, since one ticket routinely involves several suppliers; `client_id`/`lead_id`/`agent_id` hooks; outcome + INR + invoice paths; one resolve-once close carve-out on the admin client), `vendor_reviews` (append-only; the four MANUAL 1–5 dimensions as columns + has-signal CHECK), `vendor_agent_preferences` (editable preferred/avoid, UNIQUE per vendor × agent), and **`get_vendor_score_inputs`** — the one rollup RPC every score reads (Q-13 revoked tier, service_role only). Admin/founder SELECT only, no user writes. **Applied to prod 2026-09-11 (`supabase db push --include-all`) — verified in the same container run (rollup numbers exact).** **Review round one (09-11):** also `get_vendor_agent_usage(p_vendor_id, p_limit)` / `get_vendor_category_usage(p_vendor_id)` — the vendor page's "used most by" / "used for" tallies as SQL GROUP BYs; the Node tally read the whole ledger through PostgREST and was silently capped at 1,000 rows. |
-| 0186 (09-11) | **Vendors — notes** — `vendor_notes`: many timestamped notes per vendor, each with its author (the `lead_notes` shape). Append-only, admin/founder SELECT, service-role writes. `vendors.notes` kept for the import free-text. Same run extended `get_vendor_score_inputs` with the all-time `total_used` count (0185 had never been applied, so editing it was legal). **Applied to prod 2026-09-11 (`supabase db push --include-all`) — verified by a full local `supabase db reset` of all 190 migrations.** |
-| 0187 (09-11) | **Vendors — the list search** — `vendors.search_text` + `search_key` STORED generated columns (name + aliases + subcategory + city + phone; `search_key` strips every non-alphanumeric so "Lux Drovia" and "LuxDrovia" are ONE key) with `gin_trgm_ops` indexes, plus a plain btree on `name`. **`search_vendors`** (ranked page: all-words-any-order, space-insensitive substring, or trigram typo distance; exact > own phone > prefix > contains > closest) and **`count_vendors`** (delegates to it, so the pager total can never disagree with the page). Replaces `name ILIKE '%x%'`, which could not find "LuxDrovia" from "lux drovia". Both Q-13 revoked tier. Measured 2.5ms empty / 4ms searching, against 8ms for the ILIKE. **Applied to prod 2026-09-11 (`supabase db push --include-all`).** **Review round one (09-11):** also `get_vendor_categories()` / `get_vendor_cities()` — the search vocabulary as SQL DISTINCTs; the Node de-dup selected the column off every row and was capped at 1,000. |
-| 0188 (09-11) | **Vendors — the ranker's candidates, in SQL** — `get_vendor_candidates` (active vendors with an applying `offers` capability and no applying `declines`). Replaces a Node-side selection with three silent faults at real volume: the capability read hit PostgREST's 1,000-row cap (`dining` has 6,034 rows, so the ranker saw a sixth of them), `.in("id", …)` built a URI Kong rejects, and `.eq("category", null)` matched nothing so a service-only request could never return anyone. Q-13 revoked tier. **Applied to prod 2026-09-11 (`supabase db push --include-all`).** |
-| 0189 (09-11) | **Find a vendor — search the ticket TITLES** — `find_vendors_by_history`: a request is matched against the titles of 46,000+ past jobs instead of a hand-written keyword list, and the vendors who served the matching tickets ARE the answer, returned with the matching titles as evidence. Terms are OR-ed, not AND-ed (`plainto_tsquery` ANDs, so "black forest cake" demanded all three words and returned nothing while `cake` alone returns 765). City narrows on the vendor's SERVICE AREA, not the job — only 1,802 of 46,572 jobs recorded a location. Q-13 revoked tier. **Applied to prod 2026-09-11 (`supabase db push --include-all`).** |
-| 0190 (09-11) | **Find a vendor — ranked terms** — `find_vendors_by_history` gains `p_terms text[]`, ordered most-important-first by the model that read the request, weighted **rarity × position**. 0189 weighted by rarity alone, and once requests were expanded `black` proved rarer than `cake`, so "black forest cake" returned black socks. No frequency arithmetic distinguishes a subject from a modifier; the model that read the sentence already does. `p_query` stays as the no-model fallback. Q-13 revoked tier. **Applied to prod 2026-09-11 (`supabase db push --include-all`).** **Review round one (09-11):** a `declines` capability now excludes a hit here exactly as in `get_vendor_candidates` — the request's category when a chip was given, else the matched job's; this path used to check status alone. |
-| 0191 (09-11) | **Vendors — preferred / avoid, the sticky note** — `vendor_agent_preferences`: one teammate's stance on one vendor (`preferred` / `avoid`) plus a note, one row per (vendor, agent), EDITABLE (an opinion about now, not a record). Feeds the `sentiment` score component (rollup below), the ranker's agent layer (the asking teammate's own avoid removes the vendor, own preferred adds `PREFERRED_BOOST`; teammates' marks are a flag and a score signal, never an exclusion) and Elaya's `find_vendors` (staff principal = the agent). It was in the reviewer's first brief, removed 2026-09-07 on a misreading, restored here. Re-declares `get_vendor_score_inputs` with `preferred_count` / `avoid_count` — a SQL body is validated at CREATE so the version that reads this table must come after it (DROP + CREATE: RETURNS TABLE changed). RLS admin/founder SELECT, no user writes; `updated_at` trigger; index on `agent_id` for the one-agent read. **Applied to prod 2026-09-11 (`supabase db push --include-all`).** |
-| 0192 (09-11) | **Vendors — the RPC layer has the same 1,000-row cap** — found verifying the production runbook: `get_vendor_cities` returned exactly 1,000 of 2,071 (the SQL was right; PostgREST caps every RESPONSE at `db-max-rows`, RPCs included, silently), and `get_vendor_candidates` 1,000 of 5,957 for dining / 7,982 for special-request, with the score rollup they feed cut the same way. Fixed by shape: the two vocabularies return ONE `text[]` (one row — uncappable; DROP + CREATE), the candidate set gains `ORDER BY v.id` so the service can page it with Range headers (`callAdminRpcAll`; an OFFSET page over an unordered result is whatever order that statement scanned — the loader met exactly that), and the rollup is asked for ≤500 ids per call. Its own file because 0187 / 0188 were applied to production earlier the same day (A-14). Q-13 revoked tier. **Applied to prod 2026-09-11 (`supabase db push`).** |
-| 0193 (09-15) | **The `freshdesk` mirror schema** — a faithful copy of the Freshdesk account (the 0172 `sia` posture: own schema, service_role-only grants, exposed on the REST path via `pgrst.db_schemas`): `tickets` (current state + custom fields + raw + a soft `client_id` link to the spine), `conversations`, `contacts` (preference fields whole), `agents`, `groups`, `ticket_fields`, `sla_policies`, the append-only `ticket_changes` (every field flip the sync observes — the ticket movement history), the append-only `webhook_events`, `sync_state` (cursors) and `sync_runs`. No CHECK on any Freshdesk value; trigram indexes on subject and requester; the thread-stale partial index is the catch-up queue. **Applied to prod 2026-09-15** (after one fix: `extensions.gin_trgm_ops`); history loaded from the account export the same evening. |
-| 0194 (09-15) | **Client twin M0 + queendoms** — `sia.queendoms` (3 seeded, readable by `authenticated`; `GRANT USAGE ON SCHEMA sia TO authenticated` with grants only on this table, the wag_ archive stays service-role), `profiles.queendom_id` + `sia_role`, `clients.queendom_id` / `tier` / `app_member_id` / `consent`; `get_user_queendom()`, `can_access_client_queendom()`, `client_visible()` (Rule 09 helpers); the spine's admin-only SELECT replaced by queendom SELECT / INSERT / UPDATE; the seven stores: `client_people`, `client_facts` (append only, human inserts limited to `agent_note` at 1.0), `client_relations`, `client_events` (RANGE-partitioned by month, 2024-01 → 2027-03 + DEFAULT), `client_documents`, `client_chunks` (`extensions.vector(1024)` + HNSW cosine, zero user policies), `client_snapshot`, `client_health_policy` (seeded), `client_health_events` (append only), `client_anticipations`, `client_access_log` (append only), `sia.extraction_runs`. **Applied to prod 2026-09-15 (`npx supabase@latest db push --include-all`).** |
-| 0195 (09-15) | **Sia tickets T1** — `sia.tickets` (current state; `ticket_no` sequence; brief / checklist / money jsonb; priority + approval; SLA due stamps; sentinel state + `next_wake_at`), `sia.ticket_events` (append only, RANGE-partitioned by month 2026-09 → 2027-12 + DEFAULT), `sia.ticket_message_links` (append only, soft triples, `freshdesk_id` twin), `sia.ticket_sla_policies` (seeded from Freshdesk's numbers), `sia.genie_roster`, `public.task_ticket_meta`. RLS SELECT for the queendom via `can_access_client_queendom`, GRANT SELECT to authenticated on these five sia tables only; NO user writes. The two write RPCs `sia.create_ticket(jsonb, jsonb)` / `sia.apply_ticket_change(uuid, jsonb, jsonb)` (SECURITY DEFINER, search_path sia, public; REVOKED from PUBLIC/anon/authenticated; service_role only) write the row and its event in one transaction. `notifications_type_check` and `notification_preferences_notification_key_check` re-declared with the six ticket types / five ticket keys. **Applied to prod 2026-09-15.** |
-| 0196 (09-15) | **Freshdesk overview RPC** — `freshdesk.ticket_overview(p_status int[], p_group, p_agent, p_category, p_priority, p_from, p_to, p_search, p_client uuid, p_today_start)` → jsonb `{by_status, total, open, created_today, resolved_today, escalated_open}` in ONE scan (`count(*) FILTER` per status); by_status ignores the status filter, the rest apply every filter; search = subject/requester ILIKE or exact id; `p_client` = the client page's "See tickets" scope. SECURITY INVOKER, `search_path freshdesk, pg_temp`, REVOKED from PUBLIC/anon/authenticated, service_role only. Partial index `idx_freshdesk_tickets_live_status (status, fd_created_at DESC) WHERE deleted = false AND spam = false`. **Not yet applied** (written 2026-09-15). |
-| 0197 (09-15) | **Freshdesk attachments** — PRIVATE bucket `freshdesk-attachments` (admin/founder SELECT policy, no user writes; the sync uploads on the admin client, the page signs 1h links), `freshdesk.tickets.attachments jsonb` (ticket files + description inline images), `freshdesk.conversations.media_synced_at` (NULL = backlog) + partial index `idx_freshdesk_conversations_media_backlog`, `freshdesk.media_backlog()` → `{tickets, conversations}` and `freshdesk.flag_threads_for_media(p_limit)` → int (sets `conversations_synced_at = NULL` on up to p_limit backlog tickets, newest first). Both SECURITY INVOKER, REVOKED from PUBLIC/anon/authenticated, service_role only. **Applied to prod 2026-09-15.** |
-| 0198 (09-15) | **flag_threads_for_media from the backlog index** — same signature and grants as 0197; the body now starts from `idx_freshdesk_conversations_media_backlog` (DISTINCT ticket_id) and joins tickets, instead of walking tickets with an EXISTS per row (that hit the statement timeout). **Applied to prod 2026-09-15.** |
-| 0199 (09-15) | **Ticket sentinel** — `sia.wake_sentinel_on_event()` (AFTER INSERT on `ticket_events`, actor_kind ≠ sentinel → `next_wake_at = now()`) and `sia.wake_sentinel_on_link()` (AFTER INSERT on `ticket_message_links`): the mailbox. `sia.claim_sentinel_wakes(p_limit, p_lease_min)` RETURNS SETOF tickets (due, `FOR UPDATE SKIP LOCKED`, leased): the pool. `sia.sentinel_sleep(id, state, next_wake_at, reason)`: the alarm, no event. All SECURITY DEFINER `search_path sia, public`, REVOKED from PUBLIC/anon/authenticated, service_role only. Backfills `next_wake_at = now()` on live tickets. **Not yet applied** (written 2026-09-15). |
-| 0200 (09-15) | **Ticket board, settings, tags** — `sia.tickets.tags text[] NOT NULL DEFAULT {}` + GIN; `sia.ticket_settings (key pk, value jsonb, updated_by, updated_at)` RLS SELECT authenticated, no user writes, seeded `status_labels {}` + seven `tags`; `sia.apply_ticket_change` re-declared with the `tags` line (same signature/grants); `sia.tickets` added to `supabase_realtime` (guarded). **Not yet applied** (written 2026-09-15). |
-| 0201 (09-16) | **Queendom seats** — `sia.queendoms` DROP `queen_id` / `bishop_id` / `joker_id` (never written; seat holders derive from `profiles`); `profiles` CHECKs `profiles_sia_fields_concierge_only` + `profiles_sia_role_needs_queendom`; partial unique `idx_profiles_one_{queen,bishop,joker}_per_queendom (queendom_id) WHERE sia_role = X AND is_active`; `handle_new_user()` re-declared (0125 body + `sia_role`, `queendom_id` from metadata). **Not yet applied** (written 2026-09-16). |
-| 0202 (09-17) | **Members rename** — RENAME ONLY, one transaction, no data moved: `clients` → `members`, `client_*` → `member_*` (11 satellites + 41 `member_events` partitions), `client_id` → `member_id` on every table (public, sia, freshdesk), `last_client_update_at` → `last_member_update_at`, `client_silence_min` → `member_silence_min`; `client_visible` → `member_visible`, `can_access_client_queendom` → `can_access_member_queendom` (21 policies re-created against them, old dropped); `sia.create_ticket` / `sia.apply_ticket_change` / `freshdesk.ticket_overview(p_member)` re-declared; every index / constraint / trigger / policy / sequence NAME client → member; our own stored words moved (awaiting_member, cancelled_by_member, actor_kind member, member_reply, ticket_member_*, entity_kind member, group_kind member, participant_role member, surface members_page) with the CHECKs re-added; `deals.member_id` gains its FK. Verified on a throwaway Supabase Postgres loaded from a live schema dump before writing. **Applied to prod 2026-09-17 13:41 IST** (`db push`, with 0210; row counts before/after match on every non-live table; full data + schema dump taken first to ~/Desktop/serene-backups). |
-| 0210 (09-17) | **Gia → `gia` schema** — `CREATE SCHEMA gia` (USAGE authenticated + service_role, not anon); 22 tables `SET SCHEMA gia` (leads, lead_*, deals, sla_policies, agent_routing_config, revival_*, domain_targets, ad_*, task_gia_meta, whatsapp_*, service_cases, conversation_hooks — guarded loop, no data copied); grants + default privileges; every non-extension routine in `public` gets `gia` APPENDED to its search_path (the six on `extensions`/`vault` keep them); four routines whose body spelled `public.<moved>` re-declared from the live definitions (`get_agent_roster_performance`, `get_agent_today_pulse`, `get_deals_summary`, `get_domain_health_metrics`); Realtime membership re-asserted for the two WhatsApp tables; `pgrst.db_schemas` += gia. Applied to prod 2026-09-17 13:40 IST with 0202 (0202 first). Verified: schema-restructure-plan.md §10. |
-| 0211 (09-17) | **Members → `member` schema** — `CREATE SCHEMA member` (USAGE authenticated + service_role); every `members` / `member_*` relation in public (52: spine, 11 satellites, 39 monthly slices + default) `SET SCHEMA member` via a pg_class loop (parents first; no data copied); grants + default privileges; every routine in `public` gets `member` APPENDED to its search_path (the two gate functions read `members` bare); `pgrst.db_schemas` += member. Table names kept; gate functions stay in public. Rehearsed on a container copy incl. rollback. Applied to prod 2026-09-17 ~15:55 IST; the code followed at 16:04, so the Sia surfaces were down for ~10 min. Verified: schema-restructure-plan.md §11.1. |
-| 0212 (09-17) | **HOTFIX: `gia.profiles` + `member.profiles`** — read-only views of `public.profiles` (`security_invoker = true`, SELECT only) so PostgREST can embed staff names from the moved schemas; cross-schema embeds return PGRST200. Restored 21 embeds (leads list/dossier, deals, SLA, WhatsApp lead lookup, one member read) with no code change. Applied to prod 2026-09-17 evening. |
-| 0213 (09-18) | **Narrow the profile views** — `gia.profiles` / `member.profiles` recreated with only `id, full_name` (every embed asks for the name alone; `id` is what PostgREST traces to the foreign keys). Drop + create in one transaction; security_invoker kept, SELECT only. Verified through PostgREST: all embed shapes return the name, `email` no longer resolves. Applied to prod 2026-09-18; verified live (names resolve, `email` returns 42703). |
-| 0202 (09-16) | **Rename `b2b` → `business`** — `ALTER TYPE app_domain RENAME VALUE` (guarded, idempotent; 13 enum-typed columns follow, rows not rewritten — the append-only tables stay untouched); `subscriptions.departments` values `array_replace`d + `subscriptions_departments_valid` CHECK re-added with `business`. Live footprint at write time: 1 profile, 1 task_event, 1 activity_event. Pair with the app + Python-brain deploy of the same day. **Not yet applied** (written 2026-09-16). |
-| 0214 (09-18) | **Vendors -- the live extractor's queue** -- `vendor_extracted_at` on `freshdesk.conversations`, NULL = not yet read for vendors, plus a partial index on the backlog; `vendor_extract_attempts` (failed reads -- the queue stops offering a note at 3, and a give-up keeps `vendor_extracted_at` NULL so it stays visible); and the `vendors.sources` / `vendor_engagements.source` CHECKs re-declared to admit **`freshdesk_live`**, the extractor's own source value (`ticket` is Sia's, `freshdesk` is the archive the loader wipes). A column rather than a table: the mirror already uses this exact NULL-as-flag shape twice. Existing rows backfilled to now() (forward-only from 2026-09-17); the backlog opens later by setting the column back to NULL for a date range. The mirror's upsert must never include either column or it re-bills every note on a re-synced thread. **NOT yet applied.** |
-| 0215 (09-18) | **Member profiler** -- `sia.codenames` (one code name per sender per group: PK `(group_jid, sender_jid)`, UNIQUE `(group_jid, code)`, `side` CHECK member/staff/vendor) so a real name never reaches a model and the same person keeps the same code; `sia.profiler_group_state` (the bookmark per group: `last_message_at`, `windows_done`, `last_run_id`, `last_error`); `sia.profiler_due_groups` + `sia.profiler_broad_senders`; the `member_profiler_enabled` row in `elaya_settings`, seeded `false`. RLS on, service role only. **Applied to production 2026-09-18.** |
-| 0216 (09-18) | **Member profiler, fast reads** -- `profiler_due_groups(p_limit)` rewritten to one index descent per linked group (returns `group_jid, member_id, cursor_at, newest_at`); the first version scanned all messages and hit the 8s statement timeout. `profiler_broad_senders` now reads `sia.wag_group_members`. Both REVOKEd from anon + authenticated, GRANTed to service_role. 683 ms and 212 ms on production. **Applied 2026-09-18.** |
-| 0218 (09-18) | **Member profiler: Active members only, and it cannot get stuck** -- `sia.profiler_due_groups(p_limit, p_statuses text[] DEFAULT ARRAY['Active'])` joins `member.members` on `membership_status = ANY(p_statuses)` (NULL = every status); returns `fail_count` too. The old one-argument function is DROPped (a second overload would make the PostgREST call ambiguous). `sia.profiler_group_state.fail_count` = consecutive failed readings of the same conversation; the sweep steps over it at 3. Service role only. 292 Active groups due, 0.2 s. **Applied to production 2026-09-18.** |
-| 0219 (09-18) | **Ticket intake, phase 2** -- `sia.intake_proposals` (the cards: kind request/update, status open/accepted/dismissed/expired, the drafted ticket, the messages, `dismiss_reason`, `fields_changed`; UNIQUE `(group_jid, first_message_at)`; RLS SELECT via `can_access_member_queendom`, writes service role only), `sia.intake_group_state` (bookmark + `fail_count`), `sia.intake_due_groups(p_limit, p_statuses, p_since)` (linked Active member groups with something newer than their bookmark; a new group starts at `p_since`), `ticket_intake_enabled` in `elaya_settings` seeded `false`. 0.19 s on production. **Applied 2026-09-18.** |
-| 0220 (09-18) | **Profiler: the longest-waiting group first** -- `sia.profiler_due_groups` re-declared (same arguments and return shape) with `ORDER BY s.last_message_at ASC NULLS FIRST, x.newest_at DESC`. Newest-first had filled the first N with already-read groups whose only unread chat was a conversation in progress, starving 220 never-started groups. **Applied 2026-09-18.** |
-| 0221 (09-18) | **Vendors open to the concierge floor** -- `public.can_access_vendors()` (active profile AND (role admin/founder OR domain concierge); SECURITY DEFINER, EXECUTE to authenticated + service_role); the six vendor SELECT policies (`vendors`, `vendor_capabilities`, `vendor_engagements`, `vendor_reviews`, `vendor_notes`, `vendor_agent_preferences`) and the `vendor-invoices` bucket read policy dropped and re-created on it (the `_admin` suffix is gone from their names). Writes stay service role only. **Applied 2026-09-18.** |
-| 0222 (09-19) | **`sia.wag_group_activity()` without the two full scans** -- the count is one index-only pass, each group's last message is one index probe (LATERAL ... LIMIT 1) instead of DISTINCT ON over every message row. Same columns, same rows (516 of 516 identical on production). The old version ran past PostgREST's 8 s timeout when the database was busy, and `getSiaGroups()` then reported 0 messages for every group. **Applied 2026-09-19.** |
-| 0223 (09-19) | **Ask the database (founder's Elaya)** -- login-less role `elaya_reader` with rights on ONE schema, `elaya_read`: 40 views with explicit columns (no phone, email, password, login, raw payload or WhatsApp jid; long text cut short) + `data_dictionary`. `elaya_read.run(sql, max_rows)` runs AS that role in a READ ONLY transaction, as a wrapped sub-select, row-capped, refusing `public.` / other schemas and a short list of built-ins; `public.elaya_run_query()` is the only door (service_role). `public.elaya_query_log` (append-only, RLS on, no policies). Rehearsed on production inside a rolled-back transaction: 6 real queries ran, 14 attacks were refused, the role could not read a single base table. **Applied 2026-09-19.** |
-| 0224 (09-19) | **`sia.groups_waiting_for_reply(min_minutes, max_hours)`** -- linked member groups whose last real message is from the member's side (one index probe per group, about 0.4 s). Service role only. Feeds the live pulse and the briefing. **Applied 2026-09-19.** |
-| 0225 (09-19) | **`daily_briefing_enabled`** settings row, seeded `false`. **Applied 2026-09-19.** |
-| 0233 (09-21) | **`mcp_audience`** settings row: the roles the MCP connector admits, seeded to every role but guest. Missing/malformed → founder + admin. **Applied 2026-09-21.** |
-| 0231 (09-21) | **`elaya_read.run()` row clamp 500 → 5,000** for the MCP connector's `export_rows` (founder/admin, logged); body otherwise verbatim from 0223. Decision Log 2026-09-21. **Applied 2026-09-21.** |
-| 0232 (09-21) | **Repeat nudges on tasks** -- `tasks.nudge_every_minutes` (30..1440), `nudge_until` (at most 3 days), `nudge_count`. The nudge is a Trigger.dev run (`send-task-nudge`) under the task's reminder tag. |
-| 0234 (09-21) | **Elaya playbooks** -- `public.elaya_playbooks` (title, example_questions[], instructions, active); RLS read admin/founder, writes via the gated action on the service role. Read by the Python router per turn. |
-| 0226 (09-19) | **`public.mcp_tool_calls`** -- the MCP connector's append-only call ledger: who, which AI app (client id), which tool, ok, duration. RLS on: owner reads own rows, admin/founder read all; no insert/update/delete policy (service role writes, never edited). **Applied 2026-09-21.** |
-| 0227 (09-21) | **Vendors: contact search, merge, and remove** -- (1) `immutable_contact_search_text()` and the two GENERATED search columns re-pointed to include contact names and phones, so searching the person finds the business; (2) `public.vendor_merges` (append-only audit, holds the deleted spine row) + `merge_vendors(keep, merge, actor)`, one transaction that moves engagements, capabilities, reviews, notes, preferences, sia.tickets and the WhatsApp links onto the keeper and FOLDS anything it already has -- the ledger UNIQUE makes that unavoidable, see the A-11 Decision Log entry; (3) `vendors.deleted_at` / `deleted_by`, with `search_vendors`, `count_vendors` and `get_vendor_candidates` re-declared to exclude removed rows. A removed vendor keeps every job, rating and note and can be restored. **NOT yet applied.** |
-| 0228 (09-21) | **The vendor history search stops timing out** -- `find_vendors_by_history` drops a word from the JOIN when more than 5% of titles carry it, and joins at most five. `request` is in 10,870 of 46,693 titles (23%) and every matched row pays for a declines lookup, so adding it to "power bank sourcing" took the function from 721ms to over the 8s statement timeout -- which the ranker could not tell from "no history", so it answered a power bank request with airlines. The rarest word is always kept, so an all-common-words request still answers. Same weights, same declines rule, same ordering. Reproduced locally on 46,000 jobs: 14.4s -> 12ms, same results. **NOT yet applied.** |
-| 0229 (09-21) | **The category guess ranks the vendor history search, it no longer filters it** -- the second half of the 0228 incident and the part actually on screen. "Power bank sourcing request NB 10000" arrived with the chip `special-request`; Nitecore's job is filed under `retail` (what the Freshdesk ticket itself says), so filtering on the chip excluded the one vendor who had done the job. `vendor-search-intent.ts` already stated the rule -- a guessed category is display only, never a filter -- but the guard was on the MODEL's guess and not the page's keyword chip. Agreement is now a boost (+40% category, +20% service) instead of a gate. City still filters; get_vendor_candidates still filters, being the fallback with nothing else to go on. **NOT yet applied.** |
-| 0230 (09-21) | **Remove deletes a junk row for real, and only hides one with history** -- `public.vendor_removals` (append-only, holds the whole row) + `remove_vendor(p_vendor, p_actor)`. A vendor with no engagements, reviews or notes is genuinely DELETED, because nothing is attached to lose and the audit row then holds the only surviving copy; one with any history gets `deleted_at` and keeps every fact, because its jobs record money that moved. Capabilities and preferences are config, not history, and do not stop a delete. The count is taken inside the transaction under a row lock, so the page chooses the wording and never the outcome. **NOT yet applied.** |
-| 0236 (09-24) | **The member vault** -- `member.member_vault` (kind CHECK card/aadhaar/passport/pan/driving_licence/other_id/other, label, hint = last four, expires_on, `ciphertext`/`nonce`/`key_version` = AES-256-GCM under the app-side `MEMBER_VAULT_KEY`, UNIQUE (source, source_ref)); `member.member_vault_access` (append-only: reveal/add/delete/import, actor, reason; SELECT admin/founder). RLS on the vault with NO policy for authenticated: service role only, behind the gated actions. `member_facts.source` gains `freshdesk_note`. **Applied to production 2026-09-24.** |
-| 0238 (09-25) | **`sia.intake_stats(p_since, p_exam)`** -- the intake training numbers in ONE statement (runs by verdict, cards by status and dismiss reason, the Freshdesk exam on the newest p_exam request cards as one EXISTS, health signals by signal); STABLE, SECURITY INVOKER, EXECUTE revoked from authenticated and anon, service_role only. Replaces four pulls (2.4 MB, cut at the 1,000-row cap) and sixty HEAD counts on every /tickets load. **Applied to production 2026-09-25.** |
-| 0239 (09-25) | **`sia.draft_reviews`** -- the training ledger: one row per human verdict on a machine draft (source intake_card / ticket_creator / sentinel; decision accepted / edited / dismissed; the draft, the final, `corrections` as {field, from, to}, dismiss_reason, the human's `feedback`, run_id + prompt_version). Append-only; SELECT admin/founder; service_role writes from the actions. **Applied to production 2026-09-25.** |
-| 0240 (09-25) | **`sia.intake_lessons`** -- the lessons the ticket AI follows: one versioned plain-English document per kind (intake / ticket_creator / sentinel), status draft / approved / retired, one approved + one draft per kind (partial unique), evidence + run_id; SELECT admin/founder, writes service_role. **`sia.draft_review_scoreboard(p_since)`** -- the verdicts by source and prompt version (revoked tier). **Applied to production 2026-09-25.** |
-| 0241 (09-26) | **The member pulse + members_list** -- `member.compute_member_pulse()` (SECURITY DEFINER, service_role only): activity numbers + `activity_score` for every member into `member_snapshot.data->pulse`, merged. `member.members_list` VIEW (security_invoker): members + pulse + judgement columns for the sortable /members list; SELECT authenticated. **Applied to production 2026-09-26.** |
-| 0242 (09-26) | **Bishops are many** -- drops `idx_profiles_one_bishop_per_queendom` (0201), so a queendom can have two or more active bishops, like genies; the queen and the joker stay one seat each. Nothing else changes. **Not yet applied.** The app works either way: until it runs, a second bishop is still refused with "That seat is already held". |
-| 0243 (09-26) | **Nobody changes their own seat** -- `profiles_update` re-created with `sia_role` and `queendom_id` pinned on the self branch, the way `role` and `domain` already were (0095). Before this, a concierge account could move itself into another queendom, or give itself a seat, through the database API with its own session. Admin/founder branch unchanged. **Not yet applied.** |
-| 0244 (09-26) | **The Joker head** -- one company-wide concierge seat: `joker_head` joins the `sia_role` values (the 0194 inline CHECK replaced by `profiles_sia_role_values`); `profiles_sia_role_needs_queendom` now says every position names a queendom except the Joker head, who never has one; `idx_profiles_one_joker_head` (one active holder); `can_access_member_queendom()` also passes for the active concierge Joker head, for every non-NULL queendom (search_path kept at `public, gia, member`). Every member, Sia ticket and intake policy calls that function, so no policy changes. Tested on a throwaway Postgres with the 0194/0201/0202 before-state. **Not yet applied; apply with 0243.** |
-
-> **Migration ledger repaired (2026-06-12).** `supabase_migrations.schema_migrations` previously
-> recorded only 0001–0064 (0065–0108 were applied out-of-band — the Phase 0 audit finding). Each
-> of the 46 missing migrations had its primary schema effect catalog-verified live, then was
-> recorded. 0109/0110 were applied **with** ledger rows. Local files == remote ledger, zero
-> pending — `supabase db push` is safe again. Keep it that way: every future apply records its row.
+| 0157 (07-03) | `profiles.theme` retires `martini` (its rows move to `lilac`) and admits `rose`, `moss`, `lilac`: the final eight themes. |
+| 0158 (07-03) | `profiles.appearance` (`light` / `dark` / `system`), the light and dark mode preference, mirrored in the `serene-appearance` cookie. |
+| 0159 (07-06) | `activity_events`: the append-only, domain-stamped activity stream behind the mobile Activity room (Realtime on, 30 days backfilled). |
+| 0160 (07-06) | `get_domain_task_summary(p_domain, p_from, p_to)`: per-assignee task counts for the mobile Tasks room (revoked tier). |
+| 0161a (07-10) | `business_minutes_between()`, and response time counted in business minutes (09:00 to 19:00 IST, Monday to Saturday) in the four performance and campaign RPCs. |
+| 0162 (07-10) | `notifications.type` CHECK restated to match the whole `NotificationType` union (inserts of the missing types were failing silently). |
+| 0161b (08-07) | `get_leads_status_counts` v4: an agent's `p_domain` narrows their own rows, so the status pills match the table. |
+| 0163 (08-21) | `subscriptions` (the Finance and Tech bills tracker) and the private `subscription-invoices` bucket; SELECT for admin, founder and the finance / tech domains. |
+| 0164 (08-21) | `subscription_payments`: append-only payment history (the INR amount is entered by hand, never converted). |
+| 0165 (08-21) | `subscription_topups`: append-only top-ups of prepaid accounts. |
+| 0166 (08-21) | `subscriptions.password` encrypted at rest (pgcrypto, key in Vault); decrypting is service role only. |
+| 0167 (08-21) | `subscription_password_reveals`: append-only audit, written before any plaintext is returned. |
+| 0168 (08-21) | `subscription_tools` (one tool, many accounts; `name_key` UNIQUE) and `subscriptions.tool_id`. |
+| 0169 (08-27) | The Sia WhatsApp group archive: `wag_raw_events` and `wag_messages` (both partitioned by month), `wag_groups`, `wag_contacts`, `wag_group_members`, `wag_media`, `wag_reactions`, `wag_receipts`, `wag_pipeline_cursors`. RLS on, no user policies. |
+| 0170 (08-27) | RLS on every `wag_` partition, and `wag_add_month_partition()` so a new month never lands without it. |
+| 0171 (08-27) | `wag_group_activity()`: message count and last activity per group in one pass (service role only). |
+| 0172 (08-27) | Moves the whole `wag_` family into a new `sia` schema (service role only) and adds `sia` to the API. |
+| 0173 (08-27) | `sia.wag_group_activity()` gains the last-message preview for the `/sia` rail. |
+| 0174 (08-27) | `sia.wag_auth_state` (the watcher's Baileys session in Postgres; live key material) and the `expired` media status. |
+| 0175 (08-27) | `sia.wag_watcher_status`: the watcher's one-row heartbeat. |
+| 0176 (08-28) | `llm_providers` gains the `heavy` tier (seeded `claude-opus-5`); the brain falls back to `reasoning` when the row is off. |
+| 0177 (08-29) | Re-pairing from the browser: `qr`, `qr_at`, `restart_requested_at` on the watcher status row; `whatsapp_notification_logs.type` gains `sia_alert`. |
+| 0178 (08-29) | `sia.wag_media.wa_timestamp` and an index, so the media backfill recovers the newest messages first. |
+| 0179 (08-31) | Settings rows `brain_whatsapp` / `brain_in_app` (`node` or `python`), seeded `node`: the per-channel brain switch. |
+| 0180 (08-31) | `lead_product_enquiries`: append-only shop-app enquiries, many per lead, idempotent on `external_lead_id`; `deals.source` gains `shop_app`. |
+| 0181 (09-04) | `public.clients`, the member identity spine (renamed `members` in 0202b), with real foreign keys from `sia.wag_groups` and `sia.wag_contacts`. |
+| 0182 (09-10) | `deals.source` gains `self` (a lead a team member brought in). |
+| 0183 (09-11) | `vendors` (the identity spine) and `vendor_capabilities` (offers / declines); wires the Sia `vendor_id` columns. |
+| 0184 (09-11) | The private `vendor-invoices` bucket. |
+| 0185 (09-11) | `vendor_engagements` (the append-only job ledger) and `vendor_reviews`, with `get_vendor_score_inputs` (the one score rollup) and the "used most by" / "used for" tallies. |
+| 0186 (09-11) | `vendor_notes` (append-only, with author); the rollup gains `total_used`. |
+| 0187 (09-11) | The vendor list search: generated `search_text` / `search_key` with trigram indexes, `search_vendors`, `count_vendors`, and the category and city vocabularies. |
+| 0188 (09-11) | `get_vendor_candidates`: the ranker's candidate set in SQL (offers minus declines). |
+| 0189 (09-11) | `find_vendors_by_history`: match a request against 46,000+ past ticket titles. |
+| 0190 (09-11) | `find_vendors_by_history` takes ranked terms (`p_terms`, most important first); a `declines` capability now excludes here too. |
+| 0191 (09-11) | `vendor_agent_preferences` (each teammate's preferred / avoid mark and note) and the rollup's preferred / avoid counts. |
+| 0192 (09-11) | Beats the RPC row cap: the vocabularies return one `text[]`, and candidates are ordered by id so they can be paged. |
+| 0193 (09-15) | The `freshdesk` schema, a read-only mirror: tickets, conversations, contacts, agents, groups, fields, SLA policies, the append-only `ticket_changes` and `webhook_events`, and the sync state. |
+| 0194 (09-15) | Queendoms and the member twin, step M0: `sia.queendoms`, `profiles.queendom_id` and `sia_role`, the queendom gate functions, queendom RLS on `clients`, the twin's stores (facts, people, relations, the partitioned events, documents and chunks, snapshot, health policy and events, anticipations, access log), and `sia.extraction_runs`. |
+| 0195 (09-15) | Sia tickets T1: `sia.tickets`, `ticket_events` (partitioned), `ticket_message_links`, `ticket_sla_policies`, `genie_roster`, `public.task_ticket_meta`, the write RPCs `create_ticket` / `apply_ticket_change`, and six ticket notification types. |
+| 0196 (09-15) | `freshdesk.ticket_overview(...)`: the `/freshdesk` strip in one scan, with the list's filters. |
+| 0197 (09-15) | Freshdesk files: the private `freshdesk-attachments` bucket, `tickets.attachments`, `conversations.media_synced_at`, `media_backlog()`, `flag_threads_for_media()`. |
+| 0198 (09-15) | `flag_threads_for_media` starts from the backlog index (it was timing out). |
+| 0199 (09-15) | The ticket sentinel's plumbing: wake triggers on new events and links, `claim_sentinel_wakes` (a leased pool), `sentinel_sleep`. |
+| 0200 (09-15) | `sia.tickets.tags`, `sia.ticket_settings` (status labels and the tag vocabulary), tags in `apply_ticket_change`, and Realtime on `sia.tickets`. |
+| 0201 (09-16) | Queendom seats: the seat columns on `sia.queendoms` dropped (holders derive from `profiles`), the seat CHECKs, one queen / bishop / joker per queendom, and `handle_new_user()` copies the seat from signup metadata. |
+| 0202a (09-16) | The `app_domain` value `b2b` renamed `business`; the subscriptions departments CHECK follows. |
+| 0203 (09-16) | `claim_sentinel_wakes` gains `p_ticket_id` (the "Wake now" button); the old two-argument overload dropped. |
+| 0202b (09-17) | Clients become members: every `client*` table, column, function, index, policy and stored value renamed to `member*` in one transaction; `deals.member_id` gains its foreign key. |
+| 0204 (09-17) | `sia.wag_contacts.participant_role` admits `joker`. |
+| 0210 (09-17) | 22 Gia tables move to a new `gia` schema; `gia` appended to every public routine's search path and added to the API. |
+| 0211 (09-17) | The member twin (52 relations, partitions included) moves to a new `member` schema; `member` appended to the search paths and added to the API. |
+| 0212 (09-17) | Hotfix: read-only `gia.profiles` / `member.profiles` views (security invoker) so staff-name embeds work again. |
+| 0213 (09-18) | Those views narrowed to `id, full_name`. |
+| 0214 (09-18) | The vendor extractor's queue on `freshdesk.conversations` (`vendor_extracted_at`, `vendor_extract_attempts`; existing rows marked read); vendor sources admit `freshdesk_live`. |
+| 0215 (09-18) | The member profiler: `sia.codenames`, `sia.profiler_group_state`, the due-groups and broad-senders reads, and the `member_profiler_enabled` switch (seeded off). |
+| 0216 (09-18) | The profiler's two reads made cheap (one index probe per group). |
+| 0217 (09-18) | `member.members.wa_group_jid`: a trigger-kept mirror of the linked Sia group, for the list's WhatsApp filter. |
+| 0218 (09-18) | The profiler reads Active members only (a parameter) and steps over a conversation after repeated failures (`fail_count`). |
+| 0219 (09-18) | Ticket intake: `sia.intake_proposals` (the cards), `sia.intake_group_state`, `sia.intake_due_groups`, and the `ticket_intake_enabled` switch (seeded off). |
+| 0220 (09-18) | The profiler reads the longest-waiting group first. |
+| 0221 (09-18) | `can_access_vendors()`: the vendor module opens to the concierge domain; every vendor SELECT policy and the invoice bucket's read policy re-declared on it. |
+| 0222 (09-19) | `sia.wag_group_activity()` rewritten without full scans. |
+| 0223 (09-19) | "Ask the database": the `elaya_reader` role, the `elaya_read` schema of cleaned views, `elaya_read.run()`, the one door `public.elaya_run_query()`, and `elaya_query_log`. |
+| 0224 (09-19) | `sia.groups_waiting_for_reply()`: member groups where the member had the last word. |
+| 0225 (09-19) | The `daily_briefing_enabled` switch (seeded off). |
+| 0226 (09-19) | `mcp_tool_calls`: the append-only ledger of MCP connector tool calls. |
+| 0227 (09-21) | Vendors: contact names and phones join the search, `vendor_merges` and `merge_vendors()`, and `vendors.deleted_at` / `deleted_by` (removed but kept). |
+| 0228 (09-21) | The vendor history search drops words found in more than 5% of titles (it was timing out). |
+| 0229 (09-21) | The guessed category boosts the history search instead of filtering it; removed vendors are never suggested. |
+| 0230 (09-21) | `vendor_removals` and `remove_vendor()`: delete a vendor with nothing attached, hide one with history, log both. |
+| 0231 (09-21) | `elaya_read.run()` row cap raised from 500 to 5,000 for the MCP export. |
+| 0232 (09-21) | Repeat nudges on tasks: `nudge_every_minutes`, `nudge_until`, `nudge_count`. |
+| 0233 (09-21) | The `mcp_audience` settings row: the roles the MCP connector admits. |
+| 0234 (09-21) | `elaya_playbooks`: the founder's written method for a kind of question. |
+| 0235 (09-24) | `elaya_jobs` (deep reads), `elaya_labels` with the `elaya_read.labels` view, `elaya_alerts`, and the alert switch and bookmark rows (off). |
+| 0236 (09-24) | `member.member_vault` (encrypted in the app, no user policy) and the append-only `member.member_vault_access`; `member_facts.source` admits `freshdesk_note`. |
+| 0237 (09-25) | `elaya_user_memory` (the living memory of each user) and `elaya_improvement_requests`. |
+| 0238 (09-25) | `sia.intake_stats()`: the intake training numbers in one statement. |
+| 0239 (09-25) | `sia.draft_reviews`: the append-only ledger of human verdicts on machine drafts. |
+| 0240 (09-25) | `sia.intake_lessons` (versioned instructions, one approved per kind) and `sia.draft_review_scoreboard()`. |
+| 0241 (09-26) | `member.compute_member_pulse()` and the `member.members_list` view. |
+| 0242 (09-26) | Bishops are many: drops the one-bishop-per-queendom index. |
+| 0243 (09-26) | `profiles_update` pins `sia_role` and `queendom_id` on the self branch: nobody changes their own seat or queendom. |
+| 0244 (09-26) | The Joker head: the `joker_head` seat (no queendom, one active holder), and `can_access_member_queendom()` passes it for every queendom. Apply with 0243. |
+| 0245 (09-26) | Hands, step 1: a `hands` schema for Elaya's second WhatsApp number (`auth_state`, `connector_status`, `allowed_contacts`, `threads`, `raw_events`, `messages`, an `outbox` the connector polls), the private `hands-media` bucket, and `vendors.kind` (`human` / `agent`). Committed, not applied; see `hands-plan.md` and the note under "Production status". |
 
 > **`lead_health` is fully removed (0084).** No column, util, component, or filter remains —
 > any reference found anywhere is stale. (Unrelated: *Domain Health* — `DomainOverviewPanel` /

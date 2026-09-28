@@ -1,5 +1,31 @@
 # Serene — Design DNA
 
+> **Purpose:** the design constitution, the law for every visual and interaction decision in Serene.
+> **Audience:** designers and engineers.
+> **Source-of-truth scope:** design rules, the theme system, motion law, component visual spec, Elaya's design language. Runtime token values live in `src/styles/serene-neumorphic-tokens.css` (the neumorphic layer and the legacy bridge), `serene-families.css`, `serene-mobile.css` and `design-tokens.css`; component implementation in [design-system.md](./design-system.md); shared controls in [control-system.md](./control-system.md); dated decisions in [decision-log.md](./decision-log.md).
+> **Last verified:** 2026-09-26 against the four token sheets, `src/app/globals.css`, `src/lib/constants/{themes,appearance,domain-icons,motion}.ts`, `src/components/ui/`, `src/components/layout/Sidebar.tsx` and `scripts/pad-app-icons.mjs`. The body was written for the pre-neumorphic UI; where it disagrees with a dated note or an "As built" line, the note wins.
+
+## What changed since July (read this first)
+
+Most of this document was written for the dark-canvas UI of June 2026. On 2026-07-03 Serene moved to one warm neumorphic material, and the design kept moving through September. The long sections below were not rewritten; where they are out of date they carry a dated note that points here or to the section that now holds the rule. The short version:
+
+| Topic | The rule today | Old text it supersedes |
+| --- | --- | --- |
+| Material and shell | One warm cream material: canvas `--neu-canvas` `#ECE8E1`, an ivory workspace sheet (`--neu-workspace`), porcelain cards (`--neu-surface`), a sunken well (`--neu-well`). No grain, no dark canvas. Runtime values in `serene-neumorphic-tokens.css`; a bridge re-points the old `--theme-*`, `--shadow-*`, `--radius-*`, `--color-*` and `--status-*` tokens at it | §0 bullets, §3.1, §3.5, §6.6, §5.99 detail 10 |
+| Themes | Eight: earth (default), air, water, fire, candy, rose, moss, lilac. A theme changes only the accent family | §1 per-theme maps (now §1.0) |
+| Dark mode | `data-neu="dark"` (warm charcoal) from a Light / Dark / Auto preference | §0 "if we add a true dark mode" |
+| Focus | One colour, `--neu-focus-edge`: a hugging frame on text fields, a 2px outline on actions, never a ring on an applied or open state | §5 rule 03, §5.99 detail 06, §7.3 focus |
+| Controls and forms | `Button` (eight variants, 14px control radius), `SelectionButton`, `Field` / `Input` / `Textarea`, `FormSelect`, `Checkbox`, `DatePicker`; never a native checkbox, date or select | §5.01, §5.02, §5.09, §7.4, §7.5 |
+| Card headers | The theme-coloured zone of a card: `--neu-header-surface` with `--neu-header-ink` text and `--neu-header-icon` | §5.04 `Card.Header`, §4.3 tertiary micro labels |
+| Empty states | One anatomy (`ui/EmptyState`): raised tile, Playfair italic title, description, at most one action | §5.99 detail 04, §5 rule 05 |
+| Sidebar | Only the active icon gets an accent-gradient tile; rows stay transparent; no travelling pill, no logo glow | §3.2, §5.99 details 01 and 02 |
+| Badges | Flat pastel fill and deep ink, no shadow | §5.03, §5.99 detail 07 |
+| Loading | `LogoSpinner` / the seed mandala (never faster than 3.5s per turn); a skeleton sheen; no route overlay | §5 rule 04, §11.1, §14 |
+| Touch | Text fields 16px on touch, 44px targets, `.serene-form-row`, `.serene-touch-hit` | §9.3, §12.2 |
+| Icons | The seed mandala (with its centre ring) is the mark; favicon is the bare mark; the phone shortcut sits on white; one Lucide mark per domain | §6.5, §6.8 |
+
+The dated notes below record the September passes in more detail.
+
 > **Control contract — 2026-09-22:** [control-system.md](./control-system.md) defines
 > the current shared action, filter, field, focus, and sizing rules. It supersedes
 > older per-component button radius and focus-suppression instructions below.
@@ -14,9 +40,12 @@
 > after the Indulge app's splash: SERENE in the Playfair wordmark set wide (0.42em), BY INDULGE in
 > small tracked caps under it. The mark draws, then turns once every 24 seconds; the word's
 > tracking opens as the centre circle lands, moved letter by letter with a transform (no tagline,
-> no glow, no pulse). The home-screen icon, logo and favicon are the same mark on the cream plate,
-> rendered by `scripts/pad-app-icons.mjs`. This supersedes the older bare italic inline empty
-> line, the `brand` watermark composition and the old boot wordmark with its tagline.
+> no glow, no pulse). The home-screen icon, logo and favicon are all rendered by
+> `scripts/pad-app-icons.mjs` from the mark. Since 2026-09-26: the browser tab icon is the bare
+> mark (no plate), the default phone shortcut sits on a white plate, the three decorative icon
+> picks keep the cream plate, and the logo file is `public/logo-bg-removed.webp`. This supersedes
+> the older bare italic inline empty line, the `brand` watermark composition and the old boot
+> wordmark with its tagline.
 
 > **Neutrals are one warm family — 2026-09-25:** every neutral sits on the cards' warm hue
 > (OKLCH h ≈ 85): the canvas, the inset well (`--theme-paper-subtle`), the field and track fills,
@@ -25,8 +54,9 @@
 > pass had moved those nine tokens to violet greys (h ≈ 310) while its note promised warm
 > shadows; they are warm again, each at its old lightness, so depth and contrast are unchanged.
 > Theme colour stays in accents and the header washes; an inset never takes it. `--neu-canvas`
-> equals `NEU_CANVAS_LIGHT` and the icon plate (#ECE8E1), so the launch screen, the browser bar,
-> the boot screen and the icon match.
+> equals `NEU_CANVAS_LIGHT` (#ECE8E1), so the launch screen, the browser bar and the boot screen
+> match. The decorative icon picks use the same cream plate; the default phone icon is on white
+> since 2026-09-26.
 
 > **Focus and state — 2026-09-25:** one focus colour (`--neu-focus-edge`); text fields
 > draw a hugging frame, actions a 2px keyboard outline; applied and open states never
@@ -46,9 +76,13 @@
 > (`src/components/ui/material-styles.ts`), independently of badge shadows.
 > Runtime material values live in `src/styles/serene-neumorphic-tokens.css`.
 
-> **Purpose:** the design constitution — the law for every visual and interaction decision in Serene.
-> **Audience:** designers + engineers. · **Source-of-truth scope:** design rules, theme system, motion law, component visual spec, Elaya design language. Token *values* live in `src/styles/design-tokens.css`; component *implementation* notes live in `design-system.md`; dated design decisions in `decision-log.md`.
-> **Last verified:** 2026-07-02 (six-theme swap; TopBar/PageControls, toast-bar, motion-number, and unbuilt-spec corrections applied).
+> **Card headers, 2026-09-26:** the header strip of `CardHeader` and `SectionCard` paints
+> `--neu-header-surface`, a gradient from 9% to 14% theme accent on the neutral
+> `--neu-section-bg`, with a 12% accent hairline (`--neu-header-edge`) and a 1px inner top light.
+> The label takes `--neu-header-ink` and the icon `--neu-header-icon`, never `--theme-accent`
+> (the same hue as the wash measured 1.6 to 2.0:1). Tune header colour in
+> `serene-neumorphic-tokens.css` only. A count or note in the header's right slot takes
+> `--neu-header-ink`; `SectionCard`'s description line takes `--neu-header-description`.
 
 ## Version 1.0
 
@@ -76,6 +110,13 @@ Serene is a luxury operating system for people who run a world-class concierge b
 - Semantic tokens — so one day, if we add a true dark mode, we change 10 values not 400 files.
 - Responsive from day one. Every component built mobile → tablet → desktop.
 
+> **As built (2026-09-26):** the first and fifth bullets above are retired. Since 2026-07-03 the
+> shell is one warm material, not a dark canvas: a cream canvas (`--neu-canvas` `#ECE8E1`), an
+> ivory workspace sheet on it, porcelain cards on that, and no grain anywhere. Playfair, the
+> sidebar-left layout and the floating workspace sheet remain. The dark mode the third bullet
+> anticipated shipped the same week (`data-neu="dark"`) and cost one token block, as promised.
+> See [What changed since July](#what-changed-since-july-read-this-first).
+
 ---
 
 ## THE SURFACE CONTRACT
@@ -94,16 +135,53 @@ Every text colour decision in Serene flows from one rule:
 | Placeholders, timestamps, muted labels on paper                                 | `--theme-text-tertiary`                                               |
 | Sidebar nav items                                                               | `--theme-sidebar-text` (inactive) / `--theme-sidebar-active` (active) |
 
+**As built (2026-09-26), under the neumorphic bridge:**
+
+- `--theme-canvas` resolves to the cream `--neu-canvas` and `--theme-canvas-text` to the dark ink, so "canvas" no longer means dark.
+- `--theme-paper-subtle` is the sunken well (`--neu-well`). It marks an inset (a field track, a skeleton ground), never a header strip or a list row.
+- A card header strip is its own surface: label `--neu-header-ink`, icon `--neu-header-icon` (see the 2026-09-26 card header note above).
+- Theme-coloured text on a neutral surface uses `--neu-accent-deep` (the same value as `--theme-accent-muted`). `--theme-accent` is a fill, an indicator or a chart colour; it is not readable as small text.
+- Text on a saturated semantic fill uses `--color-*-fg` (warm white in light mode, the charcoal in dark mode, where the fills lift light).
+
 **The two tokens most commonly misused:**
 
 - `--theme-text-inverse` — this is the paper colour used as text on the darkest fills. Use it only for text sitting directly on `--theme-canvas` or `--theme-accent` fills that need maximum contrast. For most canvas text, prefer `--theme-canvas-text` which has the correct opacity.
 - `--theme-accent-fg` — always use this for text ON accent-coloured fills (button labels, active pill text). Never use `--theme-text-inverse` on accent fills — they are different surfaces.
 
-## 1. The Six Themes
+## 1. Themes
 
-Serene ships with six themes — Earth (default), Air, Water, Fire, Martini, Candy. Each theme is a complete colour palette applied to every token in the system. Switching themes changes everything — backgrounds, accents, borders, badges, buttons — globally. (Cosmos, Coffee, and Macha were retired 2026-07-02 — migration 0156; never re-add a theme without a CHECK migration.)
+### 1.0 The eight themes (current)
 
-The default theme is **Earth**. Users choose their theme in profile settings.
+Serene ships eight themes: **earth** (default), **air**, **water**, **fire**, **candy**, **rose**, **moss**, **lilac**. The vocabulary is `THEME_KEYS` in `src/lib/constants/themes.ts`, mirrored by the `profiles.theme` CHECK. Cosmos, Coffee and Macha were retired on 2026-07-02 (migration 0156); Martini on 2026-07-03 (migration 0157 moved its users to lilac). Never re-add a theme key without a CHECK migration.
+
+**Theme scope.** A theme changes only the accent family (`--theme-accent`, `-hover`, `-muted`, `-surface`, `-fg` and everything derived from them: `--neu-accent*`, the header washes, the sidebar washes, selected states, the first chart series, the focus colour). Surfaces, shadows, text inks, semantic status chips, lead status colours and the `--domain-*` chart palette never re-tint.
+
+**The accents** (2026-08-10 retune, accent-fg adjusted 2026-09-23). All are pastels, so every accent fill takes **dark ink** (`--theme-accent-fg`); never white.
+
+| Theme | `--theme-accent` (fill) | `--theme-accent-muted` (deep, text-safe) | `--theme-accent-fg` (ink on the fill) | Character |
+| --- | --- | --- | --- | --- |
+| earth | `#D0AC5A` | `#7D6738` | `#33290F` | honey gold, the default |
+| air | `#7CA3C8` | `#4B6E8B` | `#192632` | powder sky |
+| water | `#68B1A5` | `#407369` | `#1C2E2A` | soft seafoam |
+| fire | `#E18C63` | `#9D5637` | `#3A1F12` | terracotta peach |
+| candy | `#DF8DB7` | `#9D4E7C` | `#2E1522` | rose-pink |
+| rose | `#D68891` | `#915B61` | `#341D21` | English rose, the neumorphic reference accent |
+| moss | `#8DB181` | `#56714D` | `#26301F` | matcha sage |
+| lilac | `#A99BCF` | `#6E6297` | `#2E2840` | light lilac, the one purple |
+
+Where they live: earth, air, water, fire and candy are overridden in section 2 of `serene-neumorphic-tokens.css` (the stock values in `design-tokens.css` stay for the revert path); rose, moss and lilac carry their final values in their own `design-tokens.css` blocks. Hovers are `color-mix(accent 86%, black)`; `--theme-accent-surface` is 16% of the accent.
+
+**Dark mode.** `data-neu="dark"` on `<html>` swaps the material to warm charcoal (canvas `#28241C`, card `#332E25`, well `#221E17`). Accents lift lighter (`--neu-accent` = accent 82% into white, `--neu-accent-deep` = 66% into white); `--theme-accent-fg` stays the dark ink. The preference is `light`, `dark` or `system` ("Auto") in `profiles.appearance`, mirrored to the `serene-appearance` cookie so the server stamps it before paint; `applyAppearanceToDom()` in `src/lib/constants/appearance.ts` is the only place the attribute flips. Components read role tokens and never branch on dark mode.
+
+**Persistence and switching.** `profiles.theme` is the truth, mirrored to the `serene-theme` cookie so the root layout stamps `data-theme` on `<html>` server-side (no flash). `ThemeInitializer` corrects drift; `ThemeSelector` and `AppearanceSelector` on `/profile` write both. A theme switch cross-dissolves colours for about 400ms.
+
+> **Superseded (2026-07-03):** the per-theme token maps, CSS blocks and usage notes from
+> the Theme 01 (Earth) to Theme 06 (Candy) sections below describe the stock, pre-neumorphic palettes:
+> dark canvases, white accent ink on Air, Water and Fire, per-theme paper tints and sidebars.
+> At runtime the neumorphic bridge replaces all of that with the shared cream material and the
+> accents in the table above. The stock blocks still exist in `design-tokens.css` as the revert
+> path. Martini is retired. Rose, moss and lilac have no stock section here. Read the sections
+> below as history, not as the spec.
 
 ---
 
@@ -506,7 +584,10 @@ When implementing Earth theme:
 
 ---
 
-### # Theme 05 — Martini
+### # Theme 05: Martini (RETIRED 2026-07-03)
+
+> **Retired.** Migration 0157 moved every profile on `martini` to `lilac` and removed the key.
+> The section is kept for history only.
 
 > Periwinkle. Mint. A garden wedding at dusk.
 >
@@ -581,6 +662,39 @@ warning), never the surfaces — paper stays a blush-whisper white per the Air p
 accent-coloured TEXT; the pale pink is for fills, borders and glows only.
 
 ## 2. Global Design Tokens
+
+> **Runtime note (2026-09-26): the neumorphic bridge.** The values in this section are the stock
+> layer in `src/styles/design-tokens.css`. Since 2026-07-03, section 4 of
+> `serene-neumorphic-tokens.css` (imported later, so it wins) re-points most of them at the
+> neumorphic roles. What a component actually gets today:
+>
+> | Stock token family | Resolves at runtime to |
+> | --- | --- |
+> | `--theme-canvas`, `--theme-canvas-text` | `--neu-canvas` (cream), `--neu-text-primary` (dark ink); the canvas gradients are `none` |
+> | `--theme-paper`, `--theme-paper-subtle`, `--theme-paper-border` | `--neu-surface` (porcelain), `--neu-well` (sunken), `--neu-edge` (hairline) |
+> | `--theme-text-primary/-secondary/-tertiary/-inverse` | `--neu-text-*` warm inks (`#38332B`, `#6C6359`, `#70665C`), `--neu-on-accent-soft` |
+> | `--theme-sidebar-*` | `--neu-sidebar` material and ink; the rail paints `--neu-sidebar-gradient` |
+> | `--color-success/warning/danger/info/neutral` (+ `-light`, `-text`) | the pastel support family and its chip pairs (sage, butter, rose, powder, neutral); theme-invariant, so the per-theme semantic overrides below no longer apply |
+> | `--color-*-fg` | `--neu-on-accent-soft` in light, the charcoal canvas in dark |
+> | `--status-*-text/-light/-border/-solid` | the pastel chips and pastel bases; still theme-invariant |
+> | `--radius-sm/md/lg/xl` | 10px / 14px (`--neu-radius-chip`) / 22px (`--neu-radius-field`) / 32px (`--neu-radius-card`) |
+> | `--shadow-1/2/3/4` | `--neu-shadow-raised-sm` / `raised` / `raised-lg` / `modal` |
+> | `--shadow-paper`, `--shadow-gold-shimmer` | `none` (the floating paper halo and Earth shimmer retired) |
+> | `--shadow-focus` | `--neu-focus-ring` (a 1px `--neu-focus-edge` ring on the resting shadow); keyboard focus itself is the outline rule in [control-system.md](./control-system.md) |
+> | `--shadow-accent-glow/-lift` | neutral `--neu-shadow-raised-sm` / `--neu-shadow-hover` (no accent glow) |
+> | `--shadow-accent-ring` | a 1px accent hairline (30%) on `--neu-shadow-raised-sm` |
+> | `--shadow-color` | `--neu-dark` (warm putty; black-based in dark) |
+> | `--overlay-bg/-bg-light/-scrim` | warm taupe scrims (`--neu-scrim` for the light one) |
+> | `--transition-interactive` | the neumorphic spring (220ms transform, 300ms shadow) |
+>
+> New tokens with no stock equivalent: the `--neu-*` material roles (surfaces, shadows, radii,
+> pastels, chips, header, focus, tooltip, palette, chat, mandala), `--neu-section-bg` and the
+> table row tokens (`serene-families.css`), the `--neu-m-*` mobile tokens (`serene-mobile.css`),
+> and `--z-tooltip` 75, `--z-veil` 90 (orphaned), `--z-boot` 95. The Martini overrides below are
+> retired. `--weight-bold` still exists as a token and is still banned in components. Of the
+> typographic compositions in 2.9, only three exist as classes: `.type-eyebrow`,
+> `.type-page-title` (Playfair light, fluid 24 to 30px) and `.label-micro`; the neumorphic layer
+> paints `.type-eyebrow` and `.label-micro` in `--neu-accent-deep`.
 
 These tokens are **always present**, regardless of theme. They do not change between themes.
 
@@ -1172,6 +1286,24 @@ opacity var(--duration-base) var(--ease-in-out);
 
 ### 3.1 The Shell
 
+> **As built (2026-09-26).** The shell is three materials, not a dark canvas under paper
+> (`src/app/(dashboard)/layout.tsx`, `src/app/globals.css` "RESPONSIVE SHELL"):
+>
+> ```text
+> .layout-shell / .serene-shell    the cream canvas (--neu-canvas), flex row, 100dvh, gap --space-3
+> ├── .serene-sidebar              240px rail (lg+), 64px icon rail (md), off-canvas drawer (< md).
+> │                                At md+ it floats as a card: margin --space-3, radius --radius-xl,
+> │                                --theme-sidebar-bg + --neu-sidebar-gradient, --neu-edge, --neu-shadow-shell
+> └── .serene-shell-gutter         padding 12px 12px 12px 0
+>     └── .serene-shell-paper      the ivory workspace: --neu-workspace, --neu-radius-card (32px),
+>                                  1px --neu-edge, --neu-shadow-shell, scrolls, overscroll contained.
+>                                  Below md: full-bleed (no border, radius or shadow)
+> ```
+>
+> Cards on the workspace are porcelain (`--neu-surface`) and raise themselves with their own
+> shadow. The canvas has no grain and no gradient washes. The diagram and the two notes below
+> are the pre-neumorphic design and are kept for history.
+
 Serene is a two-layer world.
 The canvas is the earth, the sky, the ocean, the void — depending on which theme is active.
 The paper is where work happens. It floats. It has weight. It has shadow.
@@ -1216,6 +1348,19 @@ address bar hides. `dvh` is dynamic — it follows the actual visible height.
 ---
 
 ### 3.2 Sidebar
+
+> **As built (2026-09-26)** (`src/components/layout/Sidebar.tsx`):
+>
+> - **Material:** its own rail, `--theme-sidebar-bg` (= `--neu-sidebar`) under `--neu-sidebar-gradient`, two broad washes of the theme accent (18% and 9% in light, 12% and 6% in dark) from opposite corners, with a `--neu-edge` hairline and `--neu-shadow-shell`. At md and up it floats as a rounded card on the canvas.
+> - **Nav item:** `--text-sm`, `--tracking-wide`, weight normal (medium when active), transparent row, no border. `aria-current="page"` on the active link.
+> - **Active:** only the icon changes. It sits in a 26px tile filled with `--neu-accent-gradient` and `--neu-shadow-knob`, the glyph in `--theme-accent-fg`. No row wash, no border, no travelling pill, no chevron (removed 2026-07-03).
+> - **Hover:** the icon turns `--neu-accent-deep` with a heavier stroke (1.5 to 2.2) and the row nudges `translateX(2px)` (reduced-motion gated). No background.
+> - **Icons:** 15px, stroke 1.5. On the 64px md rail, labels hide and the charcoal `Tooltip` (right side) carries them.
+> - **Sections:** a hairline plus a micro label (Analytics, Configuration, Admin or Concierge).
+> - **Logo:** `/logo-bg-removed.webp`, 128px (40px on the rail), under the accent gradient divider. The logo glow is gone (2026-09-22).
+> - **Mobile:** below md the rail is an off-canvas drawer opened by the floating `.serene-mobile-trigger` (the drawer backdrop is a sanctioned blur surface). The `/m` client layer has its own four-room tab bar instead ([decision log](./decision-log.md), 2026-07-03).
+>
+> The tree below is the pre-neumorphic design, kept for history.
 
 ```text
 .serene-sidebar
@@ -1285,9 +1430,23 @@ Never reintroduce a separate sticky chrome bar above the content.
 The only bar-shaped chrome in the shell is `.serene-mobile-topbar`,
 the below-`md` strip that hosts the sidebar drawer trigger.
 
+> **As built (2026-09-26):** the notification bell (through `PageControls`) is on every primary
+> page since 2026-09-25, including the client-shell pages. Leads, Deals, Tasks, Notes and Budget
+> wrap their title row in `CondensingPageHeader` (`src/components/layout/`): it sticks and, past
+> about 24px of scroll, paints a canvas-tinted 10px blur and a hairline (paint only, no layout
+> animation). That header is one of the sanctioned blur surfaces (§6.7). Below md,
+> `.serene-mobile-topbar` is no longer a strip: it is a floating round trigger on the page
+> title's line (`--z-sidebar`), and the title is indented to clear it.
+
 ---
 
 ### 3.4 Page Content Structure
+
+> **As built (2026-09-26):** there is no `.serene-page` class. A page's `<main>` carries the
+> padding ladder `p-4 sm:p-6 lg:p-8` and follows the list-page contract in the root
+> `CLAUDE.md` (title row, filter strip, content in `Suspense`). Scrolling mains reserve room at
+> their foot for the floating Elaya button (`--elaya-fab-clearance`). The tree below is the
+> original design.
 
 Inside the paper, below the TopBar:
 
@@ -1318,6 +1477,15 @@ Inside the paper, below the TopBar:
 ---
 
 ### 3.5 The Canvas Texture
+
+> **Superseded (2026-07-03).** The grain and the Earth gradient washes retired with the
+> neumorphic restyle: noise reads as dirt on cream. Nothing in `src/` draws `feTurbulence` any
+> more. `.layout-canvas` is now only `background-color: var(--neu-canvas)`, mounted on the auth
+> shell alone (decision log 2026-07-02); the bridge sets `--theme-canvas-gradient-1/2/3` to
+> `none`. `html` and `body` paint `var(--theme-canvas)` (the cream, or the charcoal in dark mode)
+> before the layout mounts, and `NEU_CANVAS_LIGHT` / `NEU_CANVAS_DARK` in
+> `src/lib/constants/appearance.ts` mirror it for the browser bar and the manifest. The text
+> below is history.
 
 `.layout-canvas` (`src/app/globals.css`) is the canvas-atmosphere class — grain +
 gradient washes. **As shipped it is mounted nowhere:** the dashboard outer wrapper in
@@ -1380,6 +1548,12 @@ Named. Never raw numbers in components.
 --z-cursor: 80; /* Elaya floating cursor, drag handles          */
 ```
 
+**Added since July (2026-09-26):** `--z-tooltip: 75` (the charcoal tooltip pill, above toasts),
+`--z-veil: 90` (orphaned since `RouteVeil` was deleted on 2026-07-03; see the decision log's Open
+table) and `--z-boot: 95` (`AppBootScreen`, above everything). `--z-sticky` (30) now holds the
+condensing page header and the floating Elaya button; the mobile drawer trigger sits at
+`--z-sidebar` (40) so the stuck header never covers it.
+
 **Nested-modal stacking (e.g. `AssigneePickerModal` above `SubTaskModal`):** a standalone confirm
 dialog uses `--z-overlay` (50) backdrop + `--z-modal` (60) panel. The `61`/`62` pair is **only** for a
 second modal opened on top of an existing `--z-modal` surface — `--z-modal-overlay` (61) is its
@@ -1389,6 +1563,18 @@ backdrop, `--z-modal-nested` (62) its panel. Using `61` for a standalone backdro
 ---
 
 ### 3.7 Auth Surface (canvas-dark)
+
+> **As built (2026-09-26): the auth surface is no longer dark.** Since the neumorphic restyle
+> (2026-07-03) the auth layout (`src/app/(auth)/layout.tsx`, which also holds `/oauth/consent`)
+> sits on the cream canvas through `.layout-canvas`, with two soft accent glows, the engraved
+> seed-of-life mandala (`.serene-auth-mandala`, lit by a slow beam) and two accent orbs, all
+> transform and opacity only. `.serene-auth-card` is a raised cream panel (`--neu-surface`,
+> `--neu-edge`, `--radius-xl`, `--neu-shadow-raised-lg`) with a 6% accent lamplight at the top,
+> entering over 500ms. The brand header is `/logo-bg-removed.webp` in a round accent medallion
+> (`.serene-auth-logo-medallion`) above the serif "Serene" with its `.page-title-dot`.
+> `.serene-input-auth` uses the app's field grammar. In dark mode the whole surface follows
+> `data-neu="dark"`. The canvas-dark description below is history; the rule "auth draws from the
+> canvas palette, never the paper palette" no longer applies, because both are the same material.
 
 The pre-auth pages (`/login`, `/forgot-password`, `/update-password`, and `InvalidLinkCard`) are the
 **one surface in Serene that is dark by design.** They render directly on the canvas — there is no paper,
@@ -1480,6 +1666,14 @@ It signals: this value is exact. Do not paraphrase it.
 
 ### 4.1 Display & Heading — Playfair Display
 
+> **As built (2026-09-26):** the page `<h1>` is `.type-page-title`: Playfair **light** (300),
+> fluid from 24px on phones to 30px, `--tracking-tighter`, on the page's title row (there is no
+> TopBar). Empty-state titles are Playfair italic at `--text-xl` (hero) and `--text-base`
+> (inline, 16px): the inline size is a deliberate exception to "never below `--text-lg`", taken
+> on 2026-09-25 so an empty card reads like an empty page. Stat values are not Playfair:
+> `StatTile` values use the mono number font (2026-07-06), and a number inside a sentence is
+> wrapped in `ui/Num` (mono, tabular, colour inherited).
+
 **Used for:**
 
 - Page title in the TopBar — the primary H1 of every view
@@ -1551,6 +1745,14 @@ color: var(--theme-text-tertiary);
 
 **One rule:** micro labels are always uppercase and always tertiary colour.
 A micro label in primary colour is a heading pretending to be a label.
+
+> **As built (2026-09-26):** the colour part of this rule changed on 2026-07-03. The neumorphic
+> layer paints `.label-micro` and `.type-eyebrow` in `--neu-accent-deep` (tracked caps in the
+> theme's deep tone), and inside a card header strip the label takes `--neu-header-ink`. They
+> are still uppercase and never primary ink. Field labels are moving off this recipe: the
+> `Field` family (2026-09-25) uses a sentence-case `--text-xs` medium label in
+> `--theme-text-secondary` (`.serene-field-label`), while `TaskFormFields`' `FieldLabel` and older
+> forms still use `.label-micro`. Which is the standard is an open decision (decision log, Open).
 
 ---
 
@@ -1709,6 +1911,15 @@ RULE 12 — Framer Motion for entrance animations only
          or anything that runs on every render.
 ```
 
+> **As built (2026-09-26), where the rules above moved:**
+>
+> - **Rule 03 (focus):** not `--shadow-focus`. One focus colour, `--neu-focus-edge`: a hugging frame on text fields, a 2px outline 2px out on actions, `:focus-visible` only, and never a ring on an applied or open state ([control-system.md](./control-system.md#focus-and-state-without-rings--2026-09-25)).
+> - **Rule 04 (loading):** not `Loader2`. A pending `Button` shows an 18px `currentColor` seed mandala turning at 3.5s per revolution (`status="pending"` or `loading`) and keeps its width; a region waits on `LogoSpinner`; a list or page waits on a skeleton from `ui/PageSkeletons`.
+> - **Rule 05 (empty states):** compose `ui/EmptyState`, the one anatomy (§5.99 detail 04 note).
+> - **Rule 06 (errors):** a field error is `--color-danger-text` under the field with a matching border and a 1px ring (`Field` family); a whole-form error goes in the `error` prop of `Dialog` / `Modal` (above the footer) or an `Alert`.
+> - **Rule 08 (inline styles):** in practice most components set token-only inline `style` objects. The rule that matters is Rule 01: no literal colour, and (per control-system.md) an instance override describes layout, not appearance.
+> - **Rule 11 (CVA):** never adopted; `class-variance-authority` is not a dependency. Variants live in CSS classes (`.serene-btn-*`, `.serene-selection[data-appearance]`) and the recipes in `ui/material-styles.ts`. Open in the decision log.
+
 ---
 
 ## Core Components
@@ -1716,6 +1927,24 @@ RULE 12 — Framer Motion for entrance animations only
 The following 12 components appear on every screen in Serene.
 They are specified completely. Build them once, correctly.
 Every other component in the system assembles from these.
+
+> **As built (2026-09-26):** the specs in 5.01 to 5.12 are the June design. The shipped
+> components and where their current contract lives:
+>
+> | Spec | Shipped as | What differs today | Contract |
+> | --- | --- | --- | --- |
+> | 5.01 Button | `ui/Button`, `ui/MotionButton` | Eight variants: primary (accent gradient, dark ink), secondary, control (toolbar and filter material, `active` for applied), ghost, danger, success, warning, ghost-danger. Sizes 28/32/36/44px. Radius `--neu-radius-control` (14px), not `--radius-sm`. No accent glow; hover lifts with a contact shadow, press sinks. `iconOnly`, `iconMotion`, `status` (save morph) | [control-system.md](./control-system.md), `src/components/CLAUDE.md` |
+> | 5.02 Input | `ui/Field` (`Field`, `Input`, `Textarea`), `.serene-input`, `SearchBar` | Shallow inset field (`--neu-input-bg`, `--neu-input-edge`, `--neu-shadow-input`), control radius, the focus frame | control-system.md "Component families" |
+> | 5.03 Badge / Pill | `ui/Badge`, `.status-pill` | Flat: pastel fill, deep ink, a hairline, no shadow | decision log 2026-09-22 |
+> | 5.04 Card | `.neu-card`, `ui/SectionCard`, `leads/CardHeader` | Porcelain `--neu-surface`, `--neu-edge`, `--neu-radius-card` (32px), raised shadow. The header strip is the themed `--neu-header-surface`, not `--theme-paper-subtle` | the 2026-09-26 card header note at the top |
+> | 5.05 Avatar | `ui/Avatar`, `ui/AvatarStack` | Unchanged in shape (rounded square) | `src/components/CLAUDE.md` |
+> | 5.06 Modal | `ui/Dialog`, `ui/modal` (`Modal`), `ui/ConfirmDialog` | Warm `--neu-scrim`, **no backdrop blur**, raised modal panel, header on `--neu-section-bg`, `pending` blocks dismissal, `error` renders above the footer, bottom sheet below md | `src/components/CLAUDE.md` |
+> | 5.07 Table | `ui/Table`, bespoke `LeadsTable` | Header on `--neu-table-header-bg`, row hover and selected tokens, `previewRows`, rows open with Enter or Space; the dense lists (leads, members) switch to a card stack below md | `src/components/CLAUDE.md` |
+> | 5.08 Toggle | `ui/Toggle`; also `ui/Checkbox`, `ui/CheckTile` | Inset well track, accent-gradient knob | control-system.md |
+> | 5.09 Dropdown / Select | `ui/FilterDropdown`, `ui/FormSelect`, `ui/FloatingPanel` | Filter triggers share `filterTriggerStyle`; applied = pastel wash, open = pressed, no ring; `FormSelect` is the form select; never a native select | control-system.md |
+> | 5.10 Search Bar | `ui/SearchBar`, `ui/CommandPalette` (⌘K) | No TopBar and no ⌘K chip in a bar; the palette is its own ⌘K surface | `src/components/CLAUDE.md` |
+> | 5.11 Message Bar | `ui/MessageBar` | `leadingSlot` (for `DictationButton`), `sendOnEnter` (a bare Enter on touch is a newline), the seed mandala while sending, the field focus frame on the shell | `src/components/CLAUDE.md` |
+> | 5.12 Skeleton | `.skeleton`, `ui/PageSkeletons` | A left-to-right sheen on the well tone (1.8s), not an opacity pulse | §11 note |
 
 ---
 
@@ -1909,6 +2138,10 @@ Ring:
 Two types. One for interruption, one for context.
 
 **Type A — Overlay Modal (interruption)**
+
+> **As built:** the overlay is the warm `--neu-scrim` with **no** `backdrop-blur` (blur on the
+> modal overlay was removed 2026-07-10 and is not sanctioned, §6.7). See the 5.06 row in the
+> "As built" table above.
 
 ```text
 Overlay:    fixed inset-0, bg black/50, backdrop-blur-sm
@@ -2244,6 +2477,10 @@ NEVER   duplicate a component that already exists — extend it instead
 
 ## 01 — The Sidebar Active State Is Three Layers
 
+> **Superseded (2026-07-03).** The active state is now ONE indicator: the icon sits in a 26px
+> accent-gradient tile; the row has no wash, no border, no travelling pill. The 15px icon size
+> stands; the nav label is `--text-sm` (14px), not 13px. See §3.2 "As built".
+
 This is the most replicated pattern in Serene. It appears on every screen, every session.
 Get it wrong and nothing feels right. It is always three layers together.
 Remove any one and it looks like a mistake.
@@ -2281,6 +2518,9 @@ Not `text-sm` (14px). 13px keeps the sidebar feeling light.
 
 ## 02 — The Sidebar Logo Divider
 
+> **As built (2026-09-26):** the gradient divider stands (22% accent at the centre, fading to
+> nothing). The logo glow below was removed on 2026-09-22.
+
 Below the wordmark or logo, before the nav begins:
 
 ```css
@@ -2311,6 +2551,11 @@ The logo knows where it is. It breathes a warm glow into the dark sidebar.
 ---
 
 ## 03 — The TopBar Title Has a Period
+
+> **As built (2026-09-26):** the TopBar is gone; the period lives on the page `<h1>` as
+> `<span class="page-title-dot">.</span>` (`--theme-accent`, a slow 2.4s blink), on primary nav
+> pages only, and on the auth "Serene." header. The TopBar background below is retired; the
+> sticky `CondensingPageHeader` (§3.3 note) took its place.
 
 The page title in the TopBar ends with a period in accent colour.
 
@@ -2345,6 +2590,14 @@ the border is a whisper, not a wall.
 ---
 
 ## 04 — Empty States Use Playfair Italic
+
+> **Superseded (2026-09-25): one anatomy everywhere.** Compose `ui/EmptyState`: a raised tile
+> (64px `hero`, 44px `inline`) holding the page's sidebar icon, or the Serene mark for an
+> all-clear or where no icon fits (never a warning icon); a Playfair italic title (`--text-xl`
+> hero, `--text-base` inline); a calm sans description; at most one action. `framed` puts it in
+> the page-level paper card for a page with nothing in it. Menus and listboxes keep a short text
+> line. Never "No data available", never a bare italic sentence, never a hand-rolled empty.
+> The recipe below is the June version.
 
 Every empty state in Serene — no leads, no tasks, no messages, nothing yet — follows this pattern:
 
@@ -2402,6 +2655,11 @@ No colour change. No border change. Just one pixel of lift.
 
 ## 06 — The Focus Ring Has a White Gap
 
+> **Superseded (2026-09-25).** There is no white gap and no accent ring. Focus is one colour,
+> `--neu-focus-edge` (35% accent in 65% of its deep ink, at least 3:1 everywhere): a hugging
+> frame on text fields, a 2px outline 2px out on actions, `:focus-visible` only; applied and open
+> states never draw a ring. See [control-system.md](./control-system.md#focus-and-state-without-rings--2026-09-25).
+
 ```css
 box-shadow:
   0 0 0 2px var(--theme-paper),
@@ -2422,6 +2680,10 @@ It is both.
 ---
 
 ## 07 — Pill Shadows Are What Make Them Feel Lifted
+
+> **Superseded (2026-09-22).** Status badges are flat: pastel fill, deep ink, a hairline, no
+> shadow (`--neu-shadow-chip` is a zero shadow). Elevation belongs to actions and cards, not to
+> status.
 
 Every badge and status pill carries:
 
@@ -2456,6 +2718,10 @@ The last line is always the shortest. Real paragraphs end before the margin.
 
 ## 09 — Buttons Do Not Change Width on Loading
 
+> **As built:** the rule stands. The pending mark is an 18px `currentColor` seed mandala turning
+> at 3.5s per revolution in the icon slot, not `Loader2`; `loadingLabel` can swap the words for a
+> progressive verb ("Saving…"); `status="success"` morphs to a sage "Saved" with a drawn check.
+
 When a button enters loading state:
 
 ```jsx
@@ -2476,6 +2742,9 @@ that breaks the user's spatial memory of where the button lives.
 ---
 
 ## 10 — The Noise Texture Frequency Is 0.68
+
+> **Superseded (2026-07-03).** There is no noise texture anywhere. The grain retired with the
+> neumorphic restyle (§3.5 note).
 
 The canvas SVG noise texture (`.layout-canvas`, `src/app/globals.css`) uses
 `baseFrequency='0.68'` at opacity `0.055`.
@@ -2561,6 +2830,8 @@ RULE M-06 — Performance is the ceiling
             Layout animations use Framer Motion layoutId — never CSS width transitions.
 ```
 
+> **As built (2026-09-26):** M-05 is app-wide: `MotionProvider` (`LazyMotion` strict + `MotionConfig reducedMotion="user"`) wraps the app, and every CSS loop has a `prefers-reduced-motion` gate. Framer ships as the slim core: always `import { m as motion } from 'framer-motion'`. Two sanctioned exceptions to M-06: expand and collapse composes `ui/CollapseReveal` (animates `grid-template-rows 0fr to 1fr`, never `height: auto`), and list-row arrival and removal composes `ui/RowMotion` (`MotionRow`, Framer's measured height tween, from the polish handoff). Every duration and easing comes from `src/lib/constants/motion.ts`.
+
 ---
 
 ## 6.3 — Motion Vocabulary
@@ -2634,6 +2905,17 @@ stagger:   40ms between items — max 8 items animated, rest instant
 Beyond 8: the stagger becomes too long and the user waits for their data.
 ```
 
+> **As built (2026-09-26), changes to this vocabulary:**
+>
+> - **Sidebar active pill:** removed (2026-07-03); nothing travels in the sidebar. Hover keeps the `x: 2` nudge.
+> - **Tab indicator:** `SPRING_TAB` (stiffness 260, damping 32), gentler than `SPRING_CONFIG` (400/30) since 2026-07-10.
+> - **Press:** `Button` presses in CSS (`.serene-pressable`, scale 0.97; the neumorphic button classes add the pressed inset shadow and scale 0.98). `MotionButton` keeps `whileTap` 0.97 for repeated standalone CTAs.
+> - **Card hover:** `--neu-shadow-hover` plus `translateY(-1px)`, fine pointers only.
+> - **Polish layer constants** (`motion.ts`): `PALETTE_DURATION` 320ms, `ROW_DURATION` 380ms, `TOOLTIP_DURATION` 180ms with a 500ms hover intent, `CONDENSE_DURATION` 300ms, `COUNT_UP_MS` 1.4s, `UNDO_WINDOW_MS` 5s.
+> - **The seed mandala's speeds are law:** boot 24s per turn, buttons and spinners 3.5s, Elaya thinking 8s. Never faster than 3.5s.
+> - **Carousel:** the swipe follows the finger 1:1 with velocity hand-off (`ui/Carousel`, 2026-09-25).
+> - **No route-change overlay:** the full-page `RouteVeil` was deleted on 2026-07-03. A route's `loading.tsx` skeleton is the navigation feedback.
+
 ---
 
 ## 6.4 — Elaya Motion (Special)
@@ -2675,6 +2957,13 @@ liaTypingCursor — the blinking cursor inside Elaya's streaming text
   easing:   steps(1)  ← hard blink, not a fade. Cursors do not fade.
   Disappears when streaming completes.
 ```
+
+> **As built (2026-09-26):** the breathe runs at the neumorphic amplitude (opacity 0.35 to 0.95,
+> 3s) on Elaya's glyph disc. While she thinks or runs tools, the disc's logo swaps for the dark
+> seed mandala turning at 8s per revolution (`ElayaGlyphDisc thinking`), and her status line
+> morphs between phrases (`ElayaStatusText`, torph): Elaya is the one presence allowed to animate
+> text. Typing dots, where used, are `serene-neu-dot` (1.2s, 150ms stagger, a small lift, not a
+> scale).
 
 ---
 
@@ -2791,9 +3080,23 @@ Elaya / AI
   Elaya action:         Zap
 ```
 
+> **As built (2026-09-26):**
+>
+> - **Loading** is the seed mandala (`ui/LogoSpinner`, or an inline `SeedMandala variant="currentColor"` in a control), not `Loader2`. Four stragglers still spin `Loader2`: the `loading` toast, `VendorCategoryPicker`, `SubscriptionHistoryModal` and `InvoiceControls`.
+> - **The brand mark** is `ui/SeedMandala`: eight rings through a common centre plus the official logo's centre ring (added 2026-09-25), in three variants (`gradient` umber to gold, `currentColor`, `darkDisc`). Its gradient stops are brand-fixed and never theme-tinted. It sits in empty-state tiles for an all-clear, in the boot screen, and in every spinner.
+> - **Elaya** in the sidebar is `Sparkles`; her face is `ElayaGlyphDisc` (§6.8 note).
+> - **Navigation icons** are defined once in `src/components/layout/Sidebar.tsx` (for example Dashboard `LayoutDashboard`, Members `Users`, Tickets `ClipboardList`, Leads `UserRound`, Tasks `CheckSquare`, Vendors `Building2`, Sia `MessagesSquare`, Freshdesk `Ticket`, Books `Landmark`). A page's empty state reuses its sidebar icon.
+> - **Domain icons**: one mark per domain everywhere, from `src/lib/constants/domain-icons.ts` (Onboarding `UserRound`, House `Home`, Shop `ShoppingBag`, Legacy `Trees`, Concierge `ConciergeBell`, Finance `IndianRupee`, Marketing `Megaphone`, Tech `Cpu`, Business `Briefcase`). Pair with `DOMAIN_LINE_COLORS` for the tint.
+> - **Icon micro-interactions** are a closed set of five (`rotate`, `lift`, `drop`, `ring`, `travel-back`), opted into through `Button iconMotion`; see `src/components/CLAUDE.md`.
+> - **App icons:** the tab favicon is the bare mark; the default phone shortcut is the mark on a white plate; the decorative picks sit on cream. All are generated by `scripts/pad-app-icons.mjs`.
+
 ---
 
 ## 6.6 — Texture
+
+> **Superseded (2026-07-03).** Neither the canvas nor the paper carries grain any more: on the
+> cream material noise reads as dirt. The material's depth comes from its tone layers and warm
+> contact shadows (§3.1 note). The text below is history.
 
 _In Marrakech I ran my hand across a piece of hand-woven wool that cost more than
 a flight to London. It was not the colour. It was not the pattern.
@@ -2876,6 +3179,14 @@ it prioritised the effect over the reason for the effect.
 **Serene's position:** We use backdrop blur in exactly three places.
 In those three places, it earns its presence. Nowhere else.
 
+> **As built (2026-09-26): the three sanctioned surfaces today** are the mobile sidebar drawer
+> backdrop (`.serene-sidebar-backdrop`, 8px), the command palette scrim (`CommandPalette`, 3px)
+> and the condensing page header (`.serene-condense-header`, 10px, which took the retired
+> TopBar's place). Modals, dialogs and `SubTaskModal` have no blur. Two sites blur outside this
+> list and wait on a decision (decision log, Open): `LoadingVeil` in `ui/LogoSpinner.tsx` (3px)
+> and the `/m` drawer and sheet scrims (2px). The TopBar recipe and overlay values below are
+> the June design.
+
 ### Where Backdrop Blur Is Used
 
 **1 — The TopBar (sticky chrome)**
@@ -2948,6 +3259,13 @@ Grounded interfaces feel like products.
 ---
 
 ## 6.8 — The Elaya Glyph
+
+> **As built (2026-07-03):** Elaya's face is the company logo, not a theme-coloured SVG.
+> `ElayaGlyphDisc` (`ui/elaya-glyph.tsx`) shows `public/elaya-glyph-192.png` (the gold mandala on
+> near-black) filling a charcoal disc (`--neu-glyph-disc`), breathing on the 3s loop. It is the
+> one dark-first surface in the cream UI and the one place Elaya does not take the theme accent.
+> Below about 24px (badges, inline mentions) the small line mark `ElayaGlyph` stays, in
+> `currentColor`. There is no drop-shadow glow.
 
 Elaya is not a chatbot. She is not an assistant icon.
 She is a presence — named, specific, with her own visual identity inside Serene.
@@ -3030,6 +3348,13 @@ client JS uses `useMediaQuery` + `MQ` from `src/hooks/useMediaQuery.ts` — neve
 | **Elaya panel**      | Full-screen takeover                                                             | Side sheet — 400px                            | Side panel or split view                        |
 | **Data charts**    | Simplified — key metric + single bar/line                                        | Standard chart, reduced legend                | Full chart, full legend, hover tooltips         |
 
+> **As built (2026-09-26):** below md the sidebar is an off-canvas drawer only (no bottom bar in
+> the dashboard); page padding is `p-4 sm:p-6 lg:p-8`; the title row keeps its icon and hides
+> secondary labels so the primary button and the bell never clip; there is no TopBar or search
+> in a bar; the Elaya page is chat-only below lg. Detail grids are one column below lg
+> (`.serene-dossier-grid`, with `--aside-left` and `--side-first` ordering modifiers). The `/m`
+> client layer is a separate phone shell with its own four-room tab bar (§12.1 note).
+
 ---
 
 ## 9.3 — Mobile-Specific Rules
@@ -3070,6 +3395,15 @@ RULE R-06 — Modals become bottom sheets below md
             it by swiping down. Border-radius: --radius-xl on top corners only.
             Max-height: 90dvh. Overflow: scroll inside.
 ```
+
+> **Added by the 2026-09-26 mobile audit** (`../audits/2026-09-26-mobile-audit.md`):
+>
+> - **R-07: Text fields are 16px or larger on touch.** iOS Safari zooms the page on focus of a smaller field. Enforced globally under `@media (pointer: coarse)` in `serene-neumorphic-tokens.css`.
+> - **R-08: Form rows stack on a phone.** Two or three fields side by side compose `.serene-form-row` (`repeat(auto-fit, minmax(min(11rem, 100%), 1fr))`), never an inline `1fr 1fr`.
+> - **R-09: Tiny controls get a hit area, not a new size.** `.serene-touch-hit` adds an invisible 44px target around a dot, tick or grip; `.serene-touch` lifts compact controls to 40px; `.serene-selection` rows are 44px tall on touch.
+> - **R-10: The keyboard never covers the composer.** `interactiveWidget: resizes-content`; on touch a bare Enter is a newline (the send knob sends), and forms skip `autoFocus`.
+> - **R-11: Errors are never below the fold.** A whole-form error goes in `Dialog` / `Modal` `error`, above the footer.
+> - **R-12: Drag has a touch path.** Boards use a touch sensor with a hold and a per-card "Move to" menu; checklists offer Move up and Move down on touch.
 
 ---
 
@@ -3224,6 +3558,18 @@ RULE R-06 — Modals become bottom sheets below md
     It does not use blur to look modern. It uses restraint to look permanent.
 ```
 
+> **As built (2026-09-26), rules in 10.1 to 10.3 that the September passes changed** (each has a
+> decision-log entry):
+>
+> - **03:** the z-scale now has fourteen named levels (`--z-tooltip` 75, `--z-veil` 90 orphaned, `--z-boot` 95 added).
+> - **05:** besides the three named exceptions, the seed mandala's loops (buttons and spinners 3.5s per turn, Elaya thinking 8s, the boot 24s) and the idle breathe loops are ambient or progress motion, never blocking, and all rest under reduced motion.
+> - **14:** the sidebar active state is one indicator, the icon tile (2026-07-03), not three layers. Still never a left-border-only highlight.
+> - **16:** table header rows sit on `--neu-table-header-bg` (the neutral section surface) and data rows on the card; the contrast rule stands.
+> - **17:** an empty state composes `ui/EmptyState` (tile, Playfair italic title, description, one action).
+> - **18:** open. The `Field` family uses sentence-case labels; see §4.3 note.
+> - **19:** expand and collapse composes `ui/CollapseReveal`; row arrival composes `ui/RowMotion`.
+> - **20:** the sanctioned blur surfaces are the mobile drawer backdrop, the command palette and the condensing page header (§6.7 note); the TopBar is gone.
+
 ---
 
 ## 10.4 — The Decision Log Requirement
@@ -3264,6 +3610,13 @@ before it arrives. Fast, premium, never jarring.
 ---
 
 ## 11.1 — The Pulse Animation
+
+> **As built (2026-07-03):** the opacity pulse is gone. `.skeleton` is a left-to-right sheen:
+> `--neu-well` / `--neu-surface-high` / `--neu-well` swept across a 200% background over 1.8s
+> linear (`serene-shimmer-sweep`), resting on the flat well tone under reduced motion. Loading
+> files compose `ui/PageSkeletons` (`Shimmer`, `PageHeaderSkeleton`, `FilterBarSkeleton`,
+> `SkeletonCard`, `RailRowsSkeleton`, `EmptyStateSkeleton`) and every route has its own
+> `loading.tsx` in its own shape. No brand watermark on skeletons (removed 2026-07-06).
 
 ```css
 @keyframes serene-skeleton-pulse {
@@ -3362,6 +3715,9 @@ Content:  3–4 stat card skeletons side by side
 
 ## 11.4 — Stagger Timing
 
+> **As built:** `skeletonStagger(i)` in `ui/PageSkeletons.tsx` steps 150ms per element, capped
+> at 600ms (the logo-motion handoff), not the 80ms / 400ms below.
+
 When multiple skeletons appear together, stagger their pulse start:
 
 ```text
@@ -3398,6 +3754,11 @@ This crossfade is what makes arrival feel like materialisation.
 ## Section 12 — Mobile Components & Touch Standards
 
 ## 12.1 — Bottom Navigation Bar (deferred design target)
+
+> **As built (2026-09-26):** the dashboard still has no bottom bar (decision D-3: the drawer).
+> The `/m` client layer (`src/app/(client)/m/`, `src/components/mobile/`) has its own: exactly
+> four rooms per role plus the Elaya knob raised above the bar, the nine-circle mark as the
+> drawer button, `--neu-*` and `--neu-m-*` tokens only. Contract: `../modules/mobile-ops.md`.
 
 *(Status 2026-07-02: not built. The 2026-06-12 responsive contract, decision-log
 D-3, chose the off-canvas sidebar drawer plus the `.serene-mobile-topbar` trigger
@@ -3613,6 +3974,17 @@ It lives until `toast.resolve()` is called, then transitions directly into
 `success` or `danger` with a crossfade — never disappearing and reappearing.
 The continuity is the message: _the same thing that was waiting is now done._
 
+> **As built (2026-09-26)** (`src/lib/toast.ts`, `ui/toast-provider.tsx`, `ui/toast-item.tsx`):
+> the standard toast sits on `--neu-surface-high` with `--neu-radius-panel` and
+> `--neu-shadow-raised-lg`, not on `--theme-paper` with `--shadow-3`. A seventh type exists:
+> **`undo`** (2026-07-03), `toast.undo(title, { action, onTimeout })`, a charcoal pill in light
+> mode (a raised `--neu-surface-high` panel in dark) with an accent Undo pill and a 2.5px accent
+> depletion bar that is the 5s countdown (no hover pause, no close button); the deferred commit
+> runs on timeout. Reversible single deletes use it instead of `ConfirmDialog`. On a phone the
+> stack sits above the composer. The `loading` type still spins `Loader2`, one of four places the
+> Lucide spinner survives (also `VendorCategoryPicker`, `SubscriptionHistoryModal`,
+> `InvoiceControls`); everywhere else the loading mark is the seed mandala.
+
 ---
 
 ## 13.4 — The Living Bar Animation (removed 2026-06-15)
@@ -3820,6 +4192,17 @@ The GPU cost is imperceptible in profiling.
 > A form in Serene is not a data collection mechanism.
 > It is an invitation to participate.
 > It should feel as considered as the rest of the interface.
+
+> **As built (2026-09-26): what the form system uses today.**
+>
+> - **Fields:** the `Field` family in `ui/Field.tsx` (`Field` wraps a label, hint and error and wires their ids; `Input`, `Textarea` and a native `Select` forward every prop and ref) on `.serene-field-control`: a shallow inset (`--neu-input-bg`, `--neu-input-edge`, `--neu-shadow-input`), `--neu-radius-control`, 36px (44px on touch). Older forms use `.serene-input` with the same material. A required field shows a small asterisk in danger ink, not the "Required" pill of §7.2.
+> - **States (§7.3):** hover strengthens the edge (fine pointers only); focus is the hugging frame in `--neu-focus-edge`; an invalid field has a `--color-danger-text` edge and ring; read-only sits on `--neu-section-bg`; disabled is 60% opacity.
+> - **Choices (§7.4, §7.5):** `FormSelect` for a form select, `DatePicker` for dates (and `mode="month"` for months; the text to Date helpers live in `lib/utils/dates.ts`), `TimePicker` with a typed time input above the wheels, `Checkbox` (a real `button role="checkbox"`) for a tick, `CheckTile` for a done state, `Toggle` for on and off, a native radio kept visually hidden behind a drawn dot for radio rows. Never the browser's own checkbox, date, month or select.
+> - **Layout (§7.6):** two or three fields side by side compose `.serene-form-row`, which stacks on a phone.
+> - **Form-level errors (§7.7):** in a modal, the `error` prop of `Dialog` / `Modal` renders above the footer with `role="alert"`; elsewhere an `Alert`. A rejected save keeps the draft; an uncertain transport failure says to check the list before retrying ([control-system.md](./control-system.md) "Workflow rules").
+> - **Submit (§7.8):** `Dialog` / `Modal` `pending` blocks the close button, the backdrop and Escape while a save or upload runs; recording forms submit with Enter through a native form.
+> - **Not built:** the unsaved-changes guard of §7.8 (no `beforeunload` hook exists) and the multi-step progress bar of §7.9.
+> - **Rule changes:** F-08 (autofocus) is skipped on touch, where it would open the keyboard over the form. F-09: in a chat composer a bare Enter sends on a desktop and is a newline on touch (`MessageBar sendOnEnter`).
 
 ---
 
@@ -4733,6 +5116,20 @@ What never truncates:
 
 ## 8.8 — The Display Utils Contract
 
+> **As built (2026-09-26): the contract below is partly a design target.** What exists:
+> `src/lib/utils/numbers.ts` has `formatCount`, `formatCompact`, `formatPercent`,
+> `formatCurrency`, `formatCurrencyCompact` (lakhs and crores) and `formatBytes`;
+> `src/lib/utils/dates.ts` has `formatDate(date, fmt = 'dd MMM yyyy', tz = 'Asia/Kolkata')`,
+> which takes a date-fns pattern rather than the named formats of §8.3, plus
+> `formatRelativeTime`, `formatTaskDueAt`, `formatDuration`, `toUTC` and the ISO text helpers
+> (`parseIsoDate` / `toIsoDate` and the date-time and month pairs); `src/lib/utils/strings.ts`
+> has `getInitials`; `src/lib/utils/phone.ts` has `normalizeToE164`, `normalizeWaPhone` and
+> `canonicalizePhone`. There is **no** `lib/utils/display.ts`, no `formatPhone`, no
+> `formatDelta` and no `formatName`. Lead status config lives in
+> `src/lib/constants/lead-statuses.ts`. Money on stat tiles uses `formatCurrencyCompact`;
+> tables keep the long form. An id from another system (Freshdesk, Zoho, the app) renders as
+> `ui/RevealId`, never printed raw.
+
 These functions live in `lib/utils/` and are the only path from raw data to displayed value.
 No component calculates, formats, or transforms data inline.
 
@@ -4849,6 +5246,16 @@ Delta indicators:
 > A transition that says nothing wastes the moment.
 > A transition that says too much steals attention.
 > The right transition is felt, not seen.
+
+> **As built (2026-09-26): this section is a design target, mostly unbuilt.** There is no route
+> progress bar, no `AnimatePresence` page wrapper, no `usePageTransition` hook and no
+> direction-aware transition in `src/`. What ships: every route has its own `loading.tsx`
+> skeleton in the shape of the destination, so a click paints the right skeleton at once; the
+> dashboard and leads headers render before their data (`ui/Await`, streamed filters); the
+> boot screen plays once per browser session. A full-page route overlay was built and deleted
+> on 2026-07-03: never reintroduce one. The scrollbar spec in §14.8 is replaced by one global
+> rule (thin, warm putty thumb on a transparent track, every scroll area). Whether §14 stays a
+> target or is retired is open (decision log).
 
 ---
 
@@ -5273,6 +5680,11 @@ Her body text is Geist — precise, readable, efficient.
 
 ## 15.2 — The Elaya Glyph
 
+> **As built (2026-07-03):** see the §6.8 note. Her face is the company logo on the charcoal
+> disc (`ElayaGlyphDisc`), brand-fixed rather than theme-tinted, breathing, and turning the dark
+> seed mandala while she thinks. The theme accent still colours her surroundings (the user's
+> bubble, her small line mark, the floating button's wash).
+
 The Elaya glyph is Elaya's face in the interface.
 It is a custom SVG mark — not a Lucide icon, not an emoji, not a letter.
 It lives at `src/components/ui/elaya-glyph.tsx`.
@@ -5319,6 +5731,17 @@ Colours:
 
 Elaya appears in four distinct surfaces in Serene.
 Each surface has a specific anatomy and purpose.
+
+> **As built (2026-09-26): where Elaya actually appears.** The behaviour lives in
+> [../modules/elaya.md](../modules/elaya.md); the design facts are:
+>
+> - **Who sees her:** only people `hasElayaAccess(profile)` allows (`ELAYA_DOMAINS`: concierge and the Gia domains, plus admin, founder and the tech workbench). Every surface below checks it.
+> - **The conversation (Surface B):** `/elaya` (`ElayaChatShell` with `ElayaIdentityCard` beside it; chat only below lg, starters as a chip row), the dashboard presence card (the same chat in a widget), and the `/m` Elaya knob.
+> - **The floating button:** `ElayaWidget`, a round button (`.serene-elaya-fab`, bottom right, `--z-sticky`) on every dashboard page except `/elaya`, opening the same chat in a dialog (a full sheet on a phone). This contradicts §15.10 "not a floating bubble in the corner"; the decision is open in the decision log.
+> - **Messages (§15.4):** both sides are bubbles (`ElayaMessageBubble`): the user's on `--neu-chat-user-bg`, Elaya's on `--neu-surface-high`, 20px radius with a 6px corner on the sender's side, her disc beside the first of a run, model text through `ChatMarkdown`. The chat follows new text only while the reader is at the bottom; a "New reply" pill jumps back. This contradicts rule L-05; open in the decision log.
+> - **Proposals (Surface D):** a proposed write in the chat is confirmed by the user's reply in words, not by a card. The two-action card lives on elsewhere: `Modal type="elaya"` enforces Approve and Dismiss (no consumer today), and machine proposals in Sia use the same two-action rule (`tickets/SentinelProposal`).
+> - **Inline suggestions (Surface C) and the side panel (Surface A):** not built. No inline Elaya suggestion card or side panel exists in `src/components/`; the 400ms rule (L-02) waits for the first one.
+> - **Outside the product:** since September 2026 Elaya has a twice-daily founders' brief and a live alert sweep that deliver on WhatsApp and in-app, each behind its own settings switch ([../modules/elaya-analyst.md](../modules/elaya-analyst.md)); §15.10 "not a notification system" describes the in-app design only.
 
 ### Surface A — The Elaya Panel (persistent side panel)
 
@@ -5908,6 +6331,13 @@ Never four. Four is a palette, not a signal.
 
 ## 16.2 — The Visualisation Palette
 
+> **As built (2026-09-26):** `useChartTokens()` resolves six series in this order: the theme
+> accent, then the theme-invariant pastels `--neu-powder`, `--neu-sage`, `--neu-butter`,
+> `--neu-danger`, `--neu-lilac`. It does not use `--theme-accent-muted` as the second series.
+> The per-theme hex values listed below are the retired stock accents; the current accents are
+> in §1.0. Gridlines are warm dashed putty (`--neu-chart-grid`), axis labels
+> `--theme-text-tertiary`. The three-colour ceiling (V-02) stands.
+
 ### Primary Series Colour
 
 ```text
@@ -6174,6 +6604,12 @@ Quadrant lines (when used):
 
 ## 16.5 — Chart Surface & Container
 
+> **As built (2026-09-26):** `ChartFrame` (`ui/charts/CartesianChartFrame.tsx`) draws the chart
+> area as a quiet inset on the field material (`--neu-input-bg`, `--neu-input-edge`,
+> `--neu-shadow-input`, `--radius-lg`), and `cartesianDefaults(tokens)` supplies the grid, axis,
+> tooltip and legend props. Bars round their top corners at 6px. An empty chart composes
+> `ui/EmptyState`.
+
 Every chart in Serene lives in a Card (Section 5.04).
 The chart is content inside the card. The card is the container.
 
@@ -6224,6 +6660,11 @@ Empty chart state:
 ---
 
 ## 16.6 — Tooltips in Charts
+
+> **As built (2026-09-26):** chart tooltips are light, not canvas-dark: `--neu-surface-high`
+> with a `--neu-edge` hairline, `--radius-md` and `--shadow-2`. Rule V-08 below ("tooltips use the
+> canvas background") is superseded; the canvas is cream now. The app's hover tooltip for
+> controls is a separate component (`ui/Tooltip`, the charcoal pill).
 
 ```text
 Chart tooltips are the most read text in data-heavy views.
@@ -6360,9 +6801,18 @@ RULE V-10 — Recharts is the only charting library
             A second charting library doubles the bundle and halves the consistency.
 ```
 
+> **As built (2026-09-26):** V-08 is superseded: chart tooltips are light (`--neu-surface-high`
+> with a hairline; §16.6 note). V-09 is not followed: `AnimatedNumber` rolls digits with an
+> ease-out over 1.4s (NumberFlow, `COUNT_UP_MS`), and `StatTile` shows plain numbers with no
+> count at all (2026-09-15). V-02, V-03, V-05 and V-10 stand.
+
 ---
 
 ## 16.9 — Recharts Token Integration
+
+> **As built:** `useChartTokens`, `BarChart` and the domain-line observer re-resolve on
+> `data-neu` (dark mode) as well as `data-theme`. Any new `MutationObserver` for chart colours
+> must watch both attributes.
 
 Recharts uses prop-based styling, not CSS classes.
 Bridging the token system into Recharts requires a canonical helper.
@@ -6424,6 +6874,8 @@ Nine tokens, defined in `src/styles/design-tokens.css` under `:root`:
 
 These are mid-tone values chosen across the hue wheel.
 They are readable against all six `--theme-paper` backgrounds.
+(As of 2026-09-26 there is one paper, the shared cream material, in light and dark; the
+domain palette never re-tints with the theme.)
 They are distinguishable from each other and from any `--theme-accent` value.
 
 ### Canonical constant
@@ -6463,6 +6915,13 @@ Reference implementation: `src/components/dashboard/widgets/ManagerLeadVolumeWid
 ---
 
 ## Addendum A.1 — Semantic Colours on Dark Surfaces
+
+> **As built (2026-09-26):** the dark surfaces this addendum was written for (the dark canvas,
+> the near-black sidebar, canvas-dark tooltips and toasts) no longer exist in light mode. The
+> bridge maps the `--color-*-dark-*` tokens to the deep and pastel tiers so leftover consumers
+> stay legible. Dark mode proper is handled by the `[data-neu="dark"]` block, where the pastels
+> flip (fills darken, deep inks lighten) and the chips re-derive from them; components keep
+> using the ordinary `--color-*` and `-light` / `-text` tokens.
 
 > The semantic colour system (Section 2.1) was designed for paper surfaces.
 > Success green on warm cream paper. Danger red on white paper.
@@ -6586,6 +7045,12 @@ RULE S-01 — Surface determines semantic variant
 ---
 
 ## Addendum A.2 — Drawer / Sheet Component
+
+> **As built (2026-09-26):** there is no general drawer primitive. `Dialog` becomes a bottom
+> sheet below md (top radius, up to 90dvh, safe-area padding), the sidebar is the left drawer on
+> phones, `SubTaskModal` is a bottom sheet below md, and the `/m` layer has its own
+> `MobileBottomSheet` and `MobileActionSheet` (`src/components/mobile/overlays.tsx`). The drawer
+> backdrop blur below is sanctioned only for the sidebar drawer (§6.7 note).
 
 > The drawer is the most used overlay surface in Serene.
 > Client profiles, task details, Elaya panel, mobile sidebar —
@@ -6790,6 +7255,14 @@ RULE D-05 — Drawer width leaves 48px of content visible
 ---
 
 ## Addendum A.3 — Scroll Behaviour
+
+> **As built (2026-09-26):** one global scrollbar rule in `serene-neumorphic-tokens.css` styles
+> every scroll area (thin, a warm putty thumb at 30%, 48% on hover, transparent track), not only
+> `.scrollable`. The workspace contains overscroll. `lockBodyScroll()` in
+> `src/lib/utils/scroll.ts` is re-entrant, uses the position-fixed lock (iOS rubber-banded behind
+> sheets with the overflow lock) and returns its own unlock function; there is no
+> `unlockBodyScroll` or `scrollIntoView` helper. Chats (Elaya, Sia, WhatsApp) follow new
+> messages only while the reader is at the bottom and show a "new" pill otherwise.
 
 > Scroll is the most invisible interaction in software.
 > When it is right, nobody notices.
@@ -7020,6 +7493,12 @@ RULE SC-04 — Infinite scroll always has a bottom state
 
 ## Addendum A.4 — Lead Status Colours (Theme-Invariant)
 
+> **As built (2026-09-26):** still theme-invariant. The bridge now draws them from the pastel
+> chip pairs (new = butter, touched = powder, in discussion = teal, won = sage, nurturing =
+> lilac, lost and junk = rose), and the `-solid` tier from the pastel bases. The `--color-*`
+> semantic tokens are also theme-invariant under the bridge, but the rule below stands: map a
+> status to its own `--status-*` tokens.
+
 Lead status colours are **fixed psychological anchors**. They do not change with the chosen
 theme. A user who associates red with disqualified leads must see red regardless of whether
 they are on Earth, Air, Water, Fire, Martini, or Candy.
@@ -7083,3 +7562,5 @@ const c = LEAD_STATUS_COLORS['won'];
 ---
 
 _Design DNA — maintenance note (updated 2026-06-11): Token values live in `src/styles/design-tokens.css` — the only token source; there is no docs-side mirror. Product change history lives in `docs/changelog.md`. Design decisions made after this document's sections were written are recorded in `docs/design/decision-log.md`._
+
+_Maintenance note (2026-09-26): runtime token values live in four sheets: `src/styles/design-tokens.css` (the stock layer and the scales), `serene-neumorphic-tokens.css` (the neumorphic material, the eight accents, dark mode and the legacy bridge, imported after it), `serene-families.css` (field, badge, alert and table families) and `serene-mobile.css` (the `/m` layer). There is still no docs-side mirror. When a section of this document is out of date, add a dated "As built" or "Superseded" note and a decision-log entry rather than rewriting the section silently._

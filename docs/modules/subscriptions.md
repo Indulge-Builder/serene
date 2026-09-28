@@ -1,144 +1,163 @@
 # Subscriptions & Bills Tracker
 
-> **Purpose:** a first-class place for Finance + Tech to track recurring bills, memberships, and
-> prepaid (top-up) accounts — renewals, what actually left the account in INR, and where invoices live.
-> **Audience:** engineers. · **Source-of-truth scope:** subscriptions architecture + contracts.
-> **Status:** Phase 1 (core tracker — **no reminders, no WhatsApp, nothing background**). Built 2026-08-06.
+> **Purpose:** where Finance and Tech track recurring bills, memberships and prepaid (top-up)
+> accounts: when each is due, what actually left the account in INR, where the invoices are, and the
+> login for the account.
+> **Audience:** engineers.
+> **Source-of-truth scope:** the subscriptions data model, access, status math, password encryption,
+> and the `/subscriptions` page.
+> **Last verified:** 2026-09-26 against migrations 0163 to 0168 (and the 0202 `business` rename),
+> `src/lib/actions/subscriptions.ts`, `src/lib/services/subscriptions-service.ts`,
+> `src/lib/utils/subscription-status.ts`, `src/lib/constants/subscription-constants.ts`,
+> `src/components/subscriptions/`, `src/app/(dashboard)/subscriptions/page.tsx`,
+> `src/lib/constants/route-permissions.ts` and Elaya's `get_subscriptions`.
 
 ## What it is
 
-A new `/subscriptions` section, three tables, and one private storage bucket. It reuses the existing
-platform primitives wholesale (Modal, FilterBar, Calendar, chart wrappers, EmptyState, `useUrlFilters`,
-`usePortalAnchor`, `ConfirmDialog`) — **not** a new UI stack. A subscription can belong to more than one
-department, carries a billing type (`monthly` / `yearly` / `top_up` / `other`), a currency
-(`INR` / `USD` / `EUR`), and an optional stored login/password for the account.
+One page, `/subscriptions`, over five tables and a private storage bucket. A subscription is one
+account of a service: a billing type (`monthly`, `yearly`, `top_up`, `other`), a currency (`INR`,
+`USD`, `EUR`), an amount, one or more departments, an optional login and password, and an optional
+**tool** that groups several accounts of the same service (three Claude accounts under one "Claude").
+Payments and top-ups are logged against it with the INR that actually left the account.
 
-## Access & RLS
+**Status:** built by Ethan (PR #2), reviewed and merged 2026-08-21, live on production since then.
+The overview filters and per-tool spend followed on 2026-08-22, the calendar was rebuilt on
+2026-09-25. There are no reminders, no notifications and nothing running in the background.
 
-- **Route:** `/subscriptions` is granted to the **`finance` + `tech`** domains in `DOMAIN_ROUTE_MAP`
-  (`lib/constants/route-permissions.ts`). Admin/founder reach it by bypassing that map in
-  `canAccessRoute`. Sidebar entry lives in `MAIN_NAV` and self-filters via `canAccessRoute`.
-- **RLS (SELECT):** admin/founder OR a member of the finance/tech domain — the same predicate on all
-  three tables (children mirror the parent via `EXISTS`). The `departments` array is metadata/filtering,
-  **not** a security boundary — everyone with access sees every subscription.
-- **Writes:** no user write RLS on any table (the deals posture). All writes go through the admin client
-  in `lib/actions/subscriptions.ts`; the `requireProfile()` gate + `canManageSubscriptions()` (admin/
-  founder OR finance/tech domain) + route access are the trust boundary.
+## Access
 
-## Data model (migrations 0163–0168)
+| Layer | Rule |
+| --- | --- |
+| Route | `/subscriptions` is in `DOMAIN_ROUTE_MAP` for the `finance` and `tech` domains. Admin and founder reach every route; the founder's sidebar lists it (`FOUNDER_NAV_PREFIXES`). |
+| RLS (SELECT) | admin/founder, or `get_user_domain()` in `finance` / `tech`, on `subscriptions`, `subscription_tools` and the invoice bucket. `subscription_payments` and `subscription_topups` mirror the parent through `EXISTS`. |
+| Actions | Every action runs `requireProfile()` then `canManageSubscriptions()` (the same rule in code) and writes on the admin client. No table has a user write policy. |
+| Reveal trail | `subscription_password_reveals` is readable by admin and founder only. |
+
+The `departments` array is for filtering and reporting, not security: everyone in the audience sees
+every subscription. **Decided 2026-08-21 (founder):** access stays centralized, admin/founder plus
+finance and tech, and they see everything. This is the permanent model, not a placeholder.
+
+Anyone signed in may upload into the invoice bucket under their own `{uid}/` folder (the insert
+policy only checks the folder); only the audience above can read from it.
+
+## Data model (migrations 0163 to 0168)
 
 | Object | Migration | Notes |
 | --- | --- | --- |
-| `subscriptions` | 0163 | Parent. `departments text[]` (`<@` CHECK mirrors `APP_DOMAINS`), `type`/`currency` CHECKs, `amount`, a due-date shape CHECK (monthly/other → `due_day` 1–31; yearly → `due_date`; top_up → neither), `login`/`password`, `notes`, `is_archived` (soft delete), `created_by`, timestamps + `update_updated_at` trigger. |
-| `subscription-invoices` bucket | 0163 | **PRIVATE** storage bucket. Member uploads under `{uid}/` prefix (insert-own-prefix RLS); reads mint short-lived signed urls (admin client). Rows store the **path**, never a url. |
-| `subscription_payments` | 0164 | Append-only payment history (`due_date`, `paid_at`, `rate` in original currency, `paid_amount_inr` manual, `invoice_path`, `notes`). SELECT-only RLS. |
-| `subscription_topups` | 0165 | Append-only top-up history (`topped_up_at`, `amount`+`currency` per event, `paid_amount_inr` manual, `invoice_path`, `notes`). SELECT-only RLS. |
-| password encryption | 0166 | See **Password encryption** below. |
-| `subscription_password_reveals` | 0167 | Append-only audit of password reveals (who, which subscription, when). One row is written by the admin client before the plaintext is returned; the action fails closed if the insert fails. SELECT is admin/founder only. |
-| `subscription_tools` + `subscriptions.tool_id` | 0168 | The tool entity: one tool (for example Claude) has many subscription rows (accounts), each with its own credentials, billing shape and departments. `name_key = lower(trim(name))` is the dedup identity; tools are created implicitly from the optional Tool field on the subscription form. `tool_id` is nullable, so standalone bills need no tool. |
+| `subscriptions` | 0163 | `name`, `departments text[]` (CHECK mirrors `APP_DOMAINS`; `b2b` became `business` in 0202), `type`, `currency`, `amount`, `due_day` / `due_date` (a CHECK enforces the shape: monthly and other take `due_day` 1 to 31, yearly takes `due_date`, top_up takes neither), `login`, `password` (encrypted, see below), `notes`, `is_archived` (soft delete), `tool_id`, `created_by`, timestamps. |
+| `subscription-invoices` bucket | 0163 | Private. Rows store the path, never a URL; reads mint a one-hour signed URL on the admin client. No update or delete policy (write-once). |
+| `subscription_payments` | 0164 | Append-only. `due_date` (the cycle it settles), `paid_at`, `rate` (original currency), `paid_amount_inr` (typed by hand), `invoice_path`, `notes`. |
+| `subscription_topups` | 0165 | Append-only. `topped_up_at`, `amount` + `currency` per top-up, `paid_amount_inr`, `invoice_path`, `notes`. |
+| password encryption | 0166 | pgcrypto + a Vault key. See below. |
+| `subscription_password_reveals` | 0167 | Append-only: who revealed which password, when. |
+| `subscription_tools` + `subscriptions.tool_id` | 0168 | One tool, many accounts. `name_key = lower(trim(name))` is unique. Tools are created on the fly from the Tool field on the form (`resolveToolId`, insert-if-missing). `tool_id` is nullable, so a standalone bill needs no tool. |
 
-The generated `database.ts` does not yet include these tables — the service/actions use `(… as any).from(...)`
-casts + the hand-declared row types in `lib/types/subscription.ts` (the revival/elaya interim pattern
-until `supabase gen types` is re-run).
+`database.ts` includes all five tables (regenerated 2026-08-22); rows are narrowed once per query to
+the types in `src/lib/types/subscription.ts`.
 
-## Status (computed, never stored)
+## Status is computed, never stored
 
-`utils/subscription-status.ts` derives each subscription's list status from its due date + payment
-history, anchored to the **IST** calendar (`utils/ist.ts` — never re-fork). `computeSubscriptionStatus`
-returns one of: **Upcoming** (due date in the future, unpaid) · **Due Today** · **Overdue** (past due,
-unpaid — shown red with the day count) · **Paid** (a payment exists for the current cycle). A `top_up`
-subscription has **no** due status (renders "—"). Monthly/other cycle = the `due_day` applied to the
-current IST month; yearly = the stored `due_date`. A cycle is "paid" when a payment's `due_date` matches
-it (year-month for monthly, year for yearly).
+`src/lib/utils/subscription-status.ts`, anchored to the IST calendar through `utils/ist.ts`:
 
-## Currency rule (non-negotiable)
+- `currentDueDateISO`: monthly and other use `due_day` in the current IST month; yearly uses the
+  stored month and day in the current IST year (clamped, never before the first stored cycle), so a
+  yearly bill rolls over each year.
+- `computeSubscriptionStatus`: **Upcoming**, **Due today**, **Overdue** (with the day count) or
+  **Paid** (a payment exists for the current cycle, matched by year-month for monthly and by year for
+  yearly). A top-up has no due status and shows a dash.
+- `occurrenceInMonthISO` and `statusForOccurrenceISO`: the same rules projected into any month, used
+  by the calendar. A cycle before the subscription was created is never shown as overdue.
+- `paymentLateness`: "Paid N days late" or "On time" in the history.
 
-**Amounts are NEVER auto-converted.** The original-currency amount (`rate` / `amount`) and the
-manually-entered `paid_amount_inr` are stored + shown separately. All spending analytics use the INR
-figure only. `formatCurrency` / `formatCurrencyCompact` (`utils/numbers.ts`) were extended to accept
-`EUR` alongside INR/USD.
+## Currency rule
 
-## Cycle semantics
+Amounts are never converted. The original-currency amount and the hand-typed `paid_amount_inr` are
+stored and shown side by side. Every spend figure uses the INR column only. The calendar's month
+totals are kept per currency.
 
-A yearly subscription's current cycle is the occurrence in the **current IST year** (same month/day as
-its stored `due_date`, clamped, never earlier than the stored first cycle). A payment settles the cycle
-whose year it carries, so a yearly bill rolls over every year instead of matching its first payment
-forever. Monthly/other cycles match by year-month, as before.
+## Password encryption and the reveal audit
 
-## Password encryption (migration 0166)
+- **At rest (0166):** a `BEFORE INSERT OR UPDATE` trigger (`encrypt_subscriptions_password`) encrypts
+  with pgcrypto `pgp_sym_encrypt` and a 256-bit key kept in Supabase Vault
+  (`subscription_password_key`), generated when the migration ran. The key never appears in a file.
+  On update it re-encrypts only when the value changed. The encrypt and decrypt functions are
+  service-role only.
+- **Reads:** the password is never part of a list or detail payload (`password: null`, plus a
+  `hasPassword` flag). The form's password field is tri-state: blank on edit keeps the stored value,
+  blank on create means none, a value sets or replaces it.
+- **Reveal:** only `revealSubscriptionPasswordAction` returns the plaintext, when someone clicks the
+  eye in the history modal. It writes a `subscription_password_reveals` row first and **fails
+  closed**: no audit row, no password. Anyone in the audience may reveal.
+- **Who looked:** admin and founder see "Password viewed by" in the history modal (the five most
+  recent, then a count of earlier ones), read by `getPasswordReveals()` on the session client so RLS
+  hides it from everyone else.
 
-The stored account `password` is **encrypted at rest** — pgcrypto `pgp_sym_encrypt` (→ base64) with a
-256-bit key generated at migration-run time and held in **Supabase Vault** (`subscription_password_key`;
-the supported replacement for deprecated pgsodium TCE). The key never appears in the migration file and
-never leaves the DB.
+`login` stays plain text (a username).
 
-- **Write:** a `BEFORE INSERT/UPDATE` trigger (`encrypt_subscriptions_password`) encrypts transparently;
-  on UPDATE it re-encrypts **only** when the value changed (`IS DISTINCT FROM OLD`), so an unchanged row
-  is never double-encrypted. The app writes plaintext on create/change and **omits** the column when
-  unchanged.
-- **Read:** the password is **never** selected into list/detail payloads (`password: null`); the detail
-  returns a `hasPassword` boolean. The plaintext is produced **only** by `revealSubscriptionPasswordAction`
-  (admin client → `decrypt_subscription_password` RPC, both `service_role` only) when the user clicks the
-  eye in the history/detail modal.
-- **Edit form:** the password field is **tri-state** — blank on edit = keep the stored value ("Leave
-  blank to keep the current password"), blank on create = no password, a value = set/replace.
+## The page
 
-`login` stays plaintext (a username, low sensitivity).
+`/subscriptions?view=list|calendar|overview` (default `list`). The header has the title, **Export**
+and **Add Subscription**. One filter strip serves every view, with the List / Calendar / Overview
+switcher (`SubscriptionViewTabs`) at its front.
 
-## Views & features
+- **Add Subscription** (`AddSubscriptionButton`) is a two-item menu. **New** opens
+  `AddEditSubscriptionModal` (fields change with the type; departments are a multi-select; an
+  optional Tool field suggests tools already in use). **Renewal** opens `RenewalPickerModal`, a search
+  over active subscriptions; picking one opens `RecordPaymentModal`, or `LogTopupModal` for a top-up.
+  Both take the original-currency amount and the INR paid as two separate fields, the dates, an
+  optional invoice upload and notes.
+- **List** (`SubscriptionsTable` + `SubscriptionFilters`): a dense table on desktop, cards on a
+  phone. Columns: Name (the tool shows under it when it differs), Departments, Type, Amount, INR Paid
+  (latest), Due, Status. Filters: search (matches the subscription name or its tool's name),
+  Department, Type, Status, and the Active / Archived tab, all in the URL. A row opens the history;
+  the row menu has View history, Edit, and Archive (with a confirm) or Unarchive. Recording a payment
+  lives only in the Renewal flow.
+- **Calendar** (`SubscriptionCalendar`): the month grid with a dot on each due day and this week's
+  count in its footer; beside it the month in four numbers (overdue, due today, upcoming, paid, each
+  with its total per currency) and one card of due dates (a date tile, the bill, its amount, its
+  status for that cycle). Recurring bills are projected into whichever month is shown; clicking a day
+  narrows the list; clicking a bill opens its history. Top-ups never appear. No filters.
+- **Overview** (`SpendingOverview` + `OverviewFilters`): INR tiles (spent this month, this year,
+  active count; with a date range, spent in range and payments in range), donuts by billing type and
+  by department, a By Tool ranked list (top 8 then "+N more"; bills without a tool rank under their
+  own name), and a 12-month spend chart. Filters: department and a date range through the shared
+  `FilterBar`. A department filter counts only that department's equal share of a shared bill. A
+  date range changes the tiles and breakdowns; the 12-month chart always shows the trailing 12 IST
+  months.
+- **History** (`SubscriptionHistoryModal`): the summary with the password reveal, the reveal trail
+  for admin and founder, and every payment and top-up with lateness and a link to its invoice.
+- **Export** (`SubscriptionExportButton`): a monthly report as CSV or Excel with Subscription Name,
+  Department, Type, Currency, Original Amount, INR Paid Amount, Due Date, Paid Date. The data comes
+  from `getSubscriptionMonthlyReportAction`; the file is built in the browser (`buildCSV`,
+  `buildSingleSheetXLSX` in `utils/export.ts`).
 
-`/subscriptions?view=list|calendar|overview` (default `list`); the list has `?tab=active|archived`.
+Data comes from `subscriptions-service.ts` on the session client, so RLS scopes it. No Redis;
+every write calls `revalidatePath('/subscriptions')`.
 
-- **List** (`SubscriptionsTable`) — dense table (md+) / cards (mobile): Name, Departments, Type, Amount,
-  INR Paid (latest), Due, Status. The tool name shows under the account name when they differ.
-  Row menu (⋯): View history, Edit, Archive/Unarchive. Recording a payment or top-up lives on the
-  header New / Renewal flow, not in the row menu. Filters (`SubscriptionFilters`): Department / Type / Status (URL-driven) + Active/
-  Archived tab.
-- **Add / Edit** (`AddEditSubscriptionModal`) — conditional fields by type; password reveal toggle;
-  optional Tool field (datalist of tools already in use) that groups accounts under one tool.
-- **Record Payment** (`RecordPaymentModal`) / **Log Top-up** (`LogTopupModal`) — rate + manual INR (two
-  columns, never converted), dates, client-side invoice upload, notes.
-- **History** (`SubscriptionHistoryModal`) — summary (with on-demand password reveal) + payment/top-up
-  history ("Paid *N* days late" / "On time", invoice view).
-- **Overview** (`SpendingOverview` + `OverviewFilters`) — INR outflow tiles, By Billing Type /
-  By Department donuts, the By Tool ranked list (top 8 + rest), and the 12-month trend. Filterable
-  by department and date range via the shared `FilterBar` (Range presets + From/To). A department
-  filter counts the attributable share of shared bills; a date range rescopes the tiles and
-  breakdowns (the trend stays a trailing 12 months).
-- **Calendar** (`SubscriptionCalendar`) — month grid with a due-date dot per day + weekly summary; click
-  a due item → history.
-- **Overview** (`SpendingOverview`) — INR month/year totals, by-type + by-department donuts, 12-month
-  trend bar (code-split Recharts).
-- **Export** (`SubscriptionExportButton`) — monthly report as CSV / XLSX (columns: Name, Department, Type,
-  Currency, Original Amount, INR Paid, Due Date, Paid Date). Data via a server action; file built
-  client-side (`export.ts` `buildCSV` / `buildSingleSheetXLSX`).
+## Elaya
+
+`get_subscriptions` (2026-09-19) lets Elaya read the tracker. It is defined in the Node registry and
+runs on the Python brain through the bridge. The check in `elaya-data.ts` (`maySeeSubscriptions`)
+repeats the RLS rule, and the tool never returns a login or a password. Since 2026-09-26 the finance
+domain has no Elaya at all (`ELAYA_DOMAINS`), so in practice the tool answers admin, founder and the
+tech domain. See [elaya.md](elaya.md).
 
 ## File map
 
 ```text
-supabase/migrations/2026082100016{3..8}_*.sql      ← tables + bucket + RLS + encryption + reveal audit + tools
-src/lib/constants/subscription-constants.ts        ← types/currencies/statuses/departments + resolveSubscriptionShape
-src/lib/types/subscription.ts                      ← hand-declared row types (interim)
-src/lib/utils/subscription-status.ts               ← computed status + cycle/lateness math (IST)
-src/lib/validations/subscription-schema.ts         ← Zod (password tri-state)
-src/lib/services/subscriptions-service.ts          ← reads: list, detail (+hasPassword), spending overview, monthly report
-src/lib/actions/subscriptions.ts                   ← CRUD + payments/topups + archive + invoice signing + reveal password
-src/components/subscriptions/*                      ← 14 UI files (table, filters, view tabs, modals, calendar, overview, export, invoice controls, bits)
+supabase/migrations/2026082100016{3..8}_*.sql      tables, bucket, RLS, encryption, reveal audit, tools
+src/lib/constants/subscription-constants.ts        types, currencies, statuses, departments, invoice rules, resolveSubscriptionShape
+src/lib/types/subscription.ts                      row types
+src/lib/utils/subscription-status.ts               status, cycles, calendar projection, lateness (IST)
+src/lib/validations/subscription-schema.ts         Zod (password tri-state, form-errors copy)
+src/lib/services/subscriptions-service.ts          list (+ getSubscriptionsForElaya), detail, reveal trail, overview, monthly report
+src/lib/actions/subscriptions.ts                   create, update, archive, payment, top-up, invoice signing, reveal, renewal list, report
+src/components/subscriptions/                      16 components + form-styles.ts
 src/app/(dashboard)/subscriptions/{page,loading}.tsx
 ```
 
-Shared utils extended (reuse-first): `utils/numbers.ts` (`EUR`), `utils/export.ts` (`buildSingleSheetXLSX`).
+## Not built
 
-## To run it
-
-Phase 1 is code-complete and typechecks clean, but it is **not live until the migrations are applied**:
-
-1. Apply migrations **0163–0168** to the Supabase project. **0166 needs the `pgcrypto` + `supabase_vault`
-   extensions** (standard on Supabase; the migration enables them via `create extension if not exists`).
-2. `database.ts` was regenerated against the live schema on 2026-08-22 — the interim `as any`
-   table casts in the subscriptions service/actions are retired.
-
-## Phase 2 (not built)
-
-Reminders (renewal due-soon / overdue), a "bills due this week" dashboard widget, and — if these fields
-will hold high-value secrets — per-user access auditing on password reveals.
+- Renewal reminders (due soon, overdue) and any WhatsApp or push notification.
+- A "bills due this week" dashboard widget.
+- Automatic currency conversion (deliberately never).

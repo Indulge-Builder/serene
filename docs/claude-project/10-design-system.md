@@ -1,291 +1,401 @@
-# Serene — Design System reference (buildable detail) (Claude Project digest)
+# Serene: Design System Reference, buildable detail (Claude Project digest)
 
-> Concrete, buildable digest of `docs/design/DESIGN-DNA.md` (the design law) +
-> `docs/design/design-system.md` + `docs/design/design.md`, with exact values read from
-> `src/styles/serene-neumorphic-tokens.css` and `src/styles/design-tokens.css` (verified
-> 2026-08-24). `4-design-essentials.md` carries the design *laws/decisions*; this file carries the
-> *values, component anatomy, and patterns* needed to build pixel-accurate UI. **When a value here
-> conflicts with the live CSS, the CSS wins.**
->
-> **Load order matters:** `globals.css` imports `design-tokens.css` first, then
-> `serene-neumorphic-tokens.css`, then `serene-mobile.css`. The neumorphic file re-points most of
-> the legacy vocabulary (the "bridge"), so the *stock* values in `design-tokens.css` are the revert
-> path, not what renders. Anything you read out of `design-tokens.css` for a colour is probably
-> overridden; read the neu file.
+> **Purpose:** the values and anatomy needed to build pixel-accurate Serene UI without the repo: the token sheets and how they layer, the material values in light and dark, the base scales, the shell classes, the component families and inventory, and the form, data-display, toast, chart and touch patterns.
+> **Audience:** a Claude Project chat building or reviewing UI, and the engineers who use it.
+> **Source-of-truth scope:** a digest. The law is `docs/design/DESIGN-DNA.md`; the implementation reference is `docs/design/design-system.md`; shared controls are `docs/design/control-system.md`; prop contracts are `src/components/CLAUDE.md`. `4-design-essentials.md` carries the laws and decisions; this file carries values and anatomy. **When a value here disagrees with the live CSS, the CSS wins.**
+> **Last verified:** 2026-09-26. Structure digested from design-system.md, control-system.md and DESIGN-DNA as refreshed that day; the token values below were read directly from `src/styles/serene-neumorphic-tokens.css`, `serene-families.css` and `design-tokens.css`.
 
-## 1. The neumorphic material (what actually renders)
+**What moved since the August pack:** the 2026-09-22 material revision replaced the July values
+wholesale (lighter porcelain surfaces, warm contact shadows instead of paired white blooms, a dark
+hairline instead of a white one, shallow inset fields, flat badges, deeper text inks and deep
+pastels), and the 2026-09-25/26 passes added the focus colour, the section surface, the gradient
+card header, the `Field` / `SelectionButton` / `Checkbox` / `FormSelect` families and the touch
+rules. Do not reuse July or August shadow or text values.
 
-**Surfaces (theme-invariant):** `--neu-canvas #ECE8E1` (the ground) · `--neu-surface #F1EDE6`
-(cards) · `--neu-surface-high #F3EFE8` (lifted: dialogs, panels, menus, the leads table card) ·
-`--neu-well #E9E4DB` (**state only**: tracks, skeletons, input wells).
+## 1. The token sheets and how they layer
 
-**Light/dark shadow sources:** `--neu-dark: 166 156 140` (warm putty) · `--neu-light: 255 255 255` ·
-`--neu-edge: rgba(255,255,255,0.55)` (the 1px hairline on raised surfaces) · `--neu-edge-strong: 0.7`.
+`src/app/globals.css` imports, in order:
 
-**Shadow recipes (Whisper depth — the only depth scale):**
+| # | Sheet | Holds |
+| --- | --- | --- |
+| 1 | `src/styles/design-tokens.css` | the stock layer: type scale, spacing, z-scale, durations, easings, keyframes, utility classes (`.type-eyebrow`, `.type-page-title`, `.label-micro`, `.status-pill`, `.skeleton` base), the `--domain-*` palette, the per-theme blocks (stock accents, plus the final rose, moss, lilac) |
+| 2 | `src/styles/serene-neumorphic-tokens.css` | the material: `--neu-*` surfaces, shadows, radii, inks, pastels, chips; the softened accents for earth, air, water, fire, candy; header, focus, tooltip, palette and chat roles; the `[data-neu="dark"]` block; **the legacy bridge**; recipe classes (`.neu-card`, `.neu-input`, `.neu-well`); the global focus outline, scrollbar and touch rules; the motion loops |
+| 3 | `src/styles/serene-mobile.css` | the `/m` layer: `--neu-m-*` scrim, drawer, sheet, indicator tokens (with dark values), mobile idle loops, `.neu-m-touch*` press recipes |
+| 4 | `src/styles/serene-families.css` | component families: `--neu-section-bg`, table header and row tokens, `.serene-field*`, `.serene-badge`, `.serene-alert`, `.serene-loading-state`, `.serene-table-row`, `.serene-stat-strip` |
+| 5 | Tailwind | utilities, with Tailwind's default theme variables isolated so they cannot collide |
+
+The neu sheet imports after the stock one, so its equal-specificity declarations win; removing its
+`@import` line restores the stock look (the revert path). A colour read out of
+`design-tokens.css` is probably overridden: read the neu sheet. `pnpm check:tokens` (run before
+every build) rejects any token reference that no sheet defines.
+
+## 2. The material (light / dark)
+
+| Role | Token | Light | Dark |
+| --- | --- | --- | --- |
+| Canvas (the ground) | `--neu-canvas` | `#ECE8E1` | `#28241C` |
+| Sidebar rail | `--neu-sidebar` + `--neu-sidebar-gradient` | `#EFEEED` + washes of 18% / 9% accent | `#2A2721` + 12% / 6% |
+| Workspace sheet | `--neu-workspace` | `#F6F3ED` (ivory) | `#2D2920` |
+| Card | `--neu-surface` | `#FAF8F3` (porcelain) | `#332E25` |
+| Raised panel, menu, tooltip body | `--neu-surface-high` | `#FCFAF6` | `#3B3529` |
+| Sunken well (insets only) | `--neu-well` | `#EBE9E3` | `#221E17` |
+| Section surface (dialog, table header, read-only field) | `--neu-section-bg` | 60% surface-high into workspace | same formula |
+| Shadow colour | `--neu-dark` (rgb triplet) | `117 111 99` (warm putty) | `0 0 0` |
+| Highlight | `--neu-light` | `255 250 240` | `255 240 214` (candle) |
+| Hairline | `--neu-edge` / `-strong` | `rgba(117,111,99,0.14)` / `0.24` (a dark hairline) | `rgba(255,240,214,0.06)` / `0.09` |
+| Dialog scrim | `--neu-scrim` | `rgba(56,51,43,0.35)` | `rgba(12,10,7,0.5)` |
+
+`NEU_CANVAS_LIGHT` / `NEU_CANVAS_DARK` in `src/lib/constants/appearance.ts` mirror the canvas for
+`<meta theme-color>` and the manifest; the decorative icon plate is the same cream.
+
+**Shadow recipes (light; warm contact shadows with an inner top light):**
 
 | Token | Value |
-| ----- | ----- |
-| `--neu-shadow-raised-sm` | `2px 2px 6px dark/.24, -2px -2px 6px light/.65` |
-| `--neu-shadow-raised` | `3px 3px 8px dark/.26, -3px -3px 8px light/.70` |
-| `--neu-shadow-raised-lg` | `6px 6px 16px dark/.28, -6px -6px 16px light/.75` |
-| `--neu-shadow-hover` | `5px 5px 12px dark/.30, -5px -5px 12px light/.80` (pair with `translateY(-1px)`) |
-| `--neu-shadow-inset` | `inset 2px 2px 5px dark/.32, inset -2px -2px 5px light/.75` |
-| `--neu-shadow-pressed` | `inset 2px 2px 4px dark/.35, inset -2px -2px 4px light/.60` |
-| `--neu-shadow-input` | `3px 3px 8px dark/.22, -3px -3px 8px light/.70, inset 0 1px 0 light/.85` (+ `--neu-input-bg` gradient sheen) |
-| `--neu-shadow-track` | `inset 2px 2px 5px dark/.20, inset -1px -1px 3px light/.55, 0 1px 0 light/.65` (+ `--neu-track-bg`) |
-| `--neu-shadow-tab-active` | `2px 2px 6px dark/.28, -2px -2px 6px light/.70, inset 0 1px 0 light/.85` (+ `--neu-tab-active-bg`) |
-| `--neu-shadow-chip` | `2px 2px 5px dark/.22, -2px -2px 5px light/.60` |
-| `--neu-shadow-knob` | `2px 2px 5px dark/.45, -1px -1px 3px light/.55` |
-| `--neu-shadow-modal` | `14px 14px 40px rgba(120,110,92,.35), -8px -8px 24px light/.50` |
-| `--neu-shadow-floating` | the command-palette / floating-panel depth |
-| `--neu-scrim` | `rgba(56,51,43,0.35)` |
+| --- | --- |
+| `--neu-shadow-raised-sm` | `0 1px 2px dark/.16, 0 3px 5px -3px dark/.18, inset 0 1px 0 light/.45` |
+| `--neu-shadow-raised` | `0 2px 3px -1px dark/.12, 0 6px 12px -7px dark/.18, inset 0 1px 0 light/.45` |
+| `--neu-shadow-raised-lg` | `0 3px 6px -2px dark/.16, 0 12px 24px -12px dark/.24, inset 0 1px 0 light/.45` |
+| `--neu-shadow-hover` | `0 2px 3px dark/.16, 0 5px 8px -4px dark/.22, inset 0 1px 0 light/.45` (pair with `translateY(-1px)`) |
+| `--neu-shadow-inset` | `inset 0 1px 3px dark/.13` |
+| `--neu-shadow-pressed` | `inset 0 2px 3px dark/.22` |
+| `--neu-shadow-input` | `inset 0 1px 2px dark/.10`, on `--neu-input-bg` (`linear-gradient(180deg, #EDEBE5, #F5F3EE)`) with `--neu-input-edge` `rgba(117,111,99,0.20)` |
+| `--neu-shadow-track` | `inset 0 1px 3px dark/.14`, on `--neu-track-bg` |
+| `--neu-shadow-tab-active` / `-knob` | `= raised-sm` |
+| `--neu-shadow-tile` | the clay data tile: two inner lights plus two contact shadows |
+| `--neu-shadow-chip` | none (a transparent zero shadow): badges are flat |
+| `--neu-shadow-modal` | `0 8px 16px -6px dark/.22, 0 24px 48px -16px dark/.30` |
+| `--neu-shadow-floating` | `0 12px 32px -8px dark/.28` (command palette, floating panels) |
+| `--neu-shadow-shell` | `inset 0 1px 0 light/.45` (the quiet edge of the rail and workspace) |
 
-**Radii — the Marshmallow scale (the ONLY radius scale):** card **32** · panel **28** · field **22** ·
-tile **18** · chip **14** · pill **999**. The legacy scale is bridged (`--radius-md`→14,
-`--radius-lg`→22, `--radius-xl`→32); prefer the explicit `--neu-radius-*` roles on new work.
+Dark mode redefines every recipe on the black shadow colour (for example raised-sm
+`0 1px 3px black/.30` with a 4% candle highlight; modal `0 16px 40px -10px black/.55`).
 
-**Text:** `--neu-text-primary #38332B` · `secondary #8A8274` · `tertiary #ABA396` ·
-`disabled #C4BCAE` · `--neu-on-accent-soft #FDF9F0` (warm white on a *deep* pastel fill).
+**Radii (Marshmallow, the only scale):** card 32 · panel 28 · field 22 · control 14 · tile 18 ·
+chip 14 · pill 999. Bridged legacy names: `--radius-sm` 10px, `--radius-md` 14px, `--radius-lg`
+22px, `--radius-xl` 32px.
 
-**Accent (theme-derived, never hardcoded):** `--neu-accent` = `--theme-accent`; `--neu-accent-deep` =
-`--theme-accent-muted` (the text-safe tone on cream); `--neu-accent-fg` = `--theme-accent-fg` (the
-dark ink on accent fills); `--neu-accent-gradient`; `--neu-accent-wash` = 16% accent.
-Header-specific: `--neu-header-wash` (22%), `--neu-header-edge` (32% hairline), `--neu-header-ink`,
-`--neu-header-icon`.
+**Text inks:** light `--neu-text-primary #38332B` · `-secondary #6C6359` · `-tertiary #70665C` ·
+`-disabled #C4BCAE`; dark `#E8E0D4` · `#B9AF9F` · `#ABA18F` · `#55503F`. The warm white on a
+deep fill is `--neu-on-accent-soft #FDF9F0`. Every measured text pair passes 4.5:1.
 
-**Pastel support family (theme-invariant), each with a text-safe `-deep`:**
-sage `#A9C4A0`/`#7E9B76` · powder `#A3BFD6`/`#7797B3` · butter `#E3CB96`/`#B39C63` ·
-lilac `#B3A9D4`/`#8A7FB0` · peach `#E5B896`/`#BC8E67` · teal `#8FBFB5`/`#5F8F86` ·
-danger `#D98E85`/`#B06A61`. Semantic aliases: success→sage, info→powder, warning→butter.
+**Accent roles (theme-derived, never hardcoded):** `--neu-accent` = `--theme-accent`;
+`--neu-accent-deep` = `--theme-accent-muted` (text-safe on cream); `--neu-accent-fg` =
+`--theme-accent-fg` (dark ink on fills); `--neu-accent-gradient` = 145deg from the accent 88% into
+white to 90% into black; `--neu-accent-wash` 16% (14% in dark); `--neu-accent-btn-edge` a white
+25% hairline on primary buttons. In dark the accent lifts (82% into white; deep 66%). The eight
+accent values are in `4-design-essentials.md`.
 
-**Chip pairs (exact specimen values):** sage `#DCE8D6`/`#5F7D57` · powder `#D9E4EE`/`#5E7F9B` ·
-butter `#F0E4C8`/`#96814C` · rose `#F0D9D4`/`#A85B50` · lilac `#E2DDEE`/`#7A6FA0` ·
-teal `#D6E8E4`/`#5F8F86` · neutral `#E9E4DB`/`#8A8274`.
+**Card header tokens:** `--neu-header-top` (9% accent into the section surface), `--neu-header-wash`
+(14%), `--neu-header-surface` (160deg gradient top → wash), `--neu-header-highlight` (1px inner top
+light), `--neu-header-edge` (12% accent into the hairline), `--neu-header-ink` (the accent-fg 82%
+into the wash; dark: the deep accent), `--neu-header-icon` (the accent-muted; dark: the accent),
+`--neu-header-description`.
 
-**Charcoal family (the one dark-first vocabulary):** `--neu-charcoal #2D2920` ·
-`--neu-charcoal-text #F1EDE6` · two charcoal shadows · `--neu-palette-scrim`. Used by the tooltip,
-the action/undo toast, the command palette, and Elaya's glyph disc (`--neu-glyph-disc`).
+**Focus:** `--neu-focus-edge` = 35% `--theme-accent` into `--theme-accent-muted`; `--neu-focus-ring`
+= a 1px focus-edge ring on raised-sm (no outer bloom).
 
-**Brand-fixed / semantic-fixed values that never theme-tint:** `--neu-success-gradient` +
-`--neu-success-ink` (the save morph) · `--neu-petal-gradient` (the Won celebration) ·
-`--neu-mandala-from/to` + `-disc-` pair (the SeedMandala stops) · `--neu-boot-glow` ·
-`--neu-watermark-opacity`.
+**Pastel support family (theme-invariant), each with a text-safe deep:** sage `#A9C4A0` / `#4C6345`
+· powder `#A3BFD6` / `#465E73` · butter `#E3CB96` / `#6A5C36` · lilac `#B3A9D4` / `#5D547A` · peach
+`#E5B896` / `#795237` · teal `#8FBFB5` / `#42635D` · danger `#D98E85` / `#85483F`. Aliases:
+success → sage, info → powder, warning → butter. In dark the fills darken and the deeps lighten.
 
-**Dark mode** redefines the same roles under `[data-neu="dark"]` (canvas `#28241C`); components never
-branch on `isDark`. See `4-design-essentials.md` for what changes and why the overlay/scrim block has
-to sit *after* the bridge.
+**Chip pairs (fill / ink):** sage `#DCE8D6` / `#4C6345` · powder `#D9E4EE` / `#465E73` · butter
+`#F0E4C8` / `#6A5C36` · rose `#F0D9D4` / `#85483F` · lilac `#E2DDEE` / `#5D547A` · teal `#D6E8E4` /
+`#42635D` · neutral `#E9E4DB` / `#625C52`.
 
-## 2. The base scales (unchanged by the restyle)
+**Charcoal family (the one dark-first vocabulary):** `--neu-charcoal #2D2920`,
+`--neu-charcoal-text #F1EDE6`, two charcoal shadows, `--neu-palette-scrim rgba(56,51,43,0.28)`.
+Used by the tooltip (inverts to cream on charcoal in dark), the undo toast (a raised panel in dark),
+the command palette, and Elaya's glyph disc (`--neu-glyph-disc`).
 
-**Type (`--text-*`):** 2xs 0.625rem/10px · xs 0.75/12 · sm 0.875/14 · base 1/16 · md 1.125/18 ·
-lg 1.25/20 · xl 1.5/24 · 2xl 1.875/30 · 3xl 2.25/36 · display 3/48 · giant 4/64.
+**Brand-fixed values (never theme-tinted):** `--neu-success-gradient` `#B8CFAF → #98B58E` with ink
+`#26301F` (the save morph); `--neu-petal-gradient` `#E8CFA0 → #C08A4E` (the Won petals); the mandala
+stops `--neu-mandala-from #2B1D10` / `-to #C08A4E` and the disc pair `#E8CFA0 → #C08A4E`.
 
-**Spacing (`--space-*`):** px=1 · 0=0 · 1=4 · 2=8 · 3=12 · 4=16 · 5=20 · 6=24 · 7=28 · 8=32 · 10=40 ·
-12=48 · 14=56 · 16=64 · 20=80 · 24=96 (px). **The scale skips 9** — `var(--space-9)` is undefined and
-the browser silently drops the declaration. (This bit a real input in 2026-08; `check:tokens` catches
-it now.)
+**Chat and tables:** `--neu-chat-user-bg` (12% accent into the card; Elaya and WhatsApp share it);
+`--neu-table-header-bg` (the section surface), `--neu-table-row-hover` (5% accent; 2% in dark),
+`--neu-table-row-selected` (12%; 3% in dark). Chart grid `--neu-chart-grid rgba(166,156,140,0.22)`.
 
-**Durations (`--duration-*`):** instant 100 · fast 150 · base 200 · slow 350 · enter 400 · exit 250 ·
-page 500 (ms).
+### The legacy bridge (what old tokens resolve to at runtime)
 
-**Easings (`--ease-*`):** out-expo `cubic-bezier(0.16,1,0.3,1)` (entrances) · in-expo
-`cubic-bezier(0.7,0,0.84,0)` (exits) · spring `cubic-bezier(0.22,1,0.36,1)` (hover/tap) · in-out
-`cubic-bezier(0.4,0,0.2,1)` (overlays/theme switch) · out-soft `cubic-bezier(0.25,0.46,0.45,0.94)`.
+| Stock token | Resolves to |
+| --- | --- |
+| `--theme-canvas`, `--theme-canvas-text` | the cream canvas and the dark ink (canvas gradients `none`) |
+| `--theme-paper`, `-paper-subtle`, `-paper-border` | `--neu-surface`, `--neu-well` (sunken!), `--neu-edge` |
+| `--theme-text-*` | the `--neu-text-*` inks; `-inverse` → `--neu-on-accent-soft` |
+| `--theme-sidebar-*` | the sidebar material and ink |
+| `--color-success/warning/danger/info/neutral` (+ `-light`, `-text`) | the pastel family and chip pairs (theme-invariant) |
+| `--color-*-fg` | `--neu-on-accent-soft` in light, the charcoal in dark |
+| `--status-*` (text, light, border, solid) | the pastel chips and bases (theme-invariant) |
+| `--shadow-1/2/3/4` | raised-sm / raised / raised-lg / modal |
+| `--shadow-paper`, `--shadow-gold-shimmer` | `none` |
+| `--shadow-focus` | `--neu-focus-ring` |
+| `--overlay-*` | warm taupe scrims |
+| `--transition-interactive` | the neumorphic spring (220ms transform, 300ms shadow) |
 
-**Named type classes:** `.type-eyebrow` (sans, xs, semibold, widest tracking, uppercase) ·
-`.type-page-title` (serif, 2xl, light, tight tracking/leading) · `.label-micro` (sans, 2xs, semibold,
-widest tracking, uppercase) · `.page-title-dot` (accent; `serene-page-dot-blink 2.4s`). Under the
-bridge the eyebrow/micro labels take `--neu-accent-deep`.
+## 3. The base scales (unchanged by the restyle)
 
-**Z-index:** base 0 · raised 10 · dropdown 20 · sticky 30 · sidebar 40 · overlay 50 · modal 60 ·
-modal-overlay 61 + modal-nested 62 · toast 70 · **tooltip 75** · cursor 80 · veil 90 (orphaned) ·
-**boot 95**.
+- **Type (`--text-*`):** 2xs 10px · xs 12 · sm 14 · base 16 · md 18 · lg 20 · xl 24 · 2xl 30 ·
+  3xl 36 · display 48 · giant 64. A 1.250 scale.
+- **Spacing (`--space-*`):** px 1 · 0 · 1 = 4px · 2 = 8 · 3 = 12 · 4 = 16 · 5 = 20 · 6 = 24 · 7 = 28 ·
+  8 = 32 · 10 = 40 · 12 = 48 · 14 = 56 · 16 = 64 · 20 = 80 · 24 = 96. **There is no 9**; the token
+  guard catches `var(--space-9)`.
+- **Durations:** instant 100 · fast 150 · base 200 · slow 350 · enter 400 · exit 250 · page 500 ms.
+  Framer twins in `motion.ts` (`ENTER_DURATION` 0.4, `EXIT_DURATION` 0.25, `PAGE_DURATION` 0.5 and
+  the rest).
+- **Easings:** out-expo `cubic-bezier(0.16,1,0.3,1)` (entrances) · in-expo `(0.7,0,0.84,0)` (exits)
+  · spring `(0.22,1,0.36,1)` (hover, tap) · in-out `(0.4,0,0.2,1)` · out-soft
+  `(0.25,0.46,0.45,0.94)`.
+- **Type classes:** `.type-page-title` (Playfair light, fluid 24 to 30px, `--tracking-tighter`) ·
+  `.type-eyebrow` and `.label-micro` (tracked caps, painted `--neu-accent-deep`) ·
+  `.page-title-dot` (accent, `serene-page-dot-blink` 2.4s).
+- **Z-index:** base 0 · raised 10 · dropdown 20 · sticky 30 · sidebar 40 · overlay 50 · modal 60 ·
+  modal-overlay 61 · modal-nested 62 · toast 70 · tooltip 75 · cursor 80 · veil 90 (orphaned) ·
+  boot 95.
+- **Breakpoints:** Tailwind v4 defaults (sm 640, md 768, lg 1024, xl 1280, 2xl 1536); the `--bp-*`
+  tokens are documentation only.
 
-## 3. The 12 core components — anatomy
+## 4. The shell and layout classes (`src/app/globals.css`)
 
-- **Button** (`Button.tsx`) — primary = `--neu-accent-gradient` + `--neu-accent-fg` + the
-  `--neu-accent-btn-edge` hairline; secondary = raised cream; danger/success = soft pastel fills.
-  Press is `--neu-shadow-pressed` + `scale(0.98)`; hover is `--neu-shadow-hover` + `translateY(-1px)`,
-  gated to fine pointers. **Loading** swaps the left icon for an 18px spinning `currentColor`
-  SeedMandala with `cursor: wait` and an optional `loadingLabel` ("Saving…") — the width never
-  changes. **`status: 'idle' | 'pending' | 'success'`** adds the save morph (sage gradient + a 400ms
-  check draw + `successLabel`), driven by `useButtonStatus()`. `MotionButton`
-  (= `motion(Button)` + `MOTION_BUTTON_DEFAULTS`) is only for repeatedly-pressed standalone CTAs —
-  never on a form submit.
-- **Input** — the canonical input is the **`.serene-input` class** (no standalone tsx). It **floats**
-  (Rule 3): `--neu-input-bg` gradient + `--neu-shadow-input` + `--neu-input-edge`, radius
-  `--neu-radius-field`. Focus adds the accent ring **over** the input shadow — focus must never sink
-  the field. Error = `--color-danger` border + a light wash; disabled = opacity 0.5; read-only stays
-  selectable.
-- **Badge/Pill** — `.status-pill`: pastel fill + deep label + `--neu-shadow-chip` + hairline,
-  `--neu-radius-pill`, `--text-xs`, `--weight-medium`.
-- **Card** — compose **`SectionCard.tsx`**: `--neu-surface` + `--neu-shadow-raised` + `--neu-edge` +
-  `--neu-radius-card` (32). Its header strip is the themed `<CardHeader>` treatment. Never
-  `--theme-paper-subtle` as a header fill — that resolves to the well tone.
-- **Avatar** — sizes xs–xl, initials via six hashed semantic pairs (`getInitials` + `hashString`),
-  selected = accent ring. `AvatarStack` max 4, 8px overlap.
-- **Modal** — `modal.tsx` wraps `Dialog.tsx`: raised `--neu-surface` panel + `--neu-shadow-modal` +
-  `--neu-radius-panel` over the `--neu-scrim`. **The overlay has no backdrop blur** (removed
-  2026-07-10 — it caused the open-animation shimmer and violated V-06). `Dialog` **portals to
-  `document.body`**, takes programmatic focus on the panel itself with `{ preventScroll: true }`
-  (never letting the browser drift into the first input mid-animation), and applies a re-entrant
-  `lockBodyScroll()`. Caps height `md:max-h-[85dvh]` / 90dvh below md; becomes a **bottom sheet**
-  below md with `--space-4` gutters. `type="elaya"` enforces Dismiss + Approve + a breathing glyph.
-- **Table** — generic `<Table<T>>`; header and data rows never share a tone. **`previewRows={N}`** is
-  the built-in P-03 answer (first N rows + a one-way "Show all N" expander; setting it suppresses the
-  dev warning). Bespoke grids (LeadsTable) don't use it.
-- **Toggle** — inset satin track (`--neu-track-bg` + `--neu-shadow-track`) with an accent-gradient
-  knob (`--neu-shadow-knob`); optimistic, rolls back on error.
-- **Dropdown/Select** — `FilterDropdown` (`multi` opt-in, plus `fullWidth` and `menuPortal`): applied
-  trigger = accent wash + float; selected options = wash + chip shadow; check tiles are
-  accent-gradient. This is also THE multi-select for **forms**, not just filters (the subscriptions
-  Departments field adopted it instead of a bespoke chip row).
-- **Search Bar** — `SearchBar.tsx`, a floating pill with the input sheen; sizes sm/md/lg (**md is the
-  house default in filter bars** — `sm` reads misaligned beside 2.25rem chips).
-- **Message Bar** — auto-growing textarea composer; 32px square send button; `leadingSlot` hosts
-  `<DictationButton variant="composer">`.
-- **Skeleton** — `.skeleton`: a left→right sheen (`--neu-well` 25% / `--neu-surface-high` 50% /
-  `--neu-well` 75%, 200% background sweep, 1.8s linear `serene-shimmer-sweep`), flat well tone under
-  reduced motion. **Min 150ms display** (V-08); widths non-uniform; `skeletonStagger` steps 150ms
-  capped at 600ms. No watermark — that was removed 2026-07-06.
+| Class | What it does |
+| --- | --- |
+| `.layout-shell`, `.serene-shell` | the cream ground, a flex row at 100dvh with a 12px gap; a column below md |
+| `.serene-sidebar` | 240px at lg; a 64px icon rail at md (labels hidden, `Tooltip` carries them); an off-canvas drawer below md (transform and visibility only); a floating rounded card from md |
+| `.serene-sidebar-backdrop` | the drawer backdrop below md, 8px blur (sanctioned) |
+| `.serene-shell-gutter` / `.serene-shell-paper` | padding `12px 12px 12px 0` around the ivory workspace (`--neu-workspace`, radius 32, hairline, `--neu-shadow-shell`, scrolls, overscroll contained; full-bleed below md) |
+| `.serene-mobile-topbar`, `.serene-mobile-trigger` | below md: a floating 40px round trigger on the page title's line at `--z-sidebar` |
+| `.serene-page-controls` | the domain selector and bell on each page's title row (`layout/PageControls`) |
+| `.serene-condense-header` | the sticky title row of `CondensingPageHeader` (10px blur and hairline past about 24px, paint only) |
+| `.serene-elaya-fab` | the floating Elaya button (56px, 48px below md, `--z-sticky`); mains reserve `--elaya-fab-clearance`; `.serene-above-elaya-fab` stacks a page's own floating action above it |
+| `.serene-dossier-grid` | detail pages: one column below lg, `minmax(0,1fr) 320px` at lg; `--340` for identity sidebars; `--aside-left` (aside after the main content on a phone) and `--side-first` (aside before); `.serene-dossier-aside--sticky` |
+| `.serene-board`, `.serene-board--wide` | the task board (snap rail below lg, five columns at lg) and the eight-column ticket board (always a rail) |
+| `.serene-dashboard-grid` | the react-grid-layout canvas: a read-only single column below 768px, capped at 1760px |
+| `.serene-form-row` | two or three fields side by side, stacking on a phone (`repeat(auto-fit, minmax(min(11rem,100%),1fr))`) |
+| `.serene-touch`, `.serene-touch-hit` | a 40px floor for compact controls; an invisible 44px hit area around a tiny drawn control |
+| `.layout-canvas`, `.serene-auth-*` | the auth shell only: cream canvas, soft accent glows, the engraved mandala, a raised cream card with the logo medallion (no longer dark) |
 
-## 4. Form system
+**Page patterns.** A list page is `<main className="flex-1 p-4 sm:p-6 lg:p-8">`, then the title row
+(`.type-page-title` h1 with the dot, the primary action right, `PageControls`), then the paper
+filter strip composing `FilterBar`, then the content in `Suspense` with a skeleton. Dense tables
+(the `LeadsTable` pattern, column preferences, a card stack below md) for high volume; card lists
+for low volume. A detail page is `BackButton` plus the title (no dot), then `.serene-dossier-grid`
+of `SectionCard` / `CardHeader` cards. A conversation page (`/sia`, `/whatsapp`) is
+`SplitWorkspace` (a 340px rail card beside a pane card from md, one card at a time below md) with
+`ConversationRailRow` rows. Error and 404 pages render inside the shell with a framed `EmptyState`.
 
-- **Labels** are `.label-micro` — never body text.
-- **Inputs** are `.serene-input`; **errors** come from `lib/validations/form-errors.ts` only, shown
-  inline below the field (`--text-xs`, `--color-danger`).
-- **Three error moments:** on-blur validation (phone `normalizeToE164` on blur, not keystroke) →
-  inline display → submit (the Server Action returns `{data,error}`, never throws to UI).
-- **Never clear a field on validation error.** Submit is width-preserving.
-- **Password:** `PasswordStrengthBar` — 4 segments (2px height, 2px gap), danger → warning → info →
-  success. A *stored third-party* password field is tri-state (`undefined` = keep, `null` = clear,
-  string = replace) and is never pre-filled from the server.
-- **Checkbox/completion:** `<CheckTile>` — inset well ↔ accent-gradient flip + check draw + ONE ring
-  pulse (user toggles only, never on load).
-- **Layouts:** single-column default; two-column grid; inline; section groups; multi-step.
+## 5. The core components as built
 
-## 5. Data display
+- **Button** (`ui/Button`): eight variants (primary = `--neu-accent-gradient` with
+  `--theme-accent-fg` ink and the white 25% edge; secondary = raised neutral; control = the toolbar and filter material with
+  `active` for applied; ghost; danger; success; warning; ghost-danger). Sizes xs / sm / md / lg =
+  28 / 32 / 36 / 44px, 44px minimum on coarse pointers, radius 14px. Hover = stronger contact shadow
+  and a 1px lift (fine pointers); press = inset and scale 0.98, in CSS. `loading` or `status="pending"`
+  swaps the left icon for an 18px turning `currentColor` mandala with `aria-busy`, and the width
+  never changes; `status="success"` is the sage save morph with a 400ms check draw
+  (`useButtonStatus`). `iconOnly` (with `aria-label`), `iconMotion` (the closed set rotate, lift,
+  drop, ring, travel-back). `MotionButton` only for repeated standalone CTAs, never a form submit.
+- **SelectionButton** / `MotionSelectionButton`: appearance `choice` (raised, selected wash),
+  `option` (flat, selected wash, inside a menu), `row` (rich records); the caller owns the ARIA
+  state.
+- **Field family** (`ui/Field`): `Field` wires label, hint and error ids; `Input`, `Textarea`,
+  native `Select` (no consumers) on `.serene-field-control`: the shallow inset (`--neu-input-bg`,
+  edge, input shadow), radius 14px, 36px (44px on touch), text 16px on touch. Hover strengthens the
+  edge; focus = the hugging `--neu-focus-edge` frame; invalid = a `--color-danger-text` edge and ring;
+  read-only on the section surface; disabled 60%. A required field shows a small danger asterisk.
+  Older forms use `.serene-input` with the same material.
+- **Badge / status pill** (`ui/Badge`, `.status-pill`): flat pastel fill, deep ink, a hairline, no
+  shadow, pill radius, `--text-xs` medium. Tones neutral, info, success, warning, danger.
+- **Card** (`SectionCard`, `.neu-card`): porcelain `--neu-surface`, `--neu-edge`, radius 32, raised
+  shadow; the header strip is `CardHeader` on `--neu-header-surface` (never the well tone).
+- **Avatar** / `AvatarStack`: rounded squares, initials via `getInitials` + `hashString` into six
+  semantic pairs; a stack shows at most four, then `+N`.
+- **Dialog / Modal / ConfirmDialog:** warm `--neu-scrim` with **no blur**; raised modal panel
+  (radius 28, `--neu-shadow-modal`); header on the section surface; portaled to `document.body`;
+  focus contained (`useModalFocus`: initial focus, Tab trap, Escape, focus return); a re-entrant
+  position-fixed body scroll lock; heights capped at 85dvh (90dvh below md); **a bottom sheet
+  below md** with `--space-4` gutters and safe-area padding; `pending` blocks the close button, the
+  backdrop and Escape; `error` renders above the footer with `role="alert"`. `Modal type="elaya"`
+  enforces exactly Approve and Dismiss.
+- **Table** (`ui/Table<T>`): header on `--neu-table-header-bg`, row hover and selected tokens, rows
+  open with Enter or Space without hijacking nested controls, `stickyHeader`, `previewRows={N}` (the
+  first N plus a one-way "Show all N"), a busy state that keeps rows during refresh. Bespoke
+  `LeadsTable` keeps its own registry; dense lists become card stacks below md.
+- **Toggle** (inset track, accent-gradient knob, optimistic with rollback), **Checkbox** (a real
+  `button role="checkbox"`, sizes 16 / 18, indeterminate), **CheckTile** (well → accent gradient, a
+  check draw and one ring pulse on user toggles only).
+- **FilterDropdown / FormSelect / FloatingPanel:** filter triggers share `filterTriggerStyle`;
+  applied = pastel wash and accent ink, open = pressed, no ring; `menuPortal` inside scroll rows;
+  arrow keys, Home / End, Escape, focus restore. `FormSelect` is the listbox in a field look (`name`
+  for plain posts, `<optgroup>`); never a native select.
+- **SearchBar** (sizes sm / md / lg; md is the filter-bar default) and **CommandPalette** (⌘K, cmdk
+  engine, 640px panel on the floating shadow over a 3px-blur charcoal scrim; its chunk loads on
+  first open).
+- **MessageBar:** auto-growing composer; `leadingSlot` hosts `DictationButton`; `sendOnEnter` (a
+  bare Enter is a newline on touch); the mandala while sending; the field focus frame on the shell.
+- **Skeleton** (`.skeleton`, `ui/PageSkeletons`): the well / surface-high / well sheen over a 200%
+  background, 1.8s linear; flat under reduced motion; at least 150ms on screen; non-uniform widths;
+  `skeletonStagger` steps 150ms, capped at 600ms. No watermark.
 
-- **Counts/numbers:** integers, no decimals; cast RPC `bigint` via `Number()` in the service; format
-  via `formatCount`/`formatCompact` in components — never `.toString()`. Hero values animate through
-  `<AnimatedNumber>` (which takes the already-formatted string).
-- **The number font:** hero stat values in `--font-serif`, secondary/technical numbers in
-  `--font-mono`, both `tabular-nums`. `StatTile` values are **mono** (both variants). A number
-  mid-sentence is wrapped in **`<Num>`**.
-- **Currency:** INR by default — `₹` + Indian grouping (`₹1,00,000`, lakhs) via `formatCurrency`,
-  which also supports USD and EUR. **Never convert currency; never hardcode a rate** — where a
-  foreign-currency bill exists, the INR figure is entered manually and is the only figure analytics
-  use.
-- **Dates/time:** `formatDate` (`lib/utils/dates.ts`); timestamps in mono, xs/2xs, tertiary; IST math
-  via `lib/utils/ist.ts`. Elapsed business time via `business_minutes_between()` in SQL.
-- **Phone:** two-part input (country + number); `normalizeToE164` on blur; the receiver-ring animation
-  on the dossier call CTA.
-- **Status/enum:** the status-config pattern via the `--status-*` token families; never hardcode
-  status colour logic. Under the bridge these render as pastel fills with deep labels.
-- **Null/zero/empty:** null → "—"; zero count → "None"/empty state; empty list → `<EmptyState>`.
-  A zero denominator renders "—", never "₹0" or "0%".
-- **Truncation:** CSS `text-ellipsis` / `-webkit-line-clamp`; never truncate page titles, critical
-  IDs, or identity names. A truncated cell that carries meaning gets a `<Tooltip>` with the full
-  value (the leads Campaign cell is the reference).
+## 6. Forms
 
-## 6. Toast system
+- Compose the `Field` family (or `.serene-input` in older forms). Labels are always visible; errors
+  come from `lib/validations/form-errors.ts` only (never raw Zod text, never "Invalid input");
+  never clear a field on error.
+- Choices: `FormSelect`, `DatePicker` (`mode="month"` for months; text ↔ Date helpers in
+  `lib/utils/dates.ts`), `TimePicker` (a typed input that accepts `9`, `930`, `9:30`, `9.30`,
+  `21:30`, `9:30 pm`, above the wheels), `Checkbox`, `CheckTile`, `Toggle`, radio rows with a hidden
+  native input behind a drawn dot. Never a native checkbox, date, datetime-local, month or select.
+- Two or three fields side by side compose `.serene-form-row`.
+- In a modal: `pending` while saving; the whole-form error in `error`; the footer wraps on a phone.
+  Elsewhere an `Alert`. Toasts are for events, never form errors.
+- A rejected save keeps the draft; an uncertain transport failure asks the user to check the list
+  before retrying (no automatic retries). Recording forms submit with Enter through a native form.
+- Phones: `normalizeToE164()` on blur; phone and email fields raise the matching keyboard; no
+  `autoFocus` on touch.
+- A stored third-party password field is tri-state (`undefined` keep, `null` clear, string
+  replace) and never pre-filled. `PasswordStrengthBar`: four segments, danger → warning → info →
+  success.
+- Not built: an unsaved-changes guard and a multi-step progress bar.
 
-`useToast()` (singleton) → `toast-provider.tsx` renders the stack (mounted in the **layout**, so a
-deferred commit survives navigation); `toast-item.tsx` runs the lifecycle. **Max 3 in DOM** (the 4th
-queues); arrival stagger, exit fade 250ms. A left-edge **living bar** counts down
-(`toast-deplete`, scaleX 1→0, linear, = lifetime). Types: success/warning/info (auto-dismiss ~4s),
-**danger (never auto-dismisses)**, loading, elaya (breathing glyph, accent tint), and **undo** —
-`toast.undo(title, { action, onTimeout })`: a charcoal toast with an accent Undo pill and a 2.5px
-accent depletion bar over `UNDO_WINDOW_MS` (5s). **The bar is the countdown**, so there is no
-hover-pause and no X, and the timeout runs the deferred commit.
+## 7. Data display
 
-## 7. Page transitions
+- **Counts:** integers; RPC bigints cast with `Number()` in the service; `formatCount` /
+  `formatCompact` in components.
+- **Numbers:** `StatTile` values are plain mono tabular text; a number inside a sentence in `<Num>`;
+  `AnimatedNumber` (NumberFlow, 1.4s) only on the dashboard widgets that keep it.
+- **Currency:** INR with Indian grouping (`₹1,00,000`) via `formatCurrency` (also USD, EUR); tiles
+  use `formatCurrencyCompact` (₹28.1L, ₹1.2Cr); tables keep the long form. Never convert currency,
+  never hardcode a rate; a foreign bill's INR figure is entered by hand.
+- **Dates:** `formatDate` (`lib/utils/dates.ts`), IST math via `lib/utils/ist.ts`, timestamps in
+  mono, xs, tertiary. Business-hours elapsed time comes from SQL (`business_minutes_between()`).
+- **Status:** the status-config pattern over `--status-*`. Lead status colours are theme-invariant
+  psychological anchors, drawn from the chip pairs: new = butter, touched = powder, in discussion =
+  teal, won = sage, nurturing = lilac, lost and junk = rose.
+- **Null, zero, empty:** a null value and a zero denominator both render the em-dash glyph,
+  never "₹0" or "0%" (the one place that glyph belongs); an empty list → `EmptyState`.
+- **Truncation:** CSS ellipsis or line clamp; never truncate page titles, critical ids or names; a
+  truncated cell that carries meaning gets a `Tooltip` with the full value. A foreign id (Freshdesk,
+  Zoho, app member) shows as `RevealId` (an icon; hover tooltip, click to reveal and copy).
+- **Tiles and strips:** `StatTile` (`card` or `cell`, `size="sm"` for breakdown cells),
+  `StatStrip` (a card of cells with optional footer), `MetaLine` (a health dot plus provenance items
+  joined by a middle dot), `clayTileStyle` for data tiles.
 
-- **List → list:** paper content opacity + y (8→0, up to 500ms).
-- **Drill-down (list → detail):** list recedes `x 0→-16`, detail arrives `x 24→0`; return reverses.
-- **Modal/sheet:** enter `opacity0 y10 scale0.98 → 1/0/1` (350ms); exit `opacity0 scale0.97` (150ms).
-- **There is no route veil and no route progress bar.** Navigation feedback is each route's
-  `loading.tsx` skeleton. A tap that gates on a fetch before opening a modal shows `LoadingVeil`.
-- **What does NOT transition:** the sidebar, the TopBar shell, notification badges, the sidebar
-  avatar — and the canvas itself.
+## 8. Toasts
 
-## 8. Data-visualisation colour rules
+`src/lib/toast.ts` is the singleton; `toast-provider` (mounted in the layout, so a deferred commit
+survives navigation) renders at most **3** at once and queues the rest. Types: success, warning,
+info (auto-dismiss), **danger and loading (never auto-dismiss)**, elaya (breathing glyph), and
+**undo**: `toast.undo(title, { action, onTimeout })`, a charcoal pill in light (a raised panel in
+dark) with an accent Undo pill and a 2.5px accent depletion bar that is the 5-second countdown (no
+hover pause, no close; the commit runs on timeout). The standard toast sits on
+`--neu-surface-high` with radius 28 and raised-lg. On a phone the stack sits above the composer.
+The old left-edge "living bar" on every toast was removed in June.
 
-- **≤3 colours per chart.** Palette: primary `--theme-accent` · secondary `--theme-accent-muted` ·
-  tertiary a 35% accent mix. Comparison/benchmark series = tertiary text only. 4+ series → the
-  pastel/`--status-*` families, never palette rotation.
-- **Per type:** bar — corner radius 6, top corners only; line — 2px stroke (area uses a token
-  gradient); donut — optional `centerLabel`; progress/ring — a single accent on a transparent track.
-- **Surface/tooltip:** `ChartFrame` is a **raised gradient panel, never a well**; the tooltip sits on
-  `--neu-surface-high` + a hairline; grid lines are warm putty dashes (`--neu-chart-grid`,
-  `rgba(166,156,140,0.22)`).
-- **Recharts bridge (V-12):** `useChartTokens()` resolves CSS vars → hex on mount and re-resolves on
-  **`data-theme` *and* `data-neu`** change (MutationObserver); returns `series[6]` + grid/axisLabel/
-  tooltipBg/Border. `resolveColorMap(map)` resolves a `Record<string,'var(--…)'>` for `BarChart`'s
-  `colorMap`. **Never pass a CSS var straight to a Recharts `fill`/`stroke`.** Seed
-  `initialDimension` to avoid the `width(-1)` warning. The pre-paint `FALLBACK` constants are a
-  sanctioned V-01 exception.
-- **Domain line colours** (`--domain-*`, viz-only, theme-invariant): concierge `#4a8fc9` ·
-  onboarding `#d4a017` · finance `#3dab7a` · marketing `#c45cb4` · tech `#e07840` · shop `#5cb8c4` ·
-  business `#8868c8` · house `#c48840` · legacy `#6a8c6a`. Canonical record `DOMAIN_LINE_COLORS`.
-- **Charts are code-split.** There is no chart in the mobile chunk by decision — the `/m` rooms use
-  the neu `ProgressCard` instead of a Recharts meter.
+## 9. Transitions and loading
 
-## 9. Addenda
+- Navigation feedback is each route's own `loading.tsx` skeleton. **No route veil, no route
+  progress bar, no direction-aware page transitions** (DNA §14 is an unbuilt design target).
+- Modal enter: opacity, `y 10`, scale 0.98 → 1 (350ms); exit faster.
+- A tap that must fetch before a modal opens shows `LoadingVeil` (open question: replace it with
+  an immediate modal plus a skeleton).
+- The sidebar, the page controls, badges and the canvas never transition.
 
-**Lead-status colours are theme-invariant** — the psychological meaning must not drift with the
-accent. The family is `{text, light, border, solid}` per status (new / touched / in_discussion / won
-/ nurturing / lost / junk); under the bridge the fills render as the pastel family and the labels as
-the deep tone, but the *mapping* is fixed. `--status-*-solid` fills are a sanctioned V-01 exception
-for charts.
+## 10. Charts
 
-**Drawer/sheet:** off-canvas; width 100% mobile / 360–480px desktop; the scrim is `--neu-scrim` at
-z-overlay; the panel is a raised surface with `--neu-radius-panel` (top corners on mobile);
-swipe-to-dismiss on the bottom sheet.
+- Recharts only, never in a route's first chunk; no charts in the `/m` chunk (the rooms use a neu
+  `ProgressCard`).
+- `useChartTokens()` resolves six series: the theme accent, then powder, sage, butter, danger,
+  lilac; plus grid, axis and tooltip colours. `resolveColorMap()` resolves any `var(--…)` map. Both
+  re-resolve on `data-theme` **and** `data-neu` (a MutationObserver). Never pass a CSS var to a
+  Recharts `fill` / `stroke`. The pre-paint `FALLBACK` palette is a sanctioned hex exception.
+- At most three colours per chart. Categorical series use `DOMAIN_LINE_COLORS`, the theme-invariant
+  `--domain-*` palette: concierge `#4a8fc9` · onboarding `#d4a017` · finance `#3dab7a` · marketing
+  `#c45cb4` · tech `#e07840` · shop `#5cb8c4` · business `#8868c8` · house `#c48840` · legacy
+  `#6a8c6a`.
+- `ChartFrame` (`ui/charts/CartesianChartFrame.tsx`) draws the plot area as a quiet inset on the
+  field material; `cartesianDefaults(tokens)` supplies grid, axis, tooltip and legend props; bars
+  round their top corners at 6px; gridlines are warm dashed putty; chart tooltips are light
+  (`--neu-surface-high` with a hairline). An empty chart shows `EmptyState`, not empty axes.
 
-**Scroll:** `.scrollable` / `.sidebar-scrollable` — `overflow-y:auto`, `overscroll-behavior:contain`,
-momentum touch; custom 4px scrollbar with warm putty thumbs. A horizontal scroll rail (the mobile
-filter bar) needs vertical padding + compensating negative margins, or `overflow-x: auto` clips every
-child's raised shadow top and bottom.
+## 11. Scroll, sheets, blur, keyframes
 
-**Backdrop blur** only on the TopBar, the mobile sidebar overlay, the command palette, and
-`.serene-condense-header`. Never on cards, dropdowns, or modal overlays.
+- One global scrollbar rule (thin, a warm putty thumb at 30%, 48% on hover, transparent track).
+  The workspace contains overscroll. `lockBodyScroll()` is re-entrant and uses a position-fixed lock
+  (iOS rubber-banded behind sheets otherwise). Chats follow new messages only while the reader is at
+  the bottom and show a "new" pill otherwise. A horizontal scroll rail (the phone filter bar) needs
+  vertical padding with compensating negative margins or it clips every child's shadow.
+- There is no general drawer primitive: `Dialog` is the bottom sheet below md, the sidebar is the
+  phone drawer, `SubTaskModal` is a bottom sheet below md, and `/m` has `MobileBottomSheet` and
+  `MobileActionSheet`.
+- Blur: only the drawer backdrop (8px), the palette scrim (3px), the condensing header (10px).
+- Keyframes in use: `serene-shimmer-sweep` (skeleton), `serene-elaya-breathe`, `serene-neu-dot`
+  (typing dots, 1.2s), `serene-neu-halo`, `serene-neu-listening`, `neu-twinkle`,
+  `serene-page-dot-blink`, `serene-logo-trace` (the mandala draw), `serene-spin`,
+  `serene-boot-fade`, `serene-boot-track` (the boot lockup), `serene-check-draw`,
+  `serene-ring-pulse`, `serene-petal-fall`, `toast-deplete`, `serene-row-enter`, the auth
+  `serene-auth-*` and orb floats, `neu-m-halo` (mobile). Every loop is reduced-motion gated.
 
-**Keyframes:** `serene-shimmer-sweep` (skeleton sheen) · `serene-elaya-breathe` /
-`serene-neu-*` idle loops (breathe 3s, typing dots 1.2s, halo 2.6s, ✦ twinkle 5s) ·
-`serene-page-dot-blink` (2.4s) · `serene-logo-trace` (the mandala draw) · `.serene-logo-spin` ·
-`serene-check-draw` (400ms) · `serene-ring-pulse` (700ms, once) · `serene-petal-fall` ·
-`toast-deplete` · `serene-neu-listening`. **Every loop is `prefers-reduced-motion` gated**, and the
-brand mark rests finished and still. (`serene-progress-sweep` was deleted with the boot progress bar.)
+## 12. Touch and responsive
 
-## 10. Component library index (`src/components/ui/`)
+Page padding `p-4 sm:p-6 lg:p-8`. Sidebar: drawer below md, rail at md, full at lg. Dialogs become
+bottom sheets below md; filter bars become one scroll row (every `FilterDropdown` child passes
+`menuPortal`); dense tables become card stacks. Touch rules from the 2026-09-26 mobile audit: text
+fields at least 16px on a coarse pointer (global), buttons, filter triggers and compact fields 44px,
+`.serene-selection` rows 44px, `.serene-touch` 40px for compact controls, `.serene-touch-hit` for
+tiny drawn controls, a bare Enter is a newline in a composer on touch, `interactiveWidget:
+resizes-content`, and drag surfaces offer a touch path (a hold to drag, a "Move to" menu, Move up /
+down). The `/m` layer has its own touch scale (see `11-mobile-and-pwa.md`).
 
-- **Core:** `Button` · `MotionButton` · `Avatar` · `AvatarStack` · `BackButton` · `SeedMandala` ·
-  `LogoSpinner` (+ `LoadingVeil`).
-- **Input + selection:** `SearchBar` · `.serene-input` (class) · `MessageBar` ·
-  `PasswordStrengthBar` · `Toggle` · `Calendar` (with the additive `onMonthChange`) · `DatePicker` ·
-  `TimePicker` (wheels **plus** a typed `TimeTypeInput` accepting `9`, `930`, `9:30`, `9.30`,
-  `21:30`, `9:30 pm`) · `DictationButton` · `CheckTile`.
-- **Navigation + structure:** `TabSelector` · `FilterDropdown` · `FloatingPanel` (+ `usePortalAnchor`)
-  · `SectionCard` · `Dialog` · `modal.tsx` · `ConfirmDialog` · `CollapseReveal` · `InfoRow` ·
-  `StatTile` · `EmptyState` · `PageSkeletons` · `FilterBar` · `DateRangeFields` /
-  `DateRangePresetList` · `TaskFormFields` · `Carousel` (+ `hideControls`) · `CommandPalette` ·
-  `Tooltip` · `RowMotion` (`<MotionRow>`) · `AnimatedNumber` · `Num` · `PetalFall` · `ChatMarkdown`.
-- **Data display:** `Table` (generic, `previewRows`) · `.status-pill` utilities (no standalone
-  Badge.tsx) · `.skeleton` class + `ChartSkeleton`.
-- **Charts (`charts/`):** `useChartTokens` · `CartesianChartFrame` (`ChartFrame` +
-  `cartesianDefaults` + `CARTESIAN_MARGIN`) · `BarChart` · `ChartSkeleton`. **The five wrapper
-  components `AreaChart` / `LineChart` / `PieChart` / `DonutChart` / `ButterflyChart` were deleted**
-  (2026-07-02) — live consumers import raw Recharts plus the frame. Never recreate them.
-- **Elaya & toast:** `elaya-glyph` (`ElayaGlyph` + `ElayaGlyphDisc`, breathing, with a `thinking`
-  state) · `toast-provider` / `toast-item`.
-- **Layout (`components/layout/`):** `MotionProvider` · `CommandPaletteProvider` ·
-  `NotificationsProvider` · `CondensingPageHeader` · `AppBootScreen` · `Sidebar` · `TopBar` /
-  `PageControls` · `ThemeInitializer` / `IconInitializer`.
-- **Deleted, never recreate:** `Spinner` (→ `LogoSpinner`), `RouteVeil`, `ComboboxDropdown`
-  (→ `FilterDropdown multi={false}`), `Checklist`/`ChecklistItem`/`ProgressBar`/`RadioGroup`, the
-  five chart wrappers, `src/lib/utils/chart-tokens.ts`, `DomainHealthGrid`,
-  `LeadDossierTasksAsync`.
-- **Canonical-by-composition (not separate tsx):** Card = `SectionCard`; form field =
-  `.serene-input` + `.label-micro`; card header = `<CardHeader>`.
+## 13. The `src/components/ui/` inventory (63 files)
+
+- **Actions and selection:** `Button`, `MotionButton`, `SelectionButton`, `MotionSelectionButton`,
+  `UploadButton`, `RowActions` (`EditDeleteActions`: a labelled control Edit and a ghost-danger
+  Delete), `BackButton`, `Toggle`, `Checkbox`, `CheckTile`, `TabSelector` (+ `Tabs*`; arrow and
+  Home / End keys), `Carousel` (finger-following, `hideControls`), `DictationButton`.
+- **Fields, pickers, filters:** `Field` / `Input` / `Textarea` / `Select`, `FormSelect`,
+  `SearchBar`, `MessageBar`, `DatePicker`, `TimePicker`, `Calendar` (`onMonthChange`),
+  `DateRangeFields`, `DateRangePresetList`, `FilterDropdown`, `FilterBar` (immediate commit, never an
+  Apply button), `Pagination` (rewrites only `page`), `TaskFormFields`, `InlineEdit`,
+  `PasswordStrengthBar`, `material-styles.ts` (`filterTriggerStyle`, `clayTileStyle`,
+  `choiceStyle`, `optionStyle`).
+- **Display:** `Avatar`, `AvatarStack`, `Badge`, `Alert`, `LoadingState`, `EmptyState`
+  (server-safe), `InfoRow`, `RevealId`, `StatTile`, `StatStrip`, `MetaLine`, `Num`,
+  `AnimatedNumber`, `Table`, `SectionCard`, `ChatMarkdown` (model markdown), `WaText` (people-typed
+  WhatsApp text; never merged with `ChatMarkdown`), `ConversationRailRow`, `SplitWorkspace`,
+  `SeedMandala`, `LogoSpinner` (+ `LoadingVeil`), `elaya-glyph` (`ElayaGlyphDisc`, `ElayaGlyph`),
+  `PetalFall`, `Tooltip`.
+- **Overlays, motion, structure:** `Dialog`, `modal` (`Modal`), `ConfirmDialog`, `FloatingPanel`
+  (with `hooks/usePortalAnchor`), `CommandPalette`, `toast-provider` / `toast-item`, `RowMotion`
+  (`MotionRow`), `CollapseReveal`, `Await` (resolves an un-awaited RSC promise inside `Suspense`),
+  `PageSkeletons` (`Shimmer`, `skeletonStagger`, `PageHeaderSkeleton`, `FilterBarSkeleton`,
+  `SkeletonCard`, `RailRowsSkeleton`, `EmptyStateSkeleton`).
+- **Charts (`ui/charts/`):** `useChartTokens`, `CartesianChartFrame` (`ChartFrame`,
+  `cartesianDefaults`, `CARTESIAN_MARGIN`), `BarChart`, `ChartSkeleton`.
+- **Layout (`components/layout/`):** `Sidebar`, `PageControls`, `CondensingPageHeader`,
+  `DomainSelector`, `AppBootScreen`, `CommandPaletteProvider`, `NotificationsProvider`,
+  `ThemeInitializer`, `IconInitializer`, `MotionProvider`, `ServiceWorkerRegistration`,
+  `UsagePresence`.
+- **Shared pieces outside `ui/`:** `leads/CardHeader` (THE card header strip), `admin/Roster`
+  (roster tiles and person chips), `performance/AgentIdentity`, `sia/SiaMessagesPeek` (the mini
+  WhatsApp view), `dashboard/DashboardGridSkeleton`, and the `/m` kit in `components/mobile/`.
+- **Deleted, never rebuild without a real second call site:** `ComboboxDropdown` (→
+  `FilterDropdown` / `FormSelect`), `ListRow`, `Accordion`, `EditButton`, `RadioGroup`, `Checklist`,
+  `ChecklistItem`, `ProgressBar`, the five chart wrappers (`LineChart`, `PieChart`, `DonutChart`,
+  `AreaChart`, `ButterflyChart`; use raw Recharts plus `ChartFrame`), the arc `Spinner`, `RouteVeil`,
+  `TopBar` (→ `PageControls` + `CondensingPageHeader`), `SkeletonWatermark`,
+  `whatsapp/ConversationRow` (→ `ConversationRailRow`), `src/lib/utils/chart-tokens.ts`, and the
+  `EmptyState` `brand` / `ambient` / `size` props and Button's `suppressFocusRing`.
+
+## 14. Checks and tooling
+
+| Command | Checks |
+| --- | --- |
+| `pnpm check:tokens` | every `var(--…)` resolves (runs before `next build`) |
+| `pnpm audit:ui` (`-- --check`, `-- --json`) | native controls with local styling against `scripts/ui-control-baseline.json` |
+| `pnpm check:ui` | tokens, the control baseline and the component contract tests |
+| `node scripts/check-theme-contrast.mjs` | browser-computed contrast of theme and material pairs, all eight themes, both modes |
+| `node scripts/check-control-keyboard.mjs`, `check-form-workflows.mjs` | real-component keyboard checks and mocked form workflows |
+| `node --import tsx scripts/preview-ui-controls.mjs` | regenerates the control specimen |
+
+The browser checks attach to an isolated local Chromium (`SERENE_BROWSER_PORT`, default 9223).
+There is no `/dev/components` route.

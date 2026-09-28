@@ -1,6 +1,6 @@
 # Schema restructure plan: `public` → `gia` + `member` (with `sia` and `freshdesk` as they are)
 
-Written 2026-09-16. Status: **COMPLETE. gia LIVE 2026-09-17 13:41 IST, member LIVE 2026-09-17 ~15:55 IST — §10, §11.** Decided with the founder the same day: do the
+Written 2026-09-16. Status: **COMPLETE, shipped 2026-09-17: `gia` live at 13:41 IST (0210), `member` live at about 15:55 IST (0211), the cross-schema fixes after (0212, 0213, `gia-task-links.ts`). This file is now the historical plan and runbook (§10, §11); the as-built schema map is `database.md`, and the rule it set is the 2026-09-17 row in `../rules/The_Rules.md`.** Decided with the founder the same day: do the
 whole restructure at once, rehearse it first, and treat the leads data as untouchable. The Legacy
 and Shop teams work in Gia every day.
 

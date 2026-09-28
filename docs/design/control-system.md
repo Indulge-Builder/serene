@@ -1,5 +1,10 @@
 # Serene control system
 
+> **Purpose:** the contract for shared actions, selections, fields, filters, focus and sizing, plus the dated record of the control migration and how it was checked.
+> **Audience:** engineers and designers building or reviewing any interactive element.
+> **Source-of-truth scope:** control roles, states and their checks. Token values live in `src/styles/serene-neumorphic-tokens.css` and `serene-families.css`; prop contracts in `src/components/CLAUDE.md`; the design law in [DESIGN-DNA.md](./DESIGN-DNA.md); dated decisions in [decision-log.md](./decision-log.md). The dated sections below record each pass as it was measured on that day; counts are not re-measured.
+> **Last verified:** 2026-09-26 against `src/components/ui/{Button,SelectionButton,UploadButton,Field,FormSelect,Checkbox,FilterDropdown}.tsx`, `ui/material-styles.ts`, the two token sheets and `package.json` scripts.
+
 The control system keeps the pastel material, theme-derived sidebar, ivory workspace,
 and gentle clay depth. Consistency comes from reusable roles and interaction states,
 not making every clickable object look like a raised button.
@@ -19,14 +24,20 @@ not making every clickable object look like a raised button.
 | Icon action | Button with `iconOnly` and `aria-label` | Square footprint using the selected size |
 | Filters | `FilterDropdown`, `FilterBar`, `DashboardDateFilter` | `filterTriggerStyle` plus shared CSS |
 | Compact fields | `SearchBar`, `DatePicker`, `TimePicker` | Inset material, matching control radius |
+| Form select | `FormSelect` | The `FilterDropdown` listbox in its field look; portaled, keyboard-operated. Never a native select (added 2026-09-25) |
+| Choice, option, rich row | `SelectionButton` / `MotionSelectionButton` | See "Selection families" below |
 | Navigation tabs | `TabSelector` | Track and selection indicator; distinct from actions |
-| Binary state | `Toggle` / `CheckTile` | Switch or completion affordance |
+| Binary state | `Toggle` / `Checkbox` / `CheckTile` | Switch, tick box (`button role="checkbox"`, added 2026-09-25) or completion affordance |
 | Data tile | `StatTile` / `StatAtom` / `clayTileStyle` | Pastel tile material, separate from badges |
 | Popup / modal | `FloatingPanel` / `Dialog` / `Modal` | Existing shared elevation and surface roles |
 
 Default actions and compact fields are 36px high; compact actions may be 32px and
 large actions 44px. Ordinary controls share `--neu-radius-control` (14px). Buttons,
-filter triggers, and compact fields have a 44px minimum on coarse pointers.
+filter triggers, and compact fields have a 44px minimum on coarse pointers. Since the
+2026-09-26 mobile audit, `.serene-selection` rows are also at least 44px tall on touch,
+every text field renders at 16px or larger on touch (iOS zooms below that), and a tiny
+drawn control can take an invisible 44px hit area with `.serene-touch-hit`
+(`src/app/globals.css`).
 
 Hover uses a stronger contact shadow, press uses inset shading, and keyboard focus
 uses an unblurred outline independent of elevation. Disabled conditions remain
@@ -280,6 +291,11 @@ This phase extends the action system to form and feedback families:
 | Tables | `Table` | Preserve existing rows during refresh; announce busy state; nested actions do not also activate the row |
 | Tooltips | `Tooltip` | Trigger description preserves existing hints; Escape dismisses; hoverable content; instant keyboard entrance |
 
+Later the same day the remaining native selects moved to `FormSelect`, and the native
+date, month and checkbox inputs to `DatePicker` and `Checkbox`. `Field`'s native `Select`
+export remains for browser constraint validation, form-library refs and multi-selects;
+it has no consumers today.
+
 Initial field adoption covers manual lead creation, personal lead details, account
 creation/profile editing, domain/role/queendom selection, and subscription editing.
 Ticket, Freshdesk, and Zoho status wrappers compose Badge. These migrations preserve
@@ -290,8 +306,10 @@ family does not mean every input in the application has been converted.
 ### Surface roles
 
 `--neu-section-bg` separates headers from porcelain content without giving them
-field-like depth. Shared card headers mix only 6% theme pigment into this neutral
-surface. Dialog headers use the neutral section surface. Fields retain shallow
+field-like depth. Shared card headers mixed only 6% theme pigment into this neutral
+surface in this pass; on 2026-09-26 that became a gradient from 9% to 14% pigment
+(`--neu-header-surface`) with a 12% accent hairline and an inner top highlight, and
+header text keeps `--neu-header-ink`. Dialog headers use the neutral section surface. Fields retain shallow
 inset shading; actions retain contact elevation; badges and alerts remain flat.
 The sidebar's existing theme-derived gradient is retained.
 

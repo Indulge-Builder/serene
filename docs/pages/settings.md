@@ -1,310 +1,289 @@
-# Settings — Page Spec
+# Settings: Page Spec
 
-> **Purpose:** spec for the settings route family: `/settings` (the pool-member roster: routing pool, shift windows, work days, plus admin/founder link cards) and its two dedicated sub-routes `/settings/follow-up-engine` (`sla_policies`) and `/settings/lead-revival` (`revival_policies`).
-> **Audience:** engineers. · **Source-of-truth scope:** the three settings routes, `agent-routing-service.ts`, `agent-routing.ts` actions, the roster table, `SettingsLinkCard`, `sla-service.ts` / `sla-policies.ts`, `revival-service.ts` / `revival.ts` actions. SLA business rules: `../modules/gia.md` § SLA Engine.
-> **Last verified:** 2026-07-02 full pass (the 2026-06-25 split into sub-routes reflected; per-user notification preferences live on `/profile`, NOT here).
->
-> **Note:** per-user notification preferences (In-app / WhatsApp per category) are a `/profile` feature (`components/profile/NotificationPreferences.tsx`), **not** a `/settings` panel — do not document them here.
+> **Purpose:** spec for the `/settings` route family: the hub (the lead-routing roster of pool members, plus admin/founder link cards) and its six sub-routes: `/settings/follow-up-engine`, `/settings/lead-revival`, `/settings/tickets`, `/settings/teach-elaya`, `/settings/elaya-playbooks`, `/settings/elaya-requests`.
+> **Audience:** engineers. · **Source-of-truth scope:** the hub page, the roster (`AgentSettingsTable`, `agent-routing-service.ts`, `actions/agent-routing.ts`), `SettingsLinkCard`, and the Follow-up Engine panel UI (`SlaPoliciesPanel`). The other sub-routes are summarised here and owned elsewhere: `/settings/tickets` by `./tickets.md`; the Teach Elaya hub, playbooks and requests by `../modules/elaya.md`; lead revival by `../modules/revival.md`. SLA business rules: `../modules/gia.md` § SLA Engine. Per-user notification preferences live on `/profile` (`./profile.md`), not here.
+> **Last verified:** 2026-09-26 against `src/app/(dashboard)/settings/**`, `src/components/settings/{AgentSettingsTable,SettingsLinkCard,SlaPoliciesPanel,TeachElayaHub}.tsx`, `src/components/layout/Sidebar.tsx`, `src/lib/services/agent-routing-service.ts`, `src/lib/actions/agent-routing.ts`, `src/lib/constants/route-permissions.ts`, `src/lib/utils/route-access.ts`, `src/components/ui/TimePicker.tsx`, and migrations 0002, 0059, 0124, 0210.
 
 ## 1. Purpose
 
-Configures three things on one `agent_routing_config` row per **pool member** (agents +
-managers — `ROUTING_POOL_ROLES`, migration 0124): round-robin pool membership (`is_active`),
-shift windows (`shift_start`/`shift_end`), and work days (`shift_days`, migration 0059 —
-`null` inherits the global `BUSINESS_HOURS`).
+`/settings` is two things on one page:
 
-Since 2026-06-25 the policy panels no longer render inline on `/settings`. Admin/founder
-instead see a grid of two `SettingsLinkCard`s above the roster, linking to dedicated
-sub-routes: **`/settings/follow-up-engine`** (`sla_policies`, the `SlaPoliciesPanel`) and
-**`/settings/lead-revival`** (`revival_policies`, the `RevivalPoliciesPanel`). Each sub-route
-has its own role gate, `loading.tsx`, `BackButton` header, and empty state. `/settings` itself
-fetches only the roster (no URL params, no Suspense split).
+1. **The lead-routing roster.** One row per pool member (agents and managers,
+   `ROUTING_POOL_ROLES`, migration 0124) with three switches on their
+   `gia.agent_routing_config` row: in the round-robin pool or not (`is_active`), a shift window
+   (`shift_start` / `shift_end`), and work days (`shift_days`, 0059; `null` inherits the global
+   `BUSINESS_HOURS`).
+2. **A hub for admin and founder.** Four `SettingsLinkCard`s open the config pages:
+
+| Sub-route | What it configures | Gate | Owning doc |
+| --------- | ------------------ | ---- | ---------- |
+| `/settings/follow-up-engine` | Gia's SLA timers, cadences and escalations (`gia.sla_policies`), as situation cards | admin, founder, tech workbench | this doc, §4 |
+| `/settings/tickets` | Sia ticket SLA policies and escalation ladders, status labels and tags, the intake lessons | admin, founder, tech workbench | `./tickets.md` |
+| `/settings/teach-elaya` | The hub with four doors to teaching Elaya: Training, Playbooks, Requests, Exam | manager and above | `../modules/elaya.md` |
+| `/settings/lead-revival` | The nightly revival sweep's silence thresholds and daily caps (`gia.revival_policies`) | admin, founder, tech workbench | `../modules/revival.md` |
+
+Two more pages hang off Teach Elaya rather than the hub: `/settings/elaya-playbooks` (admin,
+founder, tech workbench; back button to Teach Elaya) and `/settings/elaya-requests` (same gate).
+Every sub-route has its own `loading.tsx`, a `BackButton` header and its own page title.
 
 ## 2. Who sees it
 
-manager / admin / founder (agents and guests → `redirect('/dashboard')`). The two
-`SettingsLinkCard`s render for admin/founder only. The sub-routes gate themselves: a
-non-admin/founder caller hitting `/settings/follow-up-engine` or `/settings/lead-revival`
-is redirected to `/settings` (not `/dashboard`).
+| Caller | `/settings` hub | Link cards | Config sub-routes | Teach Elaya |
+| ------ | --------------- | ---------- | ----------------- | ----------- |
+| admin, founder | yes, roster of every domain | yes | yes | yes |
+| tech workbench (agent or manager) | yes, roster of `tech` only | no | yes (writes refused) | yes |
+| manager in a Gia domain | yes, own domain's roster | no | redirected to `/settings` | yes |
+| manager in finance, marketing, business | yes, own domain's roster | no | redirected to `/settings` | yes |
+| concierge (any role) | no: `/settings` left the concierge route map on 2026-09-25 | | | no |
+| agent, guest | redirected to `/dashboard` | | | |
 
-Since migration 0124 the routing pool is **agents + managers** (`ROUTING_POOL_ROLES`) —
-managers carry and call leads in the same round-robin queue as agents, so a manager **appears
-in their own domain's roster** and edits their own shift/pool exactly like an agent (plus their
-peer managers and every agent in their domain). Managers see and edit only their own domain's
-roster (service uses adminClient because RLS would block cross-row reads; the action layer
-enforces the domain). Since 2026-06-11 (security F-2), `toggleAgentRouting` verifies the target
-agent's domain for manager callers — same check as `setAgentShiftAction`. A manager editing
-their **own** row passes this same-domain check with no special case.
+- The hub gates with `hasManagerPageAccess` (manager, or anyone `hasElevatedPageAccess` admits).
+  The link cards render only for a literal admin or founder.
+- The follow-up engine, lead revival, tickets, playbooks and requests pages gate with
+  `hasElevatedPageAccess` and send anyone else to `/settings`. Teach Elaya gates with
+  `hasManagerPageAccess`.
+- `/settings` is in the route map of the Gia domains and of finance, marketing, tech and business.
+  It was removed from concierge because the page held only the Gia routing roster and doors a
+  queen or genie could not use. For a finance, marketing or business manager the roster is their
+  own domain's agents and managers; the routing pool means nothing outside Gia, so the page is
+  reachable but idle for them.
+- The tech workbench widens page access only. The config actions call
+  `requireProfile(['admin','founder'])`, so a tech account can open the editors but its saves are
+  refused. A tech manager can edit the tech roster (the routing actions accept a manager in their
+  own domain).
+- **Managers manage their own domain's roster.** The roster read uses the admin client because
+  RLS would block cross-row reads; the page passes `profile.domain` for a manager and the actions
+  re-check the target's domain (§8.5). A manager appears in their own roster and edits their own
+  row like any other.
+
+**Sidebar.** The Configuration section renders for `hasManagerPageAccess` and lists, each through
+`isNavVisible`: **Ad Creatives** (`/admin/ad-creatives`, literal admin/founder), **Teach Elaya**
+(`/settings/teach-elaya`, `GraduationCap`), **Settings** (`/settings`, active on every
+sub-route). The old "Elaya Training" item is gone: Training is a door on Teach Elaya. The founder's
+curated sidebar (`FOUNDER_NAV_PREFIXES`) does not list Settings; founders reach it by URL or the
+command palette.
 
 ## 3. Data sources
 
 | Layer | Key items |
 | ----- | --------- |
-| Service | `agent-routing-service.ts` — `getAgentRosterByDomain` (joined profiles+config, adminClient, role filter `ROUTING_POOL_ROLES`), `setAgentShift`, `setRoutingActive`; `sla-service.ts` — `getAllSlaPolicies` / `updateSlaPolicy` / `createSlaPolicy`; `revival-service.ts` — `getAllRevivalPolicies` / `updateRevivalPolicy` |
-| Actions | `agent-routing.ts` — `toggleAgentRouting` (F-2 domain check), `setAgentShiftAction`; `sla-policies.ts` — `updateSlaPolicyAction` / `createSlaPolicyAction`; `revival.ts` — `updateRevivalPolicyAction` |
-| Validation | `agent-routing-schema.ts` (`SetAgentShiftSchema`); `sla-policy-schema.ts` (`UpdateSlaPolicySchema` / `CreateSlaPolicySchema`); `revival-schema.ts` (`UpdateRevivalPolicySchema`) |
-| Consumers | shift data feeds the SLA engine's `buildAgentShiftOverride` (Deep dive §10) and ingestion round-robin eligibility; `sla_policies` is read per fire by the follow-up engine; `revival_policies` is read per run by the daily revival sweep |
+| Services | `agent-routing-service.ts`: `getAgentRosterByDomain` (admin client; profiles, then `gia.agent_routing_config` read separately and joined in code), `setAgentShift`, `setRoutingActive` (plus `getAgentRoutingConfig` / `getAgentRoutingConfigAdmin` for other callers). `sla-service.ts`: `getAllSlaPolicies`, `updateSlaPolicy`, `createSlaPolicy`. `revival-service.ts`: `getAllRevivalPolicies`, `updateRevivalPolicy` |
+| Actions | `agent-routing.ts`: `setAgentShiftAction`, `toggleAgentRouting`. `sla-policies.ts`: `updateSlaPolicyAction`, `createSlaPolicyAction`. `revival.ts`: `updateRevivalPolicyAction`. Ticket, playbook and request actions: see the owning docs |
+| Validation | `agent-routing-schema.ts` (`SetAgentShiftSchema`), `sla-policy-schema.ts`, `revival-schema.ts` |
+| Tables | `gia.agent_routing_config`, `gia.sla_policies`, `gia.revival_policies` (all moved from `public` to `gia` by 0210, read through `giaDb()`) |
+| Consumers | shift data feeds the SLA engine's `buildAgentShiftOverride` (§8.10); `is_active` feeds round-robin eligibility; `sla_policies` is read on every engine run; `revival_policies` on every nightly sweep |
 
 ## 4. Components
 
-On `/settings`: `AgentSettingsTable` (member; optimistic toggles; one row per **pool member**,
-agents + managers) with inline `WorkDayPicker` · `TimePicker` (`src/components/ui/` primitive,
-wheel columns, measured item height) · `Toggle` for pool membership · `SettingsLinkCard`
-(`src/components/settings/SettingsLinkCard.tsx`, admin/founder only: a paper nav card in the
-CampaignCard card-list treatment, string-keyed icon registry `timer`/`sparkles`, staggered
-entrance).
+**On `/settings`:** `AgentSettingsTable` (client; one card row per pool member; optimistic
+toggles) with its inline `WorkDayPicker`, the shared `TimePicker`, a `Toggle` for pool
+membership, and a `beforeList` slot. The page passes the admin/founder link-card grid through
+`beforeList`, so the order is title → filter bar → link cards → roster (the list-page contract,
+2026-07-06). `SettingsLinkCard` (`src/components/settings/SettingsLinkCard.tsx`): a paper nav card
+with a string-keyed icon registry (`timer`, `ticket`, `book`, `sparkles`), a title, a description
+and a chevron.
 
-On the sub-routes: `SlaPoliciesPanel` renders on `/settings/follow-up-engine` and
-`RevivalPoliciesPanel` on `/settings/lead-revival`. Each page shows the panel when its policy
-list is non-empty, else an `<EmptyState>`. Panel internals are unchanged from the inline era.
+**Follow-up Engine** (`/settings/follow-up-engine` → `SlaPoliciesPanel`). The page loads
+`getAllSlaPolicies()` and renders the panel, or `<EmptyState>` "No follow-up rules yet" when there
+are none. Since the 2026-06-24 redesign the panel groups policies **by situation, not by rule**:
 
-### Follow-up Engine page (`/settings/follow-up-engine` → `SlaPoliciesPanel`, 2026-06-12; "New rule" authoring 2026-06-15; own route since 2026-06-25)
+- `buildSituations()` makes one card per situation. The A/B/C escalation steps for one lead status
+  collapse into one card ("Lead sitting in 'Touched'"); each cadence gets its own card ("Call ended
+  in 'No answer'", "Lead lingering in 'Nurturing'"); the task-due rules become "Follow-up task is
+  due" and "Follow-up task is overdue".
+- Inside a card the steps read as sentences, sorted by wait: "After [N] min → Notify the agent /
+  Alert the manager / Escalate to a founder", each with an on/off toggle. The wait is the only
+  inline field (blur-to-save when changed, with a `formatDuration` hint). Cadence cards show that
+  they create a task and have no wait field.
+- Channels and the hours basis (agent shift, business hours, clock time) sit behind a per-card
+  "Advanced: channels & timing" disclosure (`CollapseReveal`). Cadence cards have none.
+- **Rule codes (SLA-01A, CAD-…) are never shown.**
+- Toggling a step is how you choose who is alerted: recipients are separate policy rows by design.
+- Saves are optimistic and revert with a toast on error. Writes: `updateSlaPolicyAction` (Zod →
+  `requireProfile(['admin','founder'])` → the admin-client update, since the table has no write
+  RLS → `revalidatePath('/settings/follow-up-engine')`). The engine reads policies per run, so an
+  on/off or channel change applies on the next fire; a wait change applies to timers armed after
+  it.
 
-`page.tsx` gates with `if (role !== 'admin' && role !== 'founder') redirect('/settings')`,
-awaits `getAllSlaPolicies()`, and renders a `BackButton` ("Back to Settings") next to the
-page-title-dot `<h1>`. Empty list → `<EmptyState title="No follow-up rules yet">`.
+**"Add a rule"** (the panel header toggle). An inline form lets an admin author a notification rule
+without a developer: **Watches** (`trigger_kind`: lead status, call outcome, task due), **Value**
+(`trigger_value`; the options re-derive from the kind), **Notifies** (agent, manager, founder),
+**Threshold** (hidden for an outcome), **Hours basis**, **Channels**. `createSlaPolicyAction`
+mirrors the update action with two safeguards:
 
-One row per `sla_policies` rule, grouped **Lead status / Call outcome / Follow-up cadences /
-Task due** (the group list is exhaustive — the "Call outcome" group exists so a user-authored
-non-cadence `outcome` rule has a home; seeded `CAD-01x` outcome rules stay under cadences).
-Editable on each row: threshold minutes (blur-save + `formatDuration` hint; hidden for outcome
-cadences, which tick daily), hours basis select, channel checkboxes (CAD rows show
-"Creates a task" — channels stay `{}`), active toggle (optimistic, revert + toast).
-Identity fields (code, trigger, recipient, auto_task) are read-only — **toggling the
-manager/founder rows active IS the recipient checklist** (recipients are separate rows
-by design). Reads: `getAllSlaPolicies` (session client; 0111 RLS admin/founder SELECT).
-Writes: `updateSlaPolicyAction` (`actions/sla-policies.ts`) — Zod →
-`requireProfile(['admin','founder'])` → admin-member update (no write RLS by design) →
-`revalidatePath('/settings/follow-up-engine')`. The engine reads policies per job run: active/channel
-edits apply on the next fire; threshold edits apply to newly armed timers only.
+- **The code is generated, never typed.** The action mints an inert `USR-<id>` and asserts it has
+  no reserved `SLA-`, `CAD-` or `TASK-` prefix. A `CAD-` code would silently become a
+  self-re-arming daily task generator (`isCadenceCode`). `auto_task` stays false: a user rule
+  notifies, it never creates tasks.
+- **The value is checked against the kind on the server** (`CreateSlaPolicySchema` refine):
+  status → a real `LeadStatus`, outcome → a real `CallOutcome`, task_due → `gia_followup`. That
+  last token is the SLA rule-catalog value on `sla_policies.trigger_value` (0111), not the retired
+  `task_category` value of the same name (0138). A value that could never fire is refused.
 
-#### "New rule" authoring (2026-06-15)
+There is no delete: switch a rule off with its toggle.
 
-The panel header carries a **New rule** toggle → an inline form lets an admin/founder author a
-policy over the trigger catalog **without a developer**. Five operational fields + channels:
-**Watches** (`trigger_kind`: status / outcome / task_due), **Value** (`trigger_value` — options
-re-derive from the kind so a rejectable value can't be picked), **Notifies** (`recipient_role`),
-**Threshold (min)** (hidden for outcome), **Hours basis** (`hours_mode`), **Channels**. On success
-the server-returned row prepends and renders in its group. A new policy arms automatically — the
-engine reads `getSlaPolicies()` per run, so the next matching lead picks it up with no deploy.
+**Lead Revival** (`/settings/lead-revival` → `RevivalPoliciesPanel`). Exactly three rows, one per
+trigger status (touched, in discussion, nurturing; `cold` is never a trigger), each with Silence
+(days, 0 to 365), Daily cap per agent (0 to 500) and Active. Numbers save on blur, the toggle at
+once; all optimistic with a toast revert, through `updateRevivalPolicyAction`. The panel keeps its
+four-column table on a phone (left as is in the 2026-09-26 mobile pass). Everything else:
+`../modules/revival.md`.
 
-Writes: **`createSlaPolicyAction`** (`actions/sla-policies.ts`) — mirrors `updateSlaPolicyAction`
-(Zod → `requireProfile(['admin','founder'])` → admin-member `createSlaPolicy` insert →
-`revalidatePath('/settings/follow-up-engine')`). Two structural safeguards:
+**Tickets** (`/settings/tickets`): `TicketSlaPoliciesPanel`, `TicketLabelsPanel`,
+`IntakeLessonsPanel`. See `./tickets.md`.
 
-- **The code is system-generated, never user-set.** The action mints an inert `USR-<id>` (the
-  schema has no `code` field) and asserts it carries no reserved `SLA-`/`CAD-`/`TASK-` prefix
-  before the write. A `CAD-` code would silently become a self-re-arming daily task generator
-  (`isCadenceCode`); `USR-` is provably inert. `auto_task` stays false (a user rule is a
-  notification rule, not a cadence).
-- **`trigger_value` is validated against `trigger_kind` server-side** (`CreateSlaPolicySchema`
-  refine): status → a real `LeadStatus`, outcome → a real `CallOutcome`, task_due →
-  `gia_followup` (the literal `TASK_DUE_VALUES = {'gia_followup'}` token — this is the SLA
-  rule-catalog value on `sla_policies.trigger_value` from migration 0111, **distinct from** the
-  `task_category` enum that collapsed `gia_followup` in migration 0138; the SLA token still
-  exists and is unaffected). A value that can never fire (→ `STALE_FIRE` forever) is rejected by
-  the action, not just the dropdown.
-
-No delete path — switch a rule off via its active toggle.
-
-### Lead Revival page (`/settings/lead-revival` → `RevivalPoliciesPanel`, Lead Revival R1; own route since 2026-06-25)
-
-`page.tsx` mirrors the follow-up-engine gate (`redirect('/settings')` for non-admin/founder),
-awaits `getAllRevivalPolicies()`, and renders the same `BackButton` header. Empty list →
-`<EmptyState title="No revival policies yet">`. The panel is the Lead Revival R1 config
-surface (`SectionCard` titled "Lead revival"). There are **exactly three
-rows**, one per `REVIVAL_TRIGGER_STATUSES` value: **touched / in_discussion / nurturing**
-(`cold` is deliberately NOT a trigger — terminal/won statuses are never revived). The migration
-0119 `CHECK (trigger_status IN ('touched','in_discussion','nurturing'))` constrains the table to
-exactly these; seed defaults are silence 60 / 60 / 90 days, daily cap 25 each.
-
-**Three editable knobs per row:**
-
-- **Silence (days)** — a draft + **blur-save** number input (commits on blur / Enter; clamped
-  `0–365`, must be an integer or the draft is discarded with no write).
-- **Daily cap / agent** — same draft + blur-save model (clamped `0–500`).
-- **Active** — a per-row `Toggle` that **saves immediately** (optimistic; inactive rows render
-  at `opacity 0.55`).
-
-All three commit through `save()` optimistically and **revert with a toast** on `{ error }` — the
-save semantics mirror `SlaPoliciesPanel` exactly (the threshold/cap save on blur-when-changed; the
-toggle saves on flip). Writes go through `updateRevivalPolicyAction` (`actions/revival.ts` — Zod
-`UpdateRevivalPolicySchema` → `requireProfile(['admin','founder'])` → `updateRevivalPolicy` admin
-member → `revalidatePath('/settings/lead-revival')`). The daily sweep (`sweepRevivalCandidatesTask`)
-reads the policies per run, so an edit applies on the next sweep with no deploy. Seeded
-server-side by the sub-route's `page.tsx` via `getAllRevivalPolicies` (`revival-service`).
-Full module contract: `../modules/revival.md`.
+**Teach Elaya** (`/settings/teach-elaya` → `TeachElayaHub`): four doors, each saying what it does
+and who edits it. **Training** (`/admin/elaya-training`, the customer-facing content library;
+managers curate their own domain, admin and founder every domain), **Playbooks**
+(`/settings/elaya-playbooks`, admin and founder; `ElayaPlaybooksPanel` with the "Speak a playbook"
+draft and the Try-it trace), **Requests** (`/settings/elaya-requests`, admin and founder;
+`ElayaRequestsPanel`, the improvement requests she raises when told she was wrong), **Exam** (no
+link: "runs from the engineering side today"). Contracts: `../modules/elaya.md`.
 
 ## 5. States
 
-- **Loading:** `settings/loading.tsx` (PageSkeletons composition); each sub-route ships its own `loading.tsx` (`settings/follow-up-engine/loading.tsx`, `settings/lead-revival/loading.tsx`).
-- **Empty:** `<EmptyState>` (Playfair italic) when the domain has no pool members, or when filters match none.
-- **Error:** optimistic toggle / policy edit rolls back + toast on `{ error }`.
+- **Loading:** `settings/loading.tsx` and one `loading.tsx` per sub-route, each in its page's shape.
+- **Empty:** `AgentSettingsTable` renders `<EmptyState>`: "No agents in the roster yet." or "No
+  agents match your filters." The follow-up engine and lead revival pages render a framed
+  `<EmptyState>` when their policy list is empty.
+- **Error:** every optimistic toggle or edit rolls back with a toast on `{ error }`. A shift save
+  error shows a toast and keeps the local value.
 
 ## 6. Invariants
 
-Deep dive §13 — shift fields are advisory (ingestion reads them; the DB does not enforce);
-`is_active=false` removes from the pool instantly; one config row per pool member (agents +
-managers — UNIQUE, auto-created by trigger); times are IST; `shift_days` is Mon-first in UI
-but stored as JS day-of-week (0=Sun).
+Deep dive §8.13. The short list: shift fields are advisory for assignment (only the SLA engine
+reads them); `is_active = false` removes a person from the pool at once; one config row per pool
+member, created by trigger; times are stored `HH:MM` 24-hour; `shift_days` is stored as JS
+day-of-week (0 = Sunday) and shown Monday-first; a manager only touches their own domain's rows.
 
 ## 7. Open items
 
-None recorded.
+- `/settings` stays reachable for finance, marketing, tech and business managers, where the Gia
+  routing roster means nothing. Consider dropping `/settings` from those route maps the way it was
+  dropped for concierge, or giving those domains something to configure.
+- `RevivalPoliciesPanel` keeps a sideways table on a phone; it needs a card-per-policy layout.
+- Tech workbench accounts open every config editor but cannot save (by design of the workbench;
+  it can confuse a tester).
 
 ---
 
 ## 8. Deep dive
 
-> Section numbering preserved from the original intelligence document.
+### 8.1 Routes
 
-### 1. Module Overview
+| Route | Files | Loads |
+| ----- | ----- | ----- |
+| `/settings` | `page.tsx`, `loading.tsx` | `getAgentRosterByDomain(isPrivileged ? '*' : profile.domain)` |
+| `/settings/follow-up-engine` | `page.tsx`, `loading.tsx` | `getAllSlaPolicies()` |
+| `/settings/lead-revival` | `page.tsx`, `loading.tsx` | `getAllRevivalPolicies()` |
+| `/settings/tickets` | `page.tsx`, `loading.tsx` | ticket SLA policies, queendoms, settings, lessons, scoreboard |
+| `/settings/teach-elaya` | `page.tsx`, `loading.tsx` | nothing (static hub) |
+| `/settings/elaya-playbooks` | `page.tsx`, `loading.tsx` | the playbooks + a chat seed for the Try-it box |
+| `/settings/elaya-requests` | `page.tsx`, `loading.tsx` | the improvement requests |
 
-The settings page configures three things on a single `agent_routing_config` row per **pool
-member** (agents + managers — `ROUTING_POOL_ROLES`, migration 0124):
+All under `src/app/(dashboard)/settings/`. Code-adjacent notes: `src/app/(dashboard)/settings/CLAUDE.md`.
 
-1. **Gia lead-assignment pool membership** — `is_active`.
-2. **Per-member shift windows** — `shift_start` / `shift_end`.
-3. **Per-member work days** — `shift_days` (added migration 0059; `null` = inherit global `BUSINESS_HOURS`).
+**The hub page** (`page.tsx`):
 
-Admin/founder additionally get two `SettingsLinkCard`s above the roster, linking to the
-dedicated config sub-routes (`/settings/follow-up-engine`, `/settings/lead-revival`).
-Three routes; `/settings` itself is one member roster table.
+```text
+getCurrentProfile()
+  no profile            → redirect /login
+  !hasManagerPageAccess → redirect /dashboard
+  isPrivileged = role is admin or founder (literal)
+  roster = getAgentRosterByDomain(isPrivileged ? '*' : profile.domain)
+  <h1>Settings.</h1> + PageControls (bell)
+  <AgentSettingsTable initialRoster callerRole callerDomain
+      beforeList={isPrivileged ? <four SettingsLinkCards> : null} />
+```
 
-| Item | Value |
-| ------ | ------ |
-| Routes | `GET /settings` → `src/app/(dashboard)/settings/page.tsx`; `GET /settings/follow-up-engine` and `GET /settings/lead-revival` → their own `page.tsx` + `loading.tsx` |
-| UI | `/settings`: `src/components/settings/AgentSettingsTable.tsx` (contains the inline `WorkDayPicker` sub-component) + `SettingsLinkCard.tsx` (admin/founder). Sub-routes: `SlaPoliciesPanel.tsx` / `RevivalPoliciesPanel.tsx` with `BackButton` headers |
-| Access | `/settings`: `agent` / `guest` → `redirect("/dashboard")`; `manager` / `admin` / `founder` only. Sub-routes: non-admin/founder → `redirect("/settings")` |
-| Data load | `/settings` awaits only `getAgentRosterByDomain(rosterDomain)` → `initialRoster` prop. Each sub-route awaits its own policy list (`getAllSlaPolicies()` / `getAllRevivalPolicies()`) → `initialPolicies` prop. No URL params, no Suspense split. |
+One blocking fetch, no Suspense split. The sub-route pages follow the same shape with a
+`BackButton` ("Back to Settings", or "Back to Teach Elaya" for playbooks and requests) left of the
+`<h1>`, which keeps the page-title dot.
 
-#### Sidebar — Configuration section
+### 8.2 History
 
-- Section label: **Configuration** (`NavSection`).
-- Visible when `isManager` (`manager` \| `admin` \| `founder`).
-- Items from `getConfigurationNav(isPrivileged)`, each filtered through `canAccessRoute`:
-  - **Ad Creatives** — `/admin/ad-creatives`, `Film` icon — **admin/founder only** (`isPrivileged`), listed first when present.
-  - **Elaya Training**: `/admin/elaya-training`, `GraduationCap` icon; filtered by `canAccessRoute`.
-  - **Settings**: `/settings`, `Settings` icon; **manager, admin, founder**. Active state matches `/settings` and its sub-routes (`pathname.startsWith(href + "/")`).
-- Position: after Analytics nav block, before Admin section (admin/founder).
+- **2026-05-30:** a tab shell with an Agent Roster tab and an Agent Shifts tab. Collapsed into one
+  table: the pool switch and the shift are the same people and the same row.
+- **2026-06-02 (0059):** `shift_days` and the `WorkDayPicker`.
+- **2026-06-16 (0124):** managers joined the routing pool and the roster.
+- **2026-06-24:** the SLA and revival panels moved off the page to their own sub-routes; the
+  Follow-up Engine became situation cards.
+- **2026-07-06:** the link cards moved below the filter bar (`beforeList`).
+- **2026-09-15:** `/settings/tickets`.
+- **2026-09-21 / 09-22:** Playbooks, then the Teach Elaya hub (Training moved under it).
+- **2026-09-25:** Requests (a fourth door); `/settings` left the concierge route map.
 
----
+### 8.3 Data model: `gia.agent_routing_config`
 
-### 2. Architectural History
+First created by `20260526000002_agent_routing_config.sql` (0002); `shift_days` added by 0059;
+moved from `public` to `gia` by 0210.
 
-**Original (2026-05-30):** Tab shell + two tabs.
+| Column | Type | Null | Default |
+| ------ | ---- | ---- | ------- |
+| `id` | uuid | no | `gen_random_uuid()` |
+| `agent_id` | uuid | no | UNIQUE FK → `public.profiles(id)` ON DELETE CASCADE |
+| `is_active` | boolean | no | `true` |
+| `shift_start` | time | yes | |
+| `shift_end` | time | yes | |
+| `shift_days` | integer[] | yes | `NULL` |
+| `updated_at` | timestamptz | no | `now()` |
 
-| Deleted file | Role |
-| -------------- | ------ |
-| `src/app/(dashboard)/settings/SettingsShell.tsx` | `'use client'` shell; URL `?tab=roster\|shifts`; `router.replace` + `useTransition`; switched between tabs. |
-| `src/components/settings/AgentRosterTab.tsx` | Card grid; domain filter pills; **In Pool** `Toggle` via `toggleAgentRouting`; optimistic updates. |
-| `src/components/settings/AgentShiftsTab.tsx` | Table layout; `<input type="time">`; blur-to-save shifts; `computeActiveHours`; clear shift. |
+- **`shift_days`:** JS day-of-week values (0 = Sunday … 6 = Saturday). `NULL` means "use
+  `BUSINESS_HOURS`". At least one day when set (Zod and the UI enforce it; there is no DB CHECK).
+- **Auto-creation:** `handle_agent_routing_config()` fires AFTER INSERT OR UPDATE on
+  `public.profiles` and inserts `(agent_id, is_active = true)` when the role is agent or manager,
+  on insert or when a role changes into one of those. `ON CONFLICT (agent_id) DO NOTHING`. 0124
+  backfilled rows for existing managers.
+- **Semantics:** `is_active` is immediate pool membership (round-robin reads it, together with
+  `profiles.is_active` and `is_on_leave`). The shift columns are **advisory for assignment**: only
+  the SLA engine reads them; `get_next_round_robin_agent` never does, and no DB rule enforces "in
+  shift".
+- **RLS:** SELECT for any signed-in user; UPDATE for manager, admin, founder; no app INSERT (the
+  trigger inserts); no DELETE (switch off with `is_active`, clear a window with nulls).
 
-**Collapse rationale:** Roster (pool toggle) and shifts (time window) are the same agents and same `agent_routing_config` row — a tab split added navigation cost without separating data or permissions.
+### 8.4 Service: `agent-routing-service.ts`
 
-**Current:** `page.tsx` → `AgentSettingsTable` only. Filter bar + card rows (not a `<table>`). Shifts use `TimePicker`; work days use `WorkDayPicker`; **save fires on each valid pick / day toggle, not on blur** (the `<input type="time">` + blur model from `AgentShiftsTab` is gone).
+Exports (five): `getAgentRoutingConfig`, `getAgentRoutingConfigAdmin`, `getAgentRosterByDomain`,
+`setAgentShift`, `setRoutingActive`. (`getRoutingConfigsByDomain` and `getActiveRoutingConfigs`
+no longer exist.) Every query on the config table goes through `giaDb()`.
 
-**Work Days addition (2026-06-02, migration 0059):** Added the `shift_days` column and the `WorkDayPicker` control. Each agent can override the global work-week (Mon–Sat) with a personal day set; `null` inherits `BUSINESS_HOURS`. This is read by the SLA engine via `buildAgentShiftOverride`.
+**`getAgentRosterByDomain(domain | '*')`** (admin client; the caller enforces the domain):
 
----
+1. Read `public.profiles` for `role IN ROUTING_POOL_ROLES`, optionally `domain = …`, ordered by
+   domain then name.
+2. Read `gia.agent_routing_config` for those ids in a second query. PostgREST cannot embed across
+   schemas (PGRST200), so the old `agent_routing_config!inner` embed became two reads joined in
+   code (2026-09-18).
+3. Keep only people who have a config row (the old inner-join rule) and map to `AgentRosterRow`:
+   profile columns (`id`, `full_name`, `avatar_url`, `job_title`, `domain`, `is_active`,
+   `is_on_leave`) plus `routing_is_active`, `routing_config_id`, `shift_start`, `shift_end`,
+   `shift_days`. A failed config read logs and returns `[]`.
 
-### 3. Data Model — `agent_routing_config`
+**`setAgentShift(agentId, start, end, days)`** writes all three shift fields in one update (admin
+client; a manager cannot UPDATE another person's row under RLS). Nulls clear.
+**`setRoutingActive(agentId, isActive)`** writes `is_active` with the session client (RLS applies).
+**`getAgentRoutingConfigAdmin`** is the admin-client twin used where no session exists: the SLA
+code in `lib/actions/sla.ts` (webhook and Trigger.dev contexts) and `performance-service.ts`.
 
-**First migration:** `supabase/migrations/20260526000002_agent_routing_config.sql` (inventory **0002**).
-`shift_start` and `shift_end` are defined there as optional `time` columns.
-`shift_days` was **added later** by `supabase/migrations/20260602000059_agent_shift_days.sql` (inventory **0059**).
-The table is also referenced by `20260527000007_round_robin_fn.sql` (the round-robin function) and `CLAUDE.md`.
+### 8.5 Actions: `agent-routing.ts`
 
-| Column | Type | Nullable | Default |
-| -------- | ------ | ---------- | --------- |
-| `id` | `uuid` | NO | `gen_random_uuid()` |
-| `agent_id` | `uuid` | NO | — (UNIQUE FK → `profiles.id` ON DELETE CASCADE) |
-| `is_active` | `boolean` | NO | `true` |
-| `shift_start` | `time` | YES | — |
-| `shift_end` | `time` | YES | — |
-| `shift_days` | `integer[]` | YES | `NULL` |
-| `updated_at` | `timestamptz` | NO | `now()` |
+**`setAgentShiftAction(input)`**
 
-**`shift_days` semantics (migration 0059 `COMMENT`):** JS day-of-week array (`0=Sun…6=Sat`). `NULL` = use global `BUSINESS_HOURS`. Min 1 element when set (enforced in Zod + UI, **not** by a DB CHECK). Stored as raw JS day-of-week values; the UI displays Mon-first (`[1,2,3,4,5,6,0]`) — display order is purely cosmetic.
+1. `SetAgentShiftSchema.safeParse` (Rule 02).
+2. `requireProfile(['manager','admin','founder'])` (A-18).
+3. Manager only: `getProfileById(agentId)`; the target's domain must equal the caller's, else
+   `formErrors.unauthorized`. A manager's own row passes.
+4. `setAgentShift(...)`, then `revalidatePath('/settings')`. Returns `ActionResult`; never throws.
 
-**Auto-creation trigger (migration 0124):** `handle_agent_routing_config()` on `AFTER INSERT OR UPDATE ON profiles`. Inserts `(agent_id, is_active=true)` when `role IN ('agent','manager')` — on INSERT, or on UPDATE where a non-pool role (guest/admin/founder) becomes a pool role (agent/manager). `ON CONFLICT (agent_id) DO NOTHING` — idempotent. Migration 0124 also backfilled config rows for existing managers. `shift_*` columns are left at their defaults (`shift_days` = `NULL`).
+**`toggleAgentRouting(formData)`**
 
-#### Semantics
+1. Inline `toggleRoutingSchema`: `agent_id` (uuid), `is_active` (`formData.get('is_active') ===
+   'true'`).
+2. `requireProfile(['manager','admin','founder'])`.
+3. Manager only: the same-domain check (security audit F-2, 2026-06-11), backed by RLS.
+4. `setRoutingActive(...)`; revalidates `/admin/users`, `/admin/users/[id]`, `/settings`.
 
-- **`is_active`:** Immediate pool membership. `false` removes the agent from round-robin eligibility on the next assignment read. Not time-based.
-- **`shift_start` / `shift_end` / `shift_days`:** **Advisory for assignment.** Stored for ops/UI and consumed by the **SLA engine** (`src/lib/utils/sla.ts`), not by the round-robin assignment function. `get_next_round_robin_agent` filters on `is_active` (and `profiles.is_active` / `is_on_leave`), never on shift columns. No DB trigger or CHECK enforces "in shift" for assignment.
-
-#### RLS
-
-- SELECT: all authenticated (`auth.uid() IS NOT NULL`).
-- INSERT: **trigger only** — no app INSERT policy.
-- UPDATE: `manager` \| `admin` \| `founder` via `get_user_role()`.
-- DELETE: none (deactivate via `is_active`; clear a window by writing `null`s).
-
----
-
-### 4. Service Layer — `agent-routing-service.ts`
-
-Full export list: `getAgentRoutingConfig`, `getAgentRoutingConfigAdmin`, `getRoutingConfigsByDomain`, `getActiveRoutingConfigs`, `getAgentRosterByDomain`, `setAgentShift`, `setRoutingActive`.
-
-#### `getAgentRosterByDomain(domain: AppDomain | '*')`
-
-- **Join:** `profiles` ← `agent_routing_config!inner` (pool members — agents + managers — with a config row; the `!inner` means a pool member with no config row is absent until the auto-create trigger / backfill gives them one).
-- **Filter:** `.in('role', ROUTING_POOL_ROLES)` (= `['agent','manager']`, migration 0124); if `domain !== '*'`, `.eq('domain', domain)`.
-- **Member:** `createAdminClient()` — RLS blocks managers from cross-profile joins; **callers must enforce domain** at page/action layer (`page.tsx` passes `caller.domain` or `'*'`).
-- **Sort:** `domain` ASC, `full_name` ASC.
-- **Returns:** `AgentRosterRow[]` (mapped flat):
-
-| Field | Source |
-| ----- | ------ |
-| Profile columns | `id`, `full_name`, `avatar_url`, `job_title`, `domain`, `is_active`, `is_on_leave` from `profiles` |
-| Routing columns | `routing_is_active`, `routing_config_id`, `shift_start`, `shift_end`, `shift_days` from `agent_routing_config` |
-
-Defaults on a missing/empty embedded config: `routing_is_active ?? true`, `routing_config_id ?? ''`, `shift_start ?? null`, `shift_end ?? null`, `shift_days ?? null`.
-
-#### `setAgentShift(agentId, shiftStart, shiftEnd, shiftDays)`
-
-- **Member:** `adminClient` (manager cannot UPDATE another agent's config under RLS).
-- **Updates:** `shift_start`, `shift_end`, `shift_days` in one write. Passing `null` for a field clears it. The clear-all path writes `(null, null, null)`.
-- **Returns:** `{ data: AgentRoutingConfig \| null, error: string \| null }`.
-- **Note:** the `.update(...)` is cast through `as any` (eslint-disabled) because the generated Supabase types lagged the `shift_days` column at the time of writing.
-
-#### `setRoutingActive(agentId, isActive)`
-
-- **Member:** `createClient()` (session) — RLS `routing_config_update` applies.
-- **Updates:** `is_active` only.
-- **Returns:** same shape as above.
-
-#### `getAgentRoutingConfigAdmin(agentId)`
-
-- `adminClient` variant of `getAgentRoutingConfig`. Used by `lib/actions/sla.ts` to fetch shift config in webhook/Trigger.dev contexts where no user session exists.
-
-Also exported (not used on the settings page directly): `getAgentRoutingConfig`, `getRoutingConfigsByDomain`, `getActiveRoutingConfigs`.
-
----
-
-### 5. Actions — `agent-routing.ts`
-
-#### `setAgentShiftAction(input: unknown)`
-
-1. `SetAgentShiftSchema.safeParse(input)` — first line (Rule 02). On failure, returns the first Zod issue message (or `formErrors.generic`).
-2. `requireProfile(["manager","admin","founder"])` — THE session/role guard (A-18; `_auth.ts`). On `!auth.ok`, returns `auth.result` (`formErrors.unauthorized`). **Never a hand-rolled `getCurrentProfile()` + role check** — the root CLAUDE.md forbids it in actions.
-3. **Manager gate (S-06):** only when `caller.role === "manager"` — `getProfileById(agentId)` → `agentProfile.domain === caller.domain`, else `formErrors.unauthorized`. A manager editing their own row passes this.
-4. `setAgentShift(agentId, shiftStart, shiftEnd, shiftDays ?? null)`.
-5. `revalidatePath("/settings")`.
-6. Returns `ActionResult<AgentRoutingConfig>`; never throws.
-
-#### `toggleAgentRouting(formData: FormData)`
-
-1. Inline schema (`toggleRoutingSchema`): `agent_id` (uuid, error code `agent_id_invalid`), `is_active` (boolean; `formData.get("is_active") === "true"`).
-2. `requireProfile(["manager","admin","founder"])` (A-18). On `!auth.ok`, returns `auth.result`.
-3. **Manager gate (S-06, audit F-2):** when `caller.role === "manager"` — `getProfileById(agent_id)` → `agentProfile.domain === caller.domain`, else `formErrors.unauthorized`. (RLS on UPDATE backs this; the explicit check was added 2026-06-11.)
-4. `setRoutingActive(agent_id, is_active)`.
-5. **Revalidates:** `/admin/users`, `/admin/users/${agent_id}`, `/settings` (call order in code; cosmetic).
-
----
-
-### 6. Validation — `SetAgentShiftSchema`
+### 8.6 Validation: `SetAgentShiftSchema`
 
 ```ts
 agentId:    uuid
@@ -314,245 +293,107 @@ shiftDays:  z.array(z.number().int().min(0).max(6)).min(1, "Select at least one 
               .nullable().optional()
 ```
 
-- **Cross-field refine:** when both `shiftStart` and `shiftEnd` are non-null, `shiftEnd > shiftStart` (string compare on `HH:MM`). Failure: `{ message: "Shift end must be after shift start.", path: ["shiftEnd"] }`.
-- **`shiftDays`:** optional + nullable. `null` (or omitted) = inherit global `BUSINESS_HOURS`. When provided as an array it must have ≥ 1 element (`"Select at least one work day."`) and each value must be `0–6`.
-- **Nullable pairs:** both times `null` clears the window; one null + one set fails the time refine only when both are set — the member blocks partial saves before the action (`"Set both times to save"`).
+When both times are set, `shiftEnd > shiftStart` (string compare), else "Shift end must be after
+shift start." on `shiftEnd`. `null` or missing days means "inherit". The table blocks a
+half-filled window before calling the action ("Set both times to save").
 
-Type export: `SetAgentShiftInput = z.infer<typeof SetAgentShiftSchema>`.
+### 8.7 TimePicker
 
----
+`src/components/ui/TimePicker.tsx`, shared with `DatePicker`'s embedded time panel through
+`TimePickerWheelPanel`. The contract that matters here:
 
-### 7. TimePicker Component
+- **Strings only, never `Date`:** the value is `HH:MM` 24-hour (Postgres `time`); seconds are
+  stripped by `normalizeTimeHHMM` (`lib/utils/dates.ts`), used on load and on every pick.
+- **Typed entry (2026-08-08):** a compact input above the wheels accepts `9`, `930`, `9:30`,
+  `9.30`, `21:30`, `9:30 pm`; commits on Enter or blur; an invalid entry reverts; Escape cancels
+  without closing.
+- **Wheels:** hour 1 to 12, minute 0 to 59, an AM/PM toggle; item height is measured at runtime so
+  zoom and OS text size still snap correctly.
+- **Panel:** portaled to `document.body` at `--z-modal-nested`, flips up or left when it would
+  overflow.
 
-`src/components/ui/TimePicker.tsx` — shared with `DatePicker` embed via `TimePickerWheelPanel`.
+The roster passes `disabled` while saving, a fixed width, and an `aria-label` per field.
 
-#### Props
+### 8.8 WorkDayPicker
 
-| Prop | Type | Notes |
-| ------ | ------ | -------- |
-| `value` | `string \| null` | `HH:MM` 24-hour (PostgreSQL `time`); seconds stripped via `normalizeTimeHHMM` |
-| `onChange` | `(string \| null) => void` | Fires on every wheel/toggle change while open |
-| `placeholder?` | string | default `"Set time…"` |
-| `disabled?` | boolean | Agent table passes `disabled={isSaving}` |
-| `style?` | `CSSProperties` | Agent table sets `width: "104px"` |
-| `aria-label?` | string | Agent table sets `Shift start/end for {name}` |
+Defined at the top of `AgentSettingsTable.tsx` (not a `ui/` primitive). Seven pills in Monday-first
+order (`[1,2,3,4,5,6,0]`), labels Mo … Su. `DEFAULT_WORK_DAYS = [1,2,3,4,5,6]` is the display
+default when `shift_days` is `null`. Clicking the only selected day does nothing, so the set can
+never be empty. Each pill has `aria-pressed` and an `aria-label`. A change saves at once.
 
-#### Trigger
+### 8.9 AgentSettingsTable
 
-- **Size:** `height: 32`, `minWidth: 88`, `width: 100%` in cell.
-- **Chrome:** `--theme-paper-subtle` bg; `Clock` 13px; label `displayLabel` → `"9:00 AM"` or placeholder.
-- **Focus/open:** border `--theme-accent`, `box-shadow: var(--shadow-focus)`.
+Client component. Props: `initialRoster`, `callerRole`, `callerDomain`, `beforeList?`.
 
-#### Panel
+- **State:** the roster (optimistic pool flips), a per-person shift map `{ start, end, days, error
+  }` seeded through `normalizeTimeHHMM`, filter state (search, domain, pool), and two in-flight
+  sets (`pendingIds` for pool toggles, `savingIds` for shift saves).
+- **Filter bar:** `FilterBar` with search (name and job title), a Pool filter (in / out), and a
+  Domain filter for admin/founder when more than one domain is present. Client-side, no refetch.
+- **Row** (a `motion.div` card): avatar, name, job title, an On leave pill, the inline shift
+  hint or error; a domain badge for admin/founder; Shift start and Shift end (`TimePicker`);
+  Active hours (`computeActiveHours`, shown when both times are set); Work days; In pool
+  (`Toggle`); and a Clear button when a time is set.
+- **Save flow:** every valid pick or day toggle calls `validateAndSave` at once (never on blur).
+  Both times empty → save `(null, null, null)`. One empty → "Set both times to save". Bad format →
+  "Use HH:MM format". End not after start → "End must be after start". Valid →
+  `setAgentShiftAction`. A server error toasts and keeps the local value.
+- **Clear** resets the row to `{ "", "", DEFAULT_WORK_DAYS }` locally and saves `(null, null,
+  null)`, so the person reverts to `BUSINESS_HOURS`.
+- **Pool toggle:** optimistic flip, `toggleAgentRouting`, revert and toast on error.
+- **Dimming:** rows in flight dim through Framer `animate={{ opacity }}`, not inline style, so the
+  entrance and the dim share one motion channel; the hover lift is skipped while in flight.
 
-- **Portal:** `createPortal(..., document.body)` + `position: fixed` — escapes card/stacking contexts (settings rows no longer clip the panel).
-- **Position:** `getBoundingClientRect` on open (with `visualViewport` offset correction); flip **up** if insufficient space below; flip **left** if panel would overflow viewport right.
-- **Z-index:** `var(--z-modal-nested)`.
-- **Columns:** hour wheel `1–12`, minute wheel `0–59` (all minutes, scroll-snap), `:` separator, **AmpmToggle** below wheels.
-- **WheelColumn:** scroll-snap; auto-scroll to selected index; `ResizeObserver` measures real item height at runtime (falls back to `ITEM_HEIGHT = 40` until it fires) so zoom / OS text-size changes still snap to the correct index.
+### 8.10 The SLA engine and shifts
 
-#### Serialisation contract (critical)
+`src/lib/utils/sla.ts` is the only behavioural reader of the shift columns.
+`buildAgentShiftOverride(start, end, days)` returns `null` when any of the three is missing, and
+every caller then falls back to `BUSINESS_HOURS` (Monday to Saturday, 09:00 to 19:00 IST, Sunday
+off). With all three it returns `{ startHour, startMinute, endHour, endMinute, workDays }`, which
+`isOffDay`, `resolveStart`, `resolveEnd`, `isWithinBusinessHours` and `nextBusinessDeadline`
+accept. The UI's "both times or none" rule means a half window never reaches the engine.
 
-- **No `Date` objects** — string-only; timezone-safe.
-- **Internal state:** 12-hour `{ hour, minute, meridiem }`.
-- **`parse("HH:MM")`:** uses `normalizeTimeHHMM` first; `h24 >= 12` → PM; `h24 % 12 === 0` → hour `12` (midnight/noon).
-- **`serialise(h, m, meridiem)` → `"HH:MM"`:** AM: hour 12 → 0; PM: hour 12 → 12, else `hour + 12`.
-- **`normalizeTimeHHMM`:** `src/lib/utils/dates.ts` — `^([01]\d|2[0-3]):([0-5]\d)` from `"09:00:00"` → `"09:00"`. Used in TimePicker and in AgentSettingsTable (initial `shifts` map + each `handleTimeChange`).
+### 8.11 Access control summary
 
-#### Draft state / AM-PM toggle
-
-- `draft` is set **only when the panel opens** (`wasOpenRef` guard) — not on every `value` prop change while open. Avoids the AM/PM control re-mounting during hour/minute scroll.
-- **`AmpmToggle`** uses static pressed styles, no Framer `layoutId` (a shared-layout spring caused cross-column flicker — fixed 2026-05-31).
-
----
-
-### 8. WorkDayPicker Component
-
-Inline sub-component defined at the top of `src/components/settings/AgentSettingsTable.tsx` (not a `src/components/ui/` primitive).
-
-#### Constants
-
-- `DAY_DISPLAY_ORDER = [1, 2, 3, 4, 5, 6, 0]` — Mon→Sat→Sun render order.
-- `DAY_LABELS = { 0:"Su", 1:"Mo", 2:"Tu", 3:"We", 4:"Th", 5:"Fr", 6:"Sa" }`.
-- `DEFAULT_WORK_DAYS = [1, 2, 3, 4, 5, 6]` — Mon–Sat; the UI display default when `shift_days` is `null`.
-
-#### Props (WorkDayPicker)
-
-| Prop | Type | Notes |
-| ----- | ----- | ----- |
-| `days` | `number[]` | currently selected JS day-of-week values |
-| `onChange` | `(days: number[]) => void` | fires on every toggle |
-| `disabled?` | `boolean` | table passes `disabled={isSaving}` |
-
-#### Behaviour
-
-- Renders 7 pill buttons in `DAY_DISPLAY_ORDER`. Each pill `26×26px`, `--radius-xs`, `--text-2xs`.
-- **Selected:** `--theme-accent-surface` bg + `--theme-accent` border + `--theme-accent` text + `--weight-semibold`.
-- **Unselected:** transparent bg + `--theme-paper-border` border + `--theme-text-tertiary` text + `--weight-normal`.
-- **Last-day guard:** clicking the only selected pill is a no-op (`days.length === 1` → return). The set can never reach zero days.
-- `aria-pressed` + `aria-label` (`Select/Deselect {label}`) per pill. `transition` on background/border-color/color only (no layout-affecting properties).
-- On change, `handleDaysChange` calls `validateAndSave` immediately (same debounce-free save pattern as the time pickers).
-
----
-
-### 9. AgentSettingsTable
-
-`'use client'`. Props: `initialRoster`, `callerRole`, `callerDomain`.
-
-#### Local state
-
-- `roster` — seeded from `initialRoster`; mutated optimistically by the pool toggle.
-- `shifts: Record<string, ShiftState>` where `ShiftState = { start: string; end: string; days: number[]; error: string | null }`. Seeded from `initialRoster`: `start/end` via `normalizeTimeHHMM(...) ?? ""`, `days` via `agent.shift_days ?? DEFAULT_WORK_DAYS`.
-- `search`, `domainFilter`, `poolFilter` — client-side filter state.
-- `pendingIds` (pool toggles in flight), `savingIds` (shift saves in flight). Both are `Set<string>`.
-
-#### Row layout (all roles)
-
-Flex card per agent (`motion.div`), not an HTML table.
-
-| Zone | Content |
-| ------ | --------- |
-| Agent | `Avatar` `sm`, `--radius-sm`; name (`--weight-semibold`); job title; inline shift error / "Set both times to save" hint; **On Leave** pill if `is_on_leave` |
-| Domain | badge — **admin / founder only** (`isPrivileged`) |
-| Shift Start | `label-micro` + `TimePicker` **104px** wide |
-| Shift End | same |
-| Active | `computeActiveHours` (shown only when both times set) or `—` |
-| Work Days | `label-micro` + `WorkDayPicker` |
-| In Pool | label + `Toggle` `sm` |
-| Clear | `Button` `danger` `xs` 28×28 + `X` when either shift time set; else 28px spacer |
-
-The shift controls (Start, End, Active, Work Days) share one `flex-wrap` group; a `flex: 1 1 0` spacer pushes In Pool + Clear to the right.
-
-#### Role-specific
-
-- **Domain badge:** `admin` / `founder` only (`isPrivileged`).
-- **Domain filter:** `FilterDropdown` when `showDomainFilter && presentDomains.length > 1` — client-side over `roster`, no refetch. `showDomainFilter = isPrivileged`.
-- **Pool filter:** `FilterDropdown` (`POOL_FILTER_ITEMS`: in pool / out of pool).
-- **Search:** `SearchBar` (size `sm`) on name + job title.
-- Filter bar header: `SlidersHorizontal` icon + active-count badge (`activeCount` = number of engaged filters) + agent count on the right (`{n} agent(s)`).
-
-#### Empty state
-
-Playfair italic heading (`--font-serif`, italic). Two messages keyed on `roster.length`:
-
-- `roster.length === 0` → "No agents in the roster yet." / "Agents appear here once they are added to your domain."
-- otherwise → "No agents match your filters." / "Try adjusting your search or filters."
-
-#### Concurrent mutation prevention
-
-| Set | Added | Removed | Effect |
-| ----- | -------- | --------- | -------- |
-| `pendingIds` | `handleToggle` start | after `toggleAgentRouting` | Toggle disabled; row `animate={{ opacity: 0.6 }}` |
-| `savingIds` | `saveShift` start | after `setAgentShiftAction` | TimePickers + WorkDayPicker `disabled`; same opacity |
-
-**Opacity via Framer `animate={{ opacity }}`** (`animate={{ opacity: (isSaving || isPending) ? 0.6 : 1, y: 0 }}`), not `style.opacity` — the entrance animation (`initial` opacity/y) and dimming share one motion channel. Hover lift (`translateY(-1px)` + `--shadow-2`) is skipped while saving/pending.
-
-#### Assignment pool toggle
-
-- `Toggle` → `handleToggle` → optimistic `routing_is_active` flip → `toggleAgentRouting(FormData)`.
-- Error: revert that roster row + `toast.danger("Couldn't update pool status", …)`.
-
-#### Shift / work-day save flow
-
-- **Trigger:** `TimePicker` `onChange` → `handleTimeChange`; `WorkDayPicker` `onChange` → `handleDaysChange`. Both call `validateAndSave(agent, start, end, days)` — never on blur.
-- Both times empty → `saveShift(id, null, null, null)` immediately (a day-only change with no times still clears to null on the server, matching "use BUSINESS_HOURS").
-- One time empty → inline `"Set both times to save"` — no action.
-- Regex fail → inline `"Use HH:MM format"`; `end <= start` → inline `"End must be after start"` — no action.
-- Valid → `setAgentShiftAction({ agentId, shiftStart, shiftEnd, shiftDays })`.
-- Server error → `toast.danger("Couldn't save shift", …)` (local state not auto-reverted).
-
-#### Clear shift
-
-- `Button variant="danger" size="xs"` (28×28, `X` icon) → `handleClear` → resets local state to `{ start:"", end:"", days: DEFAULT_WORK_DAYS, error:null }` + `saveShift(id, null, null, null)`.
-- DB stores `null` for all three (times + days) → agent reverts to global `BUSINESS_HOURS`. The UI shows `DEFAULT_WORK_DAYS` as the display default even though the DB value is `null`.
-- **Why Button:** tokenised hover/focus; avoids bespoke `onMouseEnter`/`onMouseLeave` on a raw control.
-
-#### Avatar
-
-- `Avatar size="sm"` + `style={{ borderRadius: "var(--radius-sm)" }}` — initials / colour fallback internal to the primitive.
-
-#### `computeActiveHours(shiftStart, shiftEnd)`
-
-- Parses `HH:MM` strings to minutes; `end - start`; if `<= 0` or incomplete → `"—"`.
-- Else `"Xh Ym"` / `"Xh"` / `"Ym"` (display only in the **Active** column; rendered only when both times are set).
-
----
-
-### 10. SLA Engine integration — `buildAgentShiftOverride`
-
-`src/lib/utils/sla.ts` is the only consumer of the shift columns for behaviour (the assignment function ignores them).
-
-- `buildAgentShiftOverride(shiftStart, shiftEnd, shiftDays)` returns `null` when **any** of the three is absent/empty (`!shiftStart || !shiftEnd || !shiftDays || shiftDays.length === 0`). Callers then fall back to global `BUSINESS_HOURS`.
-- When all three are present it returns `{ startHour, startMinute, endHour, endMinute, workDays: shiftDays }`.
-- `isOffDay`, `resolveStart`, `resolveEnd`, `isWithinBusinessHours`, `nextBusinessDeadline` all accept an optional `AgentShiftOverride` and fall back to `BUSINESS_HOURS` (Mon–Sat, 09:00–19:00 IST, `offDays: [0]`) when none is supplied.
-- **Implication:** a partial shift config (e.g. days set but times cleared) yields `null` → the agent uses global hours. The settings UI enforces "both times or none" so a half-configured window never reaches the engine as a partial override.
-
----
-
-### 11. Page component — `page.tsx`
-
-```text
-/settings (page.tsx)
-getCurrentProfile()
-  → no profile: redirect /login
-  → agent | guest: redirect /dashboard
-  → isPrivileged = admin|founder
-  → rosterDomain = isPrivileged ? '*' : profile.domain
-  → roster = await getAgentRosterByDomain(rosterDomain)
-  → <h1>…</h1> + {TOP_BAR_ENABLED && <PageControls isPrivileged={false} … />}
-  → {isPrivileged && <grid of two SettingsLinkCard: follow-up-engine / lead-revival>}
-  → <AgentSettingsTable initialRoster callerRole={profile.role} callerDomain={profile.domain} />
-
-/settings/follow-up-engine (page.tsx)          /settings/lead-revival (page.tsx)
-getCurrentProfile()                            getCurrentProfile()
-  → no profile: redirect /login                  → no profile: redirect /login
-  → not admin|founder: redirect /settings        → not admin|founder: redirect /settings
-  → slaPolicies = await getAllSlaPolicies()      → revivalPolicies = await getAllRevivalPolicies()
-  → <BackButton href="/settings"> + <h1>         → same header shape
-  → length > 0 ? <SlaPoliciesPanel/>             → length > 0 ? <RevivalPoliciesPanel/>
-      : <EmptyState "No follow-up rules yet">        : <EmptyState "No revival policies yet">
-```
-
-- Each page exports its own `metadata` title (`Settings — Serene`, `Follow-up Engine — Serene`, `Lead Revival — Serene`).
-- **`<h1 className="type-page-title m-0">`** + `<span className="page-title-dot">.</span>` on all three (the sub-routes keep the dot and add a `BackButton` on the left). On `/settings`, a `<PageControls userId isPrivileged={false} notificationsPromise>` renders top-right **when the `TOP_BAR_ENABLED` feature flag is on** (no bespoke per-page CTA, though).
-- **No Suspense:** each page has one blocking fetch; no streaming/async child; each page ships atomically.
-- **One fetch per route:** `/settings` fetches only the roster; each sub-route fetches only its own policy list and renders the panel or an `<EmptyState>`.
-
----
-
-### 12. Access Control Summary
-
-| Role | `/settings` access | `/settings/follow-up-engine` + `/settings/lead-revival` | `getAgentRosterByDomain` domain arg |
-| ------ | ------------------- | -------------------- | ------------------------------------- |
-| `founder` | Yes | Yes | `'*'` (all pool members — agents + managers) |
-| `admin` | Yes | Yes | `'*'` |
-| `manager` | Yes | Redirect `/settings` | `caller.domain` only (incl. own row + peer managers) |
-| `agent` | Redirect `/dashboard` | Redirect `/settings` (then `/dashboard`) | — |
-| `guest` | Redirect `/dashboard` | Redirect `/settings` (then `/dashboard`) | — |
-
-| Action | Extra gate |
-| ------ | ---------- |
-| `setAgentShiftAction` | `requireProfile(['manager','admin','founder'])`; manager → target's `profiles.domain === caller.domain` (own row passes) |
-| `toggleAgentRouting` | `requireProfile(['manager','admin','founder'])`; manager → same-domain check (F-2) + RLS on UPDATE |
-| `updateSlaPolicyAction` / `createSlaPolicyAction` | `requireProfile(['admin','founder'])` |
+| Action | Gate |
+| ------ | ---- |
+| `setAgentShiftAction`, `toggleAgentRouting` | `requireProfile(['manager','admin','founder'])`; a manager only for a target in their own domain |
+| `updateSlaPolicyAction`, `createSlaPolicyAction` | `requireProfile(['admin','founder'])` |
 | `updateRevivalPolicyAction` | `requireProfile(['admin','founder'])` |
+| Ticket settings, playbooks, requests | admin/founder in their actions (see the owning docs) |
 
----
+| Caller | `getAgentRosterByDomain` argument |
+| ------ | --------------------------------- |
+| admin, founder | `'*'` (every pool member, every domain) |
+| anyone else who reaches the hub (manager, tech workbench) | their own `profile.domain` |
 
-### 13. Known Invariants (must never be violated)
+### 8.12 Page title rules
 
-1. **`getAgentRosterByDomain` uses `adminClient`** and filters on `ROUTING_POOL_ROLES` (agents + managers, migration 0124). Domain scoping is enforced by the **caller** (`page.tsx` / actions), not RLS on the join.
-2. **`is_active` is immediate** pool on/off; **shift times + days are advisory for assignment** — only the SLA engine reads them; round-robin never does.
-3. **TimePicker output is `HH:MM` 24-hour** strings matching PostgreSQL `time` — never `Date`.
-4. **`shift_days` stores raw JS day-of-week values (`0=Sun…6=Sat`).** UI display order (Mon-first) is cosmetic only. `null` = inherit `BUSINESS_HOURS`.
-5. **`setAgentShift` writes all three shift fields in one update.** A non-null window requires both times; clearing writes `(null, null, null)`.
-6. **`normalizeTimeHHMM` on load and on every pick** before parse/validate/save.
-7. **Work-day set can never be empty.** UI last-day guard + Zod `.min(1)`. A `null` array means "inherit", an empty array is invalid.
-8. **Row dimming uses Framer `animate={{ opacity }}`** for `pendingIds`/`savingIds` — not inline `style.opacity`.
-9. **Pool toggle must revert local state** on `toggleAgentRouting` error.
-10. **Server actions:** Zod first; `{ data, error }` never throw; profile-based auth (rule 09).
-11. **No `DELETE` on `agent_routing_config`.** No app-layer INSERT (trigger only).
-12. **Settings mutations do not refetch the page** — roster/shift local state + `revalidatePath` for next navigation only.
-13. **TimePicker panel portals to `document.body`** — do not rely on parent `overflow` for panel visibility.
-14. **Do not import `agent-routing-service` in client components** — use actions only (rule 05 / client bundle).
-15. **`buildAgentShiftOverride` returns `null` on any missing shift field** — every SLA caller must fall back to `BUSINESS_HOURS` when it does.
+Every settings page has `<h1 className="type-page-title m-0">` with the page-title dot. The hub
+renders the `PageControls` bell in its title row; the sub-routes put a `BackButton` to the left of
+the title. Metadata titles: "Settings", "Follow-up engine", "Lead revival", "Ticket settings",
+"Teach Elaya", "Playbooks", "Elaya requests".
+
+### 8.13 Known invariants
+
+1. `getAgentRosterByDomain` uses the admin client and `ROUTING_POOL_ROLES`; the caller scopes the
+   domain, never RLS.
+2. `is_active` is immediate pool on/off. Shift times and days are advisory for assignment; only the
+   SLA engine reads them.
+3. `TimePicker` values are `HH:MM` 24-hour strings, never `Date`.
+4. `shift_days` stores JS day-of-week values; Monday-first is display only; `null` inherits, an
+   empty array is invalid.
+5. `setAgentShift` writes all three shift fields in one update; clearing writes three nulls.
+6. `normalizeTimeHHMM` on load and on every pick.
+7. The work-day set can never be empty (UI guard + Zod `.min(1)`).
+8. Row dimming uses Framer `animate`, not inline opacity.
+9. A failed pool toggle reverts local state.
+10. Actions: Zod first, `{ data, error }`, never throw, profile-based auth (Rules 02, 09, 10).
+11. No DELETE on `agent_routing_config`, no app INSERT (the trigger inserts).
+12. Settings mutations do not refetch the page: local state plus `revalidatePath` for the next
+    navigation.
+13. The `TimePicker` panel portals to `document.body`.
+14. Never import `agent-routing-service` in a client component; use the actions.
+15. `buildAgentShiftOverride` returns `null` on any missing shift field, and every SLA caller falls
+    back to `BUSINESS_HOURS`.
+16. Follow-up Engine rule codes are generated (`USR-…`), never typed, and never shown.

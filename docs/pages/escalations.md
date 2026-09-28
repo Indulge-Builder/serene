@@ -1,124 +1,113 @@
-# Escalations — Page Spec
+# Escalations: Page Spec
 
-> **Purpose:** spec for `/escalations` — the manager+ breach surface for the Gia follow-up engine (live SLA breaches, overdue follow-up tasks, going-cold leads).
-> **Audience:** engineers. · **Source-of-truth scope:** the escalations route + the escalation reads in `sla-service.ts`. Engine business rules: `../modules/gia.md` §4.
-> **Last verified:** 2026-07-02 (shipped 2026-06-12; agent self-view + global domain narrowing added 2026-06-25).
+> **Purpose:** spec for `/escalations`, the breach surface for Gia's follow-up engine: live SLA breaches, overdue lead follow-ups, and leads going cold. Managers and above see their domain or the company; an agent sees their own slipped work.
+> **Audience:** engineers. · **Source-of-truth scope:** the escalations route and the three escalation reads in `sla-service.ts`. Engine business rules: `../modules/gia.md` § SLA Engine. The live-activity view beside it: `./oversight.md`.
+> **Last verified:** 2026-09-26 against `src/app/(dashboard)/escalations/{page,loading}.tsx`, `src/components/escalations/EscalationSections.tsx`, `src/lib/services/{sla-service,gia-task-links}.ts`, `src/lib/constants/route-permissions.ts`, `src/lib/utils/route-access.ts`, `src/components/layout/Sidebar.tsx`.
 
 ## 1. Purpose
 
-One page that answers "what needs intervention right now". Built entirely on artifacts the
-follow-up engine already produces — fired `lead_sla_timers`, the exactly-once
-`tasks.overdue_at` stamp (migration 0113), and the going-cold predicate shared with
-`/leads?going_cold=true`. No new tables, no new jobs, no cache.
+One page that answers "what needs someone to step in right now". It is built only on what the
+follow-up engine already produces: the SLA timers in `gia.lead_sla_timers`, the once-only
+`tasks.overdue_at` stamp (0113), and the going-cold rule shared with `/leads?going_cold=true`. No
+tables, no jobs and no cache of its own.
 
 ## 2. Who sees it
 
-All roles except guest (`guest` → `redirect('/dashboard')`). **Scope by role:**
+| Caller | View |
+| ------ | ---- |
+| agent (Gia domain) | **self view**: only their own slipped work (`assignedTo = profile.id`); section titles in the second person ("Leads that slipped", "Your overdue follow-ups"); the first tile reads "Leads slipped"; no Agent column; their own chip in the Alerted column reads "You" |
+| manager (Gia domain) | pinned to their own domain |
+| admin, founder | the whole company by default, with a Domain column; the global domain selector (`resolveDomainParam`: `?domain=`, then the `serene-domain` cookie) narrows it. Additive filtering, not a security boundary |
+| tech workbench | reaches the page. A tech agent gets the self view (empty); a tech manager is pinned to `tech`, which has no leads, so every section is empty |
+| guest | redirected to `/dashboard` |
+| concierge, finance, marketing, business | not in their route map; the layout sends them to `/dashboard` |
 
-- **agent** → a **self-scoped** view of their OWN slipped work (`assignedTo = profile.id`):
-  the leads they let stall, the follow-ups they ran past due, their leads going cold. The
-  Agent column is dropped (every row is the viewer), titles/empty-copy go second-person, and a
-  serif-italic reflective intro frames it as a self-coaching mirror, not a scoreboard. Added
-  2026-06-25 by giving `getEscalatedLeads`/`getOverdueGiaTasks` an optional `assignedTo` arg
-  (the one `getGoingColdLeads` already had).
-- **manager** → pinned to their own domain.
-- **admin / founder** → org-wide by default, with a Domain column. Since 2026-06-25 the page
-  also honours the global domain selector: it resolves `scopeDomain` via `resolveDomainParam`
-  (`?domain=` param, then the `serene-domain` cookie) and passes it to all three reads. Picking
-  a domain narrows the view; no pick means all domains. This is an additive WHERE, not a
-  security boundary (the same convention as leads/deals/campaigns).
-
-Route prefix `/escalations` is in `DOMAIN_ROUTE_MAP` for the **Gia domains only** — the layout
-guard is domain-based, so a non-Gia agent (finance/tech/…) can neither see the nav link nor reach
-the URL. The page enforces only the guest gate. Sidebar: Analytics section — `/escalations` is an
-all-roles exception alongside `/performance` (was `isManager`-only before the agent view).
-
-The header row holds the title left and — when `TOP_BAR_ENABLED` (`lib/constants/feature-flags`,
-currently `true`) — a `<PageControls>` cluster right (notifications + theme; seeded with
-`getNotifications(profile.id)`, `isPrivileged={isPrivileged}` so admin/founder also get the
-global domain selector here). This is the only control surface on the page; there is no
-page-level action CTA.
+- **Route map:** `/escalations` is in the `DOMAIN_ROUTE_MAP` of the four Gia domains only. The page
+  itself checks only the guest case (a literal role check, not a route-access helper).
+- **Sidebar:** "Escalations" (`AlertTriangle`) in the Analytics section. Unlike the rest of the
+  section it is listed for every role (with Performance), because agents have the self view. It is
+  **not** in the founder's curated sidebar, so founders reach it by URL.
+- **Title row:** "Escalations." and the `PageControls` bell (with the domain selector for
+  admin/founder). No page-level action.
 
 ## 3. Data sources
 
 | Layer | Key items |
 | ----- | --------- |
-| Service | `sla-service.ts` — `getEscalatedLeads(domain\|null, assignedTo?)`, `getOverdueGiaTasks(domain\|null, assignedTo?)`, `getGoingColdLeads(scope?: { domain?; assignedTo? })`. **All three carry an optional agent self-scope** (`assignedTo`): the page passes `profile.id` for agents (own slipped leads/tasks), `null` for manager+; `getGoingColdLeads`'s scope object also serves the Elaya `get_cold_leads` tool (added 2026-06-20). Admin member with **session-derived** scope args (the gated page is the trust boundary, `getAgentRosterByDomain` pattern); `mapRows` typed boundary |
-| Cache | **None, deliberately** — an escalation surface must never show stale breaches |
-| RSC | `page.tsx` role-gates, then `EscalationsAsync` runs the three reads in `Promise.all` inside `Suspense` |
+| Service | `sla-service.ts`: `getEscalatedLeads(domain \| null, assignedTo?)`, `getOverdueGiaTasks(domain \| null, assignedTo?)`, `getGoingColdLeads(scope?: { domain?, assignedTo? })`. All three take the optional agent self-scope. Admin client with **session-derived** scope arguments (the page is the trust boundary); every Gia table through `giaDb()`; `mapRows` at the boundary. `getGoingColdLeads` also backs Elaya's `get_cold_leads` tool |
+| Link reads | `gia-task-links.ts`: `getGiaLinksForTasks` (the overdue list) |
+| Cache | **none, on purpose**: an escalation list must never show a stale breach |
+| RSC | `page.tsx` resolves the scope, then `EscalationsAsync` runs the three reads in one `Promise.all` inside `Suspense` |
 
-Semantics:
+**What each list means:**
 
-- **SLA breaches** — `lead_sla_timers` rows `status='fired'` within the last 7 days
-  (`ESCALATION_WINDOW_DAYS`), inner-joined to non-terminal, non-archived leads, kept only
-  when the fired rule is a status policy whose `trigger_value` still equals the lead's
-  current status (a lead that moved on is resolved, not live). CAD-prefixed fires are
-  routine cadence ticks and are excluded. Grouped one row per lead with all breached codes.
-- **Overdue tasks** — open (`to_do`/`in_progress`/`in_review`) lead-follow-up tasks with a
-  non-null `overdue_at`. The lead-task signal is **`task_gia_meta` meta-presence** (a `task_gia_meta!inner`
-  join), not a category: migration 0138 collapsed `task_category` to two structure-only values
-  (`personal` / `group_subtask`), so a lead follow-up is now a `personal` task that also carries a
-  `task_gia_meta` row + `module='gia'`. There is no `gia_followup` category filter. Archived leads are
-  excluded; newest overdue first.
-- **Going cold** — the exact `/leads?going_cold=true` predicate: non-terminal,
-  `last_activity_at` strictly older than the going-cold cutoff (`goingColdCutoff()` from
-  `lib/constants/leads`, a rolling `now − COLD_LEAD_THRESHOLD_DAYS` window where
-  `COLD_LEAD_THRESHOLD_DAYS = 5`), coldest first. NULL `last_activity_at` (never-contacted) is
-  excluded via `lt()` — those are SLA-01A's job, not the going-cold preset.
+- **SLA breaches:** a status SLA timer that has **fired** in the last 7 days
+  (`ESCALATION_WINDOW_DAYS`), **or** a **pending** timer whose `scheduled_fire_at` has already
+  passed (the deadline is gone even if the Trigger.dev job has not run yet: the same test the job
+  itself uses). Only non-archived leads that are not won, lost or junk. A row is kept only while the
+  breached policy's `trigger_value` still equals the lead's current status (a lead that moved on is
+  resolved, not live). Cadence fires (`CAD-…`) are routine and never listed. One row per lead with
+  every breached rule, newest breach first; up to 500 timers scanned.
+- **Overdue tasks:** `getOverdueGiaTasks` reads `public.tasks` for open tasks (to do, in progress,
+  in review) whose `overdue_at` is set or whose `due_at` has passed, newest deadline first, up to
+  1,000 (`OVERDUE_SCAN_CAP`); then `getGiaLinksForTasks` finds which are lead follow-ups (the
+  `gia.task_gia_meta` row, read in chunks of 200, because PostgREST cannot embed across the schema
+  line); then it drops non-lead tasks and archived leads, applies the domain filter, and keeps at
+  most 100. The breach moment is `overdue_at`, else `due_at`.
+- **Going cold:** exactly the `/leads?going_cold=true` rule: not terminal, and `last_activity_at`
+  older than `goingColdCutoff()` (`lib/constants/leads`, now minus `COLD_LEAD_THRESHOLD_DAYS`, 5).
+  A NULL `last_activity_at` (never contacted) is excluded; that is SLA-01A's job. Coldest first, up
+  to 100.
 
 ## 4. Components
 
-`EscalationSections.tsx` (`src/components/escalations/`) — three member section cards
-(`EscalatedLeadsSection`, `OverdueTasksSection`, `GoingColdSection`), each a paper card
-header (label-micro title + count pill) wrapping `Table<T>` (the sanctioned secondary
-table). Rows navigate to the lead dossier (`/leads/${slug ?? id}`). Summary strip: three
-`StatTile variant="card"`. Going-cold header carries an "Open in Leads" deep link.
+`src/components/escalations/EscalationSections.tsx` (client): `EscalatedLeadsSection`,
+`OverdueTasksSection`, `GoingColdSection`. Each is a `SectionCard` with a count pill in its header,
+wrapping `Table<T>`. Each shows the newest 50 rows with a "Show all N" reveal (`previewRows`, rule
+P-03). Rows open the lead (`/leads/<slug or id>`). The going-cold card links "Open in Leads". Above
+them, a strip of three `StatTile`s.
 
-**Alerted column (breaches card only):** the SLA-breaches table carries an **Alerted** column
-rendering `EscalatedLeadRow.recipients` (`SlaRecipientRole[]`) as a `RecipientChips` cluster —
-one quiet pill per escalation target (Agent / Manager / Founder, each glyphed, agent→founder
-order). The recipients are the union of `recipient_role` across the lead's matched status breach
-policies (so a nurturing breach shows Agent + Manager from SLA-04A/04B). In the agent `selfView`
-the agent's pill is the accent-tinted **"You"**; all chips are tokenised (paper-subtle vs
-accent-surface), no hardcoded colour. The column is breaches-only by design — going-cold is a
-derived predicate with no fired timer / no alert, and overdue-task escalation runs on the separate
-task-reminder mechanism.
+**Alerted column** (breaches only): `EscalatedLeadRow.recipients` rendered as `RecipientChips`, one
+quiet pill per target (Agent, Manager, Founder, in that order), the union of `recipient_role`
+across the lead's matched policies. In the self view the agent's own pill reads "You" on the accent
+surface. Breaches only by design: going cold has no timer and no alert, and overdue tasks escalate
+through the task-reminder jobs.
 
 ## 5. States
 
-- **Loading:** `escalations/loading.tsx` (PageSkeletons composition; body skeleton shared
-  with the page's Suspense fallback as `EscalationsSkeleton`).
-- **Empty:** `<EmptyState variant="inline">` per section ("Nothing is breaching right
-  now." / "No follow-up has slipped past due." / "Every active lead has recent movement.").
-- **Error:** service reads return `[]` on error (logged with `[sla-service]` prefix) —
-  sections render their empty states; the page never throws.
+- **Loading:** `escalations/loading.tsx`; the body skeleton is shared with the page's Suspense
+  fallback (`EscalationsSkeleton`).
+- **Empty:** each section shows a hero `<EmptyState>` with the Serene mark:
+  - Breaches: "Nothing is breaching right now." (self: "Nothing of yours is slipping.") / "When a
+    lead crosses its SLA, it will surface here for you to act on."
+  - Overdue: "No follow-up has slipped past due." (self: "Every follow-up of yours is on time.") /
+    "An overdue follow-up task will appear here the moment it passes its deadline."
+  - Going cold: "Every active lead has recent movement." (self: "Every one of your leads has recent
+    movement.") / "Leads drifting quiet for too long will gather here before they go cold."
+- **Error:** each read returns `[]` on error (logged `[sla-service]`), so the section shows its
+  empty state; the page never throws.
 
 ## 6. Invariants
 
-1. Reads are **never cached** (no Redis, no `unstable_cache`).
-2. The agent `assignedTo` self-scope is session-derived only, never from URL params. The
-   privileged domain narrow deliberately rides the `?domain=` param / cookie via
-   `resolveDomainParam`; it is additive filtering, never a trust boundary.
-3. Breach rows must re-check `trigger_value === lead.status` at read time; never list a
-   fired timer for a lead that has moved on.
-4. CAD-prefixed fires never appear as breaches.
-5. The going-cold predicate must stay byte-equivalent to the `/leads` filter. The cutoff is the
-   single DRY'd `goingColdCutoff()` helper (`lib/constants/leads`, 2026-06-23) — change
-   `COLD_LEAD_THRESHOLD_DAYS` (and its SQL twin `public.cold_lead_cutoff()`) there and this page
-   follows for free; a re-inlined `new Date(Date.now() − …)` or a forked status set is a bug.
+1. Never cached (no Redis, no `unstable_cache`).
+2. The agent self-scope comes from the session only, never the URL. The admin/founder domain narrow
+   rides `?domain=` or the cookie through `resolveDomainParam`; it filters, it never grants.
+3. A breach row re-checks `trigger_value === lead.status` at read time.
+4. `CAD-…` fires never appear as breaches.
+5. The going-cold rule stays identical to the `/leads` filter through the one `goingColdCutoff()`
+   helper (and its SQL twin `public.cold_lead_cutoff()`).
+6. The task ↔ lead link is read through `gia-task-links.ts`, never an embed across schemas.
 
 ## 7. Open items
 
-- ~~No per-section pagination~~: each section now renders the newest 50 rows with a
-  "Show all N" reveal (Table `previewRows`, 2026-07-03 — rule P-03). The service read
-  limits (500 timers scanned / 100 tasks / 100 cold leads) still stand; revisit those
-  if a domain's breach volume ever approaches the caps.
-- ~~Admin/founder domain filter dropdown~~: shipped 2026-06-25 via the global `DomainSelector`
-  (see §2), not a page-level dropdown.
+- Service caps: 500 timers scanned, 1,000 tasks scanned and 100 shown, 100 cold leads. Revisit if a
+  domain's volume nears them.
+- The founder's sidebar does not list Escalations.
+- The tech workbench reaches the page but sees empty lists (its manager is pinned to `tech`).
+- Decided and shipped: per-section preview with "Show all" (2026-07-03); the admin/founder domain
+  filter is the global selector (2026-06-25), not a page dropdown.
 
 ## 8. See also
 
-`/oversight` (spec: `./oversight.md`) sits beside `/escalations` in the Analytics sidebar
-section and overlaps its "who is slipping" territory: three-tier task oversight for
-manager/admin/founder on the `task_events` stream (migration 0144). Escalations is the
-breach surface; Oversight is the live-activity surface.
+`/oversight` (`./oversight.md`) sits beside it in Analytics: the live-activity drill over
+`task_events`. Escalations is the breach surface; Oversight is the work-in-progress surface.

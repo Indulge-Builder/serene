@@ -1,308 +1,262 @@
-# Oversight — Page Spec
+# Oversight: Page Spec
 
-> **Purpose:** spec for `/oversight` (manager/admin/founder work-in-progress drill) and its two
-> dynamic detail tiers. A READ surface over existing task data + one new append-only event stream
-> (`task_events`).
-> **Audience:** engineers. · **Source-of-truth scope:** the `/oversight` route tree, the three
-> oversight RPCs (migration 0144), `oversight-service.ts` / `oversight.ts` actions, and the
-> `task_events` emit contract. Schema rows live in `../architecture/database.md`; the task model it
-> reads is `./tasks.md`; component contracts live code-adjacent in
-> `src/app/(dashboard)/oversight/CLAUDE.md`.
-> **Last verified:** 2026-07-02 (post-build re-verification; moved from `docs/oversight.md` into
-> `docs/pages/`); 2026-06-24 initial build.
+> **Purpose:** spec for `/oversight` (the manager / admin / founder drill into work in progress) and its two detail tiers, `/oversight/[domain]` and `/oversight/[domain]/[agentId]`. A read surface over the task data plus one append-only event stream, `task_events`.
+> **Audience:** engineers. · **Source-of-truth scope:** the `/oversight` route tree, the three oversight RPCs (migration 0144), `oversight-service.ts`, the components in `src/components/oversight/`, and the `task_events` emit contract. Schema narrative: `../architecture/database.md`; the task model it reads: `./tasks.md`; code-adjacent notes: `src/app/(dashboard)/oversight/CLAUDE.md`.
+> **Last verified:** 2026-09-26 against `src/app/(dashboard)/oversight/**`, `src/components/oversight/*`, `src/lib/services/{oversight-service,task-events,task-mutations}.ts`, `src/lib/utils/route-access.ts`, `src/lib/constants/route-permissions.ts`, `src/components/layout/Sidebar.tsx`, and migrations 0144, 0159, 0202, 0210.
 
 ## 1. Purpose
 
-`/oversight` answers one question for a manager or founder: **what is my team / every team doing
-right now, and where is work stuck?** It is a three-tier drill into work-in-progress, with the
-same *card → open* grammar at every tier:
+`/oversight` answers one question for a manager or founder: **what is my team (or every team)
+doing right now, and where is work stuck?** It is a three-tier drill with the same *card → open*
+grammar at every tier:
 
-- **Tier 1 — Teams** (founder/admin only): one card per `app_domain` that has an agent roster.
-  Each card shows open / overdue / completed task counts + agent count + a live "present agents"
-  pulse. Click a card → Tier 2 for that domain.
-- **Tier 2 — Team detail** (managers land here, clamped to their own domain): per-agent cards for
-  that team + the team's group tasks + a live activity rail. Click an agent → Tier 3.
-- **Tier 3 — Agent detail**: that agent's personal + group tasks + their task metrics
-  (open / in-review / overdue / completed) + a live rail scoped to that agent.
+- **Tier 1, Teams** (admin / founder): one card per domain that has an active agent, with open,
+  overdue, in-review and recently completed counts, the agent count, and a live "present now"
+  count. A card opens Tier 2.
+- **Tier 2, Team** (a manager lands here, pinned to their own domain): one card per agent with
+  their counts and an "online now" dot, plus the team's live activity rail. An agent card opens
+  Tier 3.
+- **Tier 3, Agent**: that agent's tasks (personal and group), their metrics, and a live rail for
+  that agent.
 
-It is **a layer over tasks** — it never mutates a task, a lead, or any row. The only thing the
-build writes is one `task_events` append per task mutation, emitted from the existing mutation
-cores (never from the UI).
+It never changes a task, a lead or any row. The only write the feature adds is one `task_events`
+row per task mutation, emitted from the mutation cores, never from the UI.
 
 ## 2. Who sees it
 
-| Role | Landing tier | Scope |
-| --- | --- | --- |
-| `agent` / `guest` | — | **No access.** The page redirects to `/dashboard`; the nav item is hidden. |
-| `manager` | **Tier 2**, pinned to their own `domain` | Cannot reach Tier 1; cannot read another team at any tier (server-clamped, not merely hidden). |
-| `admin` / `founder` | **Tier 1** | Drills 1 → 2 → 3 across every team. |
+| Caller | What happens |
+| ------ | ------------ |
+| admin, founder | Tier 1; drills to any team and agent |
+| manager (Gia domain) | `/oversight` redirects to `/oversight/<own domain>`; asking for another domain in the URL redirects to their own; Tier 3 only for agents in their domain |
+| tech workbench (agent or manager) | passes the page gate. A tech **manager** is pinned like any manager (to `tech`, which has no agents). A tech **agent** is not redirected and gets the Tier 1 all-teams view (see §7) |
+| agent, guest (outside tech) | redirected to `/dashboard` |
+| concierge, finance, marketing, business | not in their route map: the layout sends them to `/dashboard` |
 
-Three enforcement layers, exactly as every dashboard route (A-13):
+- **Route map:** `/oversight` is in the `DOMAIN_ROUTE_MAP` of the four Gia domains. Admin and
+  founder bypass the map; the tech workbench reaches it too.
+- **Page gate:** all three tiers call `hasManagerPageAccess` (manager, or anyone
+  `hasElevatedPageAccess` admits). There is no separate agent check: the manager branch is the
+  only one that pins.
+- **Sidebar:** "Oversight" (`Telescope`) in the Analytics section, shown when
+  `hasManagerPageAccess` and `isNavVisible` agree. It is in the founder's curated sidebar.
 
-1. `/oversight` added to the GIA-domain slice of `DOMAIN_ROUTE_MAP` so a manager passes
-   `canAccessRoute`; admin/founder bypass it. Agents in a Gia domain would pass `canAccessRoute`
-   for the prefix, so **the page itself redirects `agent`/`guest` to `/dashboard`** (role gate,
-   like `/campaigns`/`/budget`). The Sidebar item rides the existing `isManager` gate.
-2. The `(dashboard)/layout.tsx` `canAccessRoute` guard (defence in depth).
-3. **The action/service layer is the real authority** — see §6 (Manager domain clamp).
+## 3. Data sources
 
-## 3. Tiers & navigation
+| Layer | Key items |
+| ----- | --------- |
+| Service | `oversight-service.ts` (admin client for every read): `getTeamTaskOverview(caller)` → `get_team_task_overview`, `getTeamAgentBreakdown(caller, domain)` → `get_team_agent_breakdown`, `getAgentTasksOversight(caller, agentId)` → `get_agent_tasks_oversight` (the metrics are derived from the returned rows), `getTeamEvents(domain, limit)` and `getAgentEvents(agentId, limit)` (the rail seeds, 30 by default) |
+| Actions | **none.** `src/lib/actions/oversight.ts` was deleted in the 2026-07-02 dead-code purge; the pages call the service directly in their server components |
+| Presence | `listLivePresence()` (`usage-service.ts`, the only live presence reader) for the Tier 1 and Tier 2 "present now" overlays |
+| Tables | `public.task_events` (0144; still in `public`), read through the RPCs and the seeds; Realtime on the same table for the rails |
+| Emit | `task-events.ts`: `resolveTaskDomain()` + `emitTaskEvent()`, called from the `task-mutations.ts` cores, `addTaskRemarkAction` and the overdue job |
 
-Routes (one page, two dynamic children — mirrors leads/campaigns detail routing):
+## 4. Components
+
+`src/components/oversight/`:
+
+| Component | Tier | Role |
+| --------- | ---- | ---- |
+| `TeamOverviewGrid` | 1 | the team cards |
+| `AgentBreakdownGrid` | 2 | the agent cards |
+| `AgentTaskList` | 3 | the agent's tasks |
+| `AgentOversightMetricsRow`, `OversightStatRow` | 2, 3 | the stat tiles (`StatTile`) |
+| `OversightRail.tsx` (`OversightTeamRail`, `OversightAgentRail`) | 2, 3 | the live rails |
+
+`src/app/(dashboard)/oversight/OversightSkeleton.tsx` is the shared body skeleton (each tier's
+`loading.tsx` and its Suspense fallback). Tier 1 carries the page-title dot; Tiers 2 and 3 carry a
+`BackButton` left of the title (Tier 2: back to Teams, or back to the dashboard for a manager; Tier
+3: back to the team). Every tier renders the `PageControls` bell (with the domain selector for
+admin/founder).
+
+## 5. States
+
+- **Loading:** a `loading.tsx` per tier (header + `OversightSkeleton`), added 2026-09-16 because
+  Next re-shows only the nearest loading boundary above the segment that changed.
+- **Empty** (all `<EmptyState>`):
+  - Tier 1: framed, `Users` icon, "No teams to oversee yet." / "Teams appear here once a domain has
+    an active agent."
+  - Tier 2: framed, `Users`, "No agents on this team yet." / "Active agents in this domain will
+    appear here."
+  - Tier 3: framed, `ClipboardList`, "Nothing on this agent's board." / "Open and recently-closed
+    tasks will show here."
+  - Rails: inline with the Serene mark, "Quiet for now." / "Moves across the teams stream in here
+    as they happen."
+- **Not found:** an unknown domain in the URL, a malformed parameter, a missing agent, or an agent
+  whose domain is not the URL's → `notFound()`.
+
+## 6. Invariants
+
+- A manager only ever sees their own team: the page redirects (Tier 1, and any other domain in the
+  URL), and the RPCs re-apply the clamp in SQL.
+- **One aggregation query per tier.** Never a per-card or per-agent database call.
+- The oversight readers take an explicit agent or domain, never `auth.uid()`: one user reads
+  another's load. `getPersonalTasks` and `get_group_task_summaries` are caller-scoped and must never
+  back oversight.
+- `task_events` is append-only: no INSERT, UPDATE or DELETE policy for any app role; writes come
+  only from the cores and the overdue job, through the admin client.
+- The event's domain is resolved **at emit time** (§8.3); a task reassigned across teams
+  legitimately has events in two domains. Do not "fix" it.
+
+## 7. Open items
+
+- **A tech workbench agent gets the admin view.** The page gate admits every workbench member, only
+  `role === 'manager'` is pinned, and the RPCs treat any role other than `manager` as unclamped. So
+  a tech agent sees every team and every agent's tasks. Decide whether the workbench should reach
+  oversight at all, or clamp on "not admin/founder" instead of "manager".
+- A tech agent's rails seed through the admin client but receive no live inserts (the
+  `task_events` SELECT policy is manager+), so the rail looks frozen for them.
+- Tier 1 and Tier 2 count **agents only**. Managers carry leads and tasks (0124) but never appear as
+  a card.
+- There is no uuid check on `[agentId]`; a malformed id falls through to `notFound()` after the
+  profile read.
+
+---
+
+## 8. Deep dive
+
+### 8.1 Tiers and navigation
 
 | Tier | Route | Reads |
-| --- | --- | --- |
-| 1 Teams | `/oversight` | `getTeamTaskOverview()` → `get_team_task_overview()` |
-| 2 Team detail | `/oversight/[domain]` | `getTeamAgentBreakdown(domain)` → `get_team_agent_breakdown(p_domain)` |
-| 3 Agent detail | `/oversight/[domain]/[agentId]` | `getAgentTasksOversight(agentId)` → `get_agent_tasks_oversight(p_agent, p_role, p_caller_domain)` |
+| ---- | ----- | ----- |
+| 1 Teams | `/oversight` | `getTeamTaskOverview` → `get_team_task_overview(p_role, p_domain)` |
+| 2 Team | `/oversight/[domain]` | `getTeamAgentBreakdown` → `get_team_agent_breakdown(p_role, p_caller_domain, p_domain)`; `getTeamEvents` for the rail seed |
+| 3 Agent | `/oversight/[domain]/[agentId]` | `getAgentTasksOversight` → `get_agent_tasks_oversight(p_agent, p_role, p_caller_domain)`; `getAgentEvents` for the seed |
 
-- **Manager** hitting `/oversight` is redirected to `/oversight/<their-domain>` (they have no Tier 1).
-- `[domain]` is validated against `APP_DOMAINS` (`isAppDomain`); an unknown/illegal value →
-  `notFound()`. `decodeURIComponent` on the param is wrapped `try/catch → notFound()` (Q-10).
-- `[agentId]` is a uuid; a non-uuid or an agent the caller may not see → `notFound()`.
-- Tier 2 and Tier 3 carry a `<BackButton href=… label=…>` inline-left of the `<h1>` (detail-page
-  header contract); Tier 1 shows the page-title dot (it is the primary nav landing).
-- Card → drill is a plain `<Link>` (`/oversight/<domain>`, `/oversight/<domain>/<agentId>`).
-  **One aggregation query per tier** — never a per-card or per-agent DB call.
+- `[domain]` is decoded inside `try/catch` (a malformed value → `notFound()`, Q-10) and checked with
+  `isAppDomain`.
+- Tier 3 reads the agent's profile once (admin client) for the header and checks that the agent's
+  domain is the URL's domain.
+- Card → drill is a plain `<Link>`.
 
-## 4. The `task_events` stream (net-new)
+### 8.2 The `task_events` stream (0144)
 
-A single append-only event table is the spine of every "live" surface. It exists because the
-oversight readers are point-in-time aggregates; the rail needs a push feed, and a remarks stream
-cannot back it (a status change with no remark writes no remark row — see §8 sign-off).
-
-### 4a. `task_events` table (migration `…000144`)
+One append-only table is the spine of every live surface. The readers are point-in-time
+aggregates; the rail needs a push feed, and a remarks stream could not back it (a status change
+with no remark writes no remark).
 
 | Column | Type | Notes |
-| --- | --- | --- |
-| `id` | uuid PK | `gen_random_uuid()` |
-| `task_id` | uuid | FK → `tasks(id)` **ON DELETE CASCADE** |
-| `domain` | `app_domain` **NOT NULL** | The task's derived domain **at emit time** (see §4c) |
-| `actor_id` | uuid NULL | Who caused the event (FK → `profiles`); NULL for system/cron |
-| `subject_id` | uuid NULL | The task's `assigned_to` **at emit time** (FK → `profiles`) — the agent the event belongs to on Tier 3 |
-| `event_type` | `task_event_type` enum NOT NULL | `created` \| `status_changed` \| `reassigned` \| `remark_added` \| `overdue` |
-| `task_title` | text NULL | Denormalised snapshot (the rail renders without joining `tasks`, and survives a task delete that cascades the row away before the rail reads — though CASCADE means a deleted task takes its events; the snapshot is for join-free reads) |
-| `meta` | jsonb NOT NULL DEFAULT `'{}'` | Event-specific payload: `{ from, to }` for status/reassign, `{ priority }` etc. |
-| `created_at` | timestamptz NOT NULL DEFAULT `now()` | |
+| ------ | ---- | ----- |
+| `id` | uuid | PK |
+| `task_id` | uuid | FK → `tasks(id)` ON DELETE CASCADE |
+| `domain` | `app_domain` NOT NULL | the task's domain at emit time (§8.3) |
+| `actor_id` | uuid | who caused it; NULL for the cron |
+| `subject_id` | uuid | the task's assignee at emit time (the Tier 3 agent) |
+| `event_type` | `task_event_type` | `created`, `status_changed`, `reassigned`, `remark_added`, `overdue` |
+| `task_title` | text | a snapshot, so the rail renders without a join |
+| `meta` | jsonb | e.g. `{ from, to }`, `{ priority, task_type }`, `{ due_at }` |
+| `created_at` | timestamptz | |
 
-**Indexes:**
-- `idx_task_events_domain_created` on `(domain, created_at DESC)` — Tier 2 team rail.
-- `idx_task_events_subject_created` on `(subject_id, created_at DESC)` — Tier 3 agent rail.
+Indexes: `idx_task_events_domain_created` (Tier 2 rail), `idx_task_events_subject_created` (Tier
+3). RLS: SELECT for manager, admin, founder; **no INSERT, UPDATE or DELETE policy, ever**. In the
+Realtime publication. The `b2b` → `business` rename (0202) did not rewrite rows. 0159's activity
+view reads it.
 
-**RLS (append-only, A-08/A-11):**
-- `ALTER TABLE task_events ENABLE ROW LEVEL SECURITY`.
-- **SELECT** policy `task_events_select` → `get_user_role() IN ('manager','admin','founder')`.
-  (Domain narrowing is additive in the readers/Realtime filter — RLS gives manager+ row read; the
-  service/Realtime filter clamps which rows. The session-member Realtime subscription is bounded by
-  this SELECT policy AND the `filter=` clause.)
-- **No INSERT / UPDATE / DELETE policy — ever.** Writes are admin-member only, from the mutation
-  cores (service-role bypasses RLS). This is the A-11 append-only contract; there is no suppression
-  carve-out (unlike `task_remarks`).
-- `ALTER PUBLICATION supabase_realtime ADD TABLE task_events` — **Realtime ENABLED**.
-
-### 4b. Emit points — the cores, never the UI
-
-One append per existing mutation **core** (`src/lib/services/task-mutations.ts`) + the overdue job.
-The cores already own the context-free side-effects (reminder, notify, Redis); the event append
-joins them there so **both** the session-action caller and the Elaya write tool emit identically
-(R-01). Never emit from an action, a page, or a component.
+**Emit points** (the cores, never the UI):
 
 | Core / job | `event_type` | `meta` |
-| --- | --- | --- |
+| ---------- | ------------ | ------ |
 | `createPersonalTaskCore`, `createSubtaskCore` | `created` | `{ priority, task_type }` |
-| `updateTaskStatusCore` (+ `updateTaskCore` when status changes) | `status_changed` | `{ from, to }` |
-| `updateTaskCore` when `assigned_to` changes | `reassigned` | `{ from, to }` |
-| `add_task_remark_with_status` path (`addTaskRemarkAction`) | `remark_added` | `{ status_change? }` |
-| `checkTaskOverdueTask` (Trigger.dev, on the once-only `overdue_at` stamp) | `overdue` | `{ due_at }` |
+| `updateTaskStatusCore` (and `updateTaskCore` when status changes) | `status_changed` | `{ from, to }` |
+| `updateTaskCore` when the assignee changes | `reassigned` | `{ from, to }` |
+| `addTaskRemarkAction` | `remark_added` | `{ status_change? }` |
+| `check-task-overdue` on the once-only `overdue_at` stamp | `overdue` | `{ due_at }` |
 
-The append is **best-effort and non-fatal** — wrapped in try/catch-warn (`[task-events]` prefix),
-identical posture to the awaited Redis dels around it. A failed event insert never fails the
-mutation. It is `await`-ed (so a Trigger.dev/`after()` lambda stays alive until it lands), but its
-failure is swallowed.
+`emitTaskEvent` (`src/lib/services/task-events.ts`) is one admin-client insert, awaited but
+best-effort: a failure logs `[task-events]` and never fails the mutation. It skips the insert when
+no domain could be resolved (never a NULL domain). The same helper also writes the matching
+`activity_events` row (`task_created`, `task_completed`) for the mobile Activity room.
 
-The emit helper lives in `src/lib/services/task-events.ts` (`emitTaskEvent(...)`) — a single
-admin-member INSERT taking an explicit `{ taskId, domain, actorId, subjectId, eventType, taskTitle,
-meta }`. The **caller resolves the domain** (the cores are context-free and must not run a derived-
-domain query themselves — same invariant as `hasGiaMeta`); see §4c.
+### 8.3 Derived domain
 
-### 4c. Derived domain (the load-bearing join)
+`tasks` has no `domain` column. The event's domain, and the Tier 1 and Tier 2 buckets, come from:
 
-`tasks` has **no `domain` column**. The event's `domain` (and Tier 1/2 aggregation) derives it:
+- a **group subtask** → `task_groups.domain`;
+- a **personal task** (lead follow-up or not) → the **assignee's** `profiles.domain`.
 
-- **Group subtask** (`group_id` is not null) → `task_groups.domain`.
-- **Personal task** (lead follow-up or plain) → the **assignee's `profiles.domain`**
-  (`tasks.assigned_to → profiles.domain`). A lead follow-up's lead also has a domain, but the
-  oversight surface is about *who is doing the work*, so the **assignee's** domain is the canonical
-  axis at every tier — this is deliberate and keeps a reassigned-across-domains task counted under
-  the agent now responsible for it.
+The assignee's domain is deliberate: oversight is about who is doing the work, so a task reassigned
+to another team counts under the person now responsible. `resolveTaskDomain(client, { groupId,
+assignedTo })` in `task-events.ts` does this lookup once, and the cores call it before
+`emitTaskEvent` (one place for the rule). The RPCs apply the same `COALESCE(group domain, assignee
+domain)` at read time. A task created in `onboarding` and reassigned to a `shop` agent has its
+`created` event under onboarding and its later events under shop: correct.
 
-In the **cores** (emit time) the caller passes the resolved `domain` + `subjectId` (the new
-`assigned_to`) into `emitTaskEvent`. In the **RPCs** (read time) the aggregation joins both paths
-(a `COALESCE(tg.domain, assignee.domain)` shape) so personal and group tasks land in the same
-per-domain bucket — see §5. Counts join both paths or they miss/double.
+### 8.4 The three RPCs
 
-> **Cross-team reassignment legitimately makes a task's events span domains.** If a task created
-> in `onboarding` is reassigned to a `shop` agent, its `created` event carries `domain=onboarding`
-> and its `reassigned`/later events carry `domain=shop`. **This is correct — do not "fix" it.** The
-> Tier-2 rail for `shop` shows the reassign + subsequent events; `onboarding`'s rail shows the
-> creation. The task's *current* domain (and thus which team's counts it sits in) is the assignee's
-> domain now, which the point-in-time RPCs compute live.
+All `STABLE SECURITY DEFINER`, with EXECUTE revoked from `PUBLIC`, `anon` and `authenticated` and
+granted to `service_role` only (the 0102 pattern). The service calls them through the admin client
+with **session-derived** arguments. Their `search_path` is `public, gia` since 0210.
 
-## 5. The three oversight RPCs (net-new, SECURITY DEFINER, revoked)
+- **`get_team_task_overview(p_role, p_domain)`:** one row per domain with at least one active agent
+  (from `profiles`, so the roster drives the cards): `agent_count`, `open_count` (to do, in
+  progress, in review), `overdue_count` (`overdue_at` set and not closed), `in_review_count`,
+  `completed_count` (completed in the last 30 days). `p_role = 'manager'` → only `p_domain`.
+- **`get_team_agent_breakdown(p_role, p_caller_domain, p_domain)`:** one row per active agent in the
+  domain with the same four counts. For a manager it uses `p_caller_domain` whatever `p_domain`
+  says. Tier 2 deliberately has no separate group-task query.
+- **`get_agent_tasks_oversight(p_agent, p_role, p_caller_domain)`:** the agent's task rows (personal
+  and group; lead identity through a LEFT JOIN on the task-lead link), active first, then `due_at`,
+  then `created_at`. For a manager it adds "the agent's domain equals `p_caller_domain`"; an
+  out-of-domain agent returns no rows. The service derives the metric counts from the rows.
 
-All three are **`STABLE SECURITY DEFINER SET search_path = public`**, take **caller-supplied scope
-params**, and therefore **`REVOKE EXECUTE … FROM PUBLIC, anon, authenticated`** + `GRANT … TO
-service_role` (Q-13 Tier-2 "revoked" — migration 0102 pattern). They are called **only via the
-admin client** from the service layer, with **session-derived args**; the calling action/page is
-the trust boundary. They are gated **manager+** at the action layer, and **domain-clamped in SQL**
-(a manager arg is forced to their own domain *before* the call — §6).
+Counts are converted with `Number()` in the service (Q-09).
 
-### 5a. `get_team_task_overview(p_role text, p_domain app_domain)` → Tier 1
+### 8.5 The scope clamp
 
-One row per `app_domain` that has ≥1 active agent (enumerated from `profiles`, not a hardcoded
-domain list — so the roster drives the cards). Per row:
-`domain`, `agent_count` (active agents in domain), `open_count`, `overdue_count`,
-`completed_count`, `in_review_count`.
+The manager SELECT policy on `tasks` is role-only (no domain), so oversight never relies on RLS for
+team isolation. Three layers do it:
 
-- Task → domain via the §4c COALESCE(group domain, assignee domain) join.
-- `open_count` = status in (`to_do`,`in_progress`,`in_review`); `overdue_count` =
-  `overdue_at IS NOT NULL AND status NOT IN ('completed','cancelled','error')`;
-  `completed_count` = status `completed` (bounded to a recent window — `completed_at >= now() -
-  interval '30 days'` — so it reads as "recently completed", not all-time, and stays cheap).
-- **Scope clamp:** `p_role = 'manager'` → only the row for `p_domain` (the action already forced
-  `p_domain` to the manager's domain). admin/founder → all domains with a roster. Even though the
-  action clamps, the RPC re-applies the `WHERE` so a mis-call can't widen.
-- Counts cast `Number()` in the service (Q-09); bigints never reach the component raw.
+1. **The page:** a manager hitting Tier 1, or a Tier 2 / Tier 3 URL for another domain, is
+   redirected to `/oversight/<own domain>`. Tier 3 also `notFound()`s an agent outside the URL's
+   domain.
+2. **The session-derived arguments:** `p_role = caller.role`, `p_caller_domain = caller.domain`.
+3. **The SQL:** each RPC re-applies the manager clamp, so a programming mistake above cannot widen a
+   manager.
 
-### 5b. `get_team_agent_breakdown(p_role text, p_caller_domain app_domain, p_domain app_domain)` → Tier 2
+The weak spot is the definition of "clamped": only `manager` is. See §7 for the tech agent case.
 
-One row per active agent **whose `profiles.domain = p_domain`**, plus that agent's task tallies
-(`open_count`, `overdue_count`, `completed_count`, `in_review_count`) computed over tasks where the
-agent is `assigned_to`. Returns `agent_id`, `full_name`, `avatar_url`, `role`, the four counts.
+### 8.6 The live rails
 
-- **Manager clamp in SQL:** `p_caller_domain` is the caller's own domain; when `p_role='manager'`
-  the function ignores `p_domain` and uses `p_caller_domain` (a manager passing another domain gets
-  **their own team**, never the requested one — and the action rejects the mismatch outright, §6).
-  admin/founder use `p_domain`.
-- Tier 2 deliberately has **no separate group-task query** (the "one aggregation query per tier"
-  rule): the page reads the agent breakdown (the one Tier-2 aggregation) and team-level activity
-  arrives via the **`task_events` Realtime feed + its seed read**. If a literal group-task list is
-  later wanted, it composes the existing `getGroupTasks` reader, never a new query.
+Two exports of `OversightRail.tsx`, each seeded by the server page and then fed by Realtime on
+`task_events` (P-06):
 
-### 5c. `get_agent_tasks_oversight(p_agent uuid, p_role text, p_caller_domain app_domain)` → Tier 3
+- **`OversightTeamRail`** (Tier 2): seed `getTeamEvents(domain)`; channel
+  `oversight-team-<domain>-${mountId}`, `filter: domain=eq.<domain>`.
+- **`OversightAgentRail`** (Tier 3): seed `getAgentEvents(agentId)`; channel
+  `oversight-agent-<agentId>-${mountId}`, `filter: subject_id=eq.<agentId>`.
 
-The agent's task rows (personal + group) + the tier's metric tallies, in **one** query: a
-`RETURNS TABLE` of the task rows (id, title, status, priority, due_at, completed_at, overdue_at,
-task_category, module, group_id, plus the lead identity columns when it is a lead follow-up via the
-`task_gia_meta` LEFT JOIN — meta-presence, never a category check) **scoped to `assigned_to =
-p_agent`**. The metric counts (open/in-review/overdue/completed) are derived in the **service
-mapper** from the returned rows (one query → counts + list), so no second aggregation call.
+New events are prepended. Teardown is `supabase.removeChannel(channel)`. The subscription uses the
+session client, so RLS (manager+) and the filter both bound it; a manager's page never mounts a rail
+for another team (it redirects first). The rail is display-only; a lead-task event may link to the
+lead.
 
-- **Manager clamp in SQL:** when `p_role='manager'`, the function adds
-  `AND (SELECT domain FROM profiles WHERE id = p_agent) = p_caller_domain` — a manager can only read
-  an agent **in their own domain**; an out-of-domain `p_agent` returns **zero rows** (and the action
-  rejects it first, §6). admin/founder skip the clamp.
-- Order: active (`to_do`,`in_progress`,`in_review`) first, then `due_at ASC NULLS LAST`,
-  `created_at ASC` (mirrors `get_gia_tasks`).
+**Presence:** Tier 1 reads `listLivePresence()` once and overlays a count of present agents per
+domain; Tier 2 overlays an "online now" dot per agent from the same set.
 
-## 6. Server-side scope clamp (the security spine)
+### 8.7 Sign-off criteria (binding)
 
-> **The manager tasks SELECT RLS policy is role-only — no domain clamp.** RLS lets a manager read
-> every team's tasks. Oversight must **not** rely on RLS for team isolation. The clamp lives in the
-> action layer + re-asserted in SQL.
+**Must:** a manager sees only their own team at every tier (and is redirected, not served, when
+asking for another); a founder drills 1 → 2 → 3 across all teams; Tier 3 shows one person's tasks to
+another person (the readers are not `auth.uid()`-scoped); the rail updates on a status change made
+without a remark; one aggregation query per tier.
 
-`src/lib/actions/oversight.ts` — every action begins with `requireProfile(['manager','admin',
-'founder'])` (A-18). Then, **before** calling the service/RPC:
+**Must not:** an oversight reader scoped by `auth.uid()`; a per-card or per-agent query; a
+hardcoded colour; a manager receiving another team's data; any UPDATE or DELETE policy on
+`task_events`.
 
-- **`getTeamAgentBreakdownAction(domain)`** and **`getAgentTasksOversightAction(agentId)`**: if the
-  caller is a **manager**, the action resolves the *requested* scope and **rejects** when it does not
-  match the manager's own domain:
-  - For `[domain]`: `if (role === 'manager' && domain !== caller.domain) return formErrors.unauthorized`.
-    A manager requesting another team is **denied at the action**, not merely served their own.
-  - For `[agentId]`: the action looks up the agent's domain (one `profiles` read) and rejects when it
-    is not the manager's domain → `formErrors.unauthorized`.
-- admin/founder pass through with the requested scope.
-- The service then calls the RPC via the **admin client** with **session-derived** args
-  (`p_role = caller.role`, `p_caller_domain = caller.domain`, and the validated target). The RPC's
-  own SQL clamp (§5) is the third layer — a programming mistake in the action still can't widen a
-  manager beyond their domain.
-
-The Tier-3 page (`/oversight/[domain]/[agentId]`) and Tier-2 page (`/oversight/[domain]`) call these
-actions/services in their RSC; a denied result renders `notFound()` (never a partial/other team's
-data).
-
-## 7. Live rail (Realtime over `task_events`)
-
-The "live pulse / activity rail" is a Supabase Realtime subscription on `task_events`, seeded from a
-read then merged on INSERT (P-06/Q-14):
-
-Both rails ship as two exports of ONE file, `src/components/oversight/OversightRail.tsx`
-(the shared component dir also holds `TeamOverviewGrid`, `AgentBreakdownGrid`, `AgentTaskList`,
-`AgentOversightMetricsRow`, `OversightStatRow`):
-
-- **Tier 2 rail** (`OversightTeamRail`): channel `oversight-team-${domain}-${mountId}`
-  (`mountId = useId()`), `filter: domain=eq.${domain}`. Seeds from `getTeamEventsAction(domain,
-  limit)` (a bounded `task_events` read, newest-first) then prepends INSERTs.
-- **Tier 3 rail** (`OversightAgentRail`): channel `oversight-agent-${agentId}-${mountId}`,
-  `filter: subject_id=eq.${agentId}`. Seeds from `getAgentEventsAction(agentId, limit)`.
-- Teardown is always `supabase.removeChannel(channel)` (never `unsubscribe()` alone).
-- The subscription is the session client — RLS SELECT (manager+) double-enforces; the manager
-  action having clamped which `domain`/`agentId` the page renders means a manager's rail only ever
-  subscribes to their own team's filter (an out-of-domain page `notFound()`s before the rail mounts).
-- The rail is **display-only** for events; clicking a lead-task event may link to `/leads/[slug]`
-  (relative), but the rail never mutates anything.
-
-**Tier 1 "live pulse"** is the present-agent count, not an event feed: the RSC reads
-`listLivePresence()` (usage-service — the only live presence reader, P-presence) once, builds a
-`Map<domain, count of present userIds whose role is agent>`, and overlays it on each team card. Tier
-2 agent cards likewise overlay an "online now" dot from the same `listLivePresence()` set (the
-`presence` heartbeat reader — reused, never re-implemented).
-
-## 8. Sign-off criteria (binding)
-
-**Must:**
-- Manager sees only their own team at every tier (Tier 1 unreachable; Tier 2 pinned; Tier 3 only
-  own-domain agents). A manager passing another `domain`/`agentId` is **denied at the action**, not
-  merely hidden.
-- Founder drills 1 → 2 → 3 across all teams.
-- Tier 3 renders an agent's tasks **read by a different user** (the oversight readers are NOT
-  `auth.uid()`-scoped — they take an explicit `p_agent`).
-- The live rail updates on a **status change made with no remark written** — proving it reads
-  `task_events`, not a remarks stream.
-- **One aggregation query per tier.**
-
-**Must-not:**
-- Any oversight reader scoped by `auth.uid()` (would silently return empty when one user reads
-  another's load — the self-scope trap; `getPersonalTasks`/`get_group_task_summaries` **cannot** back
-  oversight and are not reused).
-- Any per-card / per-agent DB call.
-- Any hardcoded hex (tokens only).
-- A manager passing another domain and receiving data.
-- Any DELETE / UPDATE policy on `task_events`.
-
-**Note (not a bug):** a cross-team reassignment legitimately makes a task's events span domains
-(§4c). Correct — do not "fix."
-
-## 9. Reuse ledger (R-01)
-
-Built net-new only where nothing exists; everything else composes:
+### 8.8 Reuse ledger (R-01)
 
 | Need | Reused |
-| --- | --- |
-| Metric formatting | `formatCount`/`formatCompact` (`lib/utils/numbers.ts`) |
-| Stat tiles / cards | `StatTile` (`variant='card'`/`'cell'`), the list-page card grammar |
-| Empty states | `<EmptyState>` (hero + inline) |
-| Loading scaffold | `PageSkeletons` (`Shimmer`, `skeletonStagger`, `PageHeaderSkeleton`) |
-| Tabs (if any) | `TabSelector` flat props |
-| Domain enum/labels/icons | `APP_DOMAINS`/`DOMAIN_LABELS`/`DOMAIN_ICONS`/`ALL_DOMAINS_ICON` |
-| Assignee shape | `AssignableUser` (`lib/types`) |
-| Present-now reader | `listLivePresence()` (`usage-service.ts`) — the only live presence reader |
-| Emit points | the existing `task-mutations.ts` cores + `checkTaskOverdueTask` |
-| Domain scope param | mirrors `resolveDomainParam`'s param/role discipline (oversight clamps in the action) |
+| ---- | ------ |
+| Number formatting | `formatCount`, `formatCompact` |
+| Tiles and cards | `StatTile`, the list-page card grammar |
+| Empty states | `<EmptyState>` |
+| Loading | `PageSkeletons` + `OversightSkeleton` |
+| Domain vocabulary | `APP_DOMAINS`, `DOMAIN_LABELS`, `DOMAIN_ICONS` |
+| Presence | `listLivePresence()` |
+| Emit points | the `task-mutations.ts` cores + `check-task-overdue` |
 | Back affordance | `<BackButton>` |
-| Session guard | `requireProfile(['manager','admin','founder'])` |
-| RPC scoping model | `get_gia_tasks` (shape) + the 0102 REVOKE/admin-member pattern |
+| Page gate | `hasManagerPageAccess` |
+| RPC scoping | the 0102 REVOKE + admin-client pattern |
 
-**Net-new only:** `task_events` table + `task_event_type` enum; the three oversight RPCs; the
-`/oversight` route tree + its components; `oversight-service.ts`, `oversight.ts` actions,
-`task-events.ts` emit helper; the `/oversight` route-permission entry + nav slot.
+Net new (2026-06-24): `task_events` + `task_event_type`, the three RPCs, the route tree and its
+components, `oversight-service.ts`, `task-events.ts`, and the route-map entry.

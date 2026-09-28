@@ -1,441 +1,524 @@
 # Vendors
 
-> **Purpose:** the vendor relationship layer. Who we work with, what each vendor does and refuses,
-> how every job with them went, how the team rates them, and a live score that picks the best
-> vendor for a request.
-> **Audience:** engineers (Ethan first, this is the build contract for the vendor PR).
-> **Source-of-truth scope:** the vendor data model, the scoring model, and how Elaya reads it.
-> **Status:** spec written 2026-09-04; **built and live.** Migrations 0000 + 0183–0192 and the
-> full Freshdesk dataset (21,580 vendors, 46,574 jobs, 4,977 invoices) have been on prod since
-> 2026-09-11; the `/vendors` UI, the Elaya read tools and the loader scripts merged to main on
-> 2026-09-12 (PR #3). Supersedes the first shape of PR #3. Where this doc and the code differ, the
-> code + `docs/changelog.md` win; the deltas are marked **Built:** below.
+> **Purpose:** the vendor book. Who Indulge works with, what each supplier does and refuses, every job
+> we gave them, how the team rates them, a live score, and the one ranking that picks the best vendor
+> for a request. Also the one home for the three vendor pages (`/vendors`, `/vendors/[id]`,
+> `/vendors/find`).
+> **Audience:** engineers working on vendors, tickets or Elaya's vendor tools.
+> **Source-of-truth scope:** the vendor data model, access, scoring and ranking, the live extractor,
+> the review / merge / remove workflow, and the vendor pages. Tickets, Elaya and the Freshdesk mirror
+> have their own docs and are linked, not repeated.
+> **Last verified:** 2026-09-26 against `supabase/migrations/` 0183 to 0192, 0214, 0221, 0227 to 0230,
+> `src/lib/services/vendors-service.ts`, `vendor-mutations.ts`, `vendor-extract.ts`,
+> `vendor-extract-sync.ts`, `vendor-search-intent.ts`, `ticket-vendor.ts`, `src/lib/utils/vendor-score.ts`,
+> `src/lib/constants/vendors.ts`, `src/lib/actions/vendors.ts`, `src/components/vendors/`,
+> `src/app/(dashboard)/vendors/`, `src/trigger/vendor-extract.ts` and the two Elaya tool registries.
 
-## Why this doc exists
+## What it is
 
-PR #3 landed a good first cut: a `vendors` table distilled from about 50,000 Freshdesk tickets,
-with per-category and per-city usage counts, a trigram name search, and a private invoices
-bucket. That answers "who have we used most for Dining in Delhi", and we keep that.
+About 21,600 suppliers (hotels, restaurants, florists, drivers, ticket agents, the people behind them)
+with 46,000+ past jobs, distilled from the Freshdesk archive and kept current by a job that reads new
+Freshdesk notes. The rule of the module: **facts are rows, scores are computed.** Nothing a person sees
+as a number is stored on the vendor row; it is derived from the job ledger and the reviews every time
+it is read.
 
-It cannot answer the questions that matter more as the concierge work moves into Serene:
+How it got here:
 
-- Who is the *best* vendor for this ticket, not just the most used one.
-- What has our relationship with this vendor been, job by job.
-- How does this vendor score on speed, reliability, quality, pricing, and how does that score
-  move on its own as agents keep working with them.
-- Which agent prefers which vendor, and which agent should avoid one.
-- What a vendor does and does not do. A travel vendor may be great for visas and useless for
-  ticket booking. Some vendors refuse whole ticket types.
-- The vision in the Concierge doc: a match score for this vendor against this specific member,
-  with a reason, and the top three alternatives.
-
-A row that bakes counts into the vendor can only describe the past and only changes when the
-import is rerun. The rule for this module: **facts are rows, scores are computed.** Every
-number a person sees is derived from an event ledger, never hand maintained on the vendor row.
-
-This is the same shape the members spine set in migration 0181: a thin identity table, the raw
-import kept untouched in `import_raw`, and the dynamic layer hanging off it in its own tables.
+| When | What | Migrations |
+| --- | --- | --- |
+| 2026-09-11 / 09-12 | PR #3: the tables, the Freshdesk archive import, the three pages, Find a vendor, Elaya's two read tools. Data loaded on production 2026-09-11, code merged 2026-09-12. | 0183 to 0192 (plus the `0000` base enums) |
+| 2026-09-17 / 09-18 | PR #4: the live extractor reads new Freshdesk notes into the tables. Running on production since 2026-09-18. | 0214 |
+| 2026-09-18 | The module opens to the whole concierge domain. Tickets gain a vendor. | 0221 |
+| 2026-09-19 | Elaya's vendor tools opened to the same audience (gated per person). | none |
+| 2026-09-21 | PR #5: contact search, merge, remove / restore, the Find-a-vendor timeout and category fix, and the review workflow ("Needs a look", "Looks right"). | 0227 to 0230 |
+| 2026-09-25 | Find a vendor rebuilt as one search card and one "Best matches" card. | none |
 
 ## The shape in one picture
 
 ```text
-vendors (spine)              one row per vendor. identity, contacts, aliases, status, import_raw
-  ├── vendor_capabilities     what it offers / declines, per category + service + cities
-  ├── vendor_engagements      APPEND-ONLY. one row per ticket or job we did with the vendor
-  ├── vendor_reviews          APPEND-ONLY. a team member rating one engagement or the vendor
-  └── vendor_notes            APPEND-ONLY. free-text commentary, authored and timestamped
-vendor-invoices bucket       private. PDFs referenced from vendor_engagements.invoice_paths
+vendors (spine)                one row per supplier: identity, contacts, aliases, status, import_raw
+  ├── vendor_capabilities       what it offers / declines, per request category + service + cities
+  ├── vendor_engagements        the ledger. one row per job (vendor, source, source_ref) = unique
+  ├── vendor_reviews            append-only. a teammate rating a job (4 dimensions) or the vendor
+  ├── vendor_notes              append-only. free-text notes, authored and timestamped
+  └── vendor_agent_preferences  one teammate's sticky note: preferred / avoid + a line of why
+vendor_merges                  append-only. every merge, with the deleted row in full
+vendor_removals                append-only. every Remove, deleted or hidden, with the row in full
+vendor-invoices bucket         private. bills referenced from vendor_engagements.invoice_paths
+freshdesk.conversations        + vendor_extracted_at / vendor_extract_attempts = the extractor's queue
 
-score  = computed over engagements + reviews (never stored on the spine)
-rank   = capabilities filter → score → top N with reasons
+score = computed per read from one SQL rollup (never stored)
+rank  = past-job title search (or capability fallback) → score → personal layer → top N with reasons
 ```
+
+Vendors live in `public`. They were not moved by the 2026-09-17 schema restructure (they are in
+neither `GIA_TABLES` nor `MEMBER_TABLES`); only `vendor_engagements.client_id` was renamed
+`member_id` (0202).
 
 ## Data model
 
-Migrations 0183–0192, all dated 2026-09-11 and all applied to prod. (0182 was taken by the
-`self` lead source the day before; the vendor files were renumbered past it.)
+### `vendors` (0183, widened by 0214, 0227)
 
-### `vendors` (0183): the spine
+| Column | Notes |
+| --- | --- |
+| `id` | `uuid` PK. `sia.wag_groups.vendor_id`, `sia.wag_contacts.vendor_id` and `sia.tickets.vendor_id` point here (`ON DELETE SET NULL`). |
+| `name`, `name_key` | `name_key = lower(btrim(name))`, generated, UNIQUE. The dedup identity. |
+| `aliases` | `text[]`, GIN index. Spelling variants. A merge adds the loser's name here, so the extractor matches that spelling next time. |
+| `category` | What the supplier IS, free text (no CHECK). The 11 built-ins are `VENDOR_CATEGORIES`; a category added by hand in the UI is as real as a built-in. |
+| `subcategory`, `category_source` | `category_source` CHECK: `hand`, `rule`, `ticket-category`, `unresolved`, `client-excluded`. |
+| `status` | `active` (default) / `paused` / `blacklisted`. The ranker only returns `active`. |
+| `contacts` | `jsonb` array of `{ name, phones[], emails[] }`. A null name is the vendor's general line. Phones E.164. |
+| `primary_phone`, `home_city` | `primary_phone` is the strongest matching key for the extractor. |
+| `identity_status` | `unverified` (default) / `verified`. Archive imports and extractor rows are born `unverified`; "Looks right" is the one write that verifies (one way only). |
+| `freshdesk_ref` | Freshdesk reference kept from the import. |
+| `sources` | `text[]` CHECK over `VENDOR_SOURCES`: `freshdesk` (the archive), `freshdesk_live` (the extractor), `sia`, `manual`, `ticket`. |
+| `import_raw` | `jsonb` object. The archive import's computed row, and under `freshdesk_live` the extractor's evidence (ticket id, the quote it read, near-miss names). Read only through `readExtractionEvidence()`. |
+| `notes` | Free text from the import. Team notes live in `vendor_notes`. |
+| `search_text`, `search_key` | Generated (0187, re-pointed in 0227): name, aliases, subcategory, home city, primary phone, and contact names and phones. Trigram-indexed. Emails are left out on purpose ("gmail" matches thousands of rows). |
+| `deleted_at`, `deleted_by` | 0227. Set = hidden: out of the list, search, Find a vendor and every ranking, but every fact kept and restorable. |
+| `created_at`, `updated_at` | `update_updated_at()` trigger. |
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| `id` | `uuid` PK `gen_random_uuid()` | Not bigint. Sia's `wag_groups.vendor_id` and `wag_contacts.vendor_id` (0169) are `uuid` and wait for this table. 43 of 46 tables use `id uuid`. |
-| `name` | `text` not null | Display name as we know the vendor. |
-| `name_key` | `text` generated `lower(btrim(name))` unique | The dedup identity, the `subscription_tools` (0168) pattern. |
-| `aliases` | `text[]` not null default `{}` | Spelling variants seen in tickets. GIN index. Keep from PR #3. |
-| `category` | `text` | What the vendor sells. A `SERVICE_CATEGORY` slug from `lib/constants/interests.ts` where it maps (`travel`, `dining`, `gifts`, `events`, `retail`, `special`), else the raw Freshdesk label. |
-| `subcategory` | `text` | Free text. |
-| `category_source` | `text` CHECK `hand` / `rule` / `ticket-category` | Keep from PR #3. |
-| `status` | `text` not null default `active` CHECK `active` / `paused` / `blacklisted` | `paused` = do not suggest for now. `blacklisted` = never suggest, and the ranker says why. |
-| `contacts` | `jsonb` not null default `[]`, CHECK `jsonb_typeof = 'array'` | `[{ name: string \| null, phones: string[], emails: string[] }]`. Phones are **E.164** (Rule 06, `normalizeToE164()` in the loader). A null name is the vendor's general line, keep that. |
-| `primary_phone` | `text` | E.164, nullable. Partial index. This is how Sia matches a WhatsApp contact to a vendor. |
-| `home_city` | `text` | Where the vendor is based. Cities served come from engagements and capabilities, not from here. |
-| `identity_status` | `text` not null default `unverified` CHECK `unverified` / `verified` | Same meaning as members. The merged names from the Freshdesk clean-up stay unverified until a human confirms. |
-| `sources` | `text[]` not null default `{}` | `freshdesk`, `sia`, `manual`. |
-| `import_raw` | `jsonb` not null default `{}` | **PR #3's computed row goes here untouched**: `ticket_categories`, `service_cities`, `agents`, `invoices`, `times_used`, `first_used`, `last_used`, `invoice_count`. It stays as the audit trail of the import. Nothing reads it for ranking once engagements are loaded. |
-| `notes` | `text` | Free text about the vendor. |
-| `created_at`, `updated_at` | `timestamptz` | `update_updated_at()` trigger, never recreated. |
+### `vendor_capabilities` (0183)
 
-Indexes: `gin (name extensions.gin_trgm_ops)` (the full 0098 pattern, opclass schema-qualified),
-`gin (aliases)`, `(category)`, `(status)`, `(primary_phone) where primary_phone is not null`.
+What a vendor offers or declines: `category` (a `REQUEST_CATEGORIES` value, the Freshdesk ticket
+vocabulary), `service` (a `VENDOR_SERVICES` value or null for the whole category), `stance`
+(`offers` / `declines`), `cities` (empty = anywhere), `note`, `set_by` (null for machine writes).
+Unique on `(vendor_id, category, coalesce(service, ''))`. Seeded as `offers` from the archive's
+per-category counts; the extractor adds rows as it learns. A `declines` row is hard-excluded by
+every search path. Editable config, CASCADE on delete.
 
-Same migration wires the Sia hooks, the 0181 way:
+Two category vocabularies exist and never join: `VENDOR_CATEGORIES` answers "what is this supplier"
+(browsing), `REQUEST_CATEGORIES` answers "what was the request filed under" (the ranker). A hotel is
+Hospitality but is booked through Travel tickets. See the comment block in `constants/vendors.ts`.
 
-```sql
-alter table sia.wag_groups   add constraint wag_groups_vendor_fk
-  foreign key (vendor_id) references public.vendors(id) on delete set null;
-alter table sia.wag_contacts add constraint wag_contacts_vendor_fk
-  foreign key (vendor_id) references public.vendors(id) on delete set null;
-```
+### `vendor_engagements` (0185): the ledger
 
-### `vendor_capabilities` (0183): what it does and refuses
+One row per job: `vendor_id` (`ON DELETE RESTRICT`), `member_id`, `lead_id`, `agent_id`,
+`agent_name_raw` (the Freshdesk agent name when no Serene profile matches), `title` (the ticket
+subject, which is what the history search reads), `category`, `service`, `city`, `source`,
+`source_ref`, `started_at`, `closed_at`, `outcome` (`completed` / `cancelled` / `failed` /
+`unknown`), `amount_inr` (INR only, never converted), `invoice_paths`, `note`, `created_by`.
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| `id` | `uuid` PK | |
-| `vendor_id` | `uuid` FK `vendors` on delete cascade | |
-| `category` | `text` not null | `SERVICE_CATEGORY` slug or domain vocabulary (`getDomainInterests`). |
-| `service` | `text` | The finer service inside the category: `visa`, `ticket_booking`, `hotel`, `chauffeur`. Null = the whole category. Vocabulary is a `defineEnum` in `lib/constants/vendors.ts`, grown as we learn. |
-| `stance` | `text` not null CHECK `offers` / `declines` | `declines` is how "this vendor does not want these tickets" is recorded. The ranker hard-excludes it. |
-| `cities` | `text[]` not null default `{}` | Where this capability applies. Empty = anywhere. |
-| `note` | `text` | "Only weekday deliveries", "minimum 48h notice". |
-| `set_by` | `uuid` FK `profiles` | Null when seeded by the import. |
-| `created_at`, `updated_at` | | |
+- **Unique on `(vendor_id, source, source_ref)`.** One job per vendor per ticket; re-running any
+  writer is safe.
+- **Append-only, with two sanctioned existing-row writes** (Decision Log): `closeEngagementCore`
+  closes an open job exactly once (`closed_at`, `outcome`, amount, files, note), and
+  `logEngagementCore`'s provenance path refines a repeat of the same ticket (fills empty fields,
+  never overwrites, never changes the id). `merge_vendors` may also fold a duplicate job into its
+  twin (the A-11 exception of 2026-09-19).
+- Archive rows have `member_id` NULL (the export never carried the requester). Extractor and ticket
+  rows carry the member from the mirrored or Serene ticket.
 
-Unique on `(vendor_id, category, coalesce(service, ''))`. Seeded from PR #3's per-category counts
-as `offers` rows. `declines` rows only ever come from a human.
+### `vendor_reviews` (0185)
 
-### `vendor_engagements` (0185): the ledger, append-only
+Append-only. `vendor_id`, optional `engagement_id`, `reviewer_id`, four 1 to 5 ratings (`speed`,
+`quality`, `pricing`, `reliability`, each nullable; `REVIEW_DIMENSIONS`), `comment`. A CHECK needs at
+least one rating or a comment. The score takes the latest review per (reviewer, job) and averages
+across reviewers, so a teammate who rates a later job adds a review rather than replacing their
+first. A review on a job takes its `vendor_id` from the job, so the two cannot disagree.
 
-One row per ticket or job we did with a vendor. This is the table every score reads.
+### `vendor_notes` (0186)
 
-| Column | Type | Notes |
-| --- | --- | --- |
-| `id` | `uuid` PK | |
-| `vendor_id` | `uuid` FK `vendors` not null, **on delete restrict** | **Built:** a vendor with history is never hard-deleted (blacklist it); a merge script re-points rows first. |
-| `member_id` | `uuid` FK `members` on delete set null | The human this job was for. This is what makes the member-vs-vendor match score possible later. Null when the Freshdesk contact did not map to a member. |
-| `lead_id` | `uuid` FK `leads` on delete set null | Gia-side hook for pre-won work. Usually null. |
-| `agent_id` | `uuid` FK `profiles` on delete set null | The staff member who ran the job. Resolved from the Freshdesk agent name against `profiles.full_name` at load time. |
-| `agent_name_raw` | `text` | The name as Freshdesk had it, kept when no profile matched (ex-staff). Never shown as a person, only as history. |
-| `category` | `text` not null | Same vocabulary as capabilities. |
-| `service` | `text` | |
-| `city` | `text` | |
-| `source` | `text` not null CHECK `freshdesk` / `sia` / `manual` / `ticket` | `ticket` is reserved for the in-app ticketing that Sia will bring. |
-| `source_ref` | `text` not null | Freshdesk ticket id, WhatsApp message id, or the manual row's own id. **Unique on `(source, source_ref)`**, the `lead_product_enquiries.external_lead_id` idempotency pattern: rerunning the loader is safe. |
-| `started_at` | `timestamptz` not null | Ticket opened / job requested. |
-| `closed_at` | `timestamptz` | Job finished. |
-| `outcome` | `text` not null default `unknown` CHECK `completed` / `cancelled` / `failed` / `unknown` | Feeds reliability. |
-| `amount_inr` | `numeric` | What we paid, INR only, never auto-converted (the subscriptions currency rule). |
-| `invoice_paths` | `text[]` not null default `{}` | Paths in the `vendor-invoices` bucket. **Every invoice PDF from the archive becomes a path on its ticket's engagement**, so the 1 GB upload is fully referenced instead of 5 per vendor. |
-| `note` | `text` | |
-| `created_by` | `uuid` FK `profiles` on delete set null | **Built:** who logged it (null for imports) — distinct from `agent_id`, who ran it. |
-| `created_at` | `timestamptz` | |
-
-**Built:** `response_hours` and `on_time` were dropped — Freshdesk never recorded either, so
-they would only ever have been null. Speed and reliability are manual review dimensions.
-
-Indexes: `(vendor_id, started_at desc)`, `(member_id) where member_id is not null`,
-`(agent_id) where agent_id is not null`, `(category, city)`.
-
-**Append-only (Rule 08, A-11).** No user UPDATE or DELETE policy. One carve-out, logged in the
-Decision Log when 0185 ships: a service-role UPDATE that **closes** an open engagement (`closed_at`,
-`outcome`, `amount_inr`, `invoice_paths`, `note`), the resolve-once posture of
-`revival_candidates` — `closeEngagementCore`, `WHERE closed_at IS NULL`, exactly once. Rows from the Freshdesk archive arrive already closed and are never touched.
-
-### `vendor_reviews` (0185): append-only
-
-| Column | Type | Notes |
-| --- | --- | --- |
-| `id` | `uuid` PK | |
-| `vendor_id` | `uuid` FK not null | |
-| `engagement_id` | `uuid` FK `vendor_engagements` | Null for a general review. |
-| `reviewer_id` | `uuid` FK `profiles` not null | |
-| `speed`, `quality`, `pricing`, `reliability` | `smallint` CHECK 1..5, each nullable | **Built:** four dimensions — `communication` dropped (founder call 2026-09-05). A CHECK requires at least one rating or a comment. | Columns, not a jsonb bag, so the score is one `avg()` per dimension. The dimension list is `REVIEW_DIMENSIONS` in `lib/constants/vendors.ts`; adding one is a column migration. |
-| `comment` | `text` | Sanitized (Rule 06). |
-| `created_at` | `timestamptz` | |
-
-No UPDATE or DELETE. A changed mind is a new review; the score uses the latest per reviewer per
-engagement (`DISTINCT ON` inside `get_vendor_score_inputs`). `reviewer_id` FK is `on delete restrict`;
-`vendor_id` FK is `on delete restrict` (ledger). A review on an engagement takes `vendor_id` FROM
-the engagement (`addReviewCore`) so the two can never disagree.
+Append-only team notes: `vendor_id` (CASCADE), `author_id`, `content`, `created_at`.
 
 ### `vendor_agent_preferences` (0191): the sticky note
 
-One teammate's stance on one vendor — `preferred` or `avoid` — with an optional note. One row per
-(vendor, agent), **editable** (an opinion about now, not a record of what happened; a changed mind is
-an update). CASCADE on both parents. It feeds three things at once: the `sentiment` score component
-(every mark), the ranker's agent layer (the asking teammate's OWN avoid removes the vendor from their
-answer, their own preferred adds `PREFERRED_BOOST`; teammates' marks reach the answer only as a score
-signal and a "N teammates avoid" flag — a caution to the floor, never a verdict for them), and
-Elaya's `find_vendors` (the staff principal is the agent). Reads admin/founder; writes service-role
-via `setAgentPreferenceCore`. On the vendor page: "Your take" in the score card.
+One teammate's stance on one vendor, `preferred` or `avoid`, with an optional note (max 500
+characters). One row per (vendor, teammate), editable, CASCADE on both sides. It feeds the score's
+`sentiment` component, the ranker's personal layer and the team's takes on the vendor page. See
+**Scoring** and **The ranker**.
+
+This table exists today. A 2026-09-07 changelog entry says it was "removed entirely"; that removal
+was reversed on 2026-09-11 (review round one, item 4) because the founder's original brief asked for
+it, and 0191 re-created it.
+
+### `vendor_merges` (0227) and `vendor_removals` (0230)
+
+Both append-only, RLS on, service-role writes only.
+
+- `vendor_merges`: `kept_vendor_id`, `merged_vendor_id` (no FK, the row is gone), `merged_name`,
+  `merged_row` (the deleted spine row in full), `moved` (counts), `merged_by`. It is also the trail
+  that lets an old vendor id still land on the keeper.
+- `vendor_removals`: `vendor_id` (no FK), `vendor_name`, `mode` (`deleted` / `hidden`), `vendor_row`,
+  `history` (jobs, reviews, notes at the moment of the decision), `removed_by`. For a deleted vendor
+  this row is the only surviving copy.
 
 ### `vendor-invoices` bucket (0184)
 
-Keep PR #3's migration nearly as is: private bucket, provisioned in SQL, flat paths keyed on the
-Freshdesk `attachment_id`, no write policy (service-role only), reads via admin-member signed
-URLs. Two changes: the number, and the SELECT policy narrows to the vendor audience below.
+Private. Keys are the Freshdesk attachment id, so a vendor row can be rebuilt without stranding its
+files. No write policy (service role only). Reads mint a one-hour signed URL per click
+(`signVendorInvoiceAction`); a URL is never stored.
 
-## Access and RLS
+### The RPCs
 
-Vendor contacts are business data, but the invoices carry pricing and the engagement ledger
-carries member ids. The members spine chose admin/founder only. Vendors need a wider floor,
-because the concierge and shop teams are the ones picking vendors all day.
+All service-role only (Q-13 revoked tier); the app calls them on the admin client behind its own
+gate.
 
-**Decided 2026-09-05 (founder): admin/founder only, for now.**
+| Function | Migration | What it does |
+| --- | --- | --- |
+| `get_vendor_score_inputs` | 0185, re-declared 0191 | The one rollup per vendor: windowed volume, category and city counts, recency, outcomes, review averages, `preferred_count` / `avoid_count`, all-time `total_used`. Asked for up to 500 ids per call. |
+| `get_vendor_agent_usage`, `get_vendor_category_usage` | 0185 | "Used most by" and "Ticket categories handled" on the vendor page. |
+| `search_vendors`, `count_vendors` | 0187, 0227 | The list page and every name search. Same predicate, so the pager and rows agree. Exclude removed vendors. |
+| `get_vendor_categories`, `get_vendor_cities` | 0187, 0192 | Vocabularies, returned as one `text[]` so no row cap applies. |
+| `get_vendor_candidates` | 0188, 0192, 0227 | The capability fallback set. `ORDER BY id` so `callAdminRpcAll` can page it past the 1,000-row response cap. |
+| `find_vendors_by_history` | 0189, 0190, 0228, 0229 | Searches the titles of past jobs. See **The ranker**. |
+| `merge_vendors` | 0227 | The one-transaction merge. |
+| `remove_vendor` | 0230 | Delete-or-hide, decided inside the transaction. |
+| `immutable_contact_search_text` | 0227 | Helper for the generated search columns. |
+| `can_access_vendors()` | 0221 | The SQL mirror of the access rule; every vendor SELECT policy uses it. |
 
-- SELECT on all five tables and the bucket: `(SELECT get_user_role()) IN ('admin','founder')`
-  (the 0181 members posture). The concierge / shop floor widens this with the Sia UI — one
-  migration on the five policies + one line (`VENDOR_ROLES`) in `actions/vendors.ts`.
-- The service layer reads on the **admin client** (the ranker also serves sessionless Elaya
-  turns), so the gated action / Elaya principal is the trust boundary; RLS is its mirror.
-- No user write policies anywhere (the deals posture). Writes go through `lib/actions/vendors.ts`
-  on the admin client behind `requireProfile()`; the action is the trust boundary.
-- Bulk import and backfill run on the admin client from `scripts/`.
+For Elaya's read-only SQL, `elaya_read.vendors`, `vendor_jobs`, `vendor_reviews` and
+`vendor_capabilities` expose clean columns (0223). See [elaya-analyst.md](elaya-analyst.md).
 
-Route: a `/vendors` page lands with the Sia UI, not in this tranche. Until then Elaya is the
-surface.
+## Access
 
-## Keeping the table clean (0227)
+One rule, three places that say it:
 
-The extractor writes vendors by itself now, so two kinds of wrong row turn up and both need a person
-to fix them. These are the only two writes in the module that are not additive, and both are
-admin/founder, with the status change.
+| Layer | Where | Who |
+| --- | --- | --- |
+| Pages | `hasVendorAccess(profile)` in `src/lib/utils/route-access.ts` | admin, founder, the whole concierge domain (any role), and the tech workbench (page only) |
+| Actions and Elaya | `hasVendorActionAccess(profile)` (the same file); `requireVendorAccess()` in `actions/vendors.ts`; `canAskAboutVendors` in `elaya-data.ts` | admin, founder, the whole concierge domain |
+| Database | `public.can_access_vendors()` (0221), used by the SELECT policy on every vendor table and the invoice bucket | same as actions |
 
-### Finding a vendor by the person you dealt with
+Exceptions, all admin/founder only (`requireProfile(['admin','founder'])`) because they are the
+writes that are not additive: `setVendorStatusAction` (pause / blacklist takes a vendor out of
+everybody's ranking), `mergeVendorsAction`, `removeVendorAction` and `setVendorDeletedAction`
+(restore). `verifyVendorAction` ("Looks right") is open to everyone with vendor access.
 
-The extractor files the business as the vendor and the person as a contact. That is right: a ticket
-titled "Booking at Josue Avenue Restaurant" whose note says "booked through vendor Roman Jackson" is
-one restaurant, not a supplier called Roman Jackson. But staff remember the person.
+There are no user write policies. Every write goes through an action (Zod, the gate,
+`actorFromProfile`, a core in `vendor-mutations.ts`, `revalidatePath`) on the admin client. The
+service reads on the admin client too, because the ranker also serves sessionless Elaya turns on
+WhatsApp; the caller's gate is the trust boundary and RLS is its mirror.
 
-Contact names and phones are part of the search surface, so searching the person finds the business.
-Emails are not, on purpose: "gmail" and "com" are shared by thousands of rows.
+`/vendors` is in the concierge list of `DOMAIN_ROUTE_MAP` and in `FOUNDER_NAV_PREFIXES`, so both see
+it in the sidebar.
 
-### Merge, when two rows are one supplier
+## The pages
 
-The extractor never merges on its own. Where a new name looks close to an existing one it records
-`possible_duplicate_of` and creates the row anyway, because fusing two suppliers on a guess destroys
-history and nothing catches it. A person finishes the job, from the row they want to keep: **Merge
-in** on `/vendors/[id]`, search, pick, confirm.
+All three are server pages that redirect to `/login` without a session and to `/dashboard` when
+`hasVendorAccess` is false. Each has a `loading.tsx`.
 
-Everything moves onto the keeper: jobs, ratings, notes, preferences, the tickets that named it and
-the WhatsApp links. The keeper only ever absorbs, because every fold is a COALESCE — a fact it
-already had is never replaced by the duplicate's version. The duplicate's name becomes an **alias**,
-which is the part that matters going forward: the next time the extractor reads that spelling it
-matches exactly instead of creating the row again.
+### `/vendors`: the list
 
-One case has no clean answer and it is common: when both rows hold a job for the **same ticket**. The
-ledger allows one row per (vendor, source, source_ref), so they cannot both survive. The duplicate is
-folded — every fact the survivor is missing is taken from it, any rating on it follows to the
-surviving job — and the emptied row goes. That delete is the A-11 exception of 2026-09-19. What it
-destroys, the losing spine row, is written to `vendor_merges` in full.
+- **Header:** title with the page dot, a **Find a vendor** link, and **Add vendor**
+  (`AddVendorButton` → `AddVendorModal`). Add vendor has six fields: Name and Category required;
+  What they do, Phone, Email, City optional. "What they do" writes an `offers` capability as a second
+  write, because a vendor with no capability never shows up in the fallback ranking. The category
+  select ends in "+ Add a category".
+- **"Needs a look"** (`VendorReviewQueue`): the eight newest vendors the extractor wrote that nobody
+  has confirmed (`identity_status = unverified`, `sources` holds `freshdesk_live`, not removed), with
+  the ticket, the words the model read and its near-miss names, plus the total count. Archive rows
+  are also unverified but are left out, or they would drown it. Renders nothing when empty.
+- **Filter strip** (`VendorsFilters` over the shared `FilterBar` + `useUrlFilters`): search and
+  category, URL-driven (`?search=`, `?category=`, `?page=`).
+- **Table** (`VendorsTable`, display-only): Vendor, Category, City, Times used, Score. A row opens the
+  vendor page with `?from=` so Back returns to the same filters. The score shows an em dash until
+  someone has judged the vendor; a paused or blacklisted vendor shows its status in that cell.
+- **Pager:** the shared `ui/Pagination`, 30 a page (`VENDOR_LIST_PAGE_SIZE`).
+- **Data:** `listVendors()` = `search_vendors` + `count_vendors` + one `get_vendor_score_inputs` call
+  for the page's ids; `getVendorCategories()`; `listVendorsNeedingReview()`. No Redis;
+  `revalidatePath` on every write.
 
-### Remove, when a row is not a supplier at all
+### `/vendors/[id]`: the vendor page
 
-Sometimes the extractor writes a client, a product or a line of chatter. **Remove** sets
-`deleted_at`: the row leaves the list, the search and the ranker, and Restore puts it back.
+- **Back** goes to `?from=` when it starts with `/vendors`, else to the list.
+- **An id that no longer exists:** `resolveMergedVendorId()` follows the `vendor_merges` trail (up to
+  five hops) and redirects to the keeper; otherwise 404.
+- **Header:** the vendor name, and `VendorAdminActions` (Merge in, and Remove or Restore) for
+  admin, founder and the tech workbench. See **Keeping the book clean**.
+- **Review banner** (`VendorVerifyBanner`) on an extractor row that is unverified and not removed:
+  the ticket it came from, the quote the model read, the likely duplicates, and **Looks right**.
+- **Removed banner** when `deleted_at` is set. A hidden vendor still opens by direct link, because
+  that is how someone restores it.
+- **Top row** on the shared `.serene-dossier-grid`: `VendorIdentityCard` (status pill, category chip
+  that is also the editor `VendorCategoryPicker`, contacts, what it offers and declines, ticket
+  categories handled, "Used most by") and `VendorScoreCard` (the 0 to 10 `VendorScoreRing`, times used,
+  the four dimensions as `StarRating` rows, and "Your take", the `VendorPreferenceControl` with the
+  team's takes beneath). The ring and the stars are deliberately different shapes so a computed score
+  and a human rating are never confused.
+- **Below:** `VendorNotesCard` (append a note, optimistic, the draft survives an error) and
+  `VendorInvoicesCard` (the five most recent bills with the total; Open mints a signed URL).
+- **Data:** one `getVendorDetail()` (spine, capabilities, 20 recent jobs, 20 recent reviews, the
+  score inputs, notes, usage, invoices, preferences), `getVendorInvoices()`, `getVendorCategories()`,
+  and `getLikelyDuplicates()` when the banner or the admin actions need it.
 
-Nothing is deleted, and nothing can be. `vendor_engagements` and `vendor_reviews` are ON DELETE
-RESTRICT, so a vendor with any history cannot be hard-deleted — and that restraint is right. Those
-rows record money that moved and work that happened. Somebody having filed them under the wrong name
-does not make them untrue.
+### `/vendors/find`: Find a vendor
 
-Removing is deliberately not a status. `paused` and `blacklisted` answer "how should we treat this
-supplier" — a blacklisted vendor still appears, so nobody re-adds it by accident. `deleted_at`
-answers a different question: "is this a supplier at all". Folding the two would lose one answer.
+`FindVendorPanel` on one search card: a line on how the ranking works, one field with Find inside it,
+three example requests while the box is empty, and "understood as" chips once typing. The chips come
+from a local keyword parse against our own vocabularies and the cities we actually serve
+(`getVendorCities()`); a person can clear or correct them, and they are never required. Find calls
+`rankVendorsAction`, which passes the caller as the asking teammate. The answer is one "Best matches"
+card (`VendorMatches`): rank, score ring, name, the reasons, any cautions as chips. The request rides
+along as `?q=` so returning from a vendor page re-runs it.
 
 ## Scoring
 
-Scores are **computed, never stored on `vendors`** (the subscriptions status pattern). Phase 1
-computes in the service layer over one SQL rollup per vendor; if it is slow on 21,800 vendors,
-Phase 2 adds a materialized rollup refreshed by a Trigger.dev schedule (the revival sweep
-pattern). The row shape does not change between phases.
+`computeVendorScore()` in `src/lib/utils/vendor-score.ts` is the pure score math (no DB, safe on the
+client). It reads one row of `get_vendor_score_inputs`. Engagements are windowed to 12 months
+(`SCORE_WINDOW_MONTHS`); reviews and marks are all-time.
 
-Inputs, all derived, over a rolling 12 months unless stated:
-
-| Signal | Derived from | What it says |
+| Component | Weight | Signal |
 | --- | --- | --- |
-| Volume | count of engagements, per category and per city | "who have we used most" (PR #3's lookup, now live) |
-| Recency | max `started_at` | still an active relationship |
-| Reliability | `completed` over `completed + failed + cancelled` | does what it says |
-| Reviews | avg of the filled manual dimensions (`speed`, `quality`, `pricing`, `reliability`), latest per (reviewer, engagement) | the team's judgement |
-| Team sentiment | count `preferred` minus count `avoid`, over those who spoke | the floor's gut |
+| volume | 2.5 | jobs in the window (in the asked category when there is one), log-saturating at 20 |
+| recency | 1.5 | 1 when used this month, down to 0 at the window's edge |
+| reliability | 2.5 | completed over completed + failed + cancelled; only when a job has a decided outcome |
+| reviews | 2.5 | average of the filled dimensions, mapped 1..5 to 0..1 |
+| sentiment | 1.0 | (preferred - avoid) over the teammates who marked it, mapped to 0..1 |
 
-**Built:** `SCORE_WEIGHTS` = volume 2.5 · recency 1.5 · reliability 2.5 · reviews 2.5 ·
-sentiment 1.0 (sum 10). A component with NO data (no decided outcomes, no reviews, no
-preferences) is dropped and the rest renormalise — never a fake neutral. The one SQL rollup is
-`get_vendor_score_inputs` (0185, Q-13 revoked tier); the weighting is `computeVendorScore` in
-`lib/utils/vendor-score.ts`, so tuning a weight is never a migration.
+Weights are `SCORE_WEIGHTS` in `constants/vendors.ts` (sum 10). A component with no data is dropped
+and the rest renormalise, never a fake neutral. Every component that has data adds one plain reason
+("Used 12 times in the last 12 months", "Rated 4.2/5 across 3 reviews").
 
-Output: a 0 to 10 score plus a **reasons list**, the same shape the Concierge vision shows in the
-sidebar ("8.5, matches budget and route preference; note: chose a different operator last time").
-Weights live in `SCORE_WEIGHTS` in `lib/constants/vendors.ts` for Phase 1; they move to a config
-table (the `revival_policies` pattern) the day someone wants to tune them without a deploy.
+**The displayed score waits for a judgement.** Volume and recency are activity, not quality. Until a
+vendor has a review or a job with a decided outcome, `score` is null (an em dash on screen, "nobody
+has rated them" to Elaya) while `ranking` still orders the list. A preference mark alone does not
+unlock the displayed score.
 
-**Member match score (the vision, Phase 2):** the same function takes an optional `clientId` and
-adds that member's own history with the vendor: engagements, outcomes, complaints in reviews.
-Nothing new is stored for this; it is why `vendor_engagements.member_id` exists from day one.
+`vendorFlags()` adds cautions without excluding: failed jobs in the window, "N teammates marked
+avoid", and "Identity not yet verified".
 
-## The ranker: "best vendor for this ticket"
+The member-match idea from the spec exists only as one reason: "Used N times for this member before"
+when the request names a member.
 
-One service function, the only ranking in the codebase (R-01):
+## The ranker
 
-```ts
-rankVendorsForRequest({
-  category, service?, city?, clientId?, agentId?, limit = 5,
-}) → { vendor, score, reasons[], flags[] }[]
-```
+`rankVendorsForRequest()` in `vendors-service.ts` is the only ranking in the codebase (R-01). The
+`/vendors/find` page, the ticket page's suggestions, Elaya's `find_vendors` and the MCP connector
+all call it; none re-rank.
 
-1. Candidates: `status = 'active'`, a `vendor_capabilities` row with `stance = 'offers'` for the
-   category (and service when given), no `declines` row for it, cities empty or containing the
-   city.
-2. Score each candidate.
-3. Agent layer: an `avoid` preference for `agentId` removes the vendor and says so in `flags`;
-   `preferred` adds a fixed boost and a reason.
-4. Return the top N with reasons. A `paused` or `blacklisted` vendor never appears, and
-   `get_vendor_details` tells the agent why when asked directly.
+1. **Read the request** (`readVendorRequest()` in `vendor-search-intent.ts`): one routing-tier call
+   (Haiku through the Elaya provider, no tools, about 1.3 s and ₹0.03) returns category, service,
+   city and 3 to 8 search terms, most important first. The model never names a vendor. Its category
+   and service are display only, never filters (a wrong guess would empty the search); its city is
+   trusted when the caller gave none. Fails open: any failure returns null and the raw phrase is
+   searched.
+2. **Search past jobs** (`find_vendors_by_history`): the terms against the titles of every past job,
+   weighted by rarity and position (0190). Words carried by more than 5% of titles are dropped before
+   the join and at most five words join, always keeping the rarest (0228: "request" appears in 23% of
+   titles and made the search time out). The caller's category chip adds 40% to a job filed under it
+   and the service 20%, but no longer filters (0229: the power bank job was filed under retail, the
+   chip said special-request, and the one vendor who had done it was excluded). The city still
+   filters on the vendor's service area. Declines, status and `deleted_at` are honoured.
+3. **Fallback** when no title matched or there was no phrase: `get_vendor_candidates` (an `offers`
+   capability for the category and service, no covering `declines`, status active, not removed),
+   paged past the row cap.
+4. **A search that died is not a search that found nothing.** `findVendorsByHistory` uses
+   `callAdminRpcChecked` (`rpc-helpers.ts`, `{ rows, ok }`). When the history search fails the ranker
+   still falls back to the usage list, but every row carries "Could not search past jobs for these
+   words, ranked by how often each is used", so the reader can see which question was answered.
+5. **Score and order.** A title match outranks usage (`1000 + matches × 10 + score`), and the first
+   reason quotes a matching job title as evidence.
+6. **Personal layer (0191).** The asking teammate's own `avoid` removes the vendor from their answer;
+   their own `preferred` adds `PREFERRED_BOOST` (1.0) and a reason with their note. Other teammates'
+   marks reach the answer only through sentiment and the "N teammates marked avoid" flag. The action
+   always passes the caller's own id, never a client-supplied one.
+7. Top N (default 5, max 20), with reasons and flags.
 
-Elaya's tool, the future ticket screen in Sia, and the Chrome extension all call this one
-function. None of them re-rank.
+## The live extractor (0214)
 
-## Elaya
+Keeps the book current from the Freshdesk mirror ([../integrations/freshdesk.md](../integrations/freshdesk.md)).
+It calls Freshdesk not at all; it reads what the mirror already holds, so it costs no API budget and
+can re-read history if the rules improve.
 
-Read tools in `lib/elaya/tools/registry.ts`, role-gated like the rest, every result through
-`maskPii()` (vendor phones are still phones):
+- **Schedule:** `src/trigger/vendor-extract.ts`, every 5 minutes, `maxDuration` 300 s. No settings
+  switch; it runs whenever the Trigger.dev worker is deployed.
+- **Queue:** `freshdesk.conversations.vendor_extracted_at IS NULL` and
+  `vendor_extract_attempts < 3`, oldest first. Forward only: everything mirrored before 0214 was
+  marked read. A range can be re-opened by setting the column back to NULL.
+- **Cycle** (`runVendorExtractCycle` in `vendor-extract-sync.ts`): claims 40 notes, reads 3 at a
+  time, within a 240 s budget. Notes of one ticket are read oldest first, so a phone in a later note
+  can attach to a vendor named earlier.
+- **The read** (`extractVendorsFromNote` in `vendor-extract.ts`): one routing-tier call per note, with
+  the note's images and PDFs sent as files through the provider's file part (39% of notes carry a
+  file; the supplier is often only on the bill). Budget: 4 files, 5 MB each, 16 MB per note, 60 s per
+  call. Phones and emails are swapped for `[PHONE_1]`-style placeholders before `maskPii` and swapped
+  back after, so the model never sees a real number but can say which one is the vendor's. Bill
+  images go to the model unmasked, a founder-approved exception recorded in the Decision Log. The
+  prompt mostly says what is NOT a vendor (the client, our staff, a product, an address, chatter),
+  and Indulge's own entities are also filtered at the write (`isOwnEntity`). **Fails closed:** a bad
+  reply writes nothing and the note stays queued.
+- **Matching, in tiers, each a fact:** a phone that belongs to exactly one vendor (a shared
+  switchboard identifies nobody), then an exact name or alias, then the same name once legal forms
+  like "Private Limited" are stripped, then a close name only when it is at least 8 characters, one
+  name contains the other, and the shorter is at least 82% of the longer, with exactly one candidate
+  passing. Short or person-shaped names are never fuzzy-matched. A new spelling becomes an alias. A
+  near miss (up to three names that contain ours or are contained by it) is recorded as
+  `possible_duplicate_of` and a new row is created anyway; a later phone that points at a different
+  vendor is flagged, never merged.
+- **Writes** go through the same cores as the UI (`createVendorCore`, `upsertCapabilityCore`,
+  `logEngagementCore`) with provenance: `source = freshdesk_live`, `source_ref` = the Freshdesk ticket
+  id, `identity_status = unverified`. Category and service come from the ticket's own fields, not the
+  model. Each note is marked read the moment its own writes land. A failed read, or a write a core
+  refused after a good read, counts an attempt; at 3 the note is given up and logged loudly, and
+  `vendor_extracted_at` stays NULL so the give-up is queryable.
+- **Settle pass,** every cycle, no model: walks every open `freshdesk_live` job (keyset paged, 200 a
+  page) and closes it through `closeEngagementCore` once the mirrored ticket is Resolved or Closed.
+- **Cost:** about 20 paise a note, roughly ₹3,300 a month at the account's volume (agreed with the
+  founder). A quiet period costs nothing.
+- **Bench:** `scripts/vendors/copy-notes-for-testing.ts` copies real notes and their files from
+  production's mirror into the local one (read-only on production); `run-extract-once.ts` drives one
+  cycle and prints every row. About five rupees a round.
 
-| Tool | Roles | Wraps |
-| --- | --- | --- |
-| `find_vendors` | concierge + shop staff, manager+ elsewhere | `rankVendorsForRequest` |
-| `get_vendor_details` | same | spine + capabilities + last 10 engagements + score with reasons |
+## Keeping the book clean: review, merge, remove
 
-Write tools, later, in `write-registry.ts`: `review_vendor` (inline, wraps the review core),
-`set_vendor_preference` (inline). Both follow the core rule: the tool and the action call the
-same function in `lib/services/vendor-mutations.ts`.
-
-## How data gets in, and stays fresh
-
-1. **Backfill (Ethan's loader).** The stage scripts move into `scripts/vendors/` so the import is
-   reproducible in the repo, like `import-members-and-map-groups.py`. Each Freshdesk ticket that
-   used a vendor becomes one `vendor_engagements` row (`source = 'freshdesk'`,
-   `source_ref = ticket id`, agent resolved against `profiles`, member resolved against
-   `members.freshdesk_contact_id`, every invoice attachment on `invoice_paths`). Capabilities are
-   seeded from the per-category counts. The computed row goes to `import_raw`.
-2. **Sia.** When a vendor WhatsApp group is mapped (`wag_groups.vendor_id`), the group mapper
-   fills `primary_phone` and contacts. Later, Sia's meaning layer emits engagements with
-   `source = 'sia'`.
-3. **Tickets.** When in-app tickets exist, closing one with a vendor attached writes the
-   engagement (`source = 'ticket'`) and asks the agent for a one-tap review. This is the moment
-   the score moves by itself.
-4. **Manual.** `logVendorEngagement`, `reviewVendor`, `setVendorPreference`,
-   `setVendorCapability` actions, and the Elaya writes, for everything in between.
-
-## Deploying: migrations → data → merge (never the other order)
-
-Data never travels in a PR. The loader runs **against the target database** — it resolves
-`agent_name_raw` against the profiles that exist THERE, so a table copy from a laptop would carry
-46,000 null agent links into production. Both scripts refuse a remote host without
-`--yes-write-to-production`.
-
-```bash
-supabase db push                                                                # 1. the tables + bucket
-npx tsx scripts/vendors/load-vendors.ts --yes-write-to-production              # 2. the data (insert-only on rerun)
-npx tsx scripts/vendors/dedupe-vendors.ts --yes-write-to-production --replay scripts/vendors/vendor-merges.csv
-npx tsx scripts/vendors/dedupe-vendors.ts --yes-write-to-production --purge-junk        # 3. IN THIS ORDER —
-npx tsx scripts/vendors/dedupe-vendors.ts --yes-write-to-production --purge-members     #    merges before purges
-npx tsx scripts/vendors/upload-vendor-invoices.ts --yes-write-to-production --skip-existing   # 4. the PDFs
-```
-
-Merges before purges: two rows the merge list names as survivors are themselves junk-labelled; purge
-first and those merges find no survivor. The loader is insert-only after the first load (existing
-rows untouched, merged-away spellings mapped to their survivor), so rerunning it is safe; a rerun
-re-inserts only the rows the cleanup removed by label, and the cleanup removes them again — run the
-three cleanup commands after every load. A true rebuild is `--wipe`. `member_id` is NULL on every imported row — the archive never carried the
-requester's identity.
-
-## File map (built 2026-09-05 → 2026-09-11, live on prod 2026-09-11, on main 2026-09-12)
-
-```text
-supabase/migrations/20260911000183_vendors.sql                 vendors + vendor_capabilities + Sia FKs
-supabase/migrations/20260911000184_vendor_invoices_bucket.sql  private bucket, read narrowed to admin/founder
-supabase/migrations/20260911000185_vendor_ledger.sql           engagements + reviews + get_vendor_score_inputs + usage RPCs
-supabase/migrations/20260911000186_vendor_notes.sql            vendor_notes
-supabase/migrations/20260911000187_vendor_search.sql           search_vendors / count_vendors + category and city vocabularies
-supabase/migrations/20260911000188_vendor_candidates.sql       get_vendor_candidates (the ranker's candidate set, in SQL)
-supabase/migrations/20260911000189_vendor_history_search.sql   find_vendors_by_history (past ticket titles)
-supabase/migrations/20260911000190_vendor_history_terms.sql    ranked terms; declines honoured on the phrase path
-supabase/migrations/20260911000191_vendor_agent_preferences.sql the sticky note + rollup with preferred / avoid counts
-supabase/migrations/20260911000192_vendor_rpc_row_cap.sql      RPC results shaped past PostgREST's 1,000-row cap
-src/lib/utils/vendor-score.ts       computeVendorScore + vendorFlags — the pure score math (no DB)
-src/lib/constants/vendors.ts        VENDOR_STATUS, CAPABILITY_STANCE, PREFERENCE_STANCE, ENGAGEMENT_SOURCE/OUTCOME,
-                                    REVIEW_DIMENSIONS, VENDOR_SERVICES, SCORE_WEIGHTS, PREFERRED_BOOST
-                                    (all via defineEnum where they are simple id/label lists)
-src/lib/validations/vendor-schema.ts
-src/lib/types/vendor.ts
-src/lib/services/vendors-service.ts        reads: list, search, details, rankVendorsForRequest, score rollup
-src/lib/services/vendor-search-intent.ts   readVendorRequest — the request reader (Haiku via the Elaya provider, fails open)
-src/lib/services/vendor-mutations.ts       cores: create/update/status, capability, log + close engagement, review, note, preference
-src/lib/actions/vendors.ts                 Zod → requireProfile(['admin','founder']) → actorFromProfile → core → { data, error }
-src/lib/elaya/tools/registry.ts            find_vendors, get_vendor_details (both brains: the Python brain runs them through the bridge)
-src/components/vendors/                    the /vendors list, the vendor page, Find a vendor, the preference control
-scripts/vendors/                           loader, dedupe (merge list checked in), invoice uploader
-```
-
-## Decisions (agreed with the founder, confirmed 2026-09-12)
-
-1. **Read audience.** Admin/founder for now. The Sia agents get access later, as one migration on
-   the SELECT policies plus the `VENDOR_ROLES` line in `actions/vendors.ts`.
-2. **Review dimensions.** Four: `speed`, `quality`, `pricing`, `reliability`, all entered by hand
-   (none exist in Freshdesk). `communication` is left out for now. If agents keep writing "hard to
-   reach" in the comment box, it comes back as one nullable column and one star row.
-3. **Score weights.** Ethan's proposal accepted as the starting point: volume 2.5 · recency 1.5 ·
-   reliability 2.5 · reviews 2.5 · sentiment 1.0. Tune in `SCORE_WEIGHTS`; a config table only if
-   someone needs to tune without a deploy.
-4. **Category vocabulary.** Vendors speak the Freshdesk ticket vocabulary (`REQUEST_CATEGORIES`)
-   for what they are used for and `VENDOR_CATEGORIES` for what they are. Vendors serve Sia
-   (tickets), not Gia (leads), so no bridge to `SERVICE_CATEGORY` / `leads.service_interests` is
-   planned. The loader owns the Freshdesk label mapping.
-5. **Blacklist authority.** Admin/founder for now, through the same `VENDOR_ROLES` gate as every
-   write. Other roles get it later, not now.
-6. **Per-agent preferred / avoid.** Kept. It was in the founder's first brief, was dropped on
-   2026-09-07 on a misreading, and came back as migration 0191.
-
-**Shipped, not deferred:** the Elaya read tools (on both brains since 2026-09-12: the Python
-brain runs them through the bridge, so WhatsApp answers vendor questions too), the `/vendors` UI,
-and the loader all landed in PR #3. The migrations ledger rows are marked applied.
-
-## What we keep from PR #3, unchanged in spirit
-
-The per-category ranking idea (now a query over engagements), the trigram name search, the
-aliases, the null-name general contact lines, the private bucket in a migration, the
-`jsonb_typeof` checks, the container verification habit, and the changelog discipline.
-
-## The review workflow (2026-09-21)
-
-The live extractor writes vendors on its own and marks every one `unverified`. A person
-finishes the job, from the product, with three possible answers:
+Every extractor row is born unverified. A person finishes the job with one of three answers:
 
 | Answer | Where | Who | What happens |
 | --- | --- | --- | --- |
-| It is real | "Looks right" on the vendor page | anyone with vendor access | `identity_status` becomes `verified`; the row leaves the queue |
-| It is another row under a different spelling | Merge in, on the row you are keeping | admin, founder | `merge_vendors`: jobs, ratings, notes and preferences fold into the keeper, the name becomes an alias |
-| It was never a supplier | Remove, on its page | admin, founder | deleted when nothing is attached, hidden when something is |
+| It is real | **Looks right** on the vendor page | anyone with vendor access | `verifyVendorCore` sets `identity_status = verified`. One way only: doubt is Merge or Remove, never un-verify. |
+| It is another row under a different spelling | **Merge in**, on the row you keep | admin, founder | `merge_vendors` folds the other row into this one |
+| It was never a supplier | **Delete** or **Hide**, on its page | admin, founder | `remove_vendor` deletes or hides it |
 
-**Where the queue is.** The "Needs a look" strip at the top of /vendors: the newest
-extractor rows nobody has confirmed, each with the ticket it came from, the words the
-model read, and the rows the extractor itself thought looked similar. It renders nothing
-when the queue is empty.
+**The merge shortlist** (`getLikelyDuplicates`) opens the Merge dialog before anyone types. It offers
+facts only: the names the extractor flagged as near misses, any live vendor with the same primary
+phone, and names that are one of this vendor's aliases (or the reverse). Never fuzzy, because the
+button beside it is Merge. A name search is available for everything else.
 
-**How the shortlist is built.** `getLikelyDuplicates` offers only facts: the near-miss
-names the extractor recorded when it created the row, any live vendor with the same
-primary phone, and a vendor whose name is one of this vendor's aliases (or the reverse).
-It is never fuzzy, because the button next to it is Merge.
+**Merge** (`merge_vendors`, one transaction). Many tables reference a vendor id and three of them
+(jobs, capabilities, preferences) carry a UNIQUE the move can collide with, so it is one SQL
+function, all or nothing. Jobs, capabilities,
+reviews, notes, preferences, `sia.tickets`, and the WhatsApp group and contact links move to the
+keeper. Where the keeper already has the same job (same source and ticket), the duplicate is folded:
+every empty field on the keeper is filled from it, its reviews follow to the surviving job, and the
+emptied row is deleted. Capabilities fold with cities unioned and a `declines` on either side
+winning. Every fold is a COALESCE, so the keeper never loses a fact. The loser's name becomes an
+alias. The deleted spine row is written to `vendor_merges` first. Merging into a removed vendor is
+refused; merging a removed vendor into a live one is allowed.
 
-**Old ids keep working.** A merge deletes the losing row, but `vendor_merges` keeps the
-trail. A bookmark or an Elaya chat that names the old id lands on the keeper: the page
-redirects, and `get_vendor_details` answers with the keeper and says so.
+**Remove** (`remove_vendor`, 0230). A vendor with no jobs, no reviews and no notes is genuinely
+deleted, because there is nothing to lose (capabilities and preferences do not count; they cascade).
+A vendor with any history is hidden instead (`deleted_at`), because its jobs record money that
+moved. The page shows which is coming ("Delete" or "Hide" on the button and in the confirm), but the
+function counts again under a row lock, so a job written a second earlier still wins. Either way a
+`vendor_removals` row keeps the vendor as it was. **Restore** clears `deleted_at`
+(`setVendorDeletedCore`); a deleted vendor cannot be restored.
 
-**What Elaya says.** `find_vendors` marks an extractor row nobody has confirmed as
-`unverified`, and `get_vendor_details` spells out what that means, so a recommendation
-made from a machine-written row is never presented with the confidence of a checked one.
-A removed vendor is named as removed.
+Hiding is deliberately not a status. `paused` and `blacklisted` answer "how should we treat this
+supplier" (a blacklisted vendor still appears, so nobody re-adds it). `deleted_at` answers "is this a
+supplier at all".
 
+**Old ids keep working.** A bookmark, a ticket note or last week's Elaya chat that names a merged-away
+id lands on the keeper: the page redirects and `get_vendor_details` answers with the keeper and says
+so.
+
+## Vendors on tickets
+
+A Serene ticket can carry a vendor (`sia.tickets.vendor_id`). The wiring lives in
+`src/lib/services/ticket-vendor.ts` and is documented in [tickets.md](tickets.md). What matters here:
+
+- Suggestions on the ticket come from `rankVendorsForRequest` with the ticket's own words, city and
+  member. Nothing is re-ranked.
+- Choosing a vendor opens a job on the vendor's ledger (`source = ticket`, `source_ref` = the ticket
+  number). Changing vendor closes the first job as cancelled. Ending the ticket closes the job with
+  the outcome the resolution implies and the cost from the Money card, inside
+  `moveTicketStatusCore`, so every path that ends a ticket feeds the score.
+- Moving a ticket to Awaiting vendor requires a vendor.
+- After resolving, the ticket asks "How did this vendor do?" (`VendorReviewForm`,
+  `reviewTicketVendorCore`): one review per ticket, filed against that ticket's job. This is today the
+  only place in the UI where a vendor review is entered.
+
+## Elaya and the MCP connector
+
+Two read tools, `find_vendors` (wraps the ranker; the request goes through in the user's own words
+and the staff principal is the asking teammate) and `get_vendor_details` (contacts, offers and
+declines, the last 10 jobs, ratings, the score with reasons, the team's takes). Both are defined in
+the Node registry and run on the Python brain through the bridge, so WhatsApp and in-app answer the
+same way. Every staff role carries them; who may use them is decided per person inside the tool
+(`canAskAboutVendors`, the vendor audience above). An unconfirmed extractor row comes back marked
+`unverified`, a removed vendor is named as removed, and a merged-away id answers with the keeper.
+The MCP connector publishes the same two tools and a `vendor_shortlist` prompt. There are no vendor
+write tools.
+
+Details, prompts and the bridge: [elaya.md](elaya.md) and [../integrations/mcp.md](../integrations/mcp.md).
+
+## How the archive got in (one-off, 2026-09-11)
+
+The historical book came from a manual Freshdesk export (tickets to 25 August 2026) run through an
+extraction outside this repo, then loaded by the scripts in `scripts/vendors/`. The loader resolves
+agent names against the profiles of the database it writes to, which is why data never travels in a
+PR: it runs against the target database. Every script refuses a remote host without
+`--yes-write-to-production`.
+
+```bash
+supabase db push                                                                       # 1. tables + bucket
+npx tsx scripts/vendors/load-vendors.ts --yes-write-to-production                     # 2. data (insert-only on rerun)
+npx tsx scripts/vendors/dedupe-vendors.ts --yes-write-to-production --replay scripts/vendors/vendor-merges.csv
+npx tsx scripts/vendors/dedupe-vendors.ts --yes-write-to-production --purge-junk     # 3. merges BEFORE purges
+npx tsx scripts/vendors/dedupe-vendors.ts --yes-write-to-production --purge-clients
+npx tsx scripts/vendors/upload-vendor-invoices.ts --yes-write-to-production --skip-existing   # 4. the files
+```
+
+Result on production: 21,580 vendors, 25,596 capabilities, 46,574 jobs, 4,977 invoice files, no
+junk-labelled rows. The loader is insert-only after the first load and maps merged-away spellings to
+their survivor, so a rerun re-inserts only the rows the purges removed; run the three cleanup steps
+after every load. `--wipe` is a true rebuild and deletes every `source = freshdesk` row, which is why
+the extractor writes `freshdesk_live` instead. `vendor-merges.csv` holds the 154 reviewed merge
+decisions (an optional third column `canonical` lets a smaller row survive when it is the right
+identity). The purge's `NOT_JUNK` list spares rows the extraction mislabelled.
+
+## File map
+
+```text
+supabase/migrations/20260911000183_vendors.sql                 spine + capabilities + Sia FKs
+supabase/migrations/20260911000184_vendor_invoices_bucket.sql  private bucket
+supabase/migrations/20260911000185_vendor_ledger.sql           engagements + reviews + rollup + usage RPCs
+supabase/migrations/20260911000186_vendor_notes.sql            vendor_notes
+supabase/migrations/20260911000187_vendor_search.sql           search columns, search/count, vocabularies
+supabase/migrations/20260911000188_vendor_candidates.sql       get_vendor_candidates
+supabase/migrations/20260911000189/0190_vendor_history_*.sql   find_vendors_by_history, ranked terms
+supabase/migrations/20260911000191_vendor_agent_preferences.sql the sticky note + rollup counts
+supabase/migrations/20260911000192_vendor_rpc_row_cap.sql      RPC shapes past the 1,000-row cap
+supabase/migrations/20260918000214_vendor_extraction_queue.sql the extractor queue + freshdesk_live source
+supabase/migrations/20260918000221_vendors_for_concierge.sql   can_access_vendors() + policies
+supabase/migrations/20260921000227..0230_*.sql                 contact search, merge, deleted_at, history fixes, remove
+src/lib/constants/vendors.ts          THE vocabulary, weights, limits and extractor numbers
+src/lib/types/vendor.ts               row types
+src/lib/validations/vendor-schema.ts  Zod
+src/lib/utils/vendor-score.ts         computeVendorScore + vendorFlags (pure)
+src/lib/services/vendors-service.ts   every read + THE ranker + the review-workflow reads
+src/lib/services/vendor-mutations.ts  THE write cores (UI, extractor and tickets all use them)
+src/lib/services/vendor-search-intent.ts  readVendorRequest (fails open)
+src/lib/services/vendor-extract.ts    the model read of one note (fails closed)
+src/lib/services/vendor-extract-sync.ts   the cycle + settleOutcomes
+src/lib/services/ticket-vendor.ts     the ticket ↔ vendor link
+src/lib/actions/vendors.ts            every vendor server action
+src/trigger/vendor-extract.ts         the 5-minute schedule
+src/components/vendors/               the list, the vendor page cards, Find a vendor, admin actions, review queue
+src/app/(dashboard)/vendors/          page.tsx, [id]/page.tsx, find/page.tsx (+ loading.tsx each)
+scripts/vendors/                      loader, dedupe (+ vendor-merges.csv), invoice uploader, extractor bench, test-find-phrases
+```
+
+## Decisions
+
+1. **Audience.** Admin/founder while the module was built; the whole concierge domain since
+   2026-09-18 (founder). Pause / blacklist, merge and remove stay admin/founder.
+2. **Four review dimensions,** all entered by hand: speed, quality, pricing, reliability.
+   `communication` was left out; it comes back as one column if the team keeps writing "hard to reach".
+3. **Weights** 2.5 / 1.5 / 2.5 / 2.5 / 1.0, tuned in `SCORE_WEIGHTS`. A config table only if someone
+   needs to tune without a deploy.
+4. **No bridge to lead interests.** Vendors serve concierge tickets, not Gia leads.
+5. **Per-teammate preferred / avoid is kept** (0191, founder's original brief).
+6. **The extractor starts from 2026-09-17** and never re-reads the 210,773 notes mirrored before it.
+7. **Bill images go to the model unmasked** (founder-approved, Decision Log).
+8. **A machine never merges.** It flags; a person merges.
+9. **Remove deletes a row with no history and hides one with history** (founder, 2026-09-19).
+
+## Not built, and known gaps
+
+- **No UI to pause or blacklist.** `setVendorStatusAction` exists with no caller in the UI.
+- **No UI to edit capabilities** beyond the one "What they do" line on Add vendor;
+  `deleteCapabilityAction` has no caller.
+- **No manual job logging or closing on the vendor page** (`logEngagementAction`,
+  `closeEngagementAction` unused by the UI). Jobs come from the archive, the extractor and tickets.
+- **No review form on the vendor page.** Reviews are entered after a ticket resolves.
+- **Sia does not feed vendors yet:** nothing fills vendor contacts from a mapped vendor WhatsApp
+  group, and no job is written with `source = sia`.
+- **The member-match score** is one reason line, not a score. The Chrome extension was never built.
+- **The tech workbench sees Merge and Remove** on the vendor page (`hasElevatedPageAccess`), but the
+  actions refuse anyone who is not admin or founder.
+- **A ranking weakness reported on 2026-09-18:** "AC technician" matched airline jobs on the letters
+  "AC". Not re-tested after 0228 / 0229. TODO: verify.
+- **In progress, not shipped:** agent vendors (`vendors.kind` = `human` / `agent`, migration 0245) for
+  the hands plan: the migration is committed (step 1, 2026-09-26) but not applied to production. See
+  [../architecture/hands-plan.md](../architecture/hands-plan.md).

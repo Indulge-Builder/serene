@@ -1,91 +1,110 @@
-# /elaya — Elaya Chat
+# /elaya: Elaya chat
 
-> **Purpose:** spec for the Elaya chat page.
-> **Audience:** engineers. · **Source-of-truth scope:** this route's behaviour.
-> **Last verified:** 2026-07-02 (Jarvis Phases 1–4, the Notes section, and the 2026-07-02 memory-retrieval rework all live on this surface) · **Status:** shipped.
+> **Purpose:** spec for the `/elaya` chat page and the three other places the same chat opens: the floating Elaya button, the dashboard Elaya widget, and `/m/elaya` on the phone.
+> **Audience:** engineers. · **Source-of-truth scope:** these surfaces' behaviour. How Elaya thinks, her tools and her rules live in [../modules/elaya.md](../modules/elaya.md).
+> **Last verified:** 2026-09-26 against `src/app/(dashboard)/elaya/`, `src/app/(dashboard)/layout.tsx`, `src/components/elaya/`, `src/components/dashboard/widgets/ElayaPresenceCard.tsx`, `src/app/(client)/m/elaya/`, `src/lib/services/elaya-service.ts`, `src/lib/constants/elaya.ts`, `src/lib/utils/route-access.ts`.
 
-Module architecture + phase contracts: `docs/modules/elaya.md`. Build record: `docs/changelog.md`
-(2026-06-12 Elaya foundation entry).
+## 1. Purpose
 
-## Access
+The page where a teammate talks to Elaya in the app. One chat surface, `ElayaChatShell`, is
+rendered in four places, so every capability appears in all of them without a fork. All four
+continue the person's single active conversation, which is also the one their WhatsApp messages
+to Elaya continue.
 
-All roles, all domains: `/elaya` is in `ALWAYS_ALLOWED_PREFIXES`, alongside `/notes` (the personal
-notes surface Elaya reads as context). What Elaya can *access* is enforced per-principal in the
-tool layer (guests: zero tools), never by the route gate. Sidebar: MAIN_NAV, Sparkles icon,
-directly under Dashboard.
+## 2. Who sees it
 
-## Behaviour
+Everyone for whom `hasElayaAccess(profile)` is true: admin, founder, the tech workbench, and the
+domains in `ELAYA_DOMAINS` (concierge and the four Gia domains). Finance, marketing, business and
+guests do not. The check is the dashboard layout's `canAccessRoute`, which asks `hasElayaAccess`
+for any `/elaya` path (the route left `ALWAYS_ALLOWED_PREFIXES` on 2026-09-26); a refused visitor
+is sent to `/dashboard`. Sidebar: `MAIN_NAV`, Sparkles icon, labelled "Elaya"; the founder's
+sidebar lists it too.
 
-- **RSC seed (`page.tsx`):** `getCurrentProfile()` → **`resolveElayaChatSeed(profile)`**
-  (`elaya-service.ts`). This is the ONE shared seed; the floating `ElayaWidget` and the dashboard
-  `EmbeddedElayaChat` use the same function via `getElayaChatSeedAction`, never a re-inlined copy.
-  It resolves the active conversation (24h server-side session window from
-  `elaya_settings.session_expiry_hours`), the transcript, the deterministic greeting
-  (`getElayaTimeGreeting` + `pickElayaDailyLine`, no model call on load, ever), and the
-  remaining-today message budget.
-- **Streaming:** `ElayaChatShell` POSTs to `/api/elaya/chat` and consumes SSE frames. The route
-  order is: auth gate → per-user burst limiter (`createRateLimiter`, 20/min, keyed on the profile
-  id) → Zod → daily cap. The route runs the full brain (`runElayaTurn`): the tool-calling loop
-  (max 10 iterations) over the read ∪ write registry. Tool calls surface as a serif-italic status
-  line ("Looking through your leads…").
-- **Read tools (12, role-gated; `tools/registry.ts`):** 8 all-staff (`search_leads`,
-  `get_cold_leads`, `get_lead_details`, `get_my_tasks`, `find_teammate`, `search_deals`,
-  `get_performance_snapshot`, `get_helpdesk_content`) plus `get_escalations` /
-  `get_domain_health` / `get_campaigns` (manager+) and `get_budget` (admin/founder). Every read
-  fetches through `elaya-data.ts` (the parity rule), so behaviour is identical on WhatsApp.
-- **Agentic writes (12 tools; `tools/write-registry.ts`, ledger `elaya_actions`, migration 0118):**
-  the brain executes the eight low-risk tools **INLINE** (`add_lead_note`, `log_call`,
-  `create_lead_task`, `create_personal_task`, `create_group_task`, `create_subtask`,
-  `update_task_status`, `update_task`) and **PROPOSES** the four state-changing tools
-  (`update_lead_status`, `reassign_lead`, `log_deal`, `delete_task`), which mutate only later via
-  the confirmation resolver → `executeProposedAction` on an affirmative human reply. Every write,
-  inline or resolved, is logged to `elaya_actions` (executed/proposed rows with before/after
-  snapshots). This applies identically on **both** the `/elaya` in-app channel and the WhatsApp
-  staff channel.
-- **Jarvis personalisation (2026-06-25/26):** every turn folds three things into the prompt as
-  **context only, never permission** (the Golden Rule, `docs/modules/elaya.md`): (a) the per-user
-  persona prefs (`user_context.context.persona`, edited on `/profile`); (b) the durable learned
-  memory (`user_context.context.learned`, updated by a throttled Haiku summarizer in `memory.ts`
-  every 4th user message, bounded to ~900 chars, so the surface gets smarter the more it is used);
-  (c) the user's `/notes` (migration 0152, `getNotesForElaya`, capped at
-  `ELAYA_NOTES_PROMPT_BUDGET`). The old `retrieveMemoryContext` seam was removed 2026-07-02; the
-  brain reads `getUserPersona` + `getNotesForElaya` directly.
-- **Voice dictation:** `DictationButton` (`variant="composer"`) mounts as the MessageBar leading
-  slot inside `ElayaChatShell`: record → transcribe (`transcribeAudioAction`, Deepgram) → the
-  transcript fills the composer as an editable draft. Never auto-sends.
-- **Daily cap:** 200/day (config row `elaya_settings.daily_message_cap`), counted from IST
-  midnight, enforced in the route before any persistence or model call. The composer swaps to the
-  cap notice when exhausted; the server remains the authority.
-- **Page chrome:** the page itself renders only the header (`type-page-title` +
-  `page-title-dot`, plus a `TOP_BAR_ENABLED` `PageControls` cluster) and `ElayaChatShell`. The
-  SHELL owns the canonical `.serene-dossier-grid serene-dossier-grid--340` grid: chat card on
-  `--theme-paper` in the 1fr column; the right 340px rail stacks `ElayaFeedbackCard` (the
-  suggestion-inbox entry, added 2026-06-20) above `ElayaIdentityCard` (breathing glyph tile +
-  name, `ELAYA_STARTER_PROMPTS` prefill-only starters, capability list). The rail stacks below the
-  chat under lg. **Full-height fill:** the page `<main>` is a flex column and the shell grid is
-  `flex-1` (`minHeight: 0`), so both columns stretch to the remaining paper height exactly, with
-  no `calc(100dvh - Npx)` offsets (removed 2026-06-12). **No visible message counter**; at cap the
-  header shows "Daily limit reached" and the composer swaps to the cap notice. Bubbles per
-  `src/components/CLAUDE.md` § Elaya (Elaya's bubbles show her breathing glyph via `showGlyph`).
-- **Not the only mount:** the same `ElayaChatShell` renders in the floating `ElayaWidget` (every
-  dashboard route except `/elaya`; `hideIdentity` chat-only mode) and in `EmbeddedElayaChat`
-  inside the dashboard Elaya-presence widget. Zero shell fork, so every capability above shows up
-  in all mounts automatically.
+What a person can reach once inside is decided per principal in the tool layer, never by this
+page. See [../modules/elaya.md](../modules/elaya.md) section 3.
 
-## Related surfaces
+## 3. Data sources
 
-- The WhatsApp STAFF channel runs the same brain, tools, cap, and session
-  (`docs/modules/elaya.md`).
-- The outward CUSTOMER channel (welcome blast + prospect replies) is a separate, hard-capped
-  brain that never touches this page: `docs/modules/customer-welcome-blast.md`. Its training
-  library is curated at `/admin/elaya-training` (manager+).
+| Need | Source |
+| --- | --- |
+| The seed: conversation id, transcript, greeting, messages left today, and the viewer's role and domain | `resolveElayaChatSeed(profile)` in `elaya-service.ts`. Server pages call it directly (`/elaya`, `/m/elaya`, and `/settings/elaya-playbooks` for its Try-it box); the client surfaces (the floating button, the dashboard card) call it through `getElayaChatSeedAction()` (`src/lib/actions/elaya.ts`). One function, never a re-inlined copy |
+| The 24-hour session | `getOrCreateActiveConversation` (window from `session_expiry_hours`), one per user across channels |
+| The greeting | `getElayaTimeGreeting` + `pickElayaDailyLine` (`constants/elaya.ts`): deterministic, no model call on load |
+| Starters and the reach list | `getElayaStarters(viewer)` and `getElayaCapabilities(viewer)` (`constants/elaya.ts`): six questions and a "She can read" list that fit the person's role and domain. A `[bracket]` is a blank the person fills in |
+| Sending a message | `POST /api/elaya/chat` over SSE, through `streamElayaChat()` in `components/elaya/elaya-stream.ts` (the one transport, shared with the phone screen) |
 
-## Never
+The route: session → `hasElayaAccess` (403 `elayaNotEnabled`) → 20-a-minute burst limit → Zod →
+the brain switch. Today the Python brain answers and owns the cap, the session and both message
+rows. Full order and the rollback path: [../modules/elaya.md](../modules/elaya.md) sections 5 and 9.
 
-- Never render Elaya data without a tool round-trip (no model-fabricated records).
-- Never enforce the cap or session expiry client-side only.
-- Never let a state-changing write tool mutate in its own proposal turn — `update_lead_status`,
-  `reassign_lead`, `log_deal`, and `delete_task` propose only; the mutation lands solely in the
-  confirmation resolver (`executeProposedAction`) on an affirmative human reply.
-- Never treat persona, learned memory, or notes as permission. They are prompt context; the
-  toolset + data scope are fixed in code from the verified principal.
+## 4. Components
+
+| Component | Role |
+| --- | --- |
+| `app/(dashboard)/elaya/page.tsx` | RSC: profile → seed → `ElayaChatShell`. Renders the `<h1>` with the page-title dot and the `PageControls` cluster when `TOP_BAR_ENABLED` |
+| `components/elaya/ElayaChatShell.tsx` | THE chat surface. On the page it owns the `.serene-dossier-grid--340` grid: the chat card in the wide column, a 340px rail on the right (stacked below under lg) with `ElayaFeedbackCard` (the suggestion inbox entry) above `ElayaIdentityCard`. `hideIdentity` gives chat-only; `embedded` strips the card chrome to fill a modal or widget flush; `onClose` puts a close X in the presence header |
+| `components/elaya/ElayaIdentityCard.tsx` | the breathing glyph tile, "Ask her" starters (prefill the composer, never send; long prompts wrap inside the pill), "She can read" list |
+| `components/elaya/ElayaMessageBubble.tsx` | bubbles; Elaya's show her breathing glyph; model text renders through `ChatMarkdown` |
+| `components/elaya/ElayaStatusText.tsx` | the tool-status line ("Looking through your leads…", "Thinking…"), morphing between phrases (torph); the one place Elaya animates text |
+| `DictationButton` (`variant="composer"`) | the mic in the composer's leading slot. The transcript lands as an editable draft; never auto-sends. See [../modules/voice-dictation.md](../modules/voice-dictation.md) |
+| `components/elaya/ElayaWidget.tsx` | the floating button, bottom-right, on every dashboard route except `/elaya`. Mounted by the dashboard layout only when `hasElayaAccess(profile)`. Prefetches the seed and the shell chunk on hover or focus; the click opens a `Dialog` (portaled to `document.body`) with `EmbeddedElayaChat` |
+| `components/elaya/EmbeddedElayaChat.tsx` | THE body of every embedded surface: resolve (or receive) the seed, render the shell in `embedded` mode, hold the seat with a breathing glyph while it loads. The shell loads with `next/dynamic` on intent |
+| `components/dashboard/widgets/ElayaPresenceCard.tsx` | the dashboard widget `elaya-presence` (`constants/dashboard-widgets.ts`, `domains: ELAYA_DOMAINS`), composing `EmbeddedElayaChat` |
+| `components/mobile/screens/ElayaChatScreen.tsx` | `/m/elaya`: the phone knob. Same seed, same transport, the neumorphic mobile chrome, the generic `ELAYA_STARTER_PROMPTS`, no mic. The page redirects to `/m` without `hasElayaAccess`. Mobile layer: [../modules/mobile-ops.md](../modules/mobile-ops.md) |
+
+**The floating button's geometry** is three tokens on `:root` (`--elaya-fab-size`,
+`--elaya-fab-inset`, `--elaya-fab-clearance`). Scrolling mains reserve the clearance as bottom
+padding so the last row always ends above the button; `.serene-fab-clear-x` keeps right-anchored
+controls (the shared `Pagination`) clear of it; a page's own floating action stacks above it with
+`.serene-above-elaya-fab`. On a phone the widget fills the sheet and follows the keyboard.
+
+## 5. States
+
+- **Loading:** `app/(dashboard)/elaya/loading.tsx` mirrors the grid (header, chat card with a few
+  bubble shapes, the rail). Embedded surfaces show the breathing glyph until the seed lands.
+- **Empty conversation:** the deterministic greeting, plus the starters in the rail.
+- **Streaming:** the status line morphs through the tool phrases; the reply streams in.
+- **Daily cap reached:** the header says "Daily limit reached" and the composer is replaced by a
+  quiet notice. There is no visible message counter. The server is the authority (a 429 with
+  `capReached`).
+- **Not enabled for this team:** the page redirects; the chat route answers 403 with
+  `formErrors.elayaNotEnabled`.
+- **Errors:** user-safe copy in a toast; a rejected send restores the draft. On the Python path
+  the brain's own failure line ("my AI account has reached its usage limit, please tell the tech
+  team") is saved and shown as her reply.
+
+## 6. Invariants
+
+- One seed function (`resolveElayaChatSeed`) and one transport (`elaya-stream.ts`) for every
+  surface. Never fork the shell.
+- The floating button hides on `/elaya`, so two live shells never stream on one conversation or
+  count the cap twice.
+- The cap and the session are enforced on the server, never only in the browser.
+- Starters and dictated text only fill the composer; nothing sends without the person pressing
+  send.
+- Never render Elaya data that did not come from a tool round trip.
+- A propose tool never changes anything in its own turn; the change lands only after the person's
+  yes (see [../modules/elaya.md](../modules/elaya.md) section 7).
+- Style settings, memory, notes and playbooks are context, never permission.
+
+## 7. Open items
+
+- `getElayaChatSeedAction()` does not ask `hasElayaAccess`; it only resolves a conversation, and
+  every consumer is already gated, but a direct call by a teammate without Elaya would create an
+  empty conversation row. Low risk.
+- The tech workbench has Elaya on the page and the button, but not the dashboard widget:
+  `widgetAllowedFor` checks the widget's `domains` (`ELAYA_DOMAINS`), which does not list `tech`.
+- The page file's header comment still says `/elaya` is in `ALWAYS_ALLOWED_PREFIXES`; the code
+  path is correct (the layout's `canAccessRoute`).
+- The Approve/Dismiss proposal card is not built; confirmation is a typed yes or no.
+
+## 8. Deep dive
+
+- The customer WhatsApp Elaya never touches this page:
+  [../modules/customer-welcome-blast.md](../modules/customer-welcome-blast.md).
+- `/notes` (context Elaya reads): [notes.md](notes.md).
+- The per-user style settings (`ElayaPersonaSettings`) and "What Elaya has learned about you"
+  (`ElayaMemoryCard`) live on `/profile`: [profile.md](profile.md) and
+  [../modules/elaya.md](../modules/elaya.md) sections 11 and 12.
+- Teaching Elaya (playbooks, requests, training): [../modules/elaya.md](../modules/elaya.md)
+  section 13.

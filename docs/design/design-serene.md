@@ -1,6 +1,34 @@
-# Serene — design.md (Design Department Handoff)
+# Serene design handoff (snapshot of 2026-07-03)
 
-> **What this file is.** The complete map of Serene's UI for the design team: the vision, the
+> **Purpose:** a dated snapshot of the design-department handoff map, written on 2026-07-03 as `docs/design/design.md` (the changelog entry of that day uses that name; the file was later renamed `design-serene.md`). Kept for its history and its enhancement workflow (sections 20 to 22).
+> **Audience:** the design team, for history only. Do not build from it.
+> **Source-of-truth scope:** none. [DESIGN-DNA.md](./DESIGN-DNA.md) is the law, [design-system.md](./design-system.md) the implementation reference, [control-system.md](./control-system.md) the control contract, [decision-log.md](./decision-log.md) the dated decisions. Where this file disagrees with them, they win.
+> **Last verified:** not re-verified. Checked on 2026-09-26 only enough to list what is out of date below; the body is left as written on 2026-07-03.
+
+## Read this first: what this snapshot gets wrong today
+
+This file was written the same day the neumorphic restyle landed and describes the UI just before it. Most of its visual detail is out of date. The main differences, as of 2026-09-26:
+
+| This snapshot says | Today | Where to read the current rule |
+| --- | --- | --- |
+| A dark textured canvas with grain behind floating cream paper (§1, §6.1, §8.10) | One warm cream material: canvas `#ECE8E1`, an ivory workspace sheet, porcelain cards; the grain is gone | DNA §0 note, §3.1; decision log 2026-07-03, 2026-09-22 |
+| Six themes including Martini (§3) | Eight themes: earth, air, water, fire, candy, rose, moss, lilac; Martini retired (migration 0157); dark mode via `data-neu="dark"` and a Light / Dark / Auto preference | DNA §1.0 |
+| Buttons use `--radius-sm` 8px; the radius scale is 4 to 32px (§4.3) | Marshmallow radii (control 14, field 22, card 32); the legacy scale is bridged (`--radius-md` 14, `--radius-lg` 22, `--radius-xl` 32) | DNA §2 runtime note; control-system.md |
+| The focus ring is a white gap plus accent (§4.4, §8.6, §14) | One focus colour, `--neu-focus-edge`: a hugging frame on text fields, a 2px outline on actions, no rings on applied or open states | control-system.md "Focus and state without rings" |
+| Sidebar active state is three layers with a travelling pill (§6.2, §8.1) | Only the active icon gets an accent-gradient tile; rows stay transparent | DNA §3.2 note |
+| `EmptyState` has a hero and a bare italic inline line (§7.3) | One anatomy: tile, Playfair italic title, description, one action; `hero`, `inline`, `framed` | DNA §5.99 detail 04 note; design-system.md |
+| Card headers on `--theme-paper-subtle` (§7.3) | The themed header surface (`--neu-header-surface`) with `--neu-header-ink` text | decision log 2026-08-10, 2026-09-26 |
+| Pills carry a lifted shadow (§8.7) | Status badges are flat | decision log 2026-09-22 |
+| Canvas noise 0.68 (§8.10), true dark mode "not planned" (§16) | No noise; dark mode shipped 2026-07-03 | decision log 2026-07-03 |
+| `/dev/components` renders every primitive (§7, §18) | Never built; the specimen scripts in control-system.md are the visual check | decision log Open table |
+| `WhatsAppShell` two panels with `ConversationRow` (§9.4) | The Sia layout: `SplitWorkspace` and `ConversationRailRow`; `ConversationRow` is deleted | design-system.md |
+| The feature inventory (§9) | Missing everything built since July: Members, Tickets, Sia, Freshdesk, Books, Vendors, Subscriptions, the `/m` layer, Teach Elaya, and more | the page and module docs under `docs/pages/` and `docs/modules/` |
+
+If you use the enhancement template in section 20, check all eight themes in light and dark mode, not the six it lists.
+
+---
+
+> **What this file is (as written on 2026-07-03).** The complete map of Serene's UI for the design team: the vision, the
 > token system, every primitive, every modal, every card, every feature surface, and the rules
 > that keep it production-safe. Use it to understand what exists today and to propose
 > enhancements against it (Section 20).

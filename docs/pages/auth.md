@@ -1,486 +1,316 @@
-# Auth Pages & Session — Page Spec
+# Auth Pages and Session: Page Spec
 
-> **Purpose:** spec for the pre-auth surfaces (`/login`, `/forgot-password`, `/update-password`), the root redirect, the auth callback, and the end-to-end session flow.
-> **Audience:** engineers. · **Source-of-truth scope:** the `(auth)` route group + session flow as experienced by the user. The session *architecture* (proxy, members, route gates, RBAC) lives in `../architecture/auth-and-rbac.md`; `/profile` lives in `profile.md`; visual law for the canvas-dark auth surface: `../design/DESIGN-DNA.md` §3.7.
-> **Last verified:** 2026-07-02 (SSR theme cookie, three-stage layout gate, signOut removal); 2026-06-24 (invite-by-email onboarding + callback-member pass); 2026-06-15 (OTP-code password reset pass); 2026-06-11 restructure.
+> **Purpose:** spec for the pre-auth surfaces (`/login`, `/forgot-password`, `/update-password`, the invite landing `/auth/callback`, and the OAuth consent screen `/oauth/consent`), the root redirect, and the session flow as a person experiences it, from sign-in to the first paint of the app.
+> **Audience:** engineers. · **Source-of-truth scope:** the `(auth)` route group, `src/app/page.tsx`, `lib/actions/auth.ts`, `lib/actions/oauth-consent.ts`, `lib/utils/return-path.ts`, and the session steps of the dashboard layout. The session *architecture* (proxy, Supabase clients, route gates, RBAC) lives in `../architecture/auth-and-rbac.md`; `/profile` in `./profile.md`; the MCP connector the consent screen serves in `../integrations/mcp.md`; the visual law in `../design/DESIGN-DNA.md` and `src/app/(auth)/CLAUDE.md`.
+> **Last verified:** 2026-09-26 against `src/app/(auth)/**`, `src/app/page.tsx`, `src/app/layout.tsx`, `src/app/(dashboard)/layout.tsx`, `src/proxy.ts`, `src/lib/supabase/middleware.ts`, `src/lib/actions/{auth,oauth-consent,profiles}.ts`, `src/lib/services/{profiles-service,oauth-server-service}.ts`, `src/lib/utils/return-path.ts`, `src/components/layout/AppBootScreen.tsx`, `src/app/globals.css` (auth classes), `supabase/config.toml`, and migrations 0125, 0201.
 
 ## 1. Purpose
 
-How users enter Serene: email+password login, password-reset request (6-digit OTP code by
-email), new-password set (after verifying the code), and **invite-by-email onboarding** (an
-admin-invited user clicks the email link, lands authenticated via `/auth/callback`, and sets
-their first password). The auth pages are the one surface that is dark by design — canvas
-palette, no paper, no app chrome.
+How people enter Serene:
+
+- **Sign in** with email and password (`/login`), optionally returning to a safe same-site path
+  (`?next=`).
+- **Reset a password** with a 6-digit code sent by email (`/forgot-password` → `/update-password`).
+- **Accept an invite:** an admin-invited person clicks the email link, lands signed in through
+  `/auth/callback`, and chooses their first password.
+- **Connect an AI app** (Claude, ChatGPT and others) through the consent screen `/oauth/consent`,
+  the page Serene shows for its Supabase OAuth server (the MCP connector, 2026-09-19).
+
+The app has **no sign-up screen**. Every account is created by an admin (`./user-management.md`).
 
 ## 2. Who sees it
 
-Public (unauthenticated) routes — no session gate in the `(auth)` layout. Authenticated users
-hitting `/` are redirected to `/dashboard`; deactivated users are gated twice (at
-`loginAction` and in the dashboard layout).
+The `(auth)` routes are public: the `(auth)` layout has no session gate. A signed-in person can
+still open `/login`. `/` sends a signed-in person to `/dashboard` and everyone else to `/login`.
+`/oauth/consent` needs a session: without one it sends the browser to `/login?next=<the consent
+URL>` and comes back after sign-in. Deactivated accounts are stopped three times: at `loginAction`,
+by the auth-side ban (they cannot sign in or refresh), and in the dashboard layout.
 
 ## 3. Data sources
 
 | Layer | Key items |
 | ----- | --------- |
-| Actions | `auth.ts` — exactly four exports: `loginAction` (+ `is_active` check; the documented non-authorization profile read), `requestPasswordResetAction` (sends a 6-digit OTP code; never reveals email existence — S-09), `verifyResetOtpAction` (verifies the code → establishes the recovery session), `updatePasswordAction` (the shared step-2 for **both** reset and invite). The duplicate `signOut` was deleted in the 2026-07-02 dead-code purge; sign-out lives only as `signOutUser` in `lib/actions/profiles.ts`. (No invite-specific action exists — invite session establishment is client-side in `callback-member.tsx`, not a server action.) |
-| Invite callback (live) | `/auth/callback` → `src/app/(auth)/auth/callback/page.tsx` + `callback-member.tsx` — **a CLIENT page** (built 2026-06-16). THE invite landing: the invite `redirectTo` (`inviteUser` in `lib/actions/profiles.ts`) points here as `/auth/callback?next=/update-password`. Handles three flows — implicit-grant **hash** (`#access_token=…`, the actual invite path the browser client consumes on mount; the server can't read a hash fragment), PKCE (`?code=` → `exchangeCodeForSession`), and OTP (`?token_hash=&type=` → `verifyOtp`) — then `router.replace(next)` (default `/update-password`, sanitised to a same-origin relative path). |
-| Legacy callback (compat) | `GET /api/auth/callback` (`route.ts`) — exchanges `?code` (PKCE) or `?token_hash` (`verifyOtp`) for a session. **Kept for backward compatibility only; it never receives the invite token** (a hash fragment a server route can't read) and is **dead code for the OTP-code password reset**. |
-| Validation | `validations/auth.ts` — `loginSchema`, `forgotPasswordSchema`, `verifyResetOtpSchema`, `updatePasswordSchema`; errors via `form-errors.ts` |
-| Session | proxy + `updateSession()` + member factories — `../architecture/auth-and-rbac.md` §7 |
+| Actions | `auth.ts` (four exports): `loginAction` (validates, signs in, refuses a deactivated profile, redirects to the safe `next` or `/dashboard`), `requestPasswordResetAction` (sends the code, always redirects to `/update-password?email=…`), `verifyResetOtpAction` (the code → a recovery session), `updatePasswordAction` (the password step for both reset and invite). `oauth-consent.ts`: `answerOAuthConsentAction` (Allow or Deny) |
+| Services | `oauth-server-service.ts`: `getOAuthConsentRequest`, `answerOAuthConsent` (session client). `profiles-service.ts`: `getCurrentProfile` (the layout and the consent page) |
+| Utils | `lib/utils/return-path.ts`: `safeReturnPath(value)`, THE "where to go after login" guard |
+| Invite landing | `src/app/(auth)/auth/callback/page.tsx` + `callback-client.tsx`: a **client** page that turns the invite link into a session |
+| Legacy route | `src/app/api/auth/callback/route.ts`: exchanges `?code` or `?token_hash`. Kept for old links only; the invite and the reset never use it |
+| Validation | `validations/auth.ts`: `forgotPasswordSchema`, `verifyResetOtpSchema`, `updatePasswordSchema` (plus an exported `loginSchema` that `loginAction` does not use, §8.2). Errors via `form-errors.ts` |
+| Session plumbing | `src/proxy.ts` + `updateSession()` (`auth.getClaims()`), the server and browser client factories: `../architecture/auth-and-rbac.md` |
 
 ## 4. Components
 
-- `LoginForm`, `ForgotPasswordForm`.
-- `UpdatePasswordForm` — **three branches** (not two): `invited` (skip the code, render `PasswordStep invited` directly), `!verified` (`CodeStep`), `verified` (`PasswordStep`). Shared chrome is the extracted helpers `AuthCardShell`, `ErrorBanner`, and `EyeToggle` (all local to `update-password-form.tsx`).
-- `InvalidLinkCard` (the real component — takes an `expired?` prop) lives in `update-password/page.tsx`; `MissingEmailCard()` is just a thin wrapper that returns `<InvalidLinkCard />` (no `expired` flag).
-- `AuthCallbackClient` + `CallbackPending` (the "Signing you in…" fallback) + a **local** `InvalidLinkCard` all live in `callback-member.tsx` / `page.tsx` — the invite-landing surface.
-- `PasswordStrengthBar` (4-segment danger→success).
+| Component | File | Notes |
+| --------- | ---- | ----- |
+| `LoginForm` | `login/login-form.tsx` | Email, password with show/hide, a hidden `next` field |
+| `ForgotPasswordForm` | `forgot-password/forgot-password-form.tsx` | Email only |
+| `UpdatePasswordForm` | `update-password/update-password-form.tsx` | Three branches: `invited` (password step only), not yet verified (`CodeStep`), verified (`PasswordStep`). Local helpers `AuthCardShell`, `ErrorBanner`, `EyeToggle` |
+| `InvalidLinkCard` | `update-password/page.tsx` | Takes `expired?`; `MissingEmailCard()` just returns it |
+| `AuthCallbackClient` | `auth/callback/callback-client.tsx` | "Signing you in…" while it works, a local `InvalidLinkCard` on failure |
+| `ConsentForm` | `oauth/consent/consent-form.tsx` | Who is asking, what they may do, Allow / Deny; or an error card |
+| `PasswordStrengthBar` | `components/ui/PasswordStrengthBar.tsx` | Four segments, danger to success |
 
-All draw from the canvas/sidebar palette — `--theme-paper*`, `.serene-input`, and light
-`--color-*-light` tokens are forbidden on auth surfaces (dark-surface semantic tokens instead).
+All of them share the auth card shell and the brand header (§8.7).
 
 ## 5. States
 
-- **Loading:** button-level pending states (width-preserving spinner swap) — no skeletons on auth.
-- **Empty:** n/a.
-- **Error:** inline message bars; fields never cleared; auth errors never reveal account existence.
+- **Loading:** button-level pending states (the spinner keeps the button's width). No skeletons on
+  auth pages. `/auth/callback` shows "Signing you in…".
+- **Empty:** not applicable.
+- **Error:** inline banners; fields never cleared; auth errors never reveal whether an account
+  exists (S-09). A bad or expired consent link shows an error card that says to start again from
+  the app.
 
 ## 6. Invariants
 
-Deep dive §10 — `/api/webhooks/*` **and** `/api/manifest` never run `updateSession()`;
-`x-pathname` set on every refreshed response; deactivated users double-gated; OTP reset
-completes at `/login`; an invite lands authenticated via `/auth/callback` and completes at
-`/dashboard`; one browser client; zero-flash theme.
+Deep dive §8.11. The short list: `/api/webhooks/*`, `/api/manifest`, `/api/elaya/bridge`,
+`/api/mcp` and `/.well-known/*` never run `updateSession()`; `x-pathname` is set on every
+refreshed response; deactivated accounts are stopped at sign-in, at the auth layer and in the
+layout; a reset ends at `/login`, an invite at `/dashboard`; every "go here after sign-in" value
+passes `safeReturnPath`; one browser Supabase client; the saved theme and appearance paint on the
+first byte.
 
 ## 7. Open items
 
-`last_seen_at` presence tracking is schema-ready but **not wired** (no code writes it) — a
-future proxy/action must rate-limit to once per minute when implemented.
+- **Public sign-up setting.** No app code calls `signUp`, but the local `supabase/config.toml` has
+  `enable_signup = true` (and `[auth.email] enable_signup = true`), and `handle_new_user()` copies
+  `role`, `domain`, `sia_role` and `queendom_id` straight from the metadata the caller supplies. If
+  the hosted project allows new sign-ups, anyone holding the public anon key could create an
+  account and choose its role. Checked 2026-09-26: the hosted project reports
+  `disable_signup: true`, so sign-up is off today. The trigger has NOT been hardened; the durable
+  fix is to stop it trusting caller metadata for authorization fields (tracked in `../TODO.md`).
+- **The OAuth server switch.** Connecting an AI app needs the Supabase OAuth server enabled on the
+  hosted project with authorization path `/oauth/consent` and dynamic client registration on. It
+  is on in production (the discovery document answers with a registration endpoint, checked
+  2026-09-26); the local config has it off (`../integrations/mcp.md`).
+- `/auth/callback` sanitises its own `next` with an inline check instead of `safeReturnPath`
+  (same rule, a second copy).
+- `last_seen_at` exists on `profiles` but nothing writes it.
+- The access-token lifetime is the default 60 minutes (`jwt_expiry = 3600` locally). The
+  2026-09-16 note recommends about 15 minutes on the hosted project to shorten the window of a live
+  token after a user is removed at the auth layer. TODO: verify.
 
 ---
 
 ## 8. Deep dive
 
-> Section numbering preserved from the original intelligence document. The former §3 (Supabase
-> member files), §4 (proxy session layer), and §7 (`/profile`) now live in
-> `../architecture/auth-and-rbac.md` and `profile.md`.
+### 8.1 Root route (`src/app/page.tsx`)
 
-### 1. Module Overview
+`getUser()` on the server client: a session → `redirect('/dashboard')`, otherwise
+`redirect('/login')`. The dashboard page itself may then send an admin or founder on a phone to the
+mobile layer `/m` (`../modules/mobile-ops.md`).
 
-Three distinct layers make up how users enter, stay in, and manage their identity inside Serene:
+### 8.2 `/login`
 
-1. **Pre-auth pages** — unauthenticated surfaces (`/login`, `/forgot-password`, `/update-password`, and the invite landing `/auth/callback`) inside the `(auth)` route group. No sidebar, no dashboard shell, canvas background with ambient motion layers. (`/auth/callback` is public but transient — it forwards once the session is live; it's not a page the user lingers on.)
-2. **Session infrastructure** — `src/proxy.ts` (Next.js 16 proxy), `src/lib/supabase/middleware.ts` (`updateSession()` — uses `auth.getClaims()`, a local ES256 verify against a process-cached JWKS, not `getUser()`), and the two Supabase client factories (`member.ts` / `server.ts`). Keeps the Supabase session cookie fresh on navigations.
-3. **Profile self-management** — `/profile` inside `(dashboard)`. Any authenticated user edits **only their own** `profiles` row. Admins edit other users at `/admin/users/[id]`, not here.
+| Item | Detail |
+| ---- | ------ |
+| Page | `login/page.tsx` (metadata title "Sign in") reads `?next`, passes it through `safeReturnPath`, and hands the result to `LoginForm`, which keeps it in a hidden field |
+| Fields | email, password with a show/hide toggle |
+| Action | `loginAction` via `useActionState` |
+| Validation | a local schema inside the action: email format, password at least 1 character, so older short passwords still sign in. Any failure collapses to `formErrors.invalidCredentials`; it never says which field |
+| Sign-in | `signInWithPassword` on the server client. A wrong email or password → `formErrors.invalidCredentials` |
+| Deactivated | after a good sign-in the action reads the profile; `is_active = false` → `signOut()` and `formErrors.accountDeactivated`. The auth-side ban (§8.9) usually refuses the sign-in before this |
+| Success | `redirect(safeReturnPath(formData.get('next')) ?? '/dashboard')`: the hidden field is checked again, because it is as untrusted as the query string |
 
-#### Route group structure
+`safeReturnPath(value)` accepts only a string that starts with one `/`, never `//` or `/\`, has no
+line breaks, and is at most 2,048 characters. Anything else returns `null` and the caller uses its
+default.
 
-| Group | Path prefix | Layout | Session behaviour |
-| ----- | ----------- | ------ | ----------------- |
-| `(auth)` | `/login`, `/forgot-password`, `/update-password`, `/auth/callback` | `src/app/(auth)/layout.tsx` — centered card on canvas, no app chrome | No session gate in layout; pages are public. `/auth/callback` may *establish* a session client-side, then forward |
-| `(dashboard)` | `/dashboard`, `/profile`, `/leads`, … | `src/app/(dashboard)/layout.tsx` — sidebar + floating paper surface | **Hard gate (3 stages):** `getCurrentProfile()` null → `/login` (it returns null when there is no session, so no separate `getUser()` call); `!is_active` → `/login`; `!canAccessRoute(profile, pathname)` → `/dashboard` |
+### 8.3 `/forgot-password`
 
-Root layout (`src/app/layout.tsx`) reads the `serene-theme` cookie and stamps the saved theme on `<html>` server-side (`data-theme`, fallback `earth` via `isThemeKey`/`DEFAULT_THEME`), plus font variables and global CSS. The dashboard layout's `ThemeInitializer` only corrects a missing or stale cookie against `profiles.theme` (the DB truth).
+| Item | Detail |
+| ---- | ------ |
+| Field | email |
+| Action | `requestPasswordResetAction` |
+| Sends | `resetPasswordForEmail(email)` with **no** `redirectTo`. The recovery email template renders `{{ .Token }}`, a 6-digit code, not a link |
+| Then | **always** `redirect('/update-password?email=<email>')`, whether or not the address exists (S-09). The code step opens with the email already filled |
+| Bad format | `formErrors.email` |
 
----
+A code, not a link: corporate link scanners (Google Safe Links and similar) cannot burn a code the
+way they pre-open a one-time link.
 
-### 2. Root Route — `src/app/page.tsx`
+### 8.4 `/update-password`: two ways in
+
+The page calls `getUser()` first.
+
+1. **A live session → invite mode.** Renders `<UpdatePasswordForm invited />`: the password step
+   only. `/auth/callback` already created the session.
+2. **No session → reset by code.** Without `?email` → `MissingEmailCard` (the `InvalidLinkCard`,
+   "request a new one"). With it → `<UpdatePasswordForm email=… />`, the two steps.
+
+| Step | Detail |
+| ---- | ------ |
+| Code (reset only) | `CodeStep` → `verifyResetOtpAction` → `verifyOtp({ email, token, type: 'recovery' })`, which creates the recovery session. `verifyResetOtpSchema`: `^\d{6}$`. A wrong **or** expired code → `formErrors.otpInvalid`; the page never says which. Button: "Verify Code" / "Verifying…" |
+| Password (both) | `PasswordStep` → `updatePasswordAction` → `updateUser({ password })`. `updatePasswordSchema`: 8 to 72 characters, confirmation must match. A mismatch → `formErrors.passwordMismatch`; any other parse failure → `formErrors.passwordTooShort`; an Auth error → `formErrors.generic`. `PasswordStrengthBar` under the field. Button: "Update Password" / "Updating…" |
+| Done | Invite → "your account is ready" and **Continue to Dashboard** (`/dashboard`). Reset → "you can now sign in" and **Sign In** (`/login`). No auto-redirect |
+
+### 8.5 Invite onboarding (`/auth/callback`)
+
+1. An admin invites from `/admin/users/new` → `inviteUser` → `inviteUserByEmail` with
+   `redirectTo: <NEXT_PUBLIC_SITE_URL>/auth/callback?next=/update-password` and metadata
+   `full_name`, `role`, `domain`, `job_title`, `sia_role`, `queendom_id`.
+2. The signup trigger `handle_new_user()` writes the profile, copying `job_title` (0125) and the
+   seat fields (0201).
+3. The person clicks the email button and lands on `/auth/callback`. Supabase returns the session
+   in the URL **hash** (`#access_token=…&type=invite`), which only browser code can read, so this is
+   a client page, not a route handler. `callback-client.tsx` handles three shapes: the hash (it
+   polls `getSession()` for about two seconds while the browser client stores it), PKCE (`?code=` →
+   `exchangeCodeForSession`) and OTP (`?token_hash=&type=` → `verifyOtp`). On success it
+   `router.replace(next)` (default `/update-password`, checked to be a same-site path). On failure
+   it shows its `InvalidLinkCard` ("ask your administrator to send a fresh invitation").
+4. `/update-password` sees the session → invite mode → choose a password → Continue to Dashboard.
+
+### 8.6 `/oauth/consent` (the MCP connector's consent screen)
+
+When an AI app asks to connect to Serene's MCP server (`/api/mcp`), Supabase's OAuth server sends
+the person's browser here with `?authorization_id=`.
+
+1. The id must match `^[A-Za-z0-9._~-]{8,200}$`, else an error card ("This connection link is not
+   valid. Start again from the app you are connecting.").
+2. No session → `redirect('/login?next=/oauth/consent?authorization_id=…')`. The login page's
+   `safeReturnPath` lets this same-site path through, so the person comes straight back after
+   signing in.
+3. `getOAuthConsentRequest(id)` (session client, `auth.oauth.getAuthorizationDetails`): already
+   consented to this app → redirect straight back to it; expired or already answered → an error
+   card; otherwise the `ConsentForm` shows the app and the person's name, and three plain promises:
+   it reads only what your role can already see; phone numbers and emails stay masked and nothing
+   is changed or sent; every call is logged under your name and you can disconnect it from your
+   profile.
+4. **Allow / Deny** → `answerOAuthConsentAction`: Zod → `requireProfile()` →
+   `approveAuthorization` or `denyAuthorization` as the signed-in person → redirect to the URL the
+   OAuth server returns (back to the app).
+
+Nothing here decides what the app may read: once connected, the app calls Elaya's role-gated read
+tools as that person, through the same gates and PII mask (`../integrations/mcp.md`). A person
+lists and disconnects their apps on `/profile` (`./profile.md` §8.7). The page uses the auth card
+chrome. `src/proxy.ts` does not refresh sessions on `/api/mcp` or `/.well-known/*` (bearer tokens,
+never cookies), but it does on `/oauth/consent`, which is an ordinary page.
+
+### 8.7 The auth card, and how it looks
+
+All auth surfaces share the `(auth)` layout (`src/app/(auth)/layout.tsx`): a full-height centred
+shell on `--theme-canvas` with the `.layout-canvas` class, two off-centre glows, the engraved
+Seed-of-Life mandala with a slow rotating beam, and two drifting orbs. Every layer is decorative
+(`pointer-events-none`, `aria-hidden`), transform-only, and stilled under reduced motion.
+
+**The auth pages are no longer dark by design.** Since the neumorphic restyle (2026-07-03) the
+old canvas tokens are bridged to the soft-UI layer (`--theme-canvas` → `--neu-canvas`,
+`--theme-canvas-text` → `--neu-text-primary`), and the auth classes read neumorphic tokens
+directly: `.serene-auth-card` is `--neu-surface` with an `--neu-edge` hairline and
+`--neu-shadow-raised-lg`; `.serene-input-auth` is the inset field (`--neu-input-bg`,
+`--neu-shadow-input`); `.serene-auth-link` is `--neu-accent-deep`. So the sign-in screen is cream
+in light mode and charcoal in dark, following the device's saved appearance cookie. The
+error banner still uses the `--color-danger-dark-*` names, which the bridge also re-points.
+
+The brand header on every form and card: `.serene-auth-logo-medallion` (a 72px ring) around
+`/logo-bg-removed.webp` at 48px (the renamed, background-free mark, 2026-09-26), then "Serene" in
+the serif display with the page-title dot. No subtitle.
+
+On a touch screen every text field is at least 16px (a `pointer: coarse` rule), so iOS does not
+zoom the page on a tap (2026-09-26 mobile pass).
+
+Token-level spec: `../design/DESIGN-DNA.md` and `src/app/(auth)/CLAUDE.md`. That CLAUDE.md still
+describes the pre-neumorphic dark card in places; the CSS in `src/app/globals.css` is the truth.
+
+### 8.8 After sign-in: the dashboard layout
+
+`src/app/(dashboard)/layout.tsx` runs a three-step gate, in order:
 
 ```ts
-export default async function RootPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (user) redirect("/dashboard");
-  redirect("/login");
-}
-```
-
-**What it checks:** `getUser()` — a real session probe on `/` using the server Supabase client.
-
-**Redirect target:** `/dashboard` when a session exists; `/login` otherwise.
-
-**Implication:** A user with a valid cookie who visits `/` is sent straight to `/dashboard`. Only unauthenticated visitors land on `/login`. The deeper session/profile/route protection for authenticated work still happens in `(dashboard)/layout.tsx`; `/` is just a fast top-level gate.
-
----
-
-### 5. Pre-Auth Pages
-
-> **Visual language is canvas-dark, not paper.** All three auth pages render *on the canvas*
-> (`--theme-canvas`), never on the paper surface. Cards, inputs, links, and text all draw from the
-> **canvas/sidebar palette** — never `--theme-paper`, `.serene-paper-surface`, or `.serene-input`. The full
-> token-level spec lives in **`DESIGN-DNA.md` → "Auth Surface (canvas-dark)"**; §5e below is the
-> module summary. Established 2026-06-02; brand-header dot added thereafter.
-
-#### 5a. `(auth)` layout — `src/app/(auth)/layout.tsx`
-
-**Provides (composed scene, back to front — all layers `pointer-events-none` / `aria-hidden`; rebuilt 2026-06-11, see `(auth)/CLAUDE.md`):**
-
-- Full-viewport centered shell on the root div, which now carries the **`.layout-canvas`** class — grain SVG + Earth's `--theme-canvas-gradient-*` washes painted as one background (other themes: grain only). This supersedes the per-page noise-div removal below. `relative min-h-dvh flex items-center justify-center overflow-hidden`, background `var(--theme-canvas)` set inline to prevent a white flash before CSS loads.
-- Two off-centre radial glow divs using `--theme-canvas-glow` (primary `ellipse 80% 60% at 62% 38%`, transparent at 70%; secondary `ellipse 55% 45% at 18% 78%`, transparent at 68%, `opacity: 0.55`). Centred glow is a spotlight; off-centre is a window.
-- **Engraved mandala** (`.serene-auth-mandala-wrap` > `.serene-auth-mandala` + `.serene-auth-mandala-lit` > `.serene-auth-mandala-beam`) — an 8-fold Seed-of-Life rosette (logo geometry) whose circles all pass through one point hidden behind the card. One shared SVG alpha mask; a conic beam rotates once per 120s **inside** the statically-masked lit layer (the mask never rotates — 8-fold geometry is not rotation-invariant). Transform-only.
-- Two CSS orb divs (`globals.css`) — `.serene-auth-orb-a` (680px, upper-right, `serene-orb-float-a` 24s) and `.serene-auth-orb-b` (560px, lower-left, `serene-orb-float-b` 30s). Accent-tinted radial gradients, `will-change: transform`, transform-only — M-06 compliant.
-- **No** sidebar, top bar, or paper content card from the dashboard shell.
-
-`prefers-reduced-motion`: drift/sweep are killed and the card entrance collapses to an opacity fade.
-
-**Still removed (2026-06-02, kept removed):** the two diagonal accent lines (`.serene-auth-line-1/2`). The old per-page SVG noise-texture div is also gone — its job is now done by `.layout-canvas` painting grain as one background.
-
-**If session already present:** The auth layout does **not** redirect. A logged-in user can still open `/login`. Successful login always `redirect("/dashboard")` from the action; visiting `/login` manually while authenticated shows the login form unless the user navigates away.
-
-#### 5b. `/login`
-
-| Item | Detail |
-| ---- | ------ |
-| **Page** | `src/app/(auth)/login/page.tsx` → `LoginForm` (`login-form.tsx`) |
-| **Fields** | `email`, `password` — password field **has** an Eye/EyeOff visibility toggle (`showPassword` state, `lucide-react` `Eye`/`EyeOff`, **15px / strokeWidth 1.5**, `type="button"`, `tabIndex={-1}`, absolute-right, colour `--theme-sidebar-text`) |
-| **Submit copy** | "Sign In" / "Signing in…" (pending). `Button variant="primary"` full-width + `--shadow-accent-glow` |
-| **Action** | `loginAction` in `src/lib/actions/auth.ts` via `useActionState` |
-| **Supabase** | `signInWithPassword({ email, password })` using **server** member (`createClient()` from `server.ts`) |
-| **Deactivation gate** | After a successful `signInWithPassword`, the action calls `getCurrentProfile()`; if `profile.is_active === false` it immediately `signOut()`s and returns `formErrors.accountDeactivated` ("Your account has been deactivated. Please contact your administrator.") — a deactivated user can never establish a usable session at the login step |
-| **Success** | `redirect("/dashboard")` |
-| **Errors** | Bad email/password or Supabase auth failure → `formErrors.invalidCredentials` ("The email or password you entered is incorrect."); deactivated account → `formErrors.accountDeactivated`. No separate "unconfirmed email" branch in code |
-| **Remember me** | None — Supabase cookie persistence handles session length |
-| **Forgot link** | `/forgot-password` |
-
-**Validation:** the action uses a **local** `loginSchema` defined inline in `auth.ts` — `email` required + format (`email_invalid`), `password` **min 1 char** (`required`). Any parse failure collapses to `formErrors.invalidCredentials` (it never tells the user which field failed). The exported `loginSchema` in `src/lib/validations/auth.ts` (password min 8) is **not** the one `loginAction` uses — the action has its own min-1 schema so existing short passwords can still sign in.
-
-#### 5c. `/forgot-password`
-
-| Item | Detail |
-| ---- | ------ |
-| **Page** | `forgot-password/page.tsx` → `ForgotPasswordForm` |
-| **Field** | `email` |
-| **Action** | `requestPasswordResetAction` |
-| **Supabase** | `resetPasswordForEmail(email)` — **no `redirectTo`**. The recovery email template renders `{{ .Token }}` = a **6-digit code**, not a link. |
-| **Success UX** | Inline success copy — **no redirect**. User reads the code from email, then opens `/update-password?email=<email>` to enter it. |
-| **Email enumeration** | **Always returns success** after valid email format — never reveals whether the address exists (Rule S-09). |
-| **Invalid email format** | `formErrors.email` |
-
-**What the user receives:** a Supabase recovery email containing a 6-digit OTP **code** (`{{ .Token }}`) — **no link**. The user types this code on `/update-password`. (Security rationale: a code can't be pre-burned by corporate link-scanners — Google Safe Links et al. — that would otherwise consume the single-use reset token before the user clicks.)
-
-#### 5d. `/update-password` — two entry modes (invite session vs OTP code)
-
-`/update-password/page.tsx` is a server component that branches on whether a session already
-exists. The page calls `supabase.auth.getUser()` **first**:
-
-1. **Live session present → invite mode.** Renders `<UpdatePasswordForm invited />`. This is the
-   invite path: `/auth/callback` already exchanged the invite token and set the session before
-   forwarding here, so there is no code to type — the OTP step is skipped entirely.
-2. **No session → OTP-code recovery.** Falls to the `?email` param check: missing →
-   `MissingEmailCard` (which renders `InvalidLinkCard`, "request a new one"); present →
-   `<UpdatePasswordForm email={params.email} />` (the two-step code → password flow).
-
-There is **no** recovery-session page gate in mode 2 (the old expired-link `getUser` gate is gone —
-an OTP code has no link to expire).
-
-| Item | Detail |
-| ---- | ------ |
-| **OTP arrival (mode 2)** | User reads the 6-digit code from email, then manually opens `/update-password?email=<email>`. No callback, no session at arrival. |
-| **Invite arrival (mode 1)** | User clicks the invite email button → `/auth/callback` establishes the session → forwards to `/update-password`. Arrives **already authenticated**. |
-| **Param gate (page, mode 2 only)** | Reached only when there is no session. Checks that `?email` exists — missing → `MissingEmailCard` → `InvalidLinkCard`. |
-| **Step 1 — code (mode 2)** | `CodeStep`: enter the 6-digit code → `verifyResetOtpAction` → `supabase.auth.verifyOtp({ email, token, type: 'recovery' })`. **Establishes the recovery session.** Submit copy: **"Verify Code" / "Verifying…"**. |
-| **Step 2 — password (both modes)** | `PasswordStep`: `password`, `confirmPassword` → `updatePasswordAction` (server) → `updateUser({ password })` after Zod. The **shared step-2 for both reset and invite**. In invite mode it is the only step; in reset mode it is reachable only after Step 1 succeeded. Submit copy: **"Update Password" / "Updating…"**. |
-| **Success (mode-dependent)** | Invite → "your account is ready" copy + a **"Continue to Dashboard"** link to **`/dashboard`**. Reset → "you can now sign in" copy + a **"Sign In"** link to **`/login`**. Neither auto-redirects. |
-| **Strength bar** | **Present** in `PasswordStep` (both modes) — `<PasswordStrengthBar password={newPassword} />` under the new-password field. (The `/profile` `PasswordChangeForm` also uses it; this page is **not** an exception.) |
-| **Schemas** | `verifyResetOtpSchema` validates a **6-digit code** (Step 1; `token` regex `^\d{6}$`). `updatePasswordSchema` (`src/lib/validations/auth.ts`) — `password` min 8 / max 72, `confirmPassword` min 1, `passwordMismatch` refine on `confirmPassword` (Step 2). On parse failure the action maps `passwordMismatch` → `formErrors.passwordMismatch`, everything else → `formErrors.passwordTooShort`; a Supabase `updateUser` error → `formErrors.generic`. |
-| **OTP errors** | Invalid **or** expired code both map to `formErrors.otpInvalid` — the page never reveals which (S-09 disclosure discipline). |
-
-**Invite session establishment is client-side, not a callback in this file.** For the OTP reset
-path the recovery session is established by `verifyResetOtpAction` (`verifyOtp({ type: 'recovery' })`).
-For the invite path the session is established earlier, in `callback-member.tsx`
-(`/auth/callback`), by the browser client consuming the implicit-grant hash — see §5d-i below.
-The legacy server route `src/app/api/auth/callback/route.ts` is dead code for both flows (it can't
-read the invite hash, and reset no longer uses a link).
-
-#### 5d-i. Invite-by-email onboarding (the `/auth/callback` landing)
-
-The end-to-end invite flow (fixed 2026-06-16, changelog 2026-06-16):
-
-1. Admin invites from `/admin/users` → `inviteUser` (`lib/actions/profiles.ts`) calls
-   `inviteUserByEmail` with `redirectTo: ${NEXT_PUBLIC_SITE_URL}/auth/callback?next=/update-password`.
-   The invite metadata carries `full_name` / `role` / `domain` / **`job_title`**.
-2. The signup trigger `handle_new_user()` (migration `20260616000125_handle_new_user_job_title.sql`,
-   applied to prod) inserts the `profiles` row and now also copies `job_title`
-   (`NULLIF(... ,'')`) — previously dropped for invited users (the password-mode `createUser` path
-   set it via a follow-up `updateProfileFields`, so only invites lost it).
-3. The user clicks the email button → lands on **`/auth/callback`** (the member page). The Supabase
-   implicit grant returns the session in the URL **hash** (`#access_token=…&type=invite`); only
-   member JS can read `window.location.hash`, which is why this is a member page, not a route
-   handler. `callback-member.tsx` is robust to all three flows: hash (poll `getSession()` up to
-   ~2s for the browser client to persist it), PKCE (`exchangeCodeForSession`), OTP
-   (`verifyOtp({ token_hash, type })`). On success it `router.replace(next)` (default
-   `/update-password`, sanitised to a same-origin relative path); any error / expired link renders
-   the local `InvalidLinkCard` ("ask your administrator to send a fresh invitation").
-4. `/update-password` sees the live session → invite mode → set the password → "Continue to
-   Dashboard" (`/dashboard`). One click from the email button to inside the app.
-
-#### 5e. Auth visual language (canvas-dark) — module summary
-
-Every auth surface — `LoginForm`, `ForgotPasswordForm`, `UpdatePasswordForm` (via `AuthCardShell`),
-both `InvalidLinkCard`s, and the `/auth/callback` page — shares one shell. Canonical token spec:
-**`DESIGN-DNA.md` → "Auth Surface (canvas-dark)"**. CSS classes live in `src/app/globals.css`.
-
-**Outer wrapper (every form):** `relative w-full mx-4`, `maxWidth: 26rem`, `zIndex: var(--z-raised)`
-— lifts the card above the layout's glows/orbs.
-
-**Card — `.serene-auth-card`** (jewel-box shell, see `(auth)/CLAUDE.md`):
-
-| Property | Value |
-| -------- | ----- |
-| Background | `var(--theme-sidebar-hover-bg)` (dark, not paper), under a top-centre lamplight wash |
-| Border | gradient hairline (accent-kissed top arc → `--theme-sidebar-border`, painted border-box under a transparent border) |
-| Radius | `var(--radius-xl)` |
-| Shadow | `var(--shadow-3)` + an accent underglow bloom |
-| Padding (inline) | `var(--space-10)` top/bottom; `px-6 sm:px-8` |
-| Entrance | one-time rise + fade (`--duration-page` `--ease-out-expo`, shared by all forms) + a 60ms direct-children stagger |
-
-**Unified brand header** (identical on all forms + both `InvalidLinkCard`s):
-
-- A **`.serene-auth-logo-medallion`** — a 72px circular hairline ring (30% accent) + halo (the
-  mandala's innermost ring on the surface) wrapping `next/image` `/logo.webp` at `48×48`,
-  `borderRadius: var(--radius-sm)` (`priority` on the form shell).
-- `<h1>`: `--font-serif`, `--text-3xl`, **`--weight-light`**, `--tracking-tighter`, `--leading-tight`,
-  colour `--theme-canvas-text`, centred — text **`Serene`** followed by
-  `<span className="page-title-dot">.</span>` (the accent blink dot).
-- Container `flex flex-col items-center gap-3`, `mb-10` on the form shell / `mb-8` on `InvalidLinkCard`.
-- **No subtitle.**
-
-> ⚠️ The brand-header **`page-title-dot`** is the one place the dot appears off a primary nav page.
-> It post-dates the 2026-06-02 `(auth)/CLAUDE.md` note that shows the header without it — code is the
-> source of truth here.
-
-**Inputs — `.serene-input-auth`:** `--theme-canvas` bg, `1px solid --theme-sidebar-border`,
-`--theme-canvas-text` text, `--radius-sm`, `--space-3/--space-4` padding, `--text-sm`. Placeholder
-`--theme-sidebar-text`. Focus: border `--theme-accent` + `box-shadow: 0 0 0 3px var(--theme-accent-surface)`.
-Password fields add `paddingRight: var(--space-10)` for the toggle.
-
-**Labels:** `className="label-micro"` **with an inline override** `color: var(--theme-sidebar-text)` —
-`label-micro` renders dark (paper-tuned) by default and must be lightened on the dark card.
-
-**Links — `.serene-auth-link`:** `--text-xs`, `color-mix(--theme-accent 65%, transparent)` at rest →
-full `--theme-accent` on hover. Used for "Forgot your password?" and "Back to sign in".
-
-**Error banners (dark-surface tokens — never the light `-light` variants):**
-
-```text
-color:           var(--color-danger-dark-text)
-backgroundColor: var(--color-danger-dark-fill)
-border:          1px solid var(--color-danger-dark-border)
-radius:          var(--radius-xs)
-padding:         var(--space-2) var(--space-3)
-fontSize:        var(--text-xs)
-role:            "alert"
-```
-
-**Primary "result" links** (success panels + `InvalidLinkCard` "Request New Link"): full-width block
-`var(--theme-accent)` bg / `var(--theme-accent-fg)` text, `--radius-sm`, `--space-3/--space-4` padding,
-`--weight-semibold`, `--tracking-wide` — styled inline (not a `<Button>`) because they are `<Link>`s.
-
-**Submit buttons:** `Button variant="primary"` full-width with `boxShadow: var(--shadow-accent-glow)`,
-`loading={isPending}`. Per-step copy: Login "Sign In/Signing in…"; Forgot **"Send Reset Code/Sending…"**;
-`CodeStep` **"Verify Code/Verifying…"**; `PasswordStep` "Update Password/Updating…". The `PasswordStep`
-**success** link copy is mode-dependent: invite → "Continue to Dashboard" (`/dashboard`); reset →
-"Sign In" (`/login`) — styled inline as a `<Link>`, not a `<Button>`.
-
-**Eye/EyeOff toggle (login + update-password):** absolute-right, `translateY(-50%)`, transparent
-`<button type="button" tabIndex={-1}>`, icon `15px` / `strokeWidth 1.5`, colour `--theme-sidebar-text`.
-On `/update-password` a shared `<EyeToggle>` helper drives both new + confirm fields off one `showNew`
-state.
-
-**Forbidden on auth forms:** `.serene-paper-surface`, `.serene-input`, `--theme-paper*` text/bg tokens, and
-the light `--color-danger-light/-text` error variants. Those are paper-surface tokens.
-
----
-
-### 6. `(dashboard)` Layout — `src/app/(dashboard)/layout.tsx`
-
-#### Session gate
-
-The layout runs a **three-stage gate** in order. There is no separate `getUser()` call:
-`getCurrentProfile()` is `cache()`-memoised and returns null when there is no session.
-
-```ts
-const profile = await getCurrentProfile();
+const profile = await getCurrentProfile();          // null with no session
 if (!profile) redirect("/login");
 if (!profile.is_active) redirect("/login");
-
 const pathname = (await headers()).get("x-pathname") ?? "/";
 if (!canAccessRoute(profile, pathname)) redirect("/dashboard");
-
-const notificationsPromise = TOP_BAR_ENABLED
-  ? undefined
-  : getNotifications(profile.id);
 ```
 
-| Failure mode | Behaviour |
-| ------------ | --------- |
-| No session, or a session with no `profiles` row (or RLS blocks read) | `redirect("/login")`; both collapse into `getCurrentProfile()` returning null |
-| Deactivated user (`is_active = false`) | `redirect("/login")` — the layout **does** enforce `is_active`, as a second line of defence behind the login-action deactivation gate |
-| Authenticated + active, but route not permitted for the user's domain | `redirect("/dashboard")` (not `/login`) — `canAccessRoute(profile, pathname)` evaluated against the `x-pathname` header the proxy set |
+- `getCurrentProfile()` is `cache()`-memoised and, since 2026-09-16, checks identity with
+  `auth.getClaims()` (the token's signature verified locally against the cached JWKS) instead of
+  `getUser()` (an auth-server round trip on every navigation). Role, domain and `is_active` still
+  come only from the `profiles` row (Rule 09).
+- A disallowed route sends the person to `/dashboard`, never `/login`. `canAccessRoute` is pure
+  (`src/lib/utils/route-access.ts`); the path comes from the `x-pathname` header the proxy sets.
 
-`getCurrentProfile()` is `cache()`-memoised: one auth round trip + one profile SELECT shared across the layout, page, and Async children. RLS `profiles_select` allows any authenticated user to read all profiles.
+Then the layout mounts, in order: `ThemeInitializer` (theme and appearance) and `IconInitializer`
+(the cookie re-syncs), `AppBootScreen`, and the shell inside `SuggestionFeedbackProvider` and
+`NotificationsProvider` (one Realtime inbox for the whole session): the `Sidebar`, the toast stack,
+the ⌘K `CommandPaletteProvider`, the floating `ElayaWidget` **only when `hasElayaAccess(profile)`**,
+and `UsagePresence` (the active-time heartbeat, `./usage.md`). The global controls (domain selector
+and bell) live in each page's title row through `PageControls`.
 
-`canAccessRoute` is a pure function (`src/lib/utils/route-access.ts`) reading `ALWAYS_ALLOWED_PREFIXES` + `DOMAIN_ROUTE_MAP` from `src/lib/constants/route-permissions.ts`. The pathname comes from the `x-pathname` response header set in `src/proxy.ts` — without that header the guard would default to `"/"`.
+**The boot screen plays once per browser session** (2026-09-16). `AppBootScreen` renders the Serene
+mark drawing itself, sealing with its centre circle and turning slowly, over a "SERENE / BY
+INDULGE" lockup (2026-09-25). The first hard load of a tab or an installed-app launch sets
+`serene:boot-seen` in `sessionStorage`; later hard loads in the same session skip it. The cover
+still renders on the server, so a true cold start never flashes. With storage blocked it falls back
+to playing every time. Client navigations never replay it; pages rely on their `loading.tsx`.
 
-**Notifications are no longer awaited in the layout.** With `TOP_BAR_ENABLED` (`lib/constants/feature-flags.ts`, currently `true`) the bell lives in each page's title row via `PageControls`, and each page starts its own un-awaited `getNotifications` seed there. Only the flag-off Sidebar footer bell needs a layout-level promise, so the layout creates `notificationsPromise` ONLY when the flag is off, un-awaited (it streams into the bell's Suspense boundary).
+**First paint of theme and appearance.** The root layout (`src/app/layout.tsx`) reads the
+`serene-theme` and `serene-appearance` cookies and stamps `data-theme` (fallback `earth`) and, for
+dark, `data-neu="dark"` on `<html>` from the first byte. For `system` it adds a tiny pre-paint
+script that checks `prefers-color-scheme`. It also sets the page title template ("%s · Serene"),
+the per-icon manifest link, and a viewport with `viewport-fit=cover` and `interactiveWidget:
+resizes-content` (the Android keyboard shrinks the shell instead of covering a composer). Fonts:
+Inter as `--font-geist-sans`, Playfair Display as `--font-playfair`.
 
-#### Zero-flash theme — SSR cookie stamp + `ThemeInitializer` re-sync
+### 8.9 Deactivation, end to end
 
-**Current implementation (2026-07-02):** zero-flash is server-side. The ROOT layout
-(`src/app/layout.tsx`) reads the `serene-theme` cookie (`THEME_COOKIE` from
-`lib/constants/themes.ts`) and stamps `data-theme` on `<html>` from the first byte. The
-dashboard layout computes the guard and mounts the corrective client component:
+1. `toggleUserActive` → `setProfileActive` flips `profiles.is_active` (the kill switch: the next
+   request redirects).
+2. The same call bans the auth user (`ban_duration` 100 years; lifted with `none` on
+   reactivation), so the session cannot refresh and a fresh sign-in is refused. Best-effort and
+   logged; the row flip is the guarantee.
+3. `loginAction` also refuses a deactivated profile, and the dashboard layout redirects one.
 
-```tsx
-const safeTheme = isThemeKey(profile.theme) ? profile.theme : DEFAULT_THEME;
-
-<ThemeInitializer theme={safeTheme} />
-```
-
-| Topic | Detail |
-| ----- | ------ |
-| **Primary mechanism** | Root layout: `cookies().get(THEME_COOKIE)` → `isThemeKey` guard → `data-theme` on `<html>` server-side. The first paint is already correct; no script runs |
-| **`ThemeInitializer` role** | Corrective re-sync only: it fixes a missing/stale cookie against the DB truth (`profiles.theme`) and re-writes the cookie for the next request |
-| **Vocabulary** | The six live keys: earth, air, water, fire, martini, candy (`THEME_KEYS`). Cosmos/coffee/macha were retired 2026-07-02 (migration 0156); a stale value fails `isThemeKey` and falls back to `DEFAULT_THEME` (`earth`). There is no hardcoded key array anywhere |
-| **On switch** | `ThemeSelector` sets `data-theme` instantly, calls `persistThemeCookie(theme)`, then persists to DB in the background via `updateProfile` |
-
-**Source of truth for theme:** `profiles.theme` in Postgres — **not** localStorage and not the cookie (the cookie is only the SSR mirror).
-
-#### Font variables — root layout
-
-`src/app/layout.tsx`:
-
-- `Inter` → CSS variable `--font-geist-sans`
-- `Playfair_Display` → `--font-playfair`
-- Applied as `className` on `<html>` alongside the cookie-derived `data-theme` (fallback `earth`)
-- Consumed in `src/styles/design-tokens.css` as `--font-sans` / `--font-serif`
-
-#### Dashboard chrome
-
-- `ThemeInitializer` + `IconInitializer` rendered first (the corrective cookie re-syncs for theme and app-icon), then the shell.
-- The whole shell is wrapped in `SuggestionFeedbackProvider` (one shared feedback composer for the Sidebar button and the mobile Elaya-card trigger).
-- Outer shell: `<div className="layout-shell serene-shell">`, the responsive frame (responsive audit D-3): row with gutter + paper on `md+`, column with a mobile top strip and full-bleed paper below `md`. Classes live in `globals.css` "RESPONSIVE SHELL".
-- `Sidebar` takes `profile` + `notificationsPromise` (undefined while `TOP_BAR_ENABLED` is true), followed by `ToastProvider`, `ElayaWidget` (the floating Elaya presence), and `UsagePresence` (the active-time heartbeat) at shell root.
-- `.serene-shell-gutter` (flat canvas gutter matching the sidebar) wraps `.serene-shell-paper`, which holds `{children}`. The global controls (domain selector + notification bell) live in each page's title row via `PageControls`; there is no separate bar.
-
----
-
-### 8. Actions
-
-#### `updateProfile`
-
-| Item | Detail |
-| ---- | ------ |
-| **Who** | Own profile, or admin/founder editing any user (admin forms reuse this action) |
-| **Fields** | `full_name`, `username`, `job_title`, `phone`, `theme`, `timezone` (all optional except `id`) |
-| **Phone** | `normalizeToE164` when provided |
-| **Sanitize** | `sanitizeText` on `full_name`, `job_title` |
-| **revalidatePath** | `/profile`, `/admin/users`, `/admin/users/${id}` |
-| **Returns** | `ActionResult<Profile>` — `{ data, error }`, never throws |
-
-#### `updateProfileAvatar`
-
-| Item | Detail |
-| ---- | ------ |
-| **Who** | Own profile, or admin/founder |
-| **Writes** | `avatar_url` (public URL after member upload) |
-| **Validation** | Zod `.url()`; no bucket-prefix enforcement in code |
-| **revalidatePath** | `/profile` |
-
-#### `signOutUser`
-
-| Item | Detail |
-| ---- | ------ |
-| **Who** | Any authenticated user |
-| **Supabase** | `auth.signOut()` via server client |
-| **Redirect** | `/login` |
-
-#### Auth actions (`src/lib/actions/auth.ts`) — reference
-
-| Export | Role |
-| ------ | ---- |
-| `loginAction` | Pre-auth sign-in |
-| `requestPasswordResetAction` | Forgot-password email — sends a 6-digit OTP code |
-| `verifyResetOtpAction` | Verifies the OTP code → establishes the recovery session |
-| `updatePasswordAction` | Post-verification password set |
-
----
-
-### 9. Session Flow — End-to-End
+### 8.10 Session flow
 
 ```mermaid
 sequenceDiagram
-  participant U as User
+  participant U as Person
   participant L as /login
   participant A as loginAction
   participant P as proxy.ts
   participant D as Dashboard layout
-  participant Pr as /profile
-
-  U->>L: Submit email/password
+  U->>L: email + password (+ next)
   L->>A: FormData
-  A->>A: signInWithPassword
-  A-->>U: redirect /dashboard
-  loop Each navigation
-    U->>P: HTTP request
-    P->>P: updateSession via getClaims (unless /api/webhooks or /api/manifest)
+  A->>A: signInWithPassword, is_active check
+  A-->>U: redirect safe next or /dashboard
+  loop every navigation
+    U->>P: request
+    P->>P: updateSession via getClaims (not on the bypassed prefixes)
     P-->>D: refreshed cookies + x-pathname
   end
-  D->>D: getCurrentProfile (3-stage gate)
-  D->>D: ThemeInitializer re-syncs the theme cookie
-  U->>Pr: Open profile
-  Pr->>Pr: getCurrentProfile
-  U->>Pr: Change theme
-  Pr->>Pr: DOM instant + updateProfile async
-  U->>Pr: Sign out
-  Pr->>Pr: signOutUser
-  Pr-->>U: redirect /login
+  D->>D: getCurrentProfile, is_active, canAccessRoute
+  D->>D: ThemeInitializer / IconInitializer re-sync cookies
+  D->>U: boot screen once per browser session, then the page
 ```
 
-**Ordered lifecycle (login path, six steps):**
+Alternative entries: the **invite** (email link → `/auth/callback` → `/update-password` invite
+mode → `/dashboard`, no `loginAction`), the **reset** (`/forgot-password` → code →
+`/update-password` → `/login`), and the **consent** (`/oauth/consent` → maybe `/login?next=…` →
+back to consent → Allow → the AI app).
 
-1. User visits `/login` → `loginAction` → `signInWithPassword` → deactivation check (`is_active`) → session cookie set → `redirect("/dashboard")`. (A deactivated account is signed back out here with `accountDeactivated`.)
-2. Dashboard layout runs the 3-stage gate (`getCurrentProfile` → `is_active` → `canAccessRoute`); renders the shell with `ThemeInitializer(safeTheme)` + `IconInitializer(safeIcon)`.
-3. Every subsequent matched request → `proxy.ts` → `updateSession()` (`auth.getClaims()` — local ES256 verify, not `getUser()`) refreshes session cookies **and sets `x-pathname`** (`last_seen_at` **not** updated in code today). `/api/webhooks/*` and `/api/manifest` are bypassed entirely.
-4. User visits `/profile` → the root layout already stamped `data-theme` from the `serene-theme` cookie server-side → `ThemeInitializer` re-syncs the cookie against `profiles.theme` if it drifted.
-5. User changes theme → instant `setAttribute` on `<html>` + `persistThemeCookie(theme)` + async `updateProfile({ theme })` → persisted in `profiles.theme`.
-6. User clicks Sign out → `signOutUser` → cookie cleared → `/login`.
+Sign-out is `signOutUser` in `lib/actions/profiles.ts`, the only sign-out action, used by the
+`/profile` Session card, the Sidebar and the mobile drawer.
 
-**Invite onboarding path (alternative entry, no `loginAction`):** admin invite → email link → `/auth/callback` (member) establishes the session from the implicit-grant hash → forwards to `/update-password` (invite mode) → `updatePasswordAction` sets the first password → "Continue to Dashboard" (`/dashboard`). No server action mints the invite session — `callback-member.tsx` does it browser-side. See §5d-i.
+### 8.11 Known invariants
 
----
-
-### 10. Known Invariants (must never be violated)
-
-| Invariant | Source |
-| --------- | ------ |
-| `/api/webhooks/*` **and** `/api/manifest` must never run `updateSession()` — routing the dynamic PWA manifest through session refresh would break installability | `src/proxy.ts` early return (`WEBHOOK_PREFIX` + `MANIFEST_PREFIX`) + matcher exclusion (also excludes `manifest.webmanifest` / `sw.js` / `offline.html` / `icons/` / `apple-icon`) |
-| Proxy must set `x-pathname` on every refreshed response — the dashboard layout's route guard depends on it | `src/proxy.ts` |
-| Proxy session refresh uses `auth.getClaims()` (local ES256 verify against a process-cached JWKS), never `getUser()` (a ~50–150ms auth-server round trip) | `src/lib/supabase/middleware.ts` |
-| Deactivated users (`is_active = false`) are gated **twice**: at `loginAction` (sign out + `accountDeactivated`) and in the dashboard layout (`redirect("/login")`) | `loginAction`, `(dashboard)/layout.tsx` |
-| Dashboard layout must run `canAccessRoute(profile, pathname)`; a disallowed route → `redirect("/dashboard")` (never `/login`) | `(dashboard)/layout.tsx` + `route-access.ts` |
-| Root `/` redirects authenticated users to `/dashboard`, unauthenticated to `/login` | `src/app/page.tsx` |
-| `last_seen_at` must be rate-limited to once per minute **when implemented** — not on every request | original spec intent — **not yet in proxy** |
-| Theme source of truth is `profiles.theme`, not localStorage (the `serene-theme` cookie is only the SSR mirror) | Dashboard layout + `ThemeSelector` |
-| Theme null / invalid → always `"earth"` | `isThemeKey`/`DEFAULT_THEME` guard (root + dashboard layouts) |
-| `email` is read-only on `/profile` — source of truth is `auth.users` | `ProfileDetailsForm` |
-| `PasswordChangeForm` uses browser client only — not a server action | `PasswordChangeForm.tsx` |
-| Zero-flash theme is server-side: the root layout stamps `data-theme` from the theme cookie; `ThemeInitializer` only re-syncs a missing/stale cookie against the DB truth | `src/app/layout.tsx`, `ThemeInitializer.tsx` |
-| Avatar upload: 2 MB max validated client-side before upload | `ProfileAvatarSection.tsx` |
-| Forgot-password must not reveal whether email exists | `requestPasswordResetAction` |
-| Password reset uses a 6-digit OTP **code** (no link, no `redirectTo`) — recovery session is established by `verifyResetOtpAction`'s `verifyOtp({ type: 'recovery' })`, never at a callback | `requestPasswordResetAction`, `verifyResetOtpAction`, recovery email template |
-| The live invite landing is the **member** page `/auth/callback` (reads the implicit-grant hash; the server can't). The legacy `/api/auth/callback` route is kept for backward compat only — dead code for both invite and reset | `src/app/(auth)/auth/callback/callback-member.tsx`, `src/app/api/auth/callback/route.ts` |
-| The invite `redirectTo` points at `/auth/callback?next=/update-password` (never `/api/auth/callback`) | `inviteUser` in `lib/actions/profiles.ts` |
-| `handle_new_user()` copies `job_title` from invite metadata (`NULLIF(... ,'')`) — invited users keep the job title set at invite time | migration `20260616000125_handle_new_user_job_title.sql` |
-| Invalid and expired reset codes both surface as `formErrors.otpInvalid` — the page never reveals which | `verifyResetOtpAction` + `update-password-form.tsx` |
-| `/update-password` has **two entry modes**: a live session → invite mode (`<UpdatePasswordForm invited />`, no OTP step); else the `?email` param gate (→ `MissingEmailCard` → `InvalidLinkCard` when absent). No recovery-session page gate in OTP mode | `update-password/page.tsx` |
-| Invite onboarding completes at `/dashboard` ("Continue to Dashboard"); OTP reset completes at `/login` ("Sign In") | `update-password-form.tsx` `PasswordStep` |
-| One browser Supabase client — `createClient()` from `member.ts` only | Rule 05 |
-| One server Supabase client per request — `server.ts` only in services/actions | Rule 05 |
-| Notification sound preference: `serene:notifications:sound:v1` in localStorage — separate from theme DB field; no `/profile` control | `useNotificationSound.ts` |
-| Password reset completes at `/login` after success, not `/dashboard` | `UpdatePasswordForm` success link |
-| `/update-password` shows `PasswordStrengthBar` under the new-password field — it is **not** an exception to the strength-bar pattern | `update-password-form.tsx` |
-
----
-
+| Invariant | Where |
+| --------- | ----- |
+| `/api/webhooks/*`, `/api/manifest`, `/api/elaya/bridge`, `/api/mcp` and `/.well-known/*` never run `updateSession()`: webhooks and the bridge have no cookie, the manifest must stay installable, the MCP routes use bearer tokens | `src/proxy.ts` early return + matcher (which also excludes `manifest.webmanifest`, `sw.js`, `offline.html`, `icons/`, `apple-icon`) |
+| The proxy sets `x-pathname` on every refreshed response | `src/proxy.ts` |
+| Session refresh uses `auth.getClaims()`, never `getUser()` | `src/lib/supabase/middleware.ts`, `getCurrentProfile` |
+| Deactivated accounts are stopped at `loginAction`, by the auth ban, and in the dashboard layout | `loginAction`, `setProfileActive`, `(dashboard)/layout.tsx` |
+| A disallowed route → `/dashboard`, never `/login` | `(dashboard)/layout.tsx` |
+| Every return path after sign-in passes `safeReturnPath` (page and action) | `login/page.tsx`, `loginAction` |
+| `/` → `/dashboard` with a session, else `/login` | `src/app/page.tsx` |
+| The password reset is a 6-digit code, no link, no `redirectTo`; the recovery session comes only from `verifyResetOtpAction` | `requestPasswordResetAction`, `verifyResetOtpAction` |
+| `requestPasswordResetAction` always redirects to the code step, whether or not the email exists | `lib/actions/auth.ts` |
+| A wrong and an expired code both read `formErrors.otpInvalid` | `verifyResetOtpAction` |
+| The invite lands on the client page `/auth/callback` (`redirectTo …/auth/callback?next=/update-password`), never `/api/auth/callback` | `inviteUser`, `callback-client.tsx` |
+| `/update-password`: a live session → invite mode; else the `?email` gate | `update-password/page.tsx` |
+| Invite ends at `/dashboard`; reset ends at `/login` | `PasswordStep` |
+| The consent answer runs as the signed-in person (session client), never the service role | `oauth-server-service.ts` |
+| One browser Supabase client (`lib/supabase/client.ts`); one server client per request (`lib/supabase/server.ts`) | Rule 05 |
+| Theme and appearance truth is `profiles`; the cookies are SSR mirrors; an unknown value → `earth` / `light` | root + dashboard layouts |
+| `PasswordStrengthBar` sits under every new-password field (`/update-password`, `/profile`) | both forms |
