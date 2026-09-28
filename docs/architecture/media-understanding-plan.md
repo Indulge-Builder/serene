@@ -1,6 +1,6 @@
 # Elaya's eyes: reading images, files, voice and video
 
-Written 2026-09-26. Status: **steps 0 to 2 built 2026-09-27 (migration 0246, the reader, the service, the sweep, the redo pass, the folds; changelog of that date), migration 0246 applied to production 2026-09-28, switch OFF; step 3 (video), step 4 (live eyes), step 5 (panel + bench review) not started.** Decisions the founder must make are marked
+Written 2026-09-26. Status: **steps 0 to 2 built 2026-09-27 (migration 0246, the reader, the service, the sweep, the redo pass, the folds; changelog of that date), migration 0246 applied to production 2026-09-28; the LIVE lane is ON since 2026-09-28 (files from the last 24 hours); the backlog stays OFF by the founder's decision, to be read later by an in-house model rather than paid for; step 3 (video), step 4 (live eyes), step 5 (panel + bench review) not started.** Decisions the founder must make are marked
 **DECIDE**.
 
 ## 1. The problem in one paragraph

@@ -143,7 +143,7 @@ documents, 974 voice notes and 47,279 stored Freshdesk files sat unread. Plan:
 - **Trigger.dev**: `media-reader` every 5 minutes (gated by the enabled row), `media-redo` at :07
   and :37 on the profiler's queue. Settings getters in `llm-providers-service.ts`.
 
-Not applied, not switched on. Next: apply 0246, run the bench on 60 real files with the founder,
+Applied 2026-09-28; the live lane switched ON the same day, the backlog left OFF (the founder will read the history with an in-house model instead of paying about $450). Next: run the bench on 60 real files with the founder,
 switch the live lane on, then the backlog; step 3 (video frames), step 4 (live eyes on both
 channels and the paperclip), the settings panel, and the vendor extractor reading the table first.
 
