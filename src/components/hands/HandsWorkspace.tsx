@@ -321,7 +321,7 @@ function PaymentCard({ m, perJobCapInr, viewerCanPayAbove, onPaid }: { m: HandsM
   const overCap = Number.isFinite(n) && n > perJobCapInr;
   const blocked = overCap && !viewerCanPayAbove;
   return (
-    <div style={{ margin: "0 var(--space-4) var(--space-3)", padding: "var(--space-3) var(--space-4)", borderRadius: "var(--neu-radius-tile, var(--radius-md))", border: `1px solid ${blocked ? "var(--color-danger-border, var(--theme-paper-border))" : "var(--theme-paper-border)"}`, background: "var(--theme-paper)", display: "flex", gap: "var(--space-4)", alignItems: "flex-start", flexWrap: "wrap" }}>
+    <div style={{ margin: "0 var(--space-4) var(--space-3)", padding: "var(--space-3) var(--space-4)", borderRadius: "var(--neu-radius-tile, var(--radius-md))", border: `1px solid ${blocked ? "var(--color-danger)" : "var(--theme-paper-border)"}`, background: "var(--theme-paper)", display: "flex", gap: "var(--space-4)", alignItems: "flex-start", flexWrap: "wrap" }}>
       {m.media_url && (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={m.media_url} alt="Payment QR" style={{ width: 160, height: 160, objectFit: "contain", borderRadius: "var(--radius-sm)", background: "var(--theme-paper-subtle)" }} />
