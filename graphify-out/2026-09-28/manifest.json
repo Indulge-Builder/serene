@@ -3150,8 +3150,8 @@
     "semantic_hash": ""
   },
   "docs/architecture/migrations.md": {
-    "mtime": 1790587399.8528638,
-    "ast_hash": "bbd2cf42a8ca835c93647b8c6b61d60f",
+    "mtime": 1790576520.165788,
+    "ast_hash": "ba83980da1787a2a61769c0a52587820",
     "semantic_hash": ""
   },
   "docs/architecture/overview.md": {
@@ -3165,8 +3165,8 @@
     "semantic_hash": ""
   },
   "docs/changelog.md": {
-    "mtime": 1790588525.0957124,
-    "ast_hash": "3a531b58d6f125d440978e0a9b03aef5",
+    "mtime": 1790587315.717199,
+    "ast_hash": "326fadae438e81aa4a970c48f56fdbcf",
     "semantic_hash": ""
   },
   "docs/claude-project/1-product-and-status.md": {
@@ -12565,18 +12565,13 @@
     "semantic_hash": ""
   },
   "backend/voice/README.md": {
-    "mtime": 1790588592.2396266,
-    "ast_hash": "7439f34bfd589ae01a2a29e39a9dec43",
+    "mtime": 1790586987.62458,
+    "ast_hash": "03a0b4f9b2ae16c5cbee49b14561a553",
     "semantic_hash": ""
   },
   "backend/voice/requirements.txt": {
     "mtime": 1790586984.3535082,
     "ast_hash": "a6f7f06336333d7a3cc810ba3965fac0",
-    "semantic_hash": ""
-  },
-  "docs/architecture/desks-plan.md": {
-    "mtime": 1790588818.36512,
-    "ast_hash": "1e2c1dbfb2c8570e610ebb576cab5cee",
     "semantic_hash": ""
   }
 }
