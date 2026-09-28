@@ -71,6 +71,13 @@ export default async function SettingsPage() {
                 description="What she can show customers (Training), how she answers the team (Playbooks), what the team told her she got wrong (Requests), and how well she does (Exam)."
               />
               <SettingsLinkCard
+                href="/settings/hands"
+                icon="bot"
+                title="Hands"
+                description="The line to the outside agent: the switch, how much Elaya may do per category, the rupee caps, and the numbers the hands may talk to."
+                index={3}
+              />
+              <SettingsLinkCard
                 href="/settings/lead-revival"
                 icon="sparkles"
                 title="Lead Revival"

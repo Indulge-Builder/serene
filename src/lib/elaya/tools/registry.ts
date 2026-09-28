@@ -93,6 +93,9 @@ export type ElayaReadToolName =
   // Everything on one member, live, in one call (2026-09-19)
   | 'get_member_360'
   | 'list_members'
+  | 'list_hands_jobs'
+  | 'get_hands_thread'
+  | 'draft_hands_message'
   // The lead WhatsApp line, subscriptions, the live activity feed (2026-09-19)
   | 'get_lead_whatsapp_chat'
   | 'get_subscriptions'
@@ -1207,7 +1210,94 @@ export const BRIDGED_READ_TOOL_NAMES: ReadonlySet<string> = new Set([
   'get_subscriptions',
   'get_activity_feed',
   'list_members',
+  // Hands (0245): the thread with an outside agent, the drafter's filter; the tables and the leak check live in Node.
+  'list_hands_jobs',
+  'get_hands_thread',
+  'draft_hands_message',
 ]);
+
+// ── Hands (0245) — the line to an outside agent (Instinct), read and drafted; never sent from here ──
+
+const HANDS_NO_ACCESS = "Hands is for the concierge floor, admin and founders; nothing to show you here.";
+
+const listHandsJobs: ElayaTool = {
+  name: 'list_hands_jobs',
+  description:
+    'The open jobs on the hands line: tickets we handed to an outside agent (Instinct) over WhatsApp, with the ' +
+    'member, the ticket number, who spoke last and the last line. Call before saying anything about what the ' +
+    'agent is doing. Scoped to the queendoms this person may see.',
+  schema: z.object({ includeClosed: z.boolean().optional() }),
+  jsonSchema: { type: 'object', properties: { includeClosed: { type: 'boolean', description: 'Also list closed jobs (default open only)' } }, additionalProperties: false },
+  run: async (principal, input) => {
+    const r = await elayaData.listHandsJobsFor(principal, { includeClosed: Boolean((input as { includeClosed?: boolean }).includeClosed) });
+    if (!r.ok) return { error: HANDS_NO_ACCESS };
+    return {
+      handsEnabled: r.enabled,
+      count: r.threads.length,
+      jobs: r.threads.map((t) => ({
+        threadId: t.id, kind: t.kind, ticketNo: t.ticket_no, ticketTitle: t.ticket_title, member: t.member_name, agent: t.contact_label,
+        status: t.status, lastAt: t.last_message_at, lastFrom: t.last_direction === 'in' ? 'agent' : t.last_direction === 'out' ? 'us' : null,
+        lastLine: t.last_preview, queuedLines: t.queued,
+      })),
+      note: r.threads.length ? 'lastFrom = agent means the agent spoke last and may be waiting on us.' : 'No jobs on the hands line right now.',
+    };
+  },
+};
+
+const getHandsThreadTool: ElayaTool = {
+  name: 'get_hands_thread',
+  description:
+    'One hands conversation with the outside agent, oldest first: every line each way, the agent\'s reply word ' +
+    '(DONE / NEED / OPTIONS / FAILED / WAITING), any payment request (amount, payee, whether a person marked it ' +
+    'paid) and the lines still queued to send. Takes the ticket number (T-000042), the ticket id or the threadId ' +
+    'from list_hands_jobs.',
+  schema: z.object({ ref: z.string().trim().min(1).max(60) }),
+  jsonSchema: { type: 'object', properties: { ref: { type: 'string', description: 'Ticket number, ticket id or threadId' } }, required: ['ref'], additionalProperties: false },
+  run: async (principal, input) => {
+    const r = await elayaData.getHandsThreadFor(principal, (input as { ref: string }).ref);
+    if (!r.ok) return { error: r.reason === 'no_access' ? HANDS_NO_ACCESS : r.reason === 'no_thread' ? 'That ticket has no hands conversation yet. draft_hands_message prepares the opening line.' : "I couldn't find that conversation among the ones you can see." };
+    return {
+      threadId: r.thread.id, kind: r.thread.kind, status: r.thread.status, ticketNo: r.thread.ticket_no, ticketTitle: r.thread.ticket_title, member: r.thread.member_name, agent: r.thread.contact_label,
+      messages: r.messages.slice(-60).map((m) => ({
+        at: m.wa_timestamp, from: m.direction === 'in' ? 'agent' : 'us', kind: m.kind, text: m.text, frame: m.frame,
+        payment: m.payment ? { amountInr: m.payment.amount_inr, payee: m.payment.payee, paid: Boolean(m.payment.paid_at), paidAmountInr: m.payment.paid_amount_inr ?? null, messageId: m.id } : null,
+      })),
+      queued: r.outbox.map((o) => ({ status: o.status, text: o.text, requestedAt: o.requested_at, error: o.error })),
+    };
+  },
+};
+
+const draftHandsMessage: ElayaTool = {
+  name: 'draft_hands_message',
+  description:
+    'Build the opening message for handing a ticket to the outside agent, through the disclosure filter: ONLY ' +
+    'the brief fields the table allows go in (dates, places, budget ceiling, product), the member\'s name, phone, ' +
+    'address and contact never do. Returns the exact text, what was sent, what was held back, and any leak that ' +
+    'blocks it. Sends NOTHING: show the user the text and the held-back list, then call send_hands_message only ' +
+    'when they agree. Optional `reply` drafts a follow-up line instead of the opening one.',
+  schema: z.object({ ticket: z.string().trim().min(1).max(60), reply: z.string().trim().max(2000).optional(), tickDeliveryAddress: z.boolean().optional() }),
+  jsonSchema: {
+    type: 'object',
+    properties: {
+      ticket: { type: 'string', description: 'The ticket number (T-000042) or id' },
+      reply: { type: 'string', description: 'A follow-up line to check instead of the opening message' },
+      tickDeliveryAddress: { type: 'boolean', description: 'Include the delivery address (only when the user said so for this job)' },
+    },
+    required: ['ticket'],
+    additionalProperties: false,
+  },
+  run: async (principal, input) => {
+    const { ticket, reply, tickDeliveryAddress } = input as { ticket: string; reply?: string; tickDeliveryAddress?: boolean };
+    const r = await elayaData.draftHandsMessageFor(principal, ticket, { reply: reply ?? null, tick: tickDeliveryAddress ? ['delivery_address'] : [] });
+    if (!r.ok) return { error: r.reason === 'no_access' ? HANDS_NO_ACCESS : "I couldn't find that ticket among the ones you can act on." };
+    return {
+      ticketNo: r.ticketNo, ticketId: r.ticketId, handsEnabled: r.enabled, hasThread: r.hasThread, vendorSet: r.vendorIsAgent,
+      text: r.draft.text, sent: r.draft.sent, heldBack: r.draft.heldBack, leaks: r.draft.leaks, trust: r.allows.label,
+      canSend: r.enabled && r.draft.leaks.length === 0,
+      note: r.draft.leaks.length ? 'A name, phone or email is in the text; it cannot be sent as written.' : !r.enabled ? 'Hands is switched off in Settings; the line can be drafted but not sent.' : !r.vendorIsAgent ? 'The ticket has no vendor yet: the agent must be set as its vendor before a thread opens.' : 'Show the user the text and the held-back list, then send_hands_message on a yes.',
+    };
+  },
+};
 
 // ── Tickets (Sia, 0195/0199/0200) — the genie's queue and one ticket's whole story ──
 // Scope is the principal's queendom (admin/founder: every queendom), read through
@@ -1799,6 +1889,9 @@ const ALL_TOOLS = [
   getVendorDetails,
   listTickets,
   getTicket,
+  listHandsJobs,
+  getHandsThreadTool,
+  draftHandsMessage,
   getMemberOverview,
   listMembers,
   getMemberProfile,

@@ -132,3 +132,20 @@ export async function upsertAllowedContactCore(actor: MutationActor, input: { ji
   if (error) return fail("Could not save the contact.", error);
   return { data: { jid }, error: null };
 }
+
+/** /settings/hands: the switch, the trust level per category and the caps, as elaya_settings rows (HANDS_SETTING_KEYS). */
+export async function saveHandsSettingsCore(actor: MutationActor, input: { enabled: boolean; trustByCategory: Record<string, string>; perJobCapInr: number; dailyCapInr: number; monthlyCapInr: number }): Promise<HandsResult<{ keys: string[] }>> {
+  const { HANDS_SETTING_KEYS } = await import("@/lib/constants/hands");
+  const now = new Date().toISOString();
+  const rows = [
+    { key: HANDS_SETTING_KEYS.enabled, value: input.enabled },
+    { key: HANDS_SETTING_KEYS.trustByCategory, value: input.trustByCategory },
+    { key: HANDS_SETTING_KEYS.perJobCapInr, value: input.perJobCapInr },
+    { key: HANDS_SETTING_KEYS.dailyCapInr, value: input.dailyCapInr },
+    { key: HANDS_SETTING_KEYS.monthlyCapInr, value: input.monthlyCapInr },
+  ].map((r) => ({ ...r, updated_at: now }));
+  const { error } = await createAdminClient().from("elaya_settings").upsert(rows, { onConflict: "key" });
+  if (error) return fail("Could not save the hands settings.", error);
+  void actor;
+  return { data: { keys: rows.map((r) => r.key) }, error: null };
+}

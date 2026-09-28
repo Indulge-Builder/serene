@@ -147,13 +147,19 @@ SPECIALISTS: dict[str, Specialist] = {
             "Sia tickets and member requests: what is open, what is late, where a ticket stands, "
             "a ticket number like T-000042, adding a note to a ticket, moving a ticket to another "
             "status (sourcing, awaiting member, awaiting vendor, in delivery, resolved), what the "
-            "sentinel said, a member's pending requests"
+            "sentinel said, a member's pending requests, handing a job to the outside agent "
+            "(Instinct) over the hands line, what the agent replied, a payment QR from the agent"
         ),
         focus=("Focus for this conversation: TICKETS — the genie's queue and one ticket's story. "
                "Read with list_tickets / get_ticket before answering; a status move is a proposal "
-               "the user confirms with a yes, never a done deed until the system says so."),
+               "the user confirms with a yes, never a done deed until the system says so. "
+               "The HANDS line (an outside agent that books for us over WhatsApp): list_hands_jobs and "
+               "get_hands_thread to read it; draft_hands_message builds the ONLY text that may go to the "
+               "agent (the member's name, phone, address and contact never do); send_hands_message is a "
+               "proposal the user confirms. Bookings are always in the name Indulge Concierge."),
         toolset=["list_tickets", "get_ticket", "add_ticket_note", "move_ticket_status", "find_teammate",
-                 "get_member_360", "search_sia_messages", "get_sia_group_messages" ],
+                 "get_member_360", "search_sia_messages", "get_sia_group_messages",
+                 "list_hands_jobs", "get_hands_thread", "draft_hands_message", "send_hands_message" ],
     ),
     "analyst": Specialist(
         id="analyst",

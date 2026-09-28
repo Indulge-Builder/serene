@@ -35,6 +35,8 @@ import {
   type ReviewDimension,
   PREFERRED_BOOST,
 } from "@/lib/constants/vendors";
+import { HANDS_AGENT_BOOST } from "@/lib/constants/hands";
+import { getHandsSettings } from "@/lib/services/llm-providers-service";
 import type {
   VendorAgentPreferenceRow,
   VendorAgentPreferenceWithAgent,
@@ -817,6 +819,8 @@ export async function rankVendorsForRequest(req: RankVendorsRequest): Promise<Ra
   // same "URI too long" that broke the old Node ranker. One member's jobs and
   // one agent's marks are each a short list; the candidate filter is in memory.
   const candidateIds = new Set(activeIds);
+  // The trust ladder (0245): an agent vendor is lifted only for a category the founder moved above L0.
+  const agentTrust = vendors.some((v) => v.kind === "agent") ? (await getHandsSettings()).trustByCategory : null;
   const [inputs, memberHistory, agentMarks] = await Promise.all([
     getVendorScoreInputs(activeIds, { now, category: useCategory, city: useCity }),
     req.clientId
@@ -868,6 +872,12 @@ export async function rankVendorsForRequest(req: RankVendorsRequest): Promise<Ra
       ranking += PREFERRED_BOOST;
       reasons.push(mine.note ? `You prefer this vendor — "${mine.note}"` : "You prefer this vendor");
     }
+    // An outside agent (0245) is ranked like any vendor, plus the company's own lift once the
+    // founder has moved its category above L0 in /settings/hands (the trust ladder, not a per-teammate note).
+    if (vendor.kind === "agent" && agentTrust && (agentTrust[useCategory ?? ""] ?? "draft") !== "draft") {
+      ranking += HANDS_AGENT_BOOST;
+      reasons.push("Elaya's hands can run this job");
+    }
     if (match) {
       // The evidence goes FIRST and quotes the real ticket, so the answer can
       // be judged rather than trusted.
@@ -896,4 +906,12 @@ export async function rankVendorsForRequest(req: RankVendorsRequest): Promise<Ra
   ranked.sort((a, b) => b.ranking - a.ranking || a.vendor.name.localeCompare(b.vendor.name));
   // `ranking` is an internal ordering key, not part of the answer.
   return ranked.slice(0, limit).map(({ ranking: _ranking, ...r }) => r);
+}
+
+/** The outside agents on the roster (vendors.kind = agent, 0245): the numbers on the hands allowlist stand for these. */
+export async function listAgentVendors(): Promise<{ id: string; name: string }[]> {
+  const admin = createAdminClient();
+  const { data, error } = await from(admin, "vendors").select("id, name").eq("kind", "agent").is("deleted_at", null).order("name");
+  if (error) { console.error(`${LOG} listAgentVendors failed:`, error); return []; }
+  return mapRows<{ id: string; name: string }, { id: string; name: string }>(data, (r) => r);
 }

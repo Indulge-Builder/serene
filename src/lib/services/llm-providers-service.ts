@@ -7,6 +7,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { MCP_ROLES } from '@/lib/constants/mcp';
+import { ELAYA_VOICE_SETTING_KEY } from '@/lib/constants/elaya-voice';
 import { USER_ROLES } from '@/lib/constants/roles';
 import type { UserRole } from '@/lib/types';
 import type { LlmJobType, LlmProviderRow } from '@/lib/types/elaya';
@@ -74,6 +75,16 @@ export async function getElayaBrainForChannel(
   }
   const value = await getSettingValue(channel === 'whatsapp' ? 'brain_whatsapp' : 'brain_in_app');
   return value === 'python' ? 'python' : 'node';
+}
+
+/**
+ * Is Elaya's voice door switched on (config row `voice_enabled`, migration 0247)?
+ * Seeded false; read per call, never cached; anything but `true` — a missing row,
+ * a failed read — is OFF (the door fails closed, like the brain switch falls to
+ * the incumbent). Flip: UPDATE elaya_settings SET value='true' WHERE key='voice_enabled'.
+ */
+export async function isElayaVoiceEnabled(): Promise<boolean> {
+  return (await getSettingValue(ELAYA_VOICE_SETTING_KEY)) === true;
 }
 
 /** Server-enforced daily message cap (config row `daily_message_cap`). */
@@ -209,4 +220,39 @@ export async function getMediaEscalateRule(): Promise<{ classes: import('@/lib/c
     const below = typeof v.below_confidence === 'number' && v.below_confidence >= 0 && v.below_confidence <= 1 ? v.below_confidence : MEDIA_ESCALATE_DEFAULT.below_confidence;
     return { classes, below_confidence: below };
   } catch { return MEDIA_ESCALATE_DEFAULT; }
+}
+
+// ─── Elaya's hands (0245) ────────────────────────────────────────────────────
+
+/** Every hands switch and cap in one read (rows in constants/hands.ts HANDS_SETTING_KEYS); a missing or malformed row = its default. */
+export async function getHandsSettings(): Promise<{
+  enabled: boolean;
+  trustByCategory: Record<string, import('@/lib/constants/hands').HandsTrustLevel>;
+  perJobCapInr: number;
+  dailyCapInr: number;
+  monthlyCapInr: number;
+}> {
+  const { HANDS_SETTING_KEYS, HANDS_TRUST_LEVELS, HANDS_PER_JOB_CAP_DEFAULT_INR, HANDS_DAILY_CAP_DEFAULT_INR, HANDS_MONTHLY_CAP_DEFAULT_INR } = await import('@/lib/constants/hands');
+  const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : d);
+  try {
+    const admin = createAdminClient();
+    const { data } = await admin.from('elaya_settings').select('key, value').in('key', Object.values(HANDS_SETTING_KEYS));
+    const rows = new Map(((data ?? []) as { key: string; value: unknown }[]).map((r) => [r.key, r.value]));
+    const trustRaw = rows.get(HANDS_SETTING_KEYS.trustByCategory);
+    const trust: Record<string, import('@/lib/constants/hands').HandsTrustLevel> = {};
+    if (trustRaw && typeof trustRaw === 'object') {
+      for (const [k, v] of Object.entries(trustRaw as Record<string, unknown>)) {
+        if (typeof v === 'string' && (HANDS_TRUST_LEVELS.values as readonly string[]).includes(v)) trust[k] = v as import('@/lib/constants/hands').HandsTrustLevel;
+      }
+    }
+    return {
+      enabled: rows.get(HANDS_SETTING_KEYS.enabled) === true,
+      trustByCategory: trust,
+      perJobCapInr: num(rows.get(HANDS_SETTING_KEYS.perJobCapInr), HANDS_PER_JOB_CAP_DEFAULT_INR),
+      dailyCapInr: num(rows.get(HANDS_SETTING_KEYS.dailyCapInr), HANDS_DAILY_CAP_DEFAULT_INR),
+      monthlyCapInr: num(rows.get(HANDS_SETTING_KEYS.monthlyCapInr), HANDS_MONTHLY_CAP_DEFAULT_INR),
+    };
+  } catch {
+    return { enabled: false, trustByCategory: {}, perJobCapInr: HANDS_PER_JOB_CAP_DEFAULT_INR, dailyCapInr: HANDS_DAILY_CAP_DEFAULT_INR, monthlyCapInr: HANDS_MONTHLY_CAP_DEFAULT_INR };
+  }
 }

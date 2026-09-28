@@ -44,6 +44,8 @@ export type ElayaActionType =
   // executes inline; move_ticket_status is state-changing (propose → confirm → execute).
   | "add_ticket_note"
   | "move_ticket_status"
+  // Hands (0245): a line to the outside agent is state-changing (propose → confirm → queue the outbox row).
+  | "send_hands_message"
   // The deep read (0235): queues a background job; executes inline (queuing is the whole act).
   | "start_deep_read"
   // The system correction (0237): logs an improvement request; executes inline.

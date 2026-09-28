@@ -99,6 +99,11 @@ import { TASK_TYPE_LABELS } from "@/lib/constants/task-types";
 import { TASK_STATUS } from "@/lib/constants/task-constants";
 import { APP_DOMAINS } from "@/lib/constants/domains";
 import { sanitizeText } from "@/lib/utils/sanitize";
+import { draftHandsMessageFor } from "@/lib/elaya/elaya-data";
+import { queueHandsMessageCore, openHandsThreadCore } from "@/lib/services/hands-mutations";
+import { checkFreeLine } from "@/lib/services/hands-draft";
+import { getHandsThreadForTicket } from "@/lib/services/hands-service";
+import { getHandsSettings } from "@/lib/services/llm-providers-service";
 import { normalizeDueAtToIstInstant } from "@/lib/utils/ist";
 import type { UserRole, AppDomain } from "@/lib/types";
 import type { LeadStatus, TaskStatus, TaskPriority, CallOutcome } from "@/lib/types/database";
@@ -122,6 +127,8 @@ export type ElayaWriteToolName =
   // Ticket writes (Sia, 0200): a note executes inline; a move is a proposal.
   | "add_ticket_note"
   | "move_ticket_status"
+  // Hands (0245): the line to an outside agent is a proposal; the resolver queues the outbox row.
+  | "send_hands_message"
   | "start_deep_read"
   | "raise_improvement_request";
 
@@ -1383,6 +1390,66 @@ const moveTicketStatus: ElayaWriteTool = {
 };
 
 
+// ── send_hands_message — PROPOSE ONLY (0245). A line to an outside agent leaves Serene's hands
+// number: the resolver queues the outbox row on the human's yes; the connector sends it. The text
+// is the drafter's (draft_hands_message) or a reply the user asked for; either way it passes the
+// leak check twice (here, and again at execution) and the disclosure record rides the row.
+const sendHandsMessage: ElayaWriteTool = {
+  name: "send_hands_message",
+  roles: STAFF_ALL,
+  description:
+    "Propose sending one line to the outside agent (Instinct) on a ticket's hands thread. Call draft_hands_message " +
+    "first and show the user the exact text and the held-back list; pass `text` back EXACTLY as drafted (or the " +
+    "follow-up line the user asked for). This records a proposal and WAITS for the user's yes; it does NOT send. " +
+    "A member's name, phone, email or address in the text is refused. Bookings are always in the name Indulge Concierge.",
+  schema: z.object({ ticket: z.string().trim().min(1).max(60), text: z.string().trim().min(1).max(4000), tickDeliveryAddress: z.boolean().optional() }),
+  jsonSchema: {
+    type: "object",
+    properties: {
+      ticket: { type: "string", description: "The ticket number (T-000042) or id" },
+      text: { type: "string", description: "The exact line to send (from draft_hands_message, or the reply the user asked for)" },
+      tickDeliveryAddress: { type: "boolean", description: "True only when the user said the delivery address may go on this job" },
+    },
+    required: ["ticket", "text"],
+    additionalProperties: false,
+  },
+  run: async (principal, input, ctx) => {
+    const { ticket, text, tickDeliveryAddress } = input as { ticket: string; text: string; tickDeliveryAddress?: boolean };
+    const d = await getTicketFor(principal, ticket);
+    if (!d) return { error: REFUSE_TICKET };
+    const settings = await getHandsSettings();
+    if (!settings.enabled) return { error: "Hands is switched off in Settings; nothing can be sent to the agent right now." };
+    if (!d.ticket.vendor_id) return { error: `${d.ticket.ticket_no} has no vendor yet. The agent must be set as the ticket's vendor first (the ticket page does that).` };
+    const clean = sanitizeText(text);
+    const leaks = await checkFreeLine(clean, d.ticket.member_id);
+    if (leaks.length) return { error: `That line carries something that must not leave Serene (${leaks.length} item${leaks.length === 1 ? "" : "s"}: a name, phone or email). Rewrite it without them.` };
+    // The disclosure record: when the text is the drafter's, the fields it carried; else "typed by the user".
+    const draft = await draftHandsMessageFor(principal, d.ticket.id, { tick: tickDeliveryAddress ? ["delivery_address"] : [] });
+    const disclosure = draft.ok && draft.draft.text.trim() === clean.trim() ? draft.draft.disclosure : { typed: true, by: "elaya_for_user" };
+    await supersedePriorProposals(ctx.conversationId, principal.userId, principal.userId);
+    const proposal = await insertProposedAction({
+      conversationId: ctx.conversationId,
+      userId: principal.userId,
+      actionType: "send_hands_message",
+      payload: {
+        target: { ticketId: d.ticket.id, ticketNo: d.ticket.ticket_no },
+        args: { text: clean, disclosure, title: d.ticket.title },
+        channel: ctx.channel,
+        before: null,
+        after: null,
+      },
+    });
+    if (!proposal) return { error: "I couldn't set that up just now." };
+    return {
+      proposalRecorded: true,
+      message:
+        `Proposal recorded (NOT yet sent): one line to the agent on ${d.ticket.ticket_no} (${d.ticket.title}). ` +
+        `Show the user the exact text and ask them to confirm with a yes before it goes. Do not state it as sent.`,
+      text: clean,
+    };
+  },
+};
+
 // ── start_deep_read — INLINE (0235). Queuing the job IS the act; the answer arrives later. ──
 const startDeepRead: ElayaWriteTool = {
   name: "start_deep_read",
@@ -1523,6 +1590,8 @@ const ALL_WRITE_TOOLS = [
   // Ticket writes (Sia)
   addTicketNote,
   moveTicketStatus,
+  // Hands (0245)
+  sendHandsMessage,
   // The deep read (0235)
   startDeepRead,
   // The system correction (0237)
@@ -1562,6 +1631,9 @@ export async function executeProposedAction(
   }
   if (action.action_type === "move_ticket_status") {
     return executeProposedTicketMove(principal, action);
+  }
+  if (action.action_type === "send_hands_message") {
+    return executeProposedHandsSend(principal, action);
   }
 
   const payload = action.payload as {
@@ -1810,6 +1882,64 @@ async function executeProposedTicketMove(
     return { status: "executed", line: `Done — ${label} is now ${TICKET_STATUSES.labels[target]}.` };
   } catch (e) {
     console.error("[elaya-write] ticket move threw:", e instanceof Error ? e.message : e);
+    await markActionResolved(action.id, "failed", principal.userId);
+    return { status: "failed", line: "Something went wrong completing that — try again." };
+  }
+}
+
+// ─────────────────────────────────────────────
+// Executor for a CONFIRMED send_hands_message proposal — re-resolves the ticket, re-gates with the
+// principal, re-runs the leak check on the stored text, opens the thread when it is the first line,
+// and queues ONE outbox row through the same core the /hands page uses. The connector sends it and
+// writes the hands_sent ticket event; nothing here touches WhatsApp.
+// ─────────────────────────────────────────────
+async function executeProposedHandsSend(
+  principal: StaffPrincipal,
+  action: ElayaActionRow,
+): Promise<ProposalExecution> {
+  const payload = action.payload as {
+    target?: { ticketId?: string; ticketNo?: string };
+    args?: { text?: string; disclosure?: Record<string, unknown>; title?: string };
+  };
+  const ticketId = payload.target?.ticketId;
+  const text = payload.args?.text;
+  const label = payload.target?.ticketNo ?? "that ticket";
+  if (!ticketId || !text) {
+    await markActionResolved(action.id, "failed", principal.userId);
+    return { status: "failed", line: "I couldn't complete that — the proposal was incomplete." };
+  }
+  try {
+    const d = await getTicketFor(principal, ticketId);
+    if (!d) {
+      await markActionResolved(action.id, "failed", principal.userId);
+      return { status: "failed", line: `I couldn't complete that — I can no longer act on ${label}.` };
+    }
+    const settings = await getHandsSettings();
+    if (!settings.enabled) {
+      await markActionResolved(action.id, "failed", principal.userId);
+      return { status: "failed", line: "Hands was switched off before I could send that." };
+    }
+    const leaks = await checkFreeLine(text, d.ticket.member_id);
+    if (leaks.length) {
+      await markActionResolved(action.id, "failed", principal.userId);
+      return { status: "failed", line: "That line carries a name, phone or email that must not leave Serene, so I did not send it." };
+    }
+    const actor = actorFromPrincipal(principal);
+    const existing = await getHandsThreadForTicket(d.ticket.id);
+    const thread = existing ?? (await openHandsThreadCore(d.ticket.id, actor)).data;
+    if (!thread) {
+      await markActionResolved(action.id, "failed", principal.userId);
+      return { status: "failed", line: `I couldn't open the line for ${label}: the ticket's vendor is not an agent on the hands allowlist.` };
+    }
+    const core = await queueHandsMessageCore(thread.id, text, actor, { source: "elaya", disclosure: payload.args?.disclosure ?? { typed: true } });
+    if (core.error || !core.data) {
+      await markActionResolved(action.id, "failed", principal.userId);
+      return { status: "failed", line: `I couldn't queue that line: ${core.error ?? "unknown error"}` };
+    }
+    await markActionResolved(action.id, "executed", principal.userId, { ...action.payload, after: { outboxId: core.data.id, threadId: thread.id } });
+    return { status: "executed", line: `Done — the line is queued to the agent on ${label}; it leaves the hands number within a few seconds.` };
+  } catch (e) {
+    console.error("[elaya-write] hands send threw:", e instanceof Error ? e.message : e);
     await markActionResolved(action.id, "failed", principal.userId);
     return { status: "failed", line: "Something went wrong completing that — try again." };
   }

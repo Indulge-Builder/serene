@@ -96,6 +96,44 @@ Website-armed Trigger.dev runs fire again (21 SLA timers in the last 24 hours), 
 
 ---
 
+## 2026-09-28 — Hands, layers D to F: Elaya's tools, the /hands page, the ticket card, the settings
+
+Why: step 1 laid the tables and the second WhatsApp process; nothing could yet draft a line to the
+agent, show the conversation, or set the rules. These three layers finish the plan's build list
+(`docs/architecture/hands-plan.md`) short of pairing the phone.
+
+- **The drafter** (`services/hands-draft.ts`): `buildHandsMessage` turns a ticket's brief into the
+  opening message through the disclosure table (a field is sent, needs the approver's tick, or
+  never leaves); `leakCheck` refuses any text carrying the member's or their people's names, a
+  phone or an email; `draftForTicket` adds the category's trust level. Deterministic, so a proposal
+  and its execution cannot drift. `getHandsSettings` (llm-providers-service) reads the switch, the
+  trust per category and the three caps in one call.
+- **Elaya's tools**: `list_hands_jobs`, `get_hands_thread`, `draft_hands_message` (read, bridged;
+  the queendom gate of the ticket tools) and `send_hands_message` (propose only: the resolver
+  re-gates, re-runs the leak check, opens the thread when it is the first line, and queues ONE
+  outbox row through the same core the page uses). The Python brain carries the four names in the
+  tickets specialist with the rule that bookings are always in the name Indulge Concierge.
+- **The page** (`/hands`, `components/hands/HandsWorkspace.tsx`): the Sia workspace's anatomy;
+  Jobs and Talk in the rail, the thread as bubbles, each queued line with its state, the PAY card
+  when the agent sent a QR (amount, payee, the per-job cap, a nine-minute countdown, "I scanned and
+  paid"; a genie is stopped above the cap), Elaya's draft with what was sent and what was held back
+  before Approve, and a composer whose text passes the same leak check. Polls every eight seconds.
+  In the nav after Vendors for the concierge floor, admin and founders.
+- **The ticket** (`components/tickets/TicketHandsCard.tsx`): shown only when the vendor is an
+  agent (`TicketVendorOption.kind`); opens the line or links to the thread.
+- **Settings** (`/settings/hands`, `components/settings/HandsSettingsPanel.tsx`, admin/founder):
+  the switch, the trust level per category, the caps, the allowlist (a number stands for an agent
+  vendor), the connector's state, the rulebook. Writes are `elaya_settings` rows through
+  `saveHandsSettingsCore`.
+- **The brief** gains a Hands line (jobs opened and done in the window, who is waiting on us) and
+  the vendor ranker lifts an agent vendor by `HANDS_AGENT_BOOST` once its category is above L0.
+- `actions/hands.ts`, `validations/hands-schema.ts`, `formErrors.hands*`; `listAgentVendors` in
+  vendors-service.
+
+Not yet: the phone is not paired and no agent is on the allowlist, so the line is dark; the
+identity's own name and UPI account (the founder wants a whole identity for Indulge to talk to
+Instinct) stay open; L2/L3 autonomy is read from settings but every send is still a proposal.
+
 ## 2026-09-27 — Elaya's eyes, steps 0 to 2: every stored image, PDF and voice note gets read once (0246)
 
 Why: no model reader in Serene ever looked at a file. The profiler, the intake, the ticket draft,

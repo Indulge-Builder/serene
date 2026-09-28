@@ -71,6 +71,8 @@ export type BriefingData = {
   ahead: { occasions: Q[]; renewals: Q[] };
   team: { staff_messages: Q[]; freshdesk_resolved: Q[]; sia_tickets: Q[] };
   money: Record<string, unknown> | null;
+  /** The hands line (0245): jobs handed to the outside agent in the window. */
+  hands: { opened: number; closed: number; waiting_on_us: { ticket: string | null; member: string | null; agent: string; waiting_min: number }[] } | null;
   /** One block per queendom: the founder's view of who is carrying what and where it hurts. */
   by_queendom: Q[];
   /** The internal team groups active in the window, busiest first (their lines are in the transcript). */
@@ -102,6 +104,36 @@ function transcriptFor(groups: Q[], lines: Q[], waits: Map<string, Q>): string {
     out.push(block); used += block.length;
   }
   return out.join('\n');
+}
+
+/** The hands line for the brief (0245): threads opened and closed in the window, and the agent lines nobody has answered. Fails soft to null. */
+async function handsForBrief(from: Date, to: Date): Promise<BriefingData['hands']> {
+  try {
+    const { handsDb } = await import('@/lib/supabase/schemas');
+    const { createAdminClient } = await import('@/lib/supabase/admin');
+    const db = handsDb(createAdminClient());
+    const [{ data: opened }, { data: closed }, { data: waiting }] = await Promise.all([
+      db.from('threads').select('id', { count: 'exact', head: true }).eq('kind', 'ticket').gte('opened_at', from.toISOString()).lt('opened_at', to.toISOString()),
+      db.from('threads').select('id', { count: 'exact', head: true }).eq('kind', 'ticket').gte('closed_at', from.toISOString()).lt('closed_at', to.toISOString()),
+      db.from('threads').select('id, ticket_id, jid, last_message_at').eq('kind', 'ticket').eq('status', 'open').eq('last_direction', 'in').order('last_message_at', { ascending: true }).limit(10),
+    ]);
+    void opened; void closed;
+    const { count: openedN } = await db.from('threads').select('id', { count: 'exact', head: true }).eq('kind', 'ticket').gte('opened_at', from.toISOString()).lt('opened_at', to.toISOString());
+    const { count: closedN } = await db.from('threads').select('id', { count: 'exact', head: true }).eq('kind', 'ticket').gte('closed_at', from.toISOString()).lt('closed_at', to.toISOString());
+    const rows = mapRows<{ id: string; ticket_id: string | null; jid: string; last_message_at: string | null }, { id: string; ticket_id: string | null; jid: string; last_message_at: string | null }>(waiting, (r) => r);
+    if (!openedN && !closedN && rows.length === 0) return null;
+    const { listHandsThreads } = await import('@/lib/services/hands-service');
+    const summaries = rows.length ? await listHandsThreads({ queendomIds: null }, { status: 'open', kind: 'ticket', limit: 200 }) : [];
+    const byId = new Map(summaries.map((s) => [s.id, s]));
+    return {
+      opened: Number(openedN ?? 0),
+      closed: Number(closedN ?? 0),
+      waiting_on_us: rows.map((r) => { const s = byId.get(r.id); return { ticket: s?.ticket_no ?? null, member: s?.member_name ?? null, agent: s?.contact_label ?? r.jid.split('@')[0], waiting_min: r.last_message_at ? Math.round((Date.now() - new Date(r.last_message_at).getTime()) / 60_000) : 0 }; }),
+    };
+  } catch (e) {
+    console.warn('[elaya-briefing] hands read failed', e instanceof Error ? e.message : e);
+    return null;
+  }
 }
 
 export async function gatherBriefingData(slot: BriefingSlot, now = new Date()): Promise<BriefingData> {
@@ -181,6 +213,7 @@ export async function gatherBriefingData(slot: BriefingSlot, now = new Date()): 
       staff_active: staff.filter((x) => String(x.queendoms ?? '').includes(name)).map((x) => ({ staff: x.staff, msgs: n(x.msgs) })),
     };
   });
+  const hands = await handsForBrief(w.from, w.to);
   const meaning = {
     window: `Everything marked in_window happened between ${w.label} (IST).`,
     tickets: 'Two ticket numbers per queendom, both inside the window: new_in_window = tickets created in the window; went_overdue_in_window = tickets whose Freshdesk due time passed during the window while still unresolved (whenever they were created). There is no backlog or all-time number in this brief; never invent one.',
@@ -190,12 +223,14 @@ export async function gatherBriefingData(slot: BriefingSlot, now = new Date()): 
     occasions: 'occasions and trips: due today or tomorrow.',
     renewals: 'renewals: memberships ending in the next 7 days.',
     money: 'money: received and invoiced in the window; receivables, overdue and cash are as of now.',
+    hands: 'hands: jobs handed to the outside agent (Instinct) over WhatsApp; opened/closed are the window\'s, waiting_on_us is right now (the agent spoke last and nobody answered).',
   };
   return {
     by_queendom,
     internal_groups: internalGroups,
     meaning,
     window: { from: w.from.toISOString(), to: w.to.toISOString(), label: w.label },
+    hands,
     freshdesk: fdByQ.length ? { by_queendom: fdByQ, notable: fdNotable, created: fdCreated } : null,
     whatsapp: { groups_active: groups.length, messages: lines.length, groups: groups.map(({ group_id: _g, ...rest }) => rest), transcript: transcriptFor(groups, lines, waitMap), waiting_now: waiting ?? [] },
     members: { tone_counts: toneCounts, tone_events: toneEvents, feedback_cards: feedback },
@@ -241,6 +276,7 @@ Format: line 1 "{greeting} {name}." then, in the same line or the next, one plai
 **Internal team** — what the staff said to each other that the founder should know: a decision, a plan, a mistake owned, money or vendor matters. 1 to 5 lines naming the group and the people. Skip when it was routine chatter.
 **Money** — only lines that changed or need action: money received (total and from whom), invoices raised, overdue receivables when they moved, the uncategorised bank feed when it is large. Skip a line that says the same as yesterday.
 **Today** — occasions, trips starting, renewals due, one per line with the date. Only when there are some.
+**Hands** — only when the hands block is not null: one line, "Hands: N jobs opened, M done, K waiting on you (<agent>, <minutes> min, <ticket>)"; a job waiting on us over 30 minutes also belongs under Needs you today.
 Last line: one short invitation to ask for detail.
 
 Rules: every fact comes from the record given; never invent, estimate, or guess a mood the messages do not show; when you name a problem, name the group and quote or paraphrase the message that shows it, briefly; numbers exact; a number that is not of the window carries its time frame in words ("right now", "all time", "next 7 days"); internal team groups are NEVER reported for a gap, a wait or a slow reply (people speak there only when something happens); staff are named as given (first names are fine, that is how the team says it); use the members' names as given; a sign-off like "ok", "thanks", an emoji is not waiting; plain words, short sentences, no emojis, no exclamation marks, no headings other than the bold labels, no tables, no line over 30 words.`;

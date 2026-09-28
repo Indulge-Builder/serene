@@ -1070,6 +1070,8 @@ WRITE_TOOL_NAMES: frozenset[str] = frozenset(
         "start_deep_read",
         # The system correction (0237): the user said Elaya was wrong about the system; logs a request, all staff.
         "raise_improvement_request",
+        # Hands (0245): one line to the outside agent is a PROPOSAL; Node queues the outbox row on the yes.
+        "send_hands_message",
     }
 )
 
@@ -1112,6 +1114,8 @@ BRIDGED_READ_TOOL_NAMES: frozenset[str] = frozenset({
     # The lead WhatsApp line, subscriptions, the live activity feed (2026-09-19): page rules in Node.
     "get_lead_whatsapp_chat", "get_subscriptions", "get_activity_feed",
     "list_members",
+    # Hands (0245): the thread with the outside agent and the disclosure drafter live in Node.
+    "list_hands_jobs", "get_hands_thread", "draft_hands_message",
 })
 
 # The ticket pair (2026-09-15) is bridged for the same reason: the sentinel's ledger and the
@@ -1143,6 +1147,9 @@ _BRIDGED_READ_ROLES: dict[str, frozenset[str]] = {
     "query_database": _FOUNDER_UP,
     "get_live_pulse": _FOUNDER_UP,
     "get_member_360": frozenset({"agent", "manager", "admin", "founder"}),
+    "list_hands_jobs": frozenset({"agent", "manager", "admin", "founder"}),
+    "get_hands_thread": frozenset({"agent", "manager", "admin", "founder"}),
+    "draft_hands_message": frozenset({"agent", "manager", "admin", "founder"}),
     "get_lead_whatsapp_chat": frozenset({"agent", "manager", "admin", "founder"}),
     "get_subscriptions": frozenset({"agent", "manager", "admin", "founder"}),  # Node narrows to finance/tech + admin/founder
     "get_activity_feed": frozenset({"manager", "admin", "founder"}),

@@ -31,10 +31,10 @@ const LOG = "[ticket-vendor]";
 const SYSTEM_ACTOR: MutationActor = { userId: "", role: "admin", domain: "concierge", fullName: "Serene" };
 const tickets = () => createAdminClient().schema("sia");
 
-export type TicketVendorOption = { id: string; name: string; category: string | null; city: string | null; phone: string | null; score: number | null; reasons: string[]; flags: string[] };
+export type TicketVendorOption = { id: string; name: string; kind: "human" | "agent"; category: string | null; city: string | null; phone: string | null; score: number | null; reasons: string[]; flags: string[] };
 
 const trim = (v: VendorRow, extra?: { score: number | null; reasons: string[]; flags: string[] }): TicketVendorOption =>
-  ({ id: v.id, name: v.name, category: v.subcategory ?? v.category, city: v.home_city, phone: v.primary_phone, score: extra?.score ?? null, reasons: extra?.reasons ?? [], flags: extra?.flags ?? [] });
+  ({ id: v.id, name: v.name, kind: v.kind ?? "human", category: v.subcategory ?? v.category, city: v.home_city, phone: v.primary_phone, score: extra?.score ?? null, reasons: extra?.reasons ?? [], flags: extra?.flags ?? [] });
 
 /** What the ticket is asking for, in its own words: the phrase the ranker searches past jobs with. */
 function ticketPhrase(t: TicketRow): string {

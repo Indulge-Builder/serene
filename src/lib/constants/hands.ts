@@ -97,6 +97,9 @@ export const HANDS_DISCLOSURE: Record<TicketBriefField, "send" | "tick" | "never
 };
 
 /** The name every booking, order and enquiry is made under. Decide 2 in the plan; a settings row later. */
+/** The ranker's lift for an agent vendor when the category's trust level is above L0 (plan Layer B): company policy, not a sticky note. */
+export const HANDS_AGENT_BOOST = 1;
+
 export const HANDS_IDENTITY_NAME = "Indulge Concierge";
 
 /**

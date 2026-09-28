@@ -13,6 +13,9 @@ import { TicketMoneyCard } from '@/components/tickets/TicketMoneyCard';
 import { TicketLinkedMessagesCard, TicketHelpPanel, TicketSentinelCard } from '@/components/tickets/TicketSideCards';
 import { TicketVendorCard } from '@/components/tickets/TicketVendorCard';
 import { getTicketVendor, getTicketVendorReview } from '@/lib/services/ticket-vendor';
+import { getHandsThreadForTicket } from '@/lib/services/hands-service';
+import { getHandsSettings } from '@/lib/services/llm-providers-service';
+import { TicketHandsCard } from '@/components/tickets/TicketHandsCard';
 import { TicketTasksCard } from '@/components/tickets/TicketTasksCard';
 import { TicketTagsCard } from '@/components/tickets/TicketTagsCard';
 import { TICKETS_PATH } from '@/lib/constants/tickets';
@@ -38,6 +41,8 @@ export default async function TicketPage({ params, searchParams }: Props) {
     detail.ticket.vendor_id ? getTicketVendor(detail.ticket.vendor_id) : Promise.resolve(null),
   ]);
   const review = await getTicketVendorReview(detail.ticket);
+  // The line to an outside agent (0245): only when the ticket's vendor is one.
+  const [handsThread, handsSettings] = vendor?.kind === 'agent' ? await Promise.all([getHandsThreadForTicket(detail.ticket.id), getHandsSettings()]) : [null, null];
   await logMemberAccess(detail.member.id, profile.id, 'ticket_help');
   const canApprove = profile.role !== 'agent';
   const t = detail.ticket;
@@ -68,6 +73,7 @@ export default async function TicketPage({ params, searchParams }: Props) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', minWidth: 0 }}>
           <TicketSentinelCard ticket={t} />
           <TicketVendorCard ticketId={t.id} vendor={vendor} live={!['resolved', 'closed', 'dropped'].includes(t.status)} status={t.status} review={review} />
+          {vendor?.kind === 'agent' && <TicketHandsCard ticketId={t.id} vendorName={vendor.name} thread={handsThread} live={!['resolved', 'closed', 'dropped'].includes(t.status)} enabled={Boolean(handsSettings?.enabled)} />}
           <TicketTagsCard ticketId={t.id} tags={t.tags ?? []} vocabulary={settings.tags} />
           <TicketHelpPanel help={help} clientId={detail.member.id} memberName={detail.member.full_name} />
         </div>

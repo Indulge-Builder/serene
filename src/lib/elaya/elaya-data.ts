@@ -1437,3 +1437,64 @@ export async function getActivityFeedFor(principal: StaffPrincipal, opts: { doma
     events: events.map((e) => ({ at: e.created_at, domain: e.domain, who: e.actor_id ? (names.get(e.actor_id) ?? null) : null, event: e.event_type, about: e.subject_type, title: e.title })),
   };
 }
+
+// ─────────────────────────────────────────────
+// Hands (0245): the line to an outside agent, read for Elaya (docs/architecture/hands-plan.md, Layer D)
+//
+// Same gate as the ticket tools: the ticket's queendom through canAccessMember with the SEATED
+// principal; a thread list is scoped like the Sia pages (admin/founder every queendom, a seated
+// teammate their own, the Joker head all). Every read is the hands-service read the /hands page
+// uses; the drafter is the same filter the page's button runs.
+// ─────────────────────────────────────────────
+
+import { getHandsThread, getHandsThreadForTicket, listHandsThreads, type HandsScope } from '@/lib/services/hands-service';
+import { draftForTicket, trustAllows, type HandsDraft } from '@/lib/services/hands-draft';
+import { getHandsSettings } from '@/lib/services/llm-providers-service';
+import type { TicketBriefField } from '@/lib/constants/tickets';
+
+async function handsScopeFor(principal: StaffPrincipal): Promise<HandsScope | null> {
+  const seat = await seatedPrincipal(principal);
+  const s = await getSiaViewerScope(seat);
+  if (!s) return null;
+  return { queendomIds: s.kind === 'all' ? null : s.queendomIds };
+}
+
+/** Open jobs on the hands line the principal may see, newest activity first. */
+export async function listHandsJobsFor(principal: StaffPrincipal, opts: { includeClosed?: boolean } = {}) {
+  const scope = await handsScopeFor(principal);
+  if (!scope) return { ok: false as const, reason: 'no_access' as const };
+  const [settings, threads] = await Promise.all([getHandsSettings(), listHandsThreads(scope, { status: opts.includeClosed ? 'all' : 'open', limit: 60 })]);
+  return { ok: true as const, enabled: settings.enabled, threads };
+}
+
+/** One thread as labelled rows, oldest first, by ticket number or thread id. */
+export async function getHandsThreadFor(principal: StaffPrincipal, ref: string) {
+  const scope = await handsScopeFor(principal);
+  if (!scope) return { ok: false as const, reason: 'no_access' as const };
+  let threadId: string | null = null;
+  if (/^[0-9a-f-]{36}$/i.test(ref.trim())) {
+    // A uuid: a thread id, or a ticket id.
+    const byId = await getHandsThread(ref.trim().toLowerCase(), scope);
+    if (byId) return { ok: true as const, ...byId };
+    const t = await getTicketFor(principal, ref);
+    threadId = t ? (await getHandsThreadForTicket(t.ticket.id))?.id ?? null : null;
+  } else {
+    const t = await getTicketFor(principal, ref);
+    if (!t) return { ok: false as const, reason: 'not_found' as const };
+    threadId = (await getHandsThreadForTicket(t.ticket.id))?.id ?? null;
+  }
+  if (!threadId) return { ok: false as const, reason: 'no_thread' as const };
+  const d = await getHandsThread(threadId, scope);
+  return d ? { ok: true as const, ...d } : { ok: false as const, reason: 'not_found' as const };
+}
+
+/** The opening message the filter would send for a ticket, with what was held back; sends nothing. */
+export async function draftHandsMessageFor(principal: StaffPrincipal, ticketRef: string, opts: { tick?: TicketBriefField[]; reply?: string | null } = {}): Promise<
+  | { ok: true; ticketId: string; ticketNo: string; draft: HandsDraft; allows: ReturnType<typeof trustAllows>; enabled: boolean; hasThread: boolean; vendorIsAgent: boolean }
+  | { ok: false; reason: 'not_found' | 'no_access' }
+> {
+  const t = await getTicketFor(principal, ticketRef);
+  if (!t) return { ok: false, reason: 'not_found' };
+  const [draft, settings, thread] = await Promise.all([draftForTicket(t.ticket, opts), getHandsSettings(), getHandsThreadForTicket(t.ticket.id)]);
+  return { ok: true, ticketId: t.ticket.id, ticketNo: t.ticket.ticket_no, draft, allows: trustAllows(draft.trust), enabled: settings.enabled, hasThread: Boolean(thread), vendorIsAgent: Boolean(t.ticket.vendor_id) };
+}

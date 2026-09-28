@@ -115,7 +115,7 @@ export const DOMAIN_ROUTE_MAP: Record<AppDomain, string[]> = {
   // and actions ask hasVendorAccess (route-access.ts).
   // /settings left the concierge map 2026-09-25: it holds the Gia lead-routing roster and the Teach
   // Elaya doors (admin/founder), nothing a queen or genie uses; a seated manager saw a hub of dead doors.
-  concierge: ['/tasks', '/members', '/tickets', '/sia', '/freshdesk', '/vendors'],
+  concierge: ['/tasks', '/members', '/tickets', '/sia', '/freshdesk', '/vendors', '/hands'],
   finance:   ['/tasks', '/subscriptions', '/settings'],
   marketing: ['/tasks', '/campaigns', '/settings'],
   tech:      ['/tasks', '/subscriptions', '/settings'],
