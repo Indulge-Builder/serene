@@ -93,17 +93,16 @@ latches, the usage snapshot and cache invalidation; `FRESHDESK_DOMAIN` + `FRESHD
 money out). A missing var fails quietly inside a job (a skipped send, a disabled push, a no-op
 sync), so check the worker's env whenever a background feature "does nothing".
 
-Verified 2026-09-28 through the envvars SDK: the Trigger.dev prod environment holds exactly
-`ANTHROPIC_API_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, the three `SIA_S3_*`
-(added that day, the media reader skipped every Sia file without them) and `DEEPGRAM_API_KEY`
-(added the same day). **Still missing there: every `GUPSHUP_*`, `VAPID_*`, `UPSTASH_*`, `FRESHDESK_*`
-and `ZOHO_*` variable.** So every WhatsApp sent from a job (SLA fires, reminders, the Sia alarm, the
-brief, alerts) fails with "Missing required env vars: GUPSHUP_API_KEY…" while the in-app copies
-land, push from jobs is a no-op, and the brief leaves money out. Adding them is one script run
-(`scripts/.probe/trigger-envvars.ts NAME…`, the envvars SDK with the prod secret key; a new value
-applies on the next run, no redeploy) but it switches those sends ON, so it is the founder's call.
-Also: `media-reader` and `media-redo` (0246) need `ANTHROPIC_API_KEY`, `DEEPGRAM_API_KEY` and the
-`SIA_S3_*` trio.
+Verified 2026-09-28 with the envvars SDK **and a personal access token** (a `tr_dev_` secret key
+answers for DEV whatever environment you name, which misled the first check): the Trigger.dev prod
+environment holds `ANTHROPIC_API_KEY`, the two Supabase vars, the four `GUPSHUP_*`, the three
+`FRESHDESK_*`, the two `UPSTASH_*`, and since that day the three `SIA_S3_*` and `DEEPGRAM_API_KEY`
+(the media reader skipped every Sia file and every voice note without them). **Still missing there:
+`VAPID_*` (push from jobs is a no-op) and `ZOHO_*` (the brief leaves money out).** Adding a variable
+is one script run, `scripts/.probe/trigger-envvars.ts NAME…`, with `TRIGGER_ACCESS_TOKEN` set from
+the CLI login (`~/Library/Preferences/trigger/config.json`), never the dev secret key; a new value
+applies on the next run. `media-reader` and `media-redo` (0246) need `ANTHROPIC_API_KEY`,
+`DEEPGRAM_API_KEY` and the `SIA_S3_*` trio.
 
 ## The Python brain (`backend/`)
 
