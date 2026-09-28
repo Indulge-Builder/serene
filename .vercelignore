@@ -9,3 +9,7 @@ scripts/clients
 cleint-data
 upload
 *.csv
+connector-hands
+indulge-app-example
+output
+scripts/.probe
