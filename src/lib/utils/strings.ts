@@ -28,6 +28,18 @@ function firstGlyph(word: string): string {
   return Array.from(word)[0] ?? '';
 }
 
+/**
+ * THE safe text cut: at most `max` UTF-16 units, never ending on half an emoji. A plain
+ * .slice() can leave a lone surrogate, which is not valid JSON: a model request carrying one is
+ * refused ("no low surrogate in string", the jokers' reply reader, 2026-09-24) and a row
+ * written with one can fail too. Use it wherever message text is shortened to send or store.
+ */
+export function clipText(value: string, max: number): string {
+  if (value.length <= max) return value;
+  const code = value.charCodeAt(max - 1);
+  return value.slice(0, code >= 0xd800 && code <= 0xdbff ? max - 1 : max);
+}
+
 export function hashString(value: string): number {
   let h = 0;
   for (let i = 0; i < value.length; i++) {

@@ -4,9 +4,11 @@ import { SelectionButton } from '@/components/ui/SelectionButton';
 import { Button } from '@/components/ui/Button';
 import { Check } from 'lucide-react';
 import {
-  DATE_RANGE_PRESET_OPTIONS,
+  DATE_RANGE_PRESETS,
+  DATE_RANGE_PRESET_LABELS,
   matchDateRangePreset,
   resolveDateRangePreset,
+  type DateRangePreset,
 } from '@/lib/constants/date-range-presets';
 
 type DateRangePresetListProps = {
@@ -15,6 +17,15 @@ type DateRangePresetListProps = {
   to: string | null;
   /** Atomic from+to update — one state change / URL push. */
   onSelect: (from: string | null, to: string | null) => void;
+  /** Which presets to offer (the default list unless given; e.g. the Jokers' rolling windows). */
+  presets?: readonly DateRangePreset[];
+  /** A "Custom dates" option at the bottom (FilterBar `single`): the caller shows the From → To fields. */
+  custom?: { selected: boolean; onClick: () => void };
+  /**
+   * Whether the period can be emptied (default true): the Clear button, and a click on the active
+   * preset clears it. False when a period is always set (FilterBar `single`): the click just keeps it.
+   */
+  clearable?: boolean;
 };
 
 /**
@@ -23,14 +34,19 @@ type DateRangePresetListProps = {
  * atomically via onSelect; clicking the active preset (or Clear) clears both.
  * The manual From → To panel body is DateRangeFields ("Dates").
  */
-export function DateRangePresetList({ from, to, onSelect }: DateRangePresetListProps) {
-  const active      = matchDateRangePreset(from, to);
+export function DateRangePresetList({ from, to, onSelect, presets = DATE_RANGE_PRESETS, custom, clearable = true }: DateRangePresetListProps) {
+  const active      = matchDateRangePreset(from, to, undefined, presets);
+  const options     = [
+    ...presets.map((id) => ({ id: id as string, label: DATE_RANGE_PRESET_LABELS[id] })),
+    ...(custom ? [{ id: 'custom', label: 'Custom dates' }] : []),
+  ];
   const rangeActive = !!(from || to);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minWidth: '11.5rem' }}>
-      {DATE_RANGE_PRESET_OPTIONS.map((option) => {
-        const selected = option.id === active;
+      {options.map((option) => {
+        const isCustom = option.id === 'custom';
+        const selected = isCustom ? !!custom?.selected : option.id === active;
         return (
           <SelectionButton
             appearance="option"
@@ -38,11 +54,15 @@ export function DateRangePresetList({ from, to, onSelect }: DateRangePresetListP
             key={option.id}
             type="button"
             onClick={() => {
-                    if (selected) {
-                        onSelect(null, null);
+                    if (isCustom) {
+                        custom?.onClick();
                         return;
                     }
-                    const range = resolveDateRangePreset(option.id);
+                    if (selected) {
+                        onSelect(clearable ? null : from, clearable ? null : to);
+                        return;
+                    }
+                    const range = resolveDateRangePreset(option.id as DateRangePreset);
                     onSelect(range.from, range.to);
                 }}
             style={{
@@ -68,7 +88,7 @@ export function DateRangePresetList({ from, to, onSelect }: DateRangePresetListP
         );
       })}
 
-      {rangeActive && (
+      {rangeActive && clearable && (
         <>
           <div
             style={{

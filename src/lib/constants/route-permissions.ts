@@ -27,6 +27,14 @@ export const ELAYA_DOMAINS: readonly AppDomain[] = ['concierge', ...GIA_DOMAINS]
 export const ELAYA_ROUTE_PREFIX = '/elaya';
 
 /**
+ * The Jokers module (/jokers: Recommendations & Engagement, Activity; owner 2026-09-28): admin,
+ * founder, the tech workbench, and whoever holds a joker or joker_head seat (profiles.sia_role),
+ * whatever their domain or role. canAccessRoute sends the prefix to hasJokersAccess.
+ */
+export const JOKERS_ROUTE_PREFIX = '/jokers';
+export { JOKER_SEATS } from '@/lib/constants/sia-roles';
+
+/**
  * The founder's sidebar (2026-09-16). VISIBILITY ONLY — the founder still bypasses
  * every route check (canAccessRoute → true), so a deep link from a lead to its deal,
  * or to /whatsapp, keeps working; the nav and the command palette simply do not list
@@ -39,6 +47,7 @@ export const FOUNDER_NAV_PREFIXES: string[] = [
   '/leads',
   '/tasks',
   '/vendors',
+  '/jokers',
   '/subscriptions',
   '/notes',
   '/performance',

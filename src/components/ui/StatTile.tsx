@@ -33,6 +33,8 @@ export function StatTile({
   variant = 'card',
   size = 'lg',
   dot,
+  onClick,
+  emphasis = false,
 }: {
   label:    string;
   value:    string;
@@ -42,6 +44,10 @@ export function StatTile({
   size?:    'lg' | 'sm';
   /** Cell only: a status colour (a CSS var) for a small dot before the label. */
   dot?:     string;
+  /** Card only: the tile becomes a button (a dashboard tile that opens the rows it counts). */
+  onClick?: () => void;
+  /** Card only: the headline tile (centred, a larger accent value). */
+  emphasis?: boolean;
 }) {
   if (variant === 'cell') {
     const compact = size === 'sm';
@@ -114,11 +120,15 @@ export function StatTile({
     );
   }
 
+  const Tag = onClick ? 'button' : 'div';
   return (
-    <div
+    <Tag
+      {...(onClick ? { type: 'button' as const, onClick, className: 'serene-stat-tile--action' } : {})}
       style={{
         ...clayTileStyle(),
-        padding:      'var(--space-4)',
+        padding:      emphasis ? 'var(--space-6) var(--space-4)' : 'var(--space-4)',
+        ...(emphasis ? { textAlign: 'center' as const, display: 'flex', flexDirection: 'column' as const, justifyContent: 'center' } : {}),
+        ...(onClick ? { width: '100%', font: 'inherit', color: 'inherit', cursor: 'pointer', textAlign: emphasis ? ('center' as const) : ('left' as const) } : {}),
       }}
     >
       <p
@@ -132,9 +142,9 @@ export function StatTile({
         style={{
           // Mono for numbers (number-font rule).
           fontFamily:  'var(--font-mono)',
-          fontSize:    'var(--text-2xl)',
+          fontSize:    emphasis ? 'var(--text-3xl)' : 'var(--text-2xl)',
           fontWeight:  'var(--weight-semibold)',
-          color:       'var(--theme-text-primary)',
+          color:       emphasis ? 'var(--neu-accent-deep)' : 'var(--theme-text-primary)',
           margin:      sub ? '0 0 var(--space-1)' : '0',
           lineHeight:  'var(--leading-none)',
         }}
@@ -150,12 +160,12 @@ export function StatTile({
             fontWeight: 'var(--weight-medium)',
             color:      sub.color,
             margin:     0,
-            lineHeight: 'var(--leading-none)',
+            lineHeight: 'var(--leading-normal)',
           }}
         >
           {sub.text}
         </p>
       )}
-    </div>
+    </Tag>
   );
 }
