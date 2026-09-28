@@ -251,10 +251,10 @@ shortlist). Limits: 60 calls a minute per person, 60,000-character results. Ever
   alerts, deep read, lesson writer and judgements. Reaching its monthly spend limit silences all of
   them (2026-09-18). The deep read has its own cap (default 50 dollars).
 
-## Trigger.dev: all 26 tasks
+## Trigger.dev: all 28 tasks
 
 Config: `trigger.config.ts`, runtime node, default `maxDuration` 300, scan dir `src/trigger/`
-(18 files; helpers such as `cancelRunsByTag` live in `src/lib/trigger/` so the scan skips them).
+(19 files; helpers such as `cancelRunsByTag` live in `src/lib/trigger/` so the scan skips them).
 Imports use the SDK's `/v3` entry. Cron timezone is always `Asia/Calcutta` (the validator rejects
 `Asia/Kolkata`). Tasks import their services dynamically inside `run()`; the build replaces
 `server-only` with an empty module, so those chains run fine. The worker has **its own env vars**.
@@ -285,6 +285,8 @@ Runs armed from the website use Vercel's `TRIGGER_SECRET_KEY`, which must be the
 | `sia-staff-link` | every 15 min | none | links WhatsApp contacts to Serene accounts by phone |
 | `freshdesk-sync` | every minute | Freshdesk env present | one budgeted mirror cycle |
 | `vendor-extract` | every 5 min | none (fails closed without the Anthropic key) | vendor facts from unread Freshdesk notes; settles finished jobs |
+| `media-reader` | every 5 min | `media_reading_enabled` (ships off); backlog also `media_reading_backlog_enabled` | Elaya's eyes: reads stored images, PDFs and voice notes once, last 24 hours first, under a daily cap (0246, not applied yet) |
+| `media-redo` | :07 and :37 each hour | as above | re-profiles member conversations where a useful reading landed late; shares the profiler's queue |
 | `member-profiler` | every 10 min | `member_profiler_enabled`, off unless true | files member-group conversations into the member twin |
 | `member-pulse` | minute 7 hourly | none | every member's activity numbers in one SQL statement |
 | `member-assessment-weekly` | Sunday 04:00 | `member_assessment_enabled`, on unless false | Serene's judgement of Active members (about ₹2 each) |

@@ -164,7 +164,7 @@ Everything else is a server action. These are the only routes, and each is a log
 
 ## 5. Background work (Trigger.dev)
 
-Eighteen files in `src/trigger/` define 26 tasks. The full inventory (ids, schedules, the settings
+Nineteen files in `src/trigger/` define 28 tasks. The full inventory (ids, schedules, the settings
 row that switches each one on, what it does) lives in **`../integrations/trigger-dev.md` §3**;
 each module doc owns what its own task does. In short:
 

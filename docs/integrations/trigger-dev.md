@@ -2,7 +2,7 @@
 
 > **Purpose:** the background-job layer. Every task that runs on Trigger.dev, what starts it, what switches it off, how the jobs are deployed, and the conventions they share.
 > **Audience:** engineers. · **Source-of-truth scope:** job mechanics, the task inventory and the conventions. The business rules each job serves live in its module doc (linked per row). SLA rules: `../modules/gia.md` § SLA Engine.
-> **Last verified:** 2026-09-26 against `trigger.config.ts`, `package.json`, all 18 files in `src/trigger/`, `src/lib/trigger/cancel-runs.ts`, `src/lib/services/llm-providers-service.ts` (the switch getters), `src/lib/services/lead-mutations.ts`, `src/lib/services/task-mutations.ts`, `src/lib/actions/sla.ts`.
+> **Last verified:** 2026-09-26 against `trigger.config.ts`, `package.json`, all 19 files in `src/trigger/` (media-reader.ts re-checked 2026-09-28), `src/lib/trigger/cancel-runs.ts`, `src/lib/services/llm-providers-service.ts` (the switch getters), `src/lib/services/lead-mutations.ts`, `src/lib/services/task-mutations.ts`, `src/lib/actions/sla.ts`.
 
 ---
 
@@ -83,7 +83,7 @@ execute (so a local test can "work" while production does nothing).
 
 ## 3. Task inventory
 
-Every task in `src/trigger/` (18 files, 26 tasks). Times are IST. "Gate" is what turns the task
+Every task in `src/trigger/` (19 files, 28 tasks). Times are IST. "Gate" is what turns the task
 off without a deploy. The `elaya_settings` switch rows are read on every run by getters in
 `llm-providers-service.ts`: "OFF unless true" means the task does nothing until the row is set to
 `true`; "ON unless false" means it runs unless the row says `false`. Current values live in
@@ -114,6 +114,8 @@ off without a deploy. The `elaya_settings` switch rows are read on every run by 
 | `sia-staff-link` | `sia-staff-link.ts` | every 15 min | none | Links WhatsApp contacts to Serene accounts by phone | `../modules/sia.md` |
 | `freshdesk-sync` | `freshdesk-sync.ts` | every minute | Freshdesk env present (else a quiet no-op) | One budgeted cycle of the Freshdesk mirror (poll, threads, contacts, backfill, files). 30 s time budget | `freshdesk.md` |
 | `vendor-extract` | `vendor-extract.ts` | every 5 min (`maxDuration` 300) | none (without `ANTHROPIC_API_KEY` on the worker every read fails closed and the notes stay queued) | Reads unread Freshdesk notes for vendor facts; settles finished jobs | `../modules/vendors.md` |
+| `media-reader` | `media-reader.ts` | every 5 min (`maxDuration` 290, one at a time) | `media_reading_enabled` (ships off); the backlog also needs `media_reading_backlog_enabled` | Elaya's eyes: reads stored images, PDFs and voice notes that have no reading yet, the last 24 hours first, under a daily cap (migration 0246) | `../architecture/media-understanding-plan.md` |
+| `media-redo` | `media-reader.ts` | at :07 and :37 each hour (`maxDuration` 590, shares the profiler's queue) | as above | Re-profiles member conversations where a useful reading landed after the profiler had passed; the shared queue stops two readings of one member racing | `../architecture/media-understanding-plan.md` |
 | `member-profiler` | `member-profiler.ts` | every 10 min | `member_profiler_enabled`, OFF unless true | Reads finished member-group conversations into the member twin | `../modules/members.md` |
 | `member-pulse` | `member-assessment.ts` | minute 7 of every hour | none | Recomputes every member's activity numbers in one SQL statement | `../modules/members.md` |
 | `member-assessment-weekly` | `member-assessment.ts` | Sunday 04:00 | `member_assessment_enabled`, ON unless false | Serene's judgement for Active members not judged in the last week | `../modules/members.md` |

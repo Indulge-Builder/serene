@@ -234,7 +234,7 @@ run; pick the number last, other sessions write migrations in parallel).
 
 ## Background work (Trigger.dev v4)
 
-18 files in `src/trigger/` define **26 tasks**. Most read a settings row before working, so a schedule
+19 files in `src/trigger/` define **28 tasks**. Most read a settings row before working, so a schedule
 can be deployed switched off. IST schedules use `Asia/Calcutta` (Trigger.dev rejects `Asia/Kolkata`).
 
 | Kind | What runs |

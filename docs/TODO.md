@@ -57,6 +57,10 @@ Check items off (or delete them) as they are done. Each item names the doc that 
   `gia.lead_sla_timers` sit in `pending` past their fire time, oldest about 101 days, about 58
   added in the last week. Likely rows not closed when a run is skipped or cancelled. It also
   keeps the health check's row 2 permanently red. See `operations/engine-health-check.md`.
+- [ ] **Unblock Vercel's git builds.** On 2026-09-28 the deploying session reported that builds
+  from git pushes were blocked on the Vercel account, so production (4b8d185) was deployed from
+  the CLI. Until this is fixed, a push to main does not deploy by itself. See
+  `operations/deployment.md`.
 - [ ] **Fix `scripts/engine-health-check.sql`.** Its tables moved to the `gia` schema on
   2026-09-17, so it fails as written. The runbook shows a search-path workaround until then.
   See `operations/engine-health-check.md`.
