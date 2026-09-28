@@ -12,6 +12,25 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-28 — Finance module, step 1: the reimbursement invoice (plan only)
+
+**Why.** When a genie pays for a member's request, a finance person has to notice the
+Invoice Due ticket, retype the template note into Zoho Books, apply the member's credit,
+paste the invoice number back, and then wait for a genie to close the ticket. Tickets wait a
+median 24 hours in Invoice Due today, one in ten over four days, and finance cannot move the
+status themselves.
+
+**What.** `docs/architecture/finance-plan.md`. Nothing is built. The plan, read against the
+live mirror and two real Zoho invoices: the template note is the button; a `finance` schema
+holds one reimbursement per ticket; a deterministic reader with a model fallback fills the
+invoice; `/finance` shows the finance domain a queue and a ready card; one click creates the
+invoice in Zoho (the first Zoho writes), applies the wallet, writes the note, the invoice
+number, billable = Yes and the status back to Freshdesk (the first Freshdesk ticket writes),
+and tells the genie. Identity is the finance person's name in Zoho's salesperson field, as
+today. A trust ladder from draft to auto. Six founder decisions are listed at the end.
+
+---
+
 ## 2026-09-28 — Desks plan: Elaya on every table, out loud and on the wall (plan only)
 
 **Why.** The office has Alexa speakers, a Google Home and two smart TVs on the queendom tables,
