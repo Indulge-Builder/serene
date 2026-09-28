@@ -79,6 +79,8 @@ python-brain.ts        ← (Step 3, channel tranche 2026-08-31; in-app proxy 202
                           when `brain_in_app` says python). Never a second brain client.
 ```
 
+**The voice channel (2026-09-28, 0247) is the fourth** (`channel: 'voice'`): `services/elaya-voice-service.ts` mints the LiveKit room token (the only mint; the token's room configuration dispatches the agent `elaya-voice` with the verified `user_id` as job metadata), `actions/elaya-voice.ts` is the one action behind the Call button, `components/elaya/ElayaVoiceCall.tsx` the browser side, and `backend/voice/agent.py` the worker: an `llm.LLM` whose stream is `POST /v1/elaya/chat` with `channel: 'voice'`, so identity, cap, session, rows, tools, PII and the resolver are the brain's, untouched. The persona appends `_VOICE_CHANNEL_BLOCK` (spoken style) on that channel. Settings row `voice_enabled` (seeded false) is the door.
+
 **The MCP connector (2026-09-19/21) is the third channel** (`channel: 'mcp'`): `lib/mcp/server.ts` publishes the principal's read toolset and calls `executeTool`; `elaya-data.exportRowsFor` is the export twin of `queryDatabaseFor` (same gate, `ELAYA_EXPORT_MAX_ROWS` = 5,000, purpose logged as `export: …`); `WriteToolContext.maxResultChars` lets a roomier client raise (never lower) a tool's result cap.
 
 ## The tool catalog (2026-09-24, Python brain): the router no longer trims what she may call

@@ -13,7 +13,7 @@
 | **Vercel** | the Next.js 16 app: pages, server actions, the API routes. Production alias `indulge-serene.vercel.app` | a push to `main` builds and promotes Production |
 | **Supabase** | Postgres 17 (17.6), Auth (including the OAuth server used by the MCP connector), Realtime, Storage. Project ref `xmucqqhbupudnzderchy`. Schemas `public`, `gia`, `member`, `sia`, `freshdesk`, `elaya_read` | migrations from `supabase/migrations/` via the Supabase CLI (§4) |
 | **Trigger.dev** | every task in `src/trigger/` (project `proj_xfyyvwjmrumreyvawcwg`) | `pnpm trigger:deploy` (§5) |
-| **AWS, Copilot app `serene`, env `prod`, `ap-south-1`** | two ECS Fargate services in one cluster: `api` (the Python brain) and `watcher` (the Sia WhatsApp connector) | `copilot svc deploy` from `backend/` (§6, §7) |
+| **AWS, Copilot app `serene`, env `prod`, `ap-south-1`** | three ECS Fargate services in one cluster: `api` (the Python brain), `watcher` (the Sia WhatsApp connector) and `voice` (Elaya's LiveKit voice worker, 0247; not yet deployed as of 2026-09-28) | `copilot svc deploy` from `backend/` (§6, §7, §7b) |
 | **CloudFront** `E25WKM3MQB2HCY` (`dvoitvfdf56l3.cloudfront.net`) | the HTTPS front on the `api` load balancer | configured by hand, not in the repo |
 | **S3** (the `sia-media` addon) | the watcher's media files | Copilot storage addon, `backend/copilot/watcher/addons/sia-media.yml` |
 | **Upstash** | Redis over REST | `../integrations/upstash-redis.md` |
@@ -173,6 +173,19 @@ same real-exit-code capture. TODO: verify this exact command; the changelog reco
 deploy command. A deploy is a short capture gap by design; WhatsApp's offline queue redelivers
 what happened meanwhile and the dedup wall makes each redelivery land once. Never run a local
 connector while the Fargate task is running (scale it to 0 first; `connector/RUNBOOK.md`).
+
+## 7b. The voice worker (Fargate `voice`)
+
+The Copilot Backend Service `voice` builds `backend/voice/Dockerfile`: no port, no load balancer,
+512 CPU / 1024 MB, one task, outbound only (a WebSocket to LiveKit Cloud and HTTP to the brain
+over Service Connect at `http://api:8080`). First time: `copilot secret init` for `LIVEKIT_URL`,
+`LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` and `VOICE_TTS_VOICE`, then `copilot svc init --name
+voice`. Then, and every time after, from `backend/`: `copilot svc deploy --name voice --env prod`
+with the same real-exit-code capture as the brain. More workers = more calls at once
+(`count`), not faster calls. The door stays shut until `elaya_settings.voice_enabled` is `true`
+and the Next app has the three `LIVEKIT_*` values. Proof: the LiveKit Cloud agents page lists
+`elaya-voice`, and a test call shows as `/v1/elaya/chat` turns with `channel: "voice"` in the
+brain's logs. Runbook: `backend/voice/README.md`.
 
 ## 8. Proving a deploy landed
 

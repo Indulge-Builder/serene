@@ -8,7 +8,7 @@
 // page main (no fixed dvh math) so the chat takes the full remaining height.
 
 import { Button } from '@/components/ui/Button';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { X, ArrowDown, MessageSquarePlus } from 'lucide-react';
 import { ElayaGlyphDisc } from '@/components/ui/elaya-glyph';
 import { MessageBar } from '@/components/ui/MessageBar';
@@ -25,6 +25,7 @@ import { ElayaFeedbackCard } from '@/components/elaya/ElayaFeedbackCard';
 import { ElayaMessageBubble, type ElayaUiMessage } from '@/components/elaya/ElayaMessageBubble';
 import { streamElayaChat, toolStatusLabel } from '@/components/elaya/elaya-stream';
 import { ElayaStatusText } from '@/components/elaya/ElayaStatusText';
+import { ElayaVoiceButton, ElayaVoicePanel, useElayaVoiceCall, type ElayaVoiceTurn } from '@/components/elaya/ElayaVoiceCall';
 
 type Props = {
   conversationId: string;
@@ -115,10 +116,23 @@ export function ElayaChatShell({
   }, [messages, toolStatus, isStreaming]);
 
   const capReached = remaining <= 0;
+
+  // The voice call (0247): one LiveKit room over the same brain. Each finished
+  // line lands in the transcript as it is spoken (the brain has already saved
+  // it), and the presence header follows the call's state.
+  const [voiceStatus, setVoiceStatus] = useState<string | null>(null);
+  const voice = useElayaVoiceCall({ onError: (message) => toast.danger(message) });
+  const onVoiceTurn = useCallback(
+    (turn: ElayaVoiceTurn) => setMessages((prev) => (prev.some((m) => m.id === turn.id) ? prev : [...prev, turn])),
+    [],
+  );
+  const onVoiceStatus = useCallback((line: string | null) => setVoiceStatus(line), []);
+  const onCall = voice.status !== 'idle';
+
   // First-token wait — the assistant bubble exists but has nothing to say yet.
   const awaitingFirstToken =
     isStreaming && messages.some((msg) => msg.pending && msg.content.length === 0);
-  const statusLine = toolStatus ?? (awaitingFirstToken ? 'Thinking…' : null);
+  const statusLine = toolStatus ?? voiceStatus ?? (awaitingFirstToken ? 'Thinking…' : null);
 
   function handlePromptSelect(prompt: string) {
     setInput(prompt);
@@ -407,6 +421,7 @@ export function ElayaChatShell({
                 ))}
               </div>
             )}
+            <ElayaVoicePanel call={voice} onTurn={onVoiceTurn} onStatus={onVoiceStatus} />
             {capReached ? (
               <p
                 className="italic m-0"
@@ -426,15 +441,19 @@ export function ElayaChatShell({
                 onSend={() => void send()}
                 sendOnEnter
                 loading={isStreaming}
+                disabled={onCall}
                 maxLength={4000}
-                placeholder="Ask Elaya"
+                placeholder={onCall ? 'On a call with Elaya' : 'Ask Elaya'}
                 leadingSlot={
-                  <DictationButton
-                    onTranscript={handleTranscript}
-                    onError={(message) => toast.danger(message)}
-                    disabled={isStreaming || capReached}
-                    what="a message"
-                  />
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+                    <DictationButton
+                      onTranscript={handleTranscript}
+                      onError={(message) => toast.danger(message)}
+                      disabled={isStreaming || capReached || onCall}
+                      what="a message"
+                    />
+                    <ElayaVoiceButton call={voice} disabled={isStreaming || capReached} />
+                  </span>
                 }
               />
             )}

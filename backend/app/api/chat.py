@@ -19,7 +19,9 @@ authenticated by the shared bearer secret; it passes the USER ID it has
 already session-verified, and the brain INDEPENDENTLY re-verifies that id
 against public.profiles before any model runs (the Golden Rule).
 
-Channels (2026-08-31): `channel` = "in_app" (default) | "whatsapp". The Node
+Channels (2026-08-31): `channel` = "in_app" (default) | "whatsapp" | "voice"
+(2026-09-28: the voice worker, backend/voice/agent.py, owns the LiveKit room and
+the speech both ways and forwards the finished sentence here). The Node
 WhatsApp gate (elaya-whatsapp.ts) owns identity-by-phone, voice transcription,
 media handling and the reply send; it forwards the resolved TEXT here with the
 Gupshup message id. This endpoint stamps `channel` on the conversation origin
@@ -63,7 +65,9 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
     conversation_id: str | None = None
     # The surface the message arrived on — stamped on the rows, shapes the persona.
-    channel: Literal["in_app", "whatsapp"] = "in_app"
+    # "voice" (0247): the LiveKit worker (backend/voice) sends each finished sentence
+    # here; the persona gets the spoken-style block and the rows carry the channel.
+    channel: Literal["in_app", "whatsapp", "voice"] = "in_app"
     # WhatsApp only: the Gupshup message id — the dedup key (meta->>wa_message_id).
     wa_message_id: str | None = Field(default=None, min_length=1, max_length=128)
     # WhatsApp only: the message was a voice note, transcribed by the gate (kept in meta as a mark).

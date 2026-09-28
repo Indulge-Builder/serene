@@ -12,6 +12,87 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-28 — Desks plan: Elaya on every table, out loud and on the wall (plan only)
+
+**Why.** The office has Alexa speakers, a Google Home and two smart TVs on the queendom tables,
+and the founder wants Elaya to use them: speak an alert to the table whose member is waiting,
+say a founder announcement on every speaker, answer "Alexa, ask Elaya who is waiting" for that
+table's queendom only, and run a live board on the wall.
+
+**What.** `docs/architecture/desks-plan.md`. Nothing is built. The plan reuses what exists: the
+alert sweep gets a fourth delivery (the queendom's own devices), the `voice` channel built today
+is the ear for a spoken question, a table device is a genie-seated profile so every queendom gate
+already applies, and everything spoken or shown is first a `desk_outbox` row sent by one sender
+(the hands outbox law). Google Home is out (no route from the internet); Alexa in, through Voice
+Monkey for speech and a private developer-mode skill for questions. Seven founder decisions are
+listed at the end.
+
+---
+
+## 2026-09-28 — Elaya on the phone: a real-time voice channel (migration 0247)
+
+**Why.** Elaya could read and write, but not talk. Dictation turned speech into a typed draft
+and WhatsApp voice notes into text, both one message at a time. The founders wanted to talk to
+her the way you talk to a person: say something, hear the answer straight away, cut in when you
+have heard enough. That needs a live audio line, not a form.
+
+**What.** A fourth channel, `voice`, over the SAME brain. Nothing about Elaya moved: identity,
+the daily cap, the one active conversation, both message rows, the tools, the PII gateway and
+the confirmation rule all stay in the Python brain. Only the ears and the mouth are new.
+
+- **LiveKit Cloud carries the call.** `startElayaVoiceCallAction` (`lib/actions/elaya-voice.ts`;
+  session → `hasElayaAccess` → the new `voice_enabled` row → the `LIVEKIT_*` env) mints a
+  120-second room token in `lib/services/elaya-voice-service.ts`, the only place a token is
+  minted. The token's identity is the profile id, and its room configuration asks LiveKit to
+  dispatch the agent `elaya-voice` with `{ user_id }` as job metadata, so the room can only ever
+  be answered for the person our server verified.
+- **The voice worker** (`backend/voice/agent.py`, its own Dockerfile and Copilot Backend
+  Service `voice`, outbound only) joins the room, checks the participant IS that id, and runs
+  speech-to-text (Deepgram Nova-3 through LiveKit Inference, `multi` so English and Hindi mixed
+  in one sentence are heard), LiveKit's audio turn detector (fourteen languages including Hindi,
+  free on LiveKit Cloud) and text-to-speech (Cartesia Sonic-3 by default; the voice id is a
+  setting). The brain is the model: `ElayaBrainLLM` is an `llm.LLM` whose stream is
+  `POST /v1/elaya/chat` with `channel: "voice"`, so every finished sentence is one ordinary turn
+  and the conversation id from the meta frame keeps a whole call on one conversation. When the
+  brain goes to a tool before saying a word, the worker speaks one short holding line ("Let me
+  look that up.") so the line never goes silent. A call ends on hang-up or after twenty minutes.
+  The worker writes no row; the transcript is already in `/elaya`.
+- **The brain** accepts `channel: "voice"` (`backend/app/api/chat.py`) and appends a spoken-style
+  block to the persona on that channel (`persona.py` `_VOICE_CHANNEL_BLOCK`: short sentences, no
+  markdown, rupees and dates in words, no ids read aloud, under about sixty words unless asked).
+- **The browser side** (`components/elaya/ElayaVoiceCall.tsx`): `useElayaVoiceCall` (the action →
+  join → microphone; one `Room`, released on hang-up or when the room closes), `ElayaVoiceButton`
+  (the phone control beside the mic in the composer, the DictationButton's material) and
+  `ElayaVoicePanel` (the live row above the composer: state, live captions both ways, End). Each
+  finished line is appended to the chat as it is spoken and the presence header follows the call
+  ("Listening", "Thinking…", "Speaking"). `ElayaChatShell` composes all three, so the page and
+  the floating widget both have it; the composer is disabled while a call is on.
+- **Migration 0247** widens the `channel` CHECKs on `elaya_conversations` and `elaya_messages`
+  to `in_app | whatsapp | mcp | voice` (the later tables already carried `mcp`) and seeds
+  `elaya_settings.voice_enabled = false`. Deploying changes nothing until the row is flipped.
+- **Packages:** `livekit-server-sdk` (the token mint), `livekit-client` and
+  `@livekit/components-react` (the room, agent state and transcriptions in the browser);
+  `livekit-agents` in `backend/voice/requirements.txt`.
+
+**Verified.** Typecheck and lint clean; the brain accepts the new channel; the worker's stream
+was exercised against a fake brain speaking the real frame vocabulary (meta → tool → deltas →
+done: the holding line spoke after 1.2 s of tool-only silence, the deltas streamed, the
+conversation id carried into the second turn); `supabase db push --dry-run` lists 0247 only.
+NOT yet done: the migration is not applied, no LiveKit project exists yet (the three `LIVEKIT_*`
+values are unset everywhere), the `voice` service is not created or deployed, and no live call
+has been made. `/m/elaya` (the mobile screen) does not carry the Call button yet.
+
+Files: `supabase/migrations/20260928000247_elaya_voice_channel.sql`, `src/lib/constants/elaya-voice.ts`,
+`src/lib/services/elaya-voice-service.ts`, `src/lib/actions/elaya-voice.ts`,
+`src/lib/services/llm-providers-service.ts` (`isElayaVoiceEnabled`), `src/lib/types/elaya.ts`,
+`src/lib/validations/form-errors.ts`, `src/components/elaya/ElayaVoiceCall.tsx`,
+`src/components/elaya/ElayaChatShell.tsx`, `backend/app/api/chat.py`, `backend/app/brain/persona.py`,
+`backend/voice/` (agent.py, requirements.txt, Dockerfile, README.md), `backend/copilot/voice/manifest.yml`,
+`.env.example`, `package.json`, docs (`modules/elaya.md`, `operations/environments.md`,
+`operations/deployment.md`), the registries (`CLAUDE.md`, `src/lib/CLAUDE.md`, `src/lib/elaya/CLAUDE.md`).
+
+---
+
 ## 2026-09-27 — Team page: the roster cards tightened and warmed
 
 **Why.** The Domains card repeated Concierge, which the Queendoms card above it already shows:

@@ -44,6 +44,7 @@ worker, L = local only.
 | `DEEPGRAM_API_KEY` | server | voice-note transcription | `services/transcription-service.ts` (the only Deepgram call site; the media reader calls it from Trigger.dev since 0246) | V, T |
 | `ELAYA_BRAIN_URL` | server | where Node reaches the Python brain. Production must be `https://` (the CloudFront front); an `http://` value is refused in production | `lib/elaya/python-brain.ts` | V |
 | `BRAIN_API_SECRET` | server | the shared bearer in both directions: Node to the brain, and the brain's write calls back to `/api/elaya/bridge` | `lib/elaya/python-brain.ts`, `api/elaya/bridge/route.ts` | V (and the brain, below) |
+| `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | server | the LiveKit Cloud project for Elaya's voice channel (0247): the action mints room tokens with them. `LIVEKIT_URL` must be `wss://` in production. The same three live in SSM for the `voice` worker | `services/elaya-voice-service.ts` (the only token mint) | V (and the voice worker, below) |
 | `ELAYA_BRAIN_OVERRIDE_IN_APP` / `ELAYA_BRAIN_OVERRIDE_WHATSAPP` | server | test seam: `node` or `python` overrides the `brain_*` settings rows so the eval harness can drive a local brain. Ignored when `NODE_ENV` is `production` | `services/llm-providers-service.ts` | L |
 | `VAPID_PUBLIC_KEY` | server | Web Push VAPID public key | `services/push-service.ts` | V, T |
 | `VAPID_PRIVATE_KEY` | server | Web Push VAPID private key | `services/push-service.ts` | V, T |
@@ -122,6 +123,18 @@ names; locally from `backend/.env`).
 Vercel Production, and SSM `/copilot/serene/prod/secrets/BRAIN_API_SECRET`. Drift makes the
 brain's calls 401 (it happened on 2026-08-30). After an SSM change, force a new `api` deployment
 so the task re-reads it. See `maintenance.md` #4.
+
+## The voice worker (`backend/voice/`)
+
+Copilot Backend Service `voice`, `backend/copilot/voice/manifest.yml`. Outbound only.
+
+| Var | Meaning | Home |
+| --- | --- | --- |
+| `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | the same LiveKit project the Next app holds | SSM secrets |
+| `BRAIN_API_SECRET` | the shared bearer (the brain's existing SSM value) | SSM secret |
+| `ELAYA_BRAIN_URL` | the brain over Service Connect, `http://api:8080` | manifest variable |
+| `VOICE_STT_MODEL` / `VOICE_STT_LANGUAGE` / `VOICE_TTS_MODEL` / `VOICE_TTS_LANGUAGE` / `VOICE_TURN_DETECTION` / `VOICE_MAX_CALL_SECONDS` | the models and the call ceiling; defaults in the manifest and `agent.py` | manifest variables |
+| `VOICE_TTS_VOICE` | Elaya's voice id at the TTS provider; empty = the model's default | SSM secret (may be empty) |
 
 ## The Sia watcher (`connector/`)
 

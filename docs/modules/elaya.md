@@ -382,6 +382,7 @@ adds its own name vault (see [members.md](members.md)).
 | In-app (`in_app`) | `POST /api/elaya/chat` from `/elaya`, the floating button, the dashboard widget, `/m/elaya` | Python (Node on rollback) | yes, SSE | yes |
 | WhatsApp staff (`whatsapp`) | Gupshup webhook → `tryHandleElayaWhatsAppMessage` | Python (Node on rollback) | no, one reply (split if long) | yes |
 | MCP (`mcp`) | `/api/mcp` | none: tools only, the outside AI app thinks | n/a | no (read tools only) |
+| Voice (`voice`) | the Call button on `/elaya` → `startElayaVoiceCallAction` → a LiveKit room; the voice worker (`backend/voice/agent.py`) sends each finished sentence to `POST /v1/elaya/chat` | Python only | spoken as it streams | yes |
 | Customer WhatsApp | end of the lead pipeline | the separate Node customer brain | no | only the lead's own interests |
 
 **In-app.** The route order: session → `hasElayaAccess` → burst limit (20 a minute per user) →
@@ -407,6 +408,22 @@ reply is saved the route runs the memory reader (section 12).
   `whatsapp_notification_logs` row (`elaya_reply`).
 - The staff member just messaged, so the 24-hour Gupshup window is open and free text is allowed.
   `waFreeTextWindowOpen()` in `elaya-service.ts` is the same check the brief and alerts use.
+
+**Voice** (2026-09-28, migration 0247). A real-time call over the same brain. The Call button
+runs `startElayaVoiceCallAction` (session → `hasElayaAccess` → the `voice_enabled` row → the
+`LIVEKIT_*` env), which mints a short-lived LiveKit room token whose identity is the profile id
+and whose room configuration dispatches the agent `elaya-voice` with `{ user_id }` as job
+metadata (`services/elaya-voice-service.ts`, the only place a LiveKit token is minted). The
+browser joins and opens the microphone (`components/elaya/ElayaVoiceCall.tsx`). The worker
+(`backend/voice/agent.py`, a Copilot Backend Service) checks the participant IS that id, then
+runs speech-to-text (Deepgram Nova-3 through LiveKit Inference, `multi` for Hinglish), LiveKit's
+audio turn detector, and text-to-speech (Cartesia Sonic-3 by default), with the brain as the
+model: every finished sentence is one `/v1/elaya/chat` turn with `channel: "voice"`, so the cap,
+the one active conversation, both rows, the tools, the PII gateway and the confirmation resolver
+are untouched, and the persona gets a spoken-style block (short sentences, no markdown, rupees in
+words). When the brain goes to a tool before saying a word, the worker speaks one holding line.
+Finished lines land in the chat as they are spoken; a call ends on hang-up or after twenty
+minutes. The worker never writes a row. Runbook: `backend/voice/README.md`.
 
 **MCP.** Elaya's third channel: the connector publishes the principal's read toolset and calls
 `executeTool` with `channel: 'mcp'`. No chat turn runs in Serene (the outside app's own model
@@ -584,6 +601,7 @@ request):
 | `session_expiry_hours` | 24 | the conversation window |
 | `brain_whatsapp`, `brain_in_app` | `node` (both rows say `python`) | section 5.1 |
 | `mcp_audience` | founder, admin | roles the MCP connector admits (seeded to every role but guest) |
+| `voice_enabled` | `false` | the voice channel's door (0247); `true` shows the Call button and lets the action mint a room token |
 | `daily_briefing_enabled`, `elaya_alerts_enabled`, `elaya_alerts_state`, `elaya_labels_refresh_enabled`, `elaya_deep_read_spend_cap_usd` | see the analyst doc | [elaya-analyst.md](elaya-analyst.md) |
 
 Other modules keep their own switches in the same table (`member_profiler_enabled`,

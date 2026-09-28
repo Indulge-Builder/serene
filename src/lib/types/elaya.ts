@@ -5,7 +5,7 @@
 
 // 'mcp' = an outside AI app through the MCP connector (docs/architecture/mcp-plan.md): stamped on
 // query/tool logs only; it never opens an elaya_conversations row (their CHECK stays in_app/whatsapp).
-export type ElayaChannel = 'in_app' | 'whatsapp' | 'mcp';
+export type ElayaChannel = 'in_app' | 'whatsapp' | 'mcp' | 'voice';
 export type ElayaMessageRole = 'user' | 'assistant' | 'tool';
 
 export type ElayaConversation = {

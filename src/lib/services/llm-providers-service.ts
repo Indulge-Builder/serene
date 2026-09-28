@@ -7,6 +7,7 @@
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { MCP_ROLES } from '@/lib/constants/mcp';
+import { ELAYA_VOICE_SETTING_KEY } from '@/lib/constants/elaya-voice';
 import { USER_ROLES } from '@/lib/constants/roles';
 import type { UserRole } from '@/lib/types';
 import type { LlmJobType, LlmProviderRow } from '@/lib/types/elaya';
@@ -76,6 +77,15 @@ export async function getElayaBrainForChannel(
   return value === 'python' ? 'python' : 'node';
 }
 
+/**
+ * Is Elaya's voice door switched on (config row `voice_enabled`, migration 0247)?
+ * Seeded false; read per call, never cached; anything but `true` — a missing row,
+ * a failed read — is OFF (the door fails closed, like the brain switch falls to
+ * the incumbent). Flip: UPDATE elaya_settings SET value='true' WHERE key='voice_enabled'.
+ */
+export async function isElayaVoiceEnabled(): Promise<boolean> {
+  return (await getSettingValue(ELAYA_VOICE_SETTING_KEY)) === true;
+}
 
 /** Server-enforced daily message cap (config row `daily_message_cap`). */
 export async function getDailyMessageCap(): Promise<number> {

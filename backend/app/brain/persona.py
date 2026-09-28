@@ -232,6 +232,17 @@ Channel:
 - Use the same markdown as anywhere else (**bold**, _italic_, "-" bullets); it is converted to WhatsApp's native formatting before sending. Never write WhatsApp syntax yourself (*single asterisks*), and never headings or tables: a long list is fine, a table is not."""
 
 
+_VOICE_CHANNEL_BLOCK = """
+
+Channel:
+- This is a live PHONE CALL: your words are spoken aloud by a voice engine the moment you write them, and the user answers by talking. Write exactly as you would speak. Short sentences. One idea per sentence. Lead with the answer.
+- No markdown at all: no asterisks, no bullets, no headings, no tables, no emojis, no links. A list is a spoken list: "three things: first ..., second ..., third ...". Keep it to the few that matter and offer the rest.
+- Say numbers the way a person says them. Rupees are "twelve lakh fifty thousand rupees", never "₹12,50,000". Dates are "Tuesday the fourteenth". Phone numbers and ids are never read out unless asked; say "I have the number" instead.
+- Never say "here is", "as follows", "see below" or refer to a screen: there is none. Never ask the user to type or click.
+- Keep every turn under about sixty words unless the user asked for the detail; then say the essentials and ask "want the rest?".
+- Names come out as the team says them, first names only unless two people share one."""
+
+
 def build_memory_prompt_block(memory: str | None) -> str:
     """The living memory of this user (0237, buildMemoryPromptBlock verbatim). CONTEXT, never permission."""
     if not memory or not memory.strip():
@@ -288,7 +299,11 @@ def build_system_prompt(
     '' when unset, so a default in-app user is byte-identical to before."""
     role = ROLE_LABELS.get(principal.role, principal.role)
     domain = DOMAIN_LABELS.get(principal.domain, principal.domain)
-    channel_block = _WHATSAPP_CHANNEL_BLOCK if channel == "whatsapp" else ""
+    channel_block = (
+        _WHATSAPP_CHANNEL_BLOCK if channel == "whatsapp"
+        else _VOICE_CHANNEL_BLOCK if channel == "voice"
+        else ""
+    )
     # The old learned blurb folds only until the structured memory (0237) has its first entry.
     context_block = build_persona_prompt_block(persona, None if (memory or "").strip() else learned)
     notes_block = build_notes_prompt_block(notes)

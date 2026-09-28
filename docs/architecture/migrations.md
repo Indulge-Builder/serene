@@ -142,7 +142,7 @@ writing that week.
 | 2026-09-18 | vendor live extractor 0205 → 0213 → 0214 | production was past 0212; then `main` landed its own 0213 |
 | 2026-09-21 | vendor cleanup 0223-0226 → 0227-0230 | `main` had applied 0223-0225 and held 0226 (the MCP ledger) |
 
-**Next free number:** 0247 (0246 is `20260927000246_media_readings.sql`).
+**Next free number:** 0248 (0247 is `20260928000247_elaya_voice_channel.sql`).
 
 ## Production status
 
@@ -409,6 +409,7 @@ writing that week.
 | 0244 (09-26) | The Joker head: the `joker_head` seat (no queendom, one active holder), and `can_access_member_queendom()` passes it for every queendom. Apply with 0243. |
 | 0245 (09-26) | Hands, step 1: a `hands` schema for Elaya's second WhatsApp number (`auth_state`, `connector_status`, `allowed_contacts`, `threads`, `raw_events`, `messages`, an `outbox` the connector polls), the private `hands-media` bucket, and `vendors.kind` (`human` / `agent`). Applied 2026-09-28; see `hands-plan.md`. |
 | 0246 (09-27) | Elaya's eyes, step 0: `public.media_readings` (one row per stored file: status, class, summary, the words in it, cost; service-role writes, admin/founder read), the `sia.wag_messages_read` view that folds a reading into its message, a narrow `elaya_read.media_readings` view for the analyst (no extracted text, no sensitive rows), the private `elaya-turns` bucket, and the SQL queue (enqueue by anti-join, claim a batch). Applied 2026-09-28, switches OFF; see `media-understanding-plan.md`. |
+| 0247 (09-28) | Elaya's voice channel: the `channel` CHECKs on `elaya_conversations` and `elaya_messages` learn `voice` (and `mcp`, for parity with the later tables), and `elaya_settings.voice_enabled` is seeded `false`. NOT applied yet (dry run clean 2026-09-28); flip the row only once the `voice` worker is deployed. See `docs/modules/elaya.md` section 9. |
 
 > **`lead_health` is fully removed (0084).** No column, util, component, or filter remains —
 > any reference found anywhere is stale. (Unrelated: *Domain Health* — `DomainOverviewPanel` /

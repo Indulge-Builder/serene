@@ -1,0 +1,47 @@
+# Elaya's voice worker — the LiveKit agent (2026-09-28, migration 0247).
+# Backend Service: no port, no load balancer. It holds an outbound WebSocket to
+# LiveKit Cloud and waits for jobs; each call is one job. Liveness is observed
+# from LiveKit's agents page and from the brain's logs (every turn is a
+# /v1/elaya/chat call with channel "voice").
+#
+# Full specification: https://aws.github.io/copilot-cli/docs/manifest/backend-service/
+
+name: voice
+type: Backend Service
+
+image:
+  build:
+    dockerfile: ../voice/Dockerfile
+    context: ../voice
+
+# The turn detector and the models run in LiveKit Cloud; this task only moves
+# audio and text, so it stays small. Raise `count` before raising cpu/memory:
+# more workers means more calls at once, not faster calls.
+cpu: 512
+memory: 1024
+platform: linux/x86_64
+count: 1
+exec: true
+
+network:
+  connect: true
+
+variables:
+  ENV: production
+  # The brain, reached inside the cluster through Service Connect (the `api`
+  # service's port). The bearer never leaves the VPC on this hop.
+  ELAYA_BRAIN_URL: http://api:8080
+  VOICE_STT_MODEL: deepgram/nova-3
+  VOICE_STT_LANGUAGE: multi
+  VOICE_TTS_MODEL: cartesia/sonic-3
+  VOICE_TTS_LANGUAGE: en
+  VOICE_TURN_DETECTION: livekit
+  VOICE_MAX_CALL_SECONDS: "1200"
+
+secrets:
+  LIVEKIT_URL: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/LIVEKIT_URL
+  LIVEKIT_API_KEY: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/LIVEKIT_API_KEY
+  LIVEKIT_API_SECRET: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/LIVEKIT_API_SECRET
+  BRAIN_API_SECRET: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/BRAIN_API_SECRET
+  # Optional: a Cartesia / other voice id for Elaya's character. Empty = the model's default.
+  VOICE_TTS_VOICE: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/VOICE_TTS_VOICE
