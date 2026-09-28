@@ -239,7 +239,7 @@ export function parseReading(raw: string, piiDepth: PiiMaskingDepth): Omit<Media
   const s = splitShape(raw);
   const classId = (s.CLASS ?? "").split(/\s/)[0]?.toLowerCase().replace(/[^a-z_]/g, "");
   const cls: MediaClass = (MEDIA_CLASSES.values as readonly string[]).includes(classId) ? (classId as MediaClass) : "other";
-  let sensitive = /^y/i.test(s.SENSITIVE ?? "") || MEDIA_SENSITIVE_CLASSES.includes(cls);
+  const sensitive = /^y/i.test(s.SENSITIVE ?? "") || MEDIA_SENSITIVE_CLASSES.includes(cls);
   const confidence = Math.max(0, Math.min(1, Number.parseFloat(s.CONFIDENCE ?? "") || 0.5));
   const language = s.LANGUAGE ? s.LANGUAGE.split(/\s/)[0].toLowerCase().slice(0, 12) : null;
   let summary = (s.SUMMARY ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
