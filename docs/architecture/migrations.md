@@ -152,13 +152,13 @@ writing that week.
   been reconciled several times along the way: 2026-06-12 for 0065 to 0108 (applied out of band),
   2026-07-06 for 0138 to 0153 (applied through the Supabase MCP), and late August for 0161 and 0169
   to 0176.
-- **0245 (`hands`): committed, not applied.** It creates the `hands` schema for Elaya's second
+- **0245 (`hands`): applied to production 2026-09-28 (`supabase db push`).** It creates the `hands` schema for Elaya's second
   WhatsApp number (see `hands-plan.md`). As first committed (a11f297) it set `pgrst.db_schemas` to a
   list without `gia` and `member`, which would have emptied the leads, deals and members pages the
   moment it was pushed. It was caught in the 2026-09-26 docs review and fixed before any push
   (9f486fc): the file now restates the full list plus `hands`. The lesson is the rule above: a
   schema exposure restates the whole list.
-- **0246 (`media_readings`): committed 2026-09-27, not applied** (checked 2026-09-28). Elaya's
+- **0246 (`media_readings`): applied to production 2026-09-28 (`supabase db push`); the reader's switches are OFF.** Elaya's
   eyes, steps 0 to 2; see `media-understanding-plan.md`. Its switch is off.
 
 ## Repair migrations (drift fixed by a later file: the pattern to copy)
@@ -407,8 +407,8 @@ writing that week.
 | 0242 (09-26) | Bishops are many: drops the one-bishop-per-queendom index. |
 | 0243 (09-26) | `profiles_update` pins `sia_role` and `queendom_id` on the self branch: nobody changes their own seat or queendom. |
 | 0244 (09-26) | The Joker head: the `joker_head` seat (no queendom, one active holder), and `can_access_member_queendom()` passes it for every queendom. Apply with 0243. |
-| 0245 (09-26) | Hands, step 1: a `hands` schema for Elaya's second WhatsApp number (`auth_state`, `connector_status`, `allowed_contacts`, `threads`, `raw_events`, `messages`, an `outbox` the connector polls), the private `hands-media` bucket, and `vendors.kind` (`human` / `agent`). Committed, not applied; see `hands-plan.md` and the note under "Production status". |
-| 0246 (09-27) | Elaya's eyes, step 0: `public.media_readings` (one row per stored file: status, class, summary, the words in it, cost; service-role writes, admin/founder read), the `sia.wag_messages_read` view that folds a reading into its message, a narrow `elaya_read.media_readings` view for the analyst (no extracted text, no sensitive rows), the private `elaya-turns` bucket, and the SQL queue (enqueue by anti-join, claim a batch). Committed, not applied; see `media-understanding-plan.md`. |
+| 0245 (09-26) | Hands, step 1: a `hands` schema for Elaya's second WhatsApp number (`auth_state`, `connector_status`, `allowed_contacts`, `threads`, `raw_events`, `messages`, an `outbox` the connector polls), the private `hands-media` bucket, and `vendors.kind` (`human` / `agent`). Applied 2026-09-28; see `hands-plan.md`. |
+| 0246 (09-27) | Elaya's eyes, step 0: `public.media_readings` (one row per stored file: status, class, summary, the words in it, cost; service-role writes, admin/founder read), the `sia.wag_messages_read` view that folds a reading into its message, a narrow `elaya_read.media_readings` view for the analyst (no extracted text, no sensitive rows), the private `elaya-turns` bucket, and the SQL queue (enqueue by anti-join, claim a batch). Applied 2026-09-28, switches OFF; see `media-understanding-plan.md`. |
 
 > **`lead_health` is fully removed (0084).** No column, util, component, or filter remains —
 > any reference found anywhere is stale. (Unrelated: *Domain Health* — `DomainOverviewPanel` /

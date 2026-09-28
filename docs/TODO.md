@@ -69,9 +69,9 @@ Check items off (or delete them) as they are done. Each item names the doc that 
   default partition. See `operations/maintenance.md`.
 - [ ] **Retire the Node brain** (target 2026-10-16) once nothing depends on it. See
   `modules/elaya.md`.
-- [ ] **Apply migrations 0245 (hands) and 0246 (media readings) when each feature is ready**,
-  after a dry run. Both are committed, neither is applied (checked 2026-09-28). See
-  `architecture/migrations.md`.
+- [x] **Apply migrations 0245 (hands) and 0246 (media readings)**: both applied to production
+  2026-09-28 after a dry run (`supabase db push`). The media reader's switches stay OFF until the
+  founder's 60-file review. See `architecture/migrations.md`.
 
 ## Stale code comments and registries (docs are right, the code comments are not)
 
