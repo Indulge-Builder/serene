@@ -12,6 +12,238 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-28 -- Jokers: migrations renumbered 0248–0251 (main's 0247 came first)
+
+`main` took 0247 for Elaya's voice channel (applied to production 2026-09-28) while the Jokers
+branch was open, so the four Jokers migrations move up one: capture 0248, replies 0249, Activity
+0250, the board 0251. Every Jokers reference in this changelog, the code, joker.md and the
+migration indexes says the new numbers; none of them had reached production.
+
+---
+
+## 2026-09-28 -- Jokers: the one-time back-fill task
+
+**Why.** The owner wants both dashboards to show the past weeks on their first day live, instead of
+filling up from zero.
+
+**What.** `src/trigger/jokers-backfill.ts` (`jokers-backfill`) is a task started by hand from the
+Trigger.dev dashboard, never on a schedule. It has two parts:
+- `{ "part": "activity" }` recounts the last 90 days (`refreshClientActivity`). It is free: counting only, no model.
+- `{ "part": "capture" }` records the Jokers' items of the last 30 days (`days` to change it) and reads the replies. This part:
+  - uses the same two sweeps as the three-minute job, in chunks (150 labels, then 250 readings), each saved before the next;
+  - stops when nothing is left, at the spend cap (`maxUsd`, default $20, checked between chunks) or after 50 minutes;
+  - refuses while `joker_capture_enabled` is off;
+  - carries on where it stopped when started again.
+
+Numbers in `constants/joker-engagement.ts` (`JOKER_BACKFILL_*`). The activity part was checked on
+the local database: 90 days in 2 seconds, 7,968 day-rows. The capture part runs the sweeps the
+pilots already tested; its loop has not run end-to-end (that costs AI calls). Runbook:
+`docs/modules/joker.md` → Going live.
+
+---
+
+## 2026-09-28 -- Jokers dashboards: bigger charts, no wasted space, readable colours
+
+**Why.** The owner, looking at both dashboards locally:
+- the widgets looked cramped and cut off;
+- there was empty space beside the tiles;
+- names were angled and clipped;
+- "No reply" was a faint grey;
+- the pale-yellow split shades were unreadable (and too brown once deepened);
+- the tooltip lost the titles.
+
+He also asked for the bars to stay upright.
+
+**What changed.**
+- Both dashboards now put the tiles in one strip across the top. Every widget below sits two to a row, and a chart fills its card, so a card beside a taller one never keeps an empty bottom (`WidgetChart` in `components/jokers/JokerWidget.tsx`).
+- The two R&E response charts (by title, by date) run full width.
+- Activity pairs the two client lists, then the silent chart with the queendom table. The queendom table now fits its card.
+- Outcome colours: No reply is powder blue and Replied is lilac (`OUTCOME_COLORS`). The Recommendation interest bars take their outcome's colour.
+- The "Sent" split names every title (category, joker) with 5 or more items, up to 7, and combines only the small ones into "Others · N titles" (the owner: a big item like Navratri must never hide in Others).
+- Each named group gets one of the seven fixed pastels, ordered so neighbours differ, instead of shades of one yellow. The theme colour is never used here, because every theme's accent sits next to one of the pastels (the Lilac theme painted two titles the same).
+- "Others" is a dusty mauve mixed from two pastels (`JOKER_MAUVE`), never a grey (the owner: "just don't use gray").
+- Both category pies give each slice its own colour: `categoryColor` gives Retail peach, Event lilac, Restaurant butter, Experience teal, Travel powder, News/Info sage, and Engagement mauve. The same category is the same colour in both pies. Slice numbers print in ink, not the slice's pastel.
+- The R&E tiles' shares print through `formatPercent`, so 1 of 242 reads "0.4%", not a rounded "0%" (the owner asked how it could be zero).
+- "Recommendation interest" charts the answers only (Interested / Undecided / Not interested), because No reply dwarfed them into slivers and its tile already says it. It shows an empty state when nobody answered.
+- Every Jokers chart's scale follows its data (the owner: "all the charts have to be dynamic"). `niceTicks(max)` in `CartesianChartFrame.tsx` picks the fewest whole round steps (1 / 2 / 2.5 / 5 × 10ⁿ, at most five) that cover the tallest bar: ones read 0–1, 127 reads 0–150 by 50s, never 0–4 or steps of 35. `BarChart` takes it as the opt-in `niceAxis` (other dashboards unchanged); the Activity messages line uses it directly.
+- One Period control instead of Range + Dates (the owner: "why have you put dates as a separate filter?"). `FilterBar` `dateRange.single` gives one button listing the presets with **Custom dates** at the bottom, which opens the From → To fields in the same panel. The button names the preset or the custom range ("3 Sep – 19 Sep"). There is no Clear in the list (the period is always set). `DateRangePresetList` gains `custom` and `clearable`. Both Jokers dashboards use it; other pages keep the two buttons until asked.
+- `usePortalAnchor` gains `remeasure()`: a panel that grows (the Custom dates fields) is placed again so it never runs off the viewport edge. A scroll or resize now repositions with the panel's real size, not the estimate.
+- An **Outcome** filter on Recommendations & Engagement (Interested / Undecided / Not interested / Replied / No reply, offered by the chosen type; a pick the type cannot have is dropped). `BoardFilters.outcomes` in `computeBoard`.
+- One tooltip for every Jokers chart (`READABLE_TOOLTIP`): the name, a colour dot and the number in dark ink. Empty parts are left out, in the legend's order.
+- Shared chart parts were extended, not forked:
+  - `BarChart` gains `wrapLabels`: a name sits straight under its bar on up to two lines, sized to the bar's slot, never angled or cut.
+  - `BarChart` gains `maxBarSize`.
+  - A stacked bar's total now prints on its topmost non-empty part.
+  - `Heatmap` gains `cellHeight`.
+- Checked by a screenshot of each dashboard. tsc and lint are clean.
+
+---
+
+## 2026-09-28 -- Jokers: found by their Serene accounts, not a phone list
+
+**Why.** The owner: "Find the Jokers by their Serene accounts". The four Jokers now have accounts
+(joker seats; the Joker head since 0244). The capture found them by four phone numbers written in
+code, a testing roster.
+
+**What changed.**
+
+- `resolveJokerIds()` (`joker-capture.ts`) finds the Jokers by their accounts. That means everyone
+  in an active `joker` or `joker_head` seat (`JOKER_SEATS`, now in `constants/sia-roles.ts`, also
+  used by `hasJokersAccess`), plus the WhatsApp ids `sia-staff-link` linked to those accounts (both
+  ids of a person). `JOKER_ROSTER` is deleted. A new Joker needs no code change.
+- Each opening freezes the Joker's account: `sia.joker_openings.joker_profile_id` (0251, FK profiles,
+  indexed). A company number handed to someone else never moves old items to them. `joker_phone`
+  stays the rules' key.
+- `sia.joker_board` returns the Jokers by account, and the dashboard's Joker names and filter come
+  from it.
+- `copy-chats-for-testing.ts` finds the Jokers by seat in production (read-only). It creates one
+  local account per production Joker (name, phone, seat, queendom; `joker-<name>@local.test`) and
+  links their WhatsApp ids to it. `--jokers-only` does just that.
+
+**Checked (local copy).**
+- The capture finds 8 WhatsApp ids: 4 accounts, 2 ids each. All 3,524 local items are tied to their
+  Joker's account.
+- The local copy was re-labelled with the six categories: 701 texts, 721 calls, 0 failed, $1.07.
+  Retail 246, Event 91, Restaurant 86, Experience 70, Travel 28, News/Info 1, and 179 Engagements.
+- Main's migrations 0235–0246 were applied to the local database (it had stopped at 0234). Nothing
+  touched production.
+
+---
+
+## 2026-09-28 -- Jokers: both dashboards built and checked on real data (local; 0250 revised, 0251)
+
+**Why.** The owner (2026-09-28): the UI is set, the local tests make sense, build it: a Jokers page
+with two dashboards, the Activity recount every 5 minutes, and a joker.md that explains everything.
+
+**What changed.**
+
+- **Pages.**
+  - `/jokers`: two compact blocks, title only.
+  - `/jokers/recommendations` and `/jokers/activity`: a back link, the filter bar, Dashboard | List,
+    and every widget of the approved mockups.
+  - "Jokers" is in the sidebar. The founder's nav lists it.
+  - Access is `hasJokersAccess`: admin, founder, the workbench, and the joker and joker_head seats.
+  - Each page makes one read (the last 90 days) and all filtering happens in the browser:
+    `computeActivity`, `computeBoard`.
+- **Clicks.** Every tile, bar, segment, slice, legend row and heatmap square opens exactly its rows
+  in the List.
+  - On Activity, a message mark opens the client's own messages, read on demand, 50 at a time, each
+    with a Sia link.
+  - On Recommendations & Engagement, every answered row carries the **Fix** (Interested / Undecided /
+    Not interested / Replied / Not a reply).
+- **0250 revised** (unreleased):
+  - `sia.client_side()` is THE side rule, shared by the recount and the new message read
+    `client_activity_messages`;
+  - per-hour client messages and reactions on `client_activity_daily`;
+  - `client_activity_board(days)`, the Activity page's one read.
+- **0251**:
+  - `sia.joker_board(days)`, the R&E page's one read;
+  - `joker_reply_corrections.not_a_reply`;
+  - `correctReplyCore` takes `notAReply` (the reply stops counting; the same words are not moved
+    elsewhere).
+- **The job.** `src/trigger/client-activity.ts` recounts every 5 minutes (today + yesterday) and at
+  04:00 IST (the last 30 days). It is ON unless `client_activity_enabled` is false.
+- **Shared pieces extended, not forked:**
+  - `BarChart`: `onBarClick`, `showValues`, `valueFormat`, and room above printed values;
+  - `StatTile`: `onClick`, `emphasis`;
+  - `FilterDropdown`: `searchable`;
+  - `date-range-presets`: rolling last 7/14/30 days (opt-in; other bars unchanged);
+    `DateRangePresetList` and `FilterBar` take `presets`;
+  - `resolveColorMap` resolves colour mixes.
+- **New shared chart:** `ui/charts/Heatmap` (no heatmap existed).
+- **Docs:** `docs/modules/joker.md`, the whole module in one place.
+
+**Checked** in the local app (a local test login; headless browser, light mode):
+- **Numbers:** Activity shows 285 active, 7,374 client messages and 136 silent for the last 7 days;
+  queendom rows add up. A heatmap square said 73 and its message list held exactly 73, all from the
+  client's side.
+- **Recommendations & Engagement:** 2,178 recommendations over 30 days, 21% replied. A Fix moved
+  "Ah may be" from Interested to Undecided and saved with the person's name.
+- **Code checks:** type-check and lint are clean. The one server/browser mismatch (the pie legend's
+  colours) was found in the console and fixed.
+- **Known:** the local copy still holds the old categories until it is re-labelled (about $1 of AI
+  calls, pending the owner's OK). Nothing touched production; nothing committed.
+
+---
+
+## 2026-09-28 -- Jokers: Activity, the backend and a local test (0250)
+
+**Why.** The Jokers' second dashboard, Activity (owner, 2026-09-28), counts how much the CLIENT'S
+SIDE talks in the linked member groups: the member, family, a plus-one, an assistant. Our team's
+messages are never counted. One group is one client entry. A client is Active with a message or a
+reaction in the last 14 days and Silent with none; there is no third state. Counting only: no model,
+no API cost.
+
+**What changed.**
+
+- Migration `20260928000250_client_activity.sql` (applied locally only):
+  - `sia.team_senders` holds every WhatsApp id that is not the client's side, with why (account,
+    position, vendor, "Indulge" in the name, 6+ member groups in 90 days). `team_until` is set when
+    an id stops being team; rows are never deleted, so a recount judges a message by who the sender
+    was when it was sent (a company number handed to a new hire, a leaver).
+  - `sia.client_activity_daily` has one row per linked member group per India day: the client's
+    side's messages, reactions, distinct senders, first and last message, and our team's last
+    message (the dashboard's "Last word: Our team").
+  - `sia.refresh_team_senders()` and `sia.refresh_client_activity(from, to)`. The member's own number
+    in their own group is always the client. Notices, edits, the album envelope and `unknown`
+    (WhatsApp's own traffic) are not messages; a deleted message still counts.
+- `scripts/jokers/copy-chats-for-testing.ts --all-groups`: every linked member group, production
+  read-only; staff links are kept by pointing them at one local stand-in account (no staff account,
+  name or phone copied).
+- `scripts/jokers/activity-pilot.ts`: recounts one day locally, prints the day's numbers, and
+  reports (outside the repo) who was put on which side in sample groups, plus the client's-side
+  senders seen in 2+ groups (the likeliest missed staff).
+
+**Measured** (27 Sep, local copy of 13–27 Sep, all 421 linked member groups):
+- 111 groups where the client's side wrote or reacted: 805 client messages, 49 reactions. In 98
+  groups only our team wrote.
+- As of 27 Sep: Active 286 + Silent 135 = 421. Active members: 257 active, 47 silent. Expired: 26
+  active, 88 silent.
+- The team list is 100 ids: account 90, "Indulge" in the name 94, 6+ groups 82, position 66, mostly
+  several at once.
+- Of the day's messages: team 1,248 · client 805 · not counted 139.
+- Nobody counted as the client's side (other than the member) wrote in 2+ groups that day.
+- Seen in the sample: a member's own hidden (@lid) id is often not linked to the member, so their
+  messages count as "the client's side" rather than "the member". The count is the same.
+
+**Not done yet.** The Trigger.dev job (recount today and yesterday every 15 minutes, the last 30
+days nightly), the dashboard's read, and the UI. Nothing touched production.
+
+---
+
+## 2026-09-28 -- Jokers: one item, one title
+
+**Why.** The owner (2026-09-28): the same recommendation must never be counted under two titles.
+It was a real problem in their old dashboard, and the capture had it too: each differently worded
+send of an item was labelled on its own. A replay of the month found 14 items under two or more
+titles, 39 of 2,643 sends. Examples: "Shilp Wellness" and "Shilp Wellness,"; "iPhone Duo available
+for pre-order at Indian Retail price" (179) and "iPhone Duo" (1).
+
+**What changed.**
+
+- `sameItemTitle()` in `joker-capture-rules.ts` (pure) joins a new title to an item already in use
+  when the words alone show it is the same thing:
+  - the same comparable form (case, punctuation, quotes);
+  - every word of the shorter title (two or more, or one with a number) inside the longer;
+  - three words in four alike.
+- It never joins on generic words alone (`JOKER_TITLE_GENERIC_WORDS`: "Michelin-starred
+  restaurant" names no one place) and never across different numbers or dates.
+- The first title an item got wins, so charts never move. `cleanTitle()` stores titles without
+  stray stars, quotes or trailing punctuation.
+- The label call now sees up to 10 recent titles that share a distinctive word with the message
+  (`titleShortlist()`). It answers `same_as` when the message offers one of them again, and that
+  title (and its category) is reused. Prompt `joker-label-v2`. Titles are reused within
+  `JOKER_TITLE_REUSE_DAYS` (45).
+- `scripts/jokers/titles-check.ts`: replays the labelled texts oldest first through both steps
+  and counts duplicate titles before and after, with a check that is independent of the rules.
+
+**Measured** (the month on the local copy, dry run):
+- The word rules alone: 14 items → 4.
+- With the label call (134 calls, $0.20): 14 → 2.
+- The two left are "Michelin-starred restaurant" vs ARAYA, and "Birthday flowers" vs "Birthday cake
+  or flowers". Both are likely genuinely different items.
+- One wrong word-rule merge ("Boom Chicago … Theater" into "The Theater") was found and closed: one
+  word alone now joins only when it carries a number.
 ## 2026-09-28 — Finance module, step 1: the reimbursement invoice (plan only)
 
 **Why.** When a genie pays for a member's request, a finance person has to notice the
@@ -886,6 +1118,46 @@ Files: `src/components/sia/SiaMessagesPeek.tsx`, `src/components/sia/SiaChat.tsx
 `src/components/tickets/NewTicketForm.tsx`, `src/lib/services/sia-service.ts`, `src/lib/actions/sia.ts`,
 `src/lib/constants/sia-roles.ts`, `src/app/(dashboard)/sia/page.tsx`.
 
+## 2026-09-26 -- Jokers: a member's typed reply is read per conversation, days or weeks after the item
+
+**Why.** The owner (2026-09-25/26): a client sometimes answers a recommendation two weeks later,
+and results must come at once, not in a daily batch. The first-hour and 24-hour rules could not do
+that. The owner's idea was to ask the ticket intake watcher, which already reads every member
+message, one more question. Tested on the local copy, that moved the watcher's own ticket answers on
+28 of 220 conversations (a plain re-read moves about 1 in 20), and the watcher does not read Expired
+members' groups, which the owner wants read (the jokers are responsible for bringing those members
+back to renew). So the joker question got its own read, built the same way.
+
+**What changed.**
+
+- `src/lib/services/joker-replies.ts`: a member's typed words are read per CONVERSATION (the ticket
+  watcher's own cut, `buildBursts`, reused) once they go quiet, up to 30 days after the item. The
+  model sees the joker's 5 latest items in the chat plus up to 3 older ones the member's words name,
+  with the conversation before and the team's replies in between; the tie goes on the member's last
+  message. The prompt says a yes that also asks the team to book something still answers the item
+  (it may also become a ticket; one message can be both). Swipe-replies and emoji stay certain and
+  free. The named, first-hour and 1-24-hour tiers are gone; the tiers are now quote, reaction,
+  typed, thanks and none (migration 0249's CHECK, not yet released). Prompt v5, rules v3.
+- The free thanks rule (`thanksReply`): a conversation of only "ok thanks" or an emoji, which never
+  reaches the model, answers the joker's newest item when it is the member's first word since it and
+  the team said nothing else in between. A greeting alone answers nothing. No hour limit.
+- The ticket watcher is unchanged; `buildBursts` only accepts any message shape now (a type change).
+- `scripts/jokers/replies-pilot.ts`: `--fresh` (judge the window again from scratch), `--lilian`,
+  `--yes-chats`, the readings a day the cost follows, how long after the item each reply came, and
+  for every sheet "Yes" we call Not replied, what was read in that chat. `late-trial.ts` is deleted
+  (the trial it ran is superseded).
+
+**Measured** (19 to 23 Sep, dry run on the local copy, Lilian's 182 groups, Active and Expired):
+505 readings, $0.90 ($0.0018 each), none failed. 99 replies counted (49 typed, 25 swipe-replies, 25
+emoji). Of the 74 message replies, 39 came more than a day after the item and 14 more than a week
+after; the hour rules would have missed all 39. Read by eye, about 9 in 10 of the late ties are
+right. Her sheet: we show a reply on 28 of her 55 "Yes" items. Of the other 27, 13 had no message
+from the client in the group in those days (a call or a DM) and 11 wrote only about other things
+(read one by one: none answers the item); 3 answered a different item. All the jokers' groups need
+about 255 readings a day: about $14 a month.
+
+---
+
 ## 2026-09-25 — The concierge floor on Serene: the queendom boundary audited, and the eight-room nav
 
 - Why: the queens and bishops are being onboarded. The founder's rule: a seated concierge teammate
@@ -1734,6 +2006,111 @@ were re-read with `--reread`.
 - Research behind it: docs are in the 2026-09-24 conversation; the pattern is Anthropic's tool search
   (accuracy degrades past 30 to 50 loaded tools), Shopify's just-in-time instructions, one agent per
   chat turn.
+
+## 2026-09-24 -- Jokers: follow-ups and member replies are tied to their opening (Recommendations & Engagement, step 2)
+
+**Why.** Step 1 records what a joker opens. The owner's next question is what came of it: did the
+member reply, and were they interested? Her follow-ups belong to the same item too (owner,
+2026-09-24: "the follow up will be related to a recommendation or an engagement"). The rules the
+owner set: every opening starts as Not replied; a reply makes it Interested, Undecided or Not
+interested; only a clear no ("no thanks", "pass", "skip it") is Not interested, and a reply that
+is neither a yes nor a no ("I'll be in Delhi then", "it's expensive", "already have one") is
+Undecided; the member's latest word wins; a wish or check-in that offered nothing is just Replied;
+WhatsApp groups only. When the team corrects a reading, Serene must remember it.
+
+**What changed.**
+
+- Migration 0249: the outcome on `sia.joker_openings` (starts `not_replied`), the reason a
+  follow-up is tied (`sia.joker_messages.thread_reason`), and `sia.joker_replies` (every member
+  message or emoji that was judged, and the opening it answers).
+- `src/lib/services/joker-replies.ts`: ties each joker follow-up to its opening (what it quotes,
+  else the thread that spoke last within a day) and each member reply to the opening it answers.
+  A quote of anything in the thread, or an emoji on it, is certain. A message that names the item
+  is confirmed by the model. A message typed in the first hour after an opening is read by the
+  model with every recent opening side by side, so it can say which one, or none. A message typed
+  1 to 24 hours later is read too but not counted until a trial shows the model gets those right
+  (owner, 2026-09-24). The outcome rule: text beats emoji, and the latest text wins.
+- Undecided and the clear-no rule: the model reads three ways, and a "not interested" stands only
+  when the reply holds a clear no (`JOKER_CLEAR_NO`, English and Hinglish, checked in code).
+- Replies typed hours later count (owner: "we can't ignore that, context matters"): every one is
+  read with the conversation before it and the recent items side by side. A dry-run trial on
+  Lilian's clients read about 9 in 10 of the ones it tied right.
+- The team's corrections (`sia.joker_reply_corrections`, append-only; `correctReplyCore`): a person's
+  change to a reading is recorded with the words masked, the same words on the same kind of item
+  follow it everywhere (history stays consistent), the same words get the team's reading from then
+  on without a model, and the latest corrections are shown to the model as examples. Tested on the
+  local month: one correction moved 28 replies with the same words and recomputed 28 outcomes.
+  The button for it comes with the results view.
+- The Trigger task runs the replies step right after the capture, under the same switch.
+- `scripts/jokers/replies-pilot.ts` (checks outcomes against Lilian's "Yes" column) and
+  `scripts/jokers/sheet.ts` (the sheet reader both pilots share). The copy script now copies a
+  month (only the parts of each message the rules read) and the emoji reactions.
+
+- `clipText()` in `src/lib/utils/strings.ts`: the safe text cut. A plain `.slice()` can end on
+  half an emoji, which is not valid JSON; the model refused six requests in the month-long test
+  for exactly that. Both joker services use it wherever they shorten text to send or store.
+- A reading the model already answered is reused from `sia.extraction_runs` when a run's save
+  failed afterwards, so the same messages are never paid for twice. Messages the mirror holds
+  twice are judged once. Only a 10% fixed sample of the 1-24 hour messages is read: they are
+  three quarters of all reading and none of them counts yet.
+
+**Measured** (a month, 24 Aug to 23 Sep, run on the local database with real chat copied in):
+of 2,806 openings, 2,224 were not replied (79%), 450 interested (16%), 111 not interested (4%),
+21 replied (wishes answered with thanks). 422 of 556 follow-ups were tied to their opening; the
+rest had no open thread. 1,019 member replies counted: 433 typed in the first hour, 354 quotes,
+169 naming the item, 63 emoji. Read by eye, the Interested replies were right and 36 of 38 Not
+interested ones were (a reschedule request and "please wait" now read Interested). On Lilian's
+sheet, we show a reply on 56 of her 119 "Yes" items. Of the other 63, 37 were typed replies
+that came hours later (not counted until the trial), 15 had no message at all (a call or a DM),
+6 were tied to another opening and 4 were misread. Cost: $0.0011 a reading.
+
+---
+
+## 2026-09-24 -- Jokers: every opening they send is captured (Recommendations & Engagement, step 1)
+
+**Why.** The four jokers start conversations with members every day in the members' WhatsApp
+groups: a pick (a product, an event, a place to eat or stay) or a wish, a check-in, an intro.
+The only record was a Google Sheet a joker filled in by hand. The owner asked Serene to capture
+them (2026-09-23/24) with these rules: every OPENING, never a follow-up; each one is either a
+Recommendation or an Engagement, decided by the joker's first message and never changed; WhatsApp
+client groups only; the four jokers only, found by their phones because they have no Serene
+accounts yet. Step 2 will tie each member's reply to the opening it answers.
+
+**What changed.**
+
+- Migration 0248: `sia.joker_texts` (one row per distinct text, so a broadcast to 400 groups is
+  labelled once), `sia.joker_openings` (one row per opening per group), `sia.joker_messages`
+  (every joker message in a member group and what it was decided to be). RLS on, service role
+  only for now. The switch `joker_capture_enabled` is seeded false.
+- `src/lib/services/joker-capture-rules.ts`: the rules, pure and explainable. Pieces of one send
+  (album photos, a second message a minute later) fold together; replies, logistics, chases and
+  onboarding are follow-ups; a broadcast is an opening; a pick inside a live conversation, or an
+  offer made in reply to the member, goes to the model (the owner's rule: continuing her own
+  conversation is a follow-up, a pick prompted by the member's own words is a new Recommendation).
+- `src/lib/services/joker-capture.ts`: the sweep. Reads the jokers' messages, applies the rules,
+  asks the routing-tier model (Haiku) only for what the rules cannot settle and once per new text
+  for its kind, category and title. Names never reach the model (the profiler's vault; the greeting
+  line is cut first). Titles never carry a person's name. Fails closed. A dry run writes nothing.
+- `src/trigger/joker-capture.ts`: every 3 minutes (owner's choice), off until the switch is on.
+- `src/lib/constants/joker-engagement.ts`: the roster by phone, the categories (the owner's
+  dashboard eight plus Events), kinds, tags and numbers.
+- `openVault()` in `member-profiler.ts` takes `{ persist: false }`, so a dry run against the live
+  mirror does not store code names. `getJokerCaptureEnabled()` in `llm-providers-service.ts`.
+- `scripts/jokers/capture-pilot.ts` (dry run, report outside the repo, `--apply` refuses anything
+  but a local database) and `scripts/jokers/copy-chats-for-testing.ts` (a few days of real chat
+  copied read-only into the local database).
+
+**Measured.** A read-only dry run over 24 Aug to 23 Sep found 2,779 openings in linked groups
+(2,251 broadcasts, 528 personal), with about 3 messages a day left for the model. Of the items in
+Lilian's sheet that could be found in WhatsApp, 740 of 751 were decided as openings (98.5%); 8 of
+the other 11 go to the model and 3 are follow-ups by the owner's rules (a call link, a chase, a
+wish added to a chase). A model call costs about $0.0013. On the local database the job writes its
+rows, a second run adds nothing, and a group linked later is decided as soon as it is linked.
+
+**Not done yet.** Not applied to production and the switch stays off. Replies (step 2) and the
+page (step 3) come next. When the jokers get Serene accounts, the roster moves to their profiles.
+
+---
 
 ## 2026-09-23 — Founder lead and SLA notifications paused
 

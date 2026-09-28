@@ -62,11 +62,27 @@ export function resolveColorMap(map: Record<string, string>): Record<string, str
   return Object.fromEntries(
     Object.entries(map).map(([key, value]) => {
       const varMatch = value.match(/^var\((--[\w-]+)\)$/);
-      if (!varMatch) return [key, value];
-      const resolved = style.getPropertyValue(varMatch[1]).trim();
-      return [key, resolved || value];
+      if (varMatch) {
+        const resolved = style.getPropertyValue(varMatch[1]).trim();
+        return [key, resolved || value];
+      }
+      // A colour expression that NESTS a var (a stepped shade: color-mix(in srgb, var(--theme-accent)
+      // 60%, var(--theme-paper))): let the browser compute it on a probe element.
+      if (value.includes('var(')) return [key, computeCssColor(value) || value];
+      return [key, value];
     }),
   );
+}
+
+/** The browser's own rgb() for any CSS colour expression (vars, color-mix). */
+function computeCssColor(value: string): string {
+  const probe = document.createElement('span');
+  probe.style.color = value;
+  probe.style.display = 'none';
+  document.body.appendChild(probe);
+  const out = getComputedStyle(probe).color;
+  probe.remove();
+  return out;
 }
 
 /**

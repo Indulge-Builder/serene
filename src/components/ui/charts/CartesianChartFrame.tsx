@@ -16,6 +16,25 @@ import type { ChartTokens } from './useChartTokens';
  * Pie/Donut/Butterfly are genuinely different shapes — they do not use this frame.
  */
 
+/**
+ * A tight, round y-axis for count data: the fewest whole round steps (1, 2, 2.5, 5 × 10ⁿ) that cover
+ * `max` in at most `maxSteps`. A chart of ones reads 0–1, 7 reads 0–8 by 2s, 127 reads 0–150 by 50s:
+ * never 0–4 for a one, never steps of 35. Pass the result as the YAxis `ticks` and its last value as
+ * the domain's top.
+ */
+export function niceTicks(max: number, maxSteps = 5): number[] {
+  if (!(max > 0)) return [0, 1];
+  const mag = 10 ** Math.floor(Math.log10(max));
+  for (const m of [0.1, 0.2, 0.25, 0.5, 1, 2, 2.5, 5, 10]) {
+    const step = Math.round(m * mag * 1000) / 1000;
+    if (step < 1 || !Number.isInteger(step)) continue; // counts: whole steps only
+    const n = Math.ceil(max / step);
+    if (n <= maxSteps) return Array.from({ length: n + 1 }, (_, i) => i * step);
+  }
+  const step = 10 * mag;
+  return Array.from({ length: Math.ceil(max / step) + 1 }, (_, i) => i * step);
+}
+
 /** Default chart margin shared by all Cartesian wrappers. */
 export const CARTESIAN_MARGIN = { top: 8, right: 8, bottom: 0, left: 0 };
 

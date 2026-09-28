@@ -57,6 +57,13 @@ export const QUEENDOM_DOMAIN: AppDomain = "concierge";
  *  queendom_id NULL). Today only the Joker head. */
 export const COMPANY_WIDE_SEATS = ["joker_head"] as const satisfies readonly SiaRole[];
 
+/**
+ * The Jokers (2026-09-28): whoever holds one of these seats, active. The Jokers module's pages are
+ * theirs (hasJokersAccess), and the capture finds the Jokers by these seats and the WhatsApp ids
+ * linked to their accounts (sia-staff-link), never by a phone list in code.
+ */
+export const JOKER_SEATS = ["joker", "joker_head"] as const satisfies readonly SiaRole[];
+
 /** Does this position sit inside one queendom? True for queen / bishop / genie / joker; false
  *  for a company-wide seat. The forms ask for a queendom only when true; the 0244 CHECK
  *  (profiles_sia_role_needs_queendom) is the database mirror. */

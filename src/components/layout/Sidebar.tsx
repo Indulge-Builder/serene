@@ -34,6 +34,7 @@ import {
   ClipboardList,
   Users,
   Bot,
+  Spade,
 } from "lucide-react";
 import { signOutUser } from "@/lib/actions/profiles";
 import { useSuggestionFeedback } from "@/components/suggestions/SuggestionFeedbackProvider";
@@ -67,6 +68,7 @@ const MAIN_NAV: NavItem[] = [
   { href: "/tasks",     label: "Tasks",     icon: CheckSquare     },
   { href: "/vendors",   label: "Vendors",   icon: Building2       },
   { href: "/hands",     label: "Hands",     icon: Bot             },
+  { href: "/jokers",    label: "Jokers",    icon: Spade           },
   { href: "/subscriptions", label: "Subscriptions", icon: Receipt },
   { href: "/whatsapp",  label: "WhatsApp",  icon: MessageCircle   },
   { href: "/helpdesk",  label: "Helpdesk",  icon: BookOpen        },

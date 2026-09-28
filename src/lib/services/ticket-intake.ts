@@ -64,11 +64,14 @@ export type BurstOutcome = {
 
 // ─── Bursts ──────────────────────────────────────────────────────────────────
 
-/** Cut the new messages on quiet gaps. The last burst is left out while the chat is still moving. */
-export function buildBursts(msgs: Msg[], now: number): Msg[][] {
+/**
+ * Cut the new messages on quiet gaps. The last burst is left out while the chat is still moving.
+ * Any message shape: the jokers' reply reader cuts conversations the same way (joker-replies.ts).
+ */
+export function buildBursts<T extends { wa_timestamp: string }>(msgs: T[], now: number): T[][] {
   const gapMs = INTAKE_BURST_GAP_MINUTES * 60_000;
-  const out: Msg[][] = [];
-  let cur: Msg[] = [];
+  const out: T[][] = [];
+  let cur: T[] = [];
   for (const m of msgs) {
     const prev = cur[cur.length - 1];
     if (prev && new Date(m.wa_timestamp).getTime() - new Date(prev.wa_timestamp).getTime() >= gapMs) { out.push(cur); cur = []; }

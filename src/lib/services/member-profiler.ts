@@ -105,8 +105,8 @@ function sideOf(c: Contact | undefined, broad: Set<string>, jid: string): { side
   return { side: "member", tag: "MEMBER" };
 }
 
-/** Every sender in the window gets its stable code; new ones are minted and stored. */
-async function codesFor(groupJid: string, senders: string[], contacts: Map<string, Contact>, broad: Set<string>): Promise<CodeMap> {
+/** Every sender in the window gets its stable code; new ones are minted and (unless `persist` is off) stored. */
+async function codesFor(groupJid: string, senders: string[], contacts: Map<string, Contact>, broad: Set<string>, persist = true): Promise<CodeMap> {
   const { data } = await sia().from("codenames").select("sender_jid, code, side").eq("group_jid", groupJid);
   const map: CodeMap = new Map();
   const used = new Set<string>();
@@ -120,7 +120,7 @@ async function codesFor(groupJid: string, senders: string[], contacts: Map<strin
     const code = `${tag}_${n}`;
     used.add(code); map.set(jid, { code, side }); fresh.push({ group_jid: groupJid, sender_jid: jid, code, side });
   }
-  if (fresh.length) {
+  if (fresh.length && persist) {
     const { error } = await sia().from("codenames").upsert(fresh, { onConflict: "group_jid,sender_jid", ignoreDuplicates: true });
     if (error) console.warn(`${LOG} codenames upsert failed`, error.message);
   }
@@ -323,13 +323,18 @@ export type Vault = {
   unmask: <T>(value: T) => T;
 };
 
-export async function openVault(groupJid: string, memberId: string, senderJids: string[], broad: Set<string>): Promise<Vault | null> {
+/**
+ * `persist: false` opens the same vault without storing newly minted code names: a dry run
+ * against the live mirror (the jokers' capture pilot) must not write there. The codes are then
+ * stable for the run only, which is all a dry run needs.
+ */
+export async function openVault(groupJid: string, memberId: string, senderJids: string[], broad: Set<string>, opts: { persist?: boolean } = {}): Promise<Vault | null> {
   const ctx = await memberContext(memberId);
   if (!ctx) return null;
   const senders = [...new Set(senderJids)];
   const { data: contactRows } = await sia().from("wag_contacts").select("jid, push_name, participant_role, staff_profile_id, vendor_id, member_id").in("jid", senders);
   const contacts = new Map<string, Contact>(((contactRows ?? []) as Contact[]).map((c) => [c.jid, c]));
-  const codes = await codesFor(groupJid, senders, contacts, broad);
+  const codes = await codesFor(groupJid, senders, contacts, broad, opts.persist ?? true);
 
   // The member's own number carries the member's name; otherwise the first member-side code does.
   const ownJid = [...contacts.values()].find((c) => c.member_id === memberId)?.jid;

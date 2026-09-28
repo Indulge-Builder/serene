@@ -96,7 +96,9 @@ export function usePortalAnchor<TTrigger extends HTMLElement = HTMLButtonElement
       setOpen(false);
     }
     function reposition() {
-      updatePosition();
+      // The real panel size when it is on screen (a panel that grew keeps its place on scroll).
+      const r = panelRef.current?.getBoundingClientRect();
+      updatePosition(r?.width || undefined, r?.height || undefined);
     }
     document.addEventListener('pointerdown', onPointerDown);
     window.addEventListener('scroll', reposition, true);
@@ -158,12 +160,22 @@ export function usePortalAnchor<TTrigger extends HTMLElement = HTMLButtonElement
 
   const toggle = useCallback(() => setOpen((o) => !o), []);
   const close = useCallback(() => setOpen(false), []);
+  /** Re-measure the open panel and place it again: call when its content changed size (a section
+   *  opened inside it), so it never runs off the viewport edge. */
+  const remeasure = useCallback(() => {
+    requestAnimationFrame(() => {
+      if (!panelRef.current) return;
+      const { width, height } = panelRef.current.getBoundingClientRect();
+      if (width > 0 && height > 0) updatePosition(width, height);
+    });
+  }, [updatePosition]);
 
   return {
     open,
     setOpen,
     toggle,
     close,
+    remeasure,
     mounted,
     triggerRef,
     panelRef,

@@ -1270,6 +1270,33 @@ body {
     box-shadow var(--duration-base) var(--ease-in-out),
     transform var(--duration-fast) var(--ease-out-soft);
 }
+/* ui/charts/Heatmap: a cell that opens its rows. */
+.serene-heatmap-cell { transition: filter var(--duration-fast) var(--ease-in-out); }
+.serene-heatmap-cell:hover { filter: brightness(0.94); }
+.serene-heatmap-cell:focus-visible { outline: 2px solid var(--neu-focus-edge); outline-offset: 1px; }
+/* A clickable row inside a widget (the Jokers' ranked client lists): a faint accent wash on hover. */
+.serene-row-hover { transition: background-color var(--duration-fast) var(--ease-in-out); }
+@media (hover: hover) and (pointer: fine) {
+  .serene-row-hover:hover { background: color-mix(in srgb, var(--theme-accent) 6%, var(--theme-paper)); }
+}
+.serene-row-hover:focus-visible { outline: 2px solid var(--neu-focus-edge); outline-offset: 1px; }
+
+/* A StatTile card that opens the rows it counts (StatTile onClick): the same calm lift. */
+.serene-stat-tile--action {
+  transition:
+    box-shadow var(--duration-base) var(--ease-in-out),
+    transform var(--duration-fast) var(--ease-out-soft);
+}
+@media (hover: hover) and (pointer: fine) {
+  .serene-stat-tile--action:hover {
+    box-shadow: var(--neu-shadow-hover);
+    transform: translateY(-1px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .serene-stat-tile--action { transition: none; }
+  .serene-stat-tile--action:hover { transform: none; }
+}
 @media (hover: hover) and (pointer: fine) {
   .serene-stat-tile:hover {
     box-shadow: var(--neu-shadow-hover);

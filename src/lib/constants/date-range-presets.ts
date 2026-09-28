@@ -22,11 +22,25 @@ const DEF = defineEnum([
   { id: 'last_3_months', label: 'Last 3 Months' },
 ]);
 
+/**
+ * Rolling windows ending today (the Jokers dashboards, 2026-09-28). Not in the default list, so
+ * every other filter bar is unchanged; a bar opts in with FilterBar `dateRange.presets`.
+ */
+const ROLLING = defineEnum([
+  { id: 'last_7_days',  label: 'Last 7 Days' },
+  { id: 'last_14_days', label: 'Last 14 Days' },
+  { id: 'last_30_days', label: 'Last 30 Days' },
+]);
+
+/** The default list every filter bar shows. */
 export const DATE_RANGE_PRESETS        = DEF.values;
-export const DATE_RANGE_PRESET_LABELS  = DEF.labels;
+/** Labels for EVERY preset (the default list and the rolling windows). */
+export const DATE_RANGE_PRESET_LABELS  = { ...DEF.labels, ...ROLLING.labels };
 export const DATE_RANGE_PRESET_OPTIONS = DEF.options;
 
-export type DateRangePreset = (typeof DATE_RANGE_PRESETS)[number];
+export type DateRangePreset = (typeof DATE_RANGE_PRESETS)[number] | (typeof ROLLING.values)[number];
+
+const ROLLING_DAYS: Record<(typeof ROLLING.values)[number], number> = { last_7_days: 7, last_14_days: 14, last_30_days: 30 };
 
 const serialize = (d: Date) => dateToUrlParam(d) as string;
 
@@ -81,17 +95,22 @@ export function resolveDateRangePreset(
         from: serialize(new Date(today.getFullYear(), today.getMonth() - 3, today.getDate())),
         to:   serialize(today),
       };
+    case 'last_7_days':
+    case 'last_14_days':
+    case 'last_30_days':
+      return { from: serialize(shiftDays(today, 1 - ROLLING_DAYS[preset])), to: serialize(today) };
   }
 }
 
-/** The preset the current from/to pair corresponds to, or null. */
+/** The preset the current from/to pair corresponds to, or null (among `presets`, the default list unless given). */
 export function matchDateRangePreset(
   from: string | null,
   to: string | null,
   now: Date = new Date(),
+  presets: readonly DateRangePreset[] = DATE_RANGE_PRESETS,
 ): DateRangePreset | null {
   if (!from || !to) return null;
-  for (const preset of DATE_RANGE_PRESETS) {
+  for (const preset of presets) {
     const r = resolveDateRangePreset(preset, now);
     if (r.from === from && r.to === to) return preset;
   }

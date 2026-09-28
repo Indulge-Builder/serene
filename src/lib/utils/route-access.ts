@@ -6,11 +6,14 @@ import {
   DOMAIN_NAV_HIDDEN,
   DOMAIN_ROUTE_MAP,
   FOUNDER_NAV_PREFIXES,
+  JOKER_SEATS,
+  JOKERS_ROUTE_PREFIX,
   WORKBENCH_BLOCKED_PREFIXES,
   WORKBENCH_DOMAINS,
 } from '@/lib/constants/route-permissions';
 
-type RouteProfile = { role: UserRole; domain: AppDomain };
+/** `sia_role` (the seat) is optional: only the Jokers pages read it. */
+type RouteProfile = { role: UserRole; domain: AppDomain; sia_role?: string | null };
 
 const startsWithAny = (pathname: string, prefixes: readonly string[]): boolean =>
   prefixes.some((prefix) => pathname.startsWith(prefix));
@@ -53,6 +56,9 @@ export function canAccessRoute(profile: RouteProfile, pathname: string): boolean
 
   // Elaya is for the teams in ELAYA_DOMAINS (2026-09-26); the same predicate guards every other door.
   if (pathname.startsWith(ELAYA_ROUTE_PREFIX)) return hasElayaAccess(profile);
+
+  // The Jokers pages follow the seat, not the domain.
+  if (pathname.startsWith(JOKERS_ROUTE_PREFIX)) return hasJokersAccess(profile);
 
   if (startsWithAny(pathname, ALWAYS_ALLOWED_PREFIXES)) return true;
 
@@ -105,4 +111,13 @@ export function hasVendorAccess(profile: RouteProfile): boolean {
  */
 export function hasVendorActionAccess(profile: RouteProfile): boolean {
   return profile.role === 'admin' || profile.role === 'founder' || profile.domain === 'concierge';
+}
+
+/**
+ * THE Jokers module's audience (owner, 2026-09-28): admin, founder, the tech workbench, and whoever
+ * holds a joker or joker_head seat. The /jokers pages (via canAccessRoute) and every jokers action
+ * ask this. Every one of them sees all four jokers and every queendom (owner: "all four jokers for now").
+ */
+export function hasJokersAccess(profile: RouteProfile): boolean {
+  return hasElevatedPageAccess(profile) || (!!profile.sia_role && (JOKER_SEATS as readonly string[]).includes(profile.sia_role));
 }

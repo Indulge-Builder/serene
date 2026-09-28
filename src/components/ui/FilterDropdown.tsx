@@ -54,6 +54,9 @@ export interface FilterDropdownProps {
    * `aria-label` is taken from `label` so the control stays accessible.
    */
   iconOnly?: boolean;
+  /** A search box above the options (a long list: pick a client by name). Filters by label. */
+  searchable?: boolean;
+  searchPlaceholder?: string;
 }
 
 const MENU_ITEM_HEIGHT = 36;
@@ -83,6 +86,8 @@ export function FilterDropdown({
   ariaLabel,
   ariaDescribedBy,
   invalid = false,
+  searchable = false,
+  searchPlaceholder = 'Search',
 }: FilterDropdownProps) {
   const modalScope = useModalScope();
   const menuId = useId();
@@ -95,6 +100,10 @@ export function FilterDropdown({
   const triggerRef   = useRef<HTMLButtonElement>(null);
   const typeahead = useRef({ text: '', at: 0 });
   const menuRef      = useRef<HTMLDivElement>(null);
+  const searchRef    = useRef<HTMLInputElement>(null);
+  const [query, setQuery] = useState('');
+  const q = query.trim().toLocaleLowerCase();
+  const shown = searchable && q ? items.filter((item) => item.label.toLocaleLowerCase().includes(q)) : items;
 
   useEffect(() => {
     setMounted(true);
@@ -105,12 +114,14 @@ export function FilterDropdown({
   useEffect(() => {
     if (!open) return;
     typeahead.current = { text: '', at: 0 };
+    setQuery('');
     const frame = requestAnimationFrame(() => {
+      if (searchable) { searchRef.current?.focus({ preventScroll: true }); return; }
       const selectedOption = menuRef.current?.querySelector<HTMLButtonElement>('[role="option"][aria-selected="true"]:not(:disabled)');
       (selectedOption ?? menuRef.current?.querySelector<HTMLButtonElement>('[role="option"]:not(:disabled)'))?.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(frame);
-  }, [open]);
+  }, [open, searchable]);
 
   function closeMenu() {
     setOpen(false);
@@ -119,7 +130,7 @@ export function FilterDropdown({
 
   const clearFooterHeight = clearable && selected.length > 0 ? CLEAR_FOOTER_HEIGHT : 0;
   const scrollRegionHeight = Math.min(
-    items.length * MENU_ITEM_HEIGHT,
+    Math.max(shown.length, 1) * MENU_ITEM_HEIGHT + (searchable ? MENU_ITEM_HEIGHT + 8 : 0),
     MAX_MENU_SCROLL_HEIGHT,
   );
   const menuHeight = scrollRegionHeight + clearFooterHeight + MENU_PADDING;
@@ -192,7 +203,7 @@ export function FilterDropdown({
     updateMenuPosition();
     const id = requestAnimationFrame(() => updateMenuPosition());
     return () => cancelAnimationFrame(id);
-  }, [open, menuPortal, updateMenuPosition, items.length, selected.length]);
+  }, [open, menuPortal, updateMenuPosition, shown.length, selected.length]);
 
   function toggleItem(id: string) {
     if (multi) {
@@ -238,11 +249,11 @@ export function FilterDropdown({
         flexDirection:  'column',
       };
 
-  const menuItems = items.map((item, itemIndex) => {
+  const menuItems = shown.map((item, itemIndex) => {
         const isSelected = selected.includes(item.id);
         const ItemIcon = item.icon;
         // A group heading before the first item of each group (optgroup).
-        const groupHeading = item.group && items[itemIndex - 1]?.group !== item.group ? (
+        const groupHeading = item.group && shown[itemIndex - 1]?.group !== item.group ? (
           <div
             key={`group-${item.group}`}
             role="presentation"
@@ -344,8 +355,24 @@ export function FilterDropdown({
     </>
   ) : null;
 
+  const searchBox = searchable ? (
+    <div style={{ padding: 'var(--space-2) var(--space-2) var(--space-1)', flexShrink: 0 }}>
+      <input
+        ref={searchRef}
+        type="search"
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder={searchPlaceholder}
+        aria-label={searchPlaceholder}
+        className="serene-field-control"
+        style={{ width: '100%', height: '2rem', fontSize: 'var(--text-sm)' }}
+      />
+    </div>
+  ) : null;
+
   const menuBody = (
     <>
+      {searchBox}
       <div
         role="listbox"
         aria-invalid={invalid || undefined}
@@ -361,7 +388,7 @@ export function FilterDropdown({
           minHeight:  0,
         }}
       >
-        {menuItems.length ? menuItems : <p className="serene-field-hint" style={{ padding: 'var(--space-3)' }}>No options available.</p>}
+        {menuItems.length ? menuItems : <p className="serene-field-hint" style={{ padding: 'var(--space-3)' }}>{searchable && q ? 'Nothing matches that name.' : 'No options available.'}</p>}
       </div>
       {clearFooter}
     </>
@@ -382,6 +409,11 @@ export function FilterDropdown({
               return;
             }
             const options = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="option"]:not(:disabled)'));
+            // Typing in the search box is typing, not type-ahead; ArrowDown steps into the list.
+            if (event.target === searchRef.current) {
+              if (event.key === 'ArrowDown') { event.preventDefault(); options[0]?.focus(); }
+              return;
+            }
             const index = options.indexOf(document.activeElement as HTMLButtonElement);
             if (event.key.length === 1 && event.key !== ' ' && !event.ctrlKey && !event.metaKey && !event.altKey) {
               event.preventDefault();

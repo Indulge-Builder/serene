@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { filterTriggerStyle } from './material-styles';
 
@@ -11,8 +12,10 @@ import { DateRangePresetList } from '@/components/ui/DateRangePresetList';
 import {
   DATE_RANGE_PRESET_LABELS,
   matchDateRangePreset,
+  type DateRangePreset,
 } from '@/lib/constants/date-range-presets';
 import { usePortalAnchor } from '@/hooks/usePortalAnchor';
+import { formatDate } from '@/lib/utils/dates';
 
 type FilterBarDateRange = {
   /** URL-param-formatted date strings (see lib/utils/filter-params). */
@@ -29,6 +32,8 @@ type FilterBarDateRange = {
    * ONE state update / URL push.
    */
   onPresetSelect?: (from: string | null, to: string | null) => void;
+  /** The presets the Range panel offers (the default list unless given). */
+  presets?: readonly DateRangePreset[];
   /** Stable AnimatePresence key — unique per page (e.g. 'deals-range-panel'). */
   panelKey: string;
   /**
@@ -38,6 +43,13 @@ type FilterBarDateRange = {
    * draws an accent ring.
    */
   trigger?: 'badge' | 'chevron';
+  /**
+   * One Period control instead of Range + Dates (the Jokers dashboards, owner 2026-09-28): the
+   * presets, then "Custom dates" at the bottom opening the From → To fields in the same panel. The
+   * trigger names the preset, or the custom range ("3 Sep – 19 Sep"). The period is always set, so
+   * the list has no Clear. Needs onPresetSelect.
+   */
+  single?: boolean;
 };
 
 type FilterBarProps = {
@@ -157,6 +169,8 @@ export function FilterBar({
 }: FilterBarProps) {
   const range    = usePortalAnchor();
   const presets  = usePortalAnchor({ estimatedWidth: 200, estimatedHeight: 340 });
+  // `single`: the Custom dates fields shown inside the Period panel.
+  const [customOpen, setCustomOpen] = useState(false);
   // Below md every bar runs as a single scrolling row (see layout prop doc). The
   // wrap layout gets there with `max-md:` utilities on the same nodes, never a
   // media-query hook: useMediaQuery is false on the server and first paint, so a
@@ -169,9 +183,22 @@ export function FilterBar({
 
   // "Range" preset trigger state — active only when from/to exactly match a preset.
   const matchedPreset = dateRange?.onPresetSelect
-    ? matchDateRangePreset(dateRange.from, dateRange.to)
+    ? matchDateRangePreset(dateRange.from, dateRange.to, undefined, dateRange.presets)
     : null;
   const presetActive   = matchedPreset !== null;
+  const single         = !!dateRange?.single;
+  // `single`: a set range no preset matches is a custom one; its fields stay open.
+  const isCustom       = single && rangeActive && !presetActive;
+  const showCustom     = single && (customOpen || isCustom);
+  const dayOf          = (d: string) => formatDate(`${d}T12:00:00+05:30`, 'd MMM');
+  // The fields widen the panel: place it again so it stays on screen.
+  const { open: presetsOpen, remeasure: remeasurePresets } = presets;
+  useEffect(() => {
+    if (presetsOpen) remeasurePresets();
+  }, [showCustom, presetsOpen, remeasurePresets]);
+  const customLabel    = dateRange?.from && dateRange?.to
+    ? (dateRange.from === dateRange.to ? dayOf(dateRange.from) : `${dayOf(dateRange.from)} – ${dayOf(dateRange.to)}`)
+    : dateRange?.from ? `From ${dayOf(dateRange.from)}` : dateRange?.to ? `To ${dayOf(dateRange.to)}` : null;
 
   return (
     <div
@@ -264,9 +291,9 @@ export function FilterBar({
             onClick={presets.toggle}
             aria-haspopup="menu"
             aria-expanded={presets.open}
-            style={dateTriggerStyle(presetActive, rangeVariant === 'chevron')}
+            style={dateTriggerStyle(single ? rangeActive : presetActive, rangeVariant === 'chevron')}
           >
-            {matchedPreset ? DATE_RANGE_PRESET_LABELS[matchedPreset] : 'Range'}
+            {matchedPreset ? DATE_RANGE_PRESET_LABELS[matchedPreset] : single ? customLabel ?? 'Period' : 'Range'}
             <ChevronDown
               style={{
                 width:       14,
@@ -287,17 +314,33 @@ export function FilterBar({
             <DateRangePresetList
               from={dateRange.from}
               to={dateRange.to}
+              presets={dateRange.presets}
+              clearable={!single}
+              custom={single ? { selected: isCustom, onClick: () => setCustomOpen((o) => !o || isCustom) } : undefined}
               onSelect={(from, to) => {
                 dateRange.onPresetSelect?.(from, to);
+                setCustomOpen(false);
                 presets.close();
               }}
             />
+            {showCustom && (
+              <div style={{ borderTop: '1px solid var(--theme-paper-border)', marginTop: 'var(--space-1)', paddingTop: 'var(--space-2)' }}>
+                <DateRangeFields
+                  from={dateRange.from}
+                  to={dateRange.to}
+                  onFromChange={dateRange.onFromChange}
+                  onToChange={dateRange.onToChange}
+                  onClear={dateRange.onClear}
+                />
+              </div>
+            )}
           </FloatingPanel>
         </div>
       )}
 
-      {/* Dates — manual From → To; panel portaled to document.body via FloatingPanel */}
-      {dateRange && (
+      {/* Dates — manual From → To; panel portaled to document.body via FloatingPanel (in `single`
+          it lives inside the Period panel instead) */}
+      {dateRange && !single && (
         <div style={{ flexShrink: 0 }}>
           <button
             ref={range.triggerRef}

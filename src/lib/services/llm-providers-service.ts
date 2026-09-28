@@ -120,6 +120,11 @@ export async function getTicketIntakeEnabled(): Promise<boolean> {
   try { return (await getSettingValue('ticket_intake_enabled')) === true; } catch { return false; }
 }
 
+/** The jokers' capture job's switch (row `joker_capture_enabled`, 0248). True only when the row is exactly `true`. */
+export async function getJokerCaptureEnabled(): Promise<boolean> {
+  try { return (await getSettingValue('joker_capture_enabled')) === true; } catch { return false; }
+}
+
 /**
  * Who may use the MCP connector (row `mcp_audience`, migration 0233): a JSON list of roles.
  * Unknown values are dropped; a missing, empty or malformed row falls back to MCP_ROLES
@@ -168,6 +173,11 @@ export async function getElayaLabelsRefreshEnabled(): Promise<boolean> {
 /** The member judgement's switch (row `member_assessment_enabled`, 0241): ON unless exactly false. About ₹2 a member, weekly, reaches no member. */
 export async function getMemberAssessmentEnabled(): Promise<boolean> {
   try { return (await getSettingValue('member_assessment_enabled')) !== false; } catch { return true; }
+}
+
+/** The Jokers' Activity recount's switch (row `client_activity_enabled`, 0250): ON unless exactly false. Counting only, no model. */
+export async function getClientActivityEnabled(): Promise<boolean> {
+  try { return (await getSettingValue('client_activity_enabled')) !== false; } catch { return true; }
 }
 
 export async function getIntakeLessonsEnabled(): Promise<boolean> {
