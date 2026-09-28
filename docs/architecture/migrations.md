@@ -142,7 +142,7 @@ writing that week.
 | 2026-09-18 | vendor live extractor 0205 → 0213 → 0214 | production was past 0212; then `main` landed its own 0213 |
 | 2026-09-21 | vendor cleanup 0223-0226 → 0227-0230 | `main` had applied 0223-0225 and held 0226 (the MCP ledger) |
 
-**Next free number:** 0246 (0245 is `20260926000245_hands.sql`).
+**Next free number:** 0247 (0246 is `20260927000246_media_readings.sql`).
 
 ## Production status
 
@@ -158,6 +158,8 @@ writing that week.
   moment it was pushed. It was caught in the 2026-09-26 docs review and fixed before any push
   (9f486fc): the file now restates the full list plus `hands`. The lesson is the rule above: a
   schema exposure restates the whole list.
+- **0246 (`media_readings`): committed 2026-09-27, not applied** (checked 2026-09-28). Elaya's
+  eyes, steps 0 to 2; see `media-understanding-plan.md`. Its switch is off.
 
 ## Repair migrations (drift fixed by a later file: the pattern to copy)
 
@@ -406,6 +408,7 @@ writing that week.
 | 0243 (09-26) | `profiles_update` pins `sia_role` and `queendom_id` on the self branch: nobody changes their own seat or queendom. |
 | 0244 (09-26) | The Joker head: the `joker_head` seat (no queendom, one active holder), and `can_access_member_queendom()` passes it for every queendom. Apply with 0243. |
 | 0245 (09-26) | Hands, step 1: a `hands` schema for Elaya's second WhatsApp number (`auth_state`, `connector_status`, `allowed_contacts`, `threads`, `raw_events`, `messages`, an `outbox` the connector polls), the private `hands-media` bucket, and `vendors.kind` (`human` / `agent`). Committed, not applied; see `hands-plan.md` and the note under "Production status". |
+| 0246 (09-27) | Elaya's eyes, step 0: `public.media_readings` (one row per stored file: status, class, summary, the words in it, cost; service-role writes, admin/founder read), the `sia.wag_messages_read` view that folds a reading into its message, a narrow `elaya_read.media_readings` view for the analyst (no extracted text, no sensitive rows), the private `elaya-turns` bucket, and the SQL queue (enqueue by anti-join, claim a batch). Committed, not applied; see `media-understanding-plan.md`. |
 
 > **`lead_health` is fully removed (0084).** No column, util, component, or filter remains —
 > any reference found anywhere is stale. (Unrelated: *Domain Health* — `DomainOverviewPanel` /

@@ -51,7 +51,7 @@ docs/
 │   ├── schema-restructure-plan.md  SHIPPED 2026-09-17 (gia + member schemas); kept as the runbook
 │   ├── mcp-plan.md            the MCP connector plan: Phases 1 to 3 shipped, Phase 4 (writes) open
 │   ├── hands-plan.md          PLAN: Elaya gets hands (a second WhatsApp number, agent vendors); step 1 built
-│   └── media-understanding-plan.md  PLAN: Elaya's eyes (reading images, files, voice, video); nothing built
+│   └── media-understanding-plan.md  PLAN: Elaya's eyes (reading images, files, voice, video); steps 0-2 built, not live
 │
 ├── modules/                   how a part of the product works end to end
 │   ├── gia.md                 the sales CRM: lead lifecycle, ad to deal, the SLA engine
