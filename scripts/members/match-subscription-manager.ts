@@ -1,6 +1,7 @@
 /**
  * match-subscription-manager.ts — THE one-time clean-up that makes Serene's member list match the
- * Subscription Manager one to one (owner, 2026-09-29: "IT HAS TO BE 573").
+ * Subscription Manager (owner, 2026-09-29): one member per Subscription Manager client, plus the
+ * few members the owner keeps who are not clients (the founders, as Celebrity members).
  *
  * WHAT IT DOES, from the owner's decisions (a JSON of Serene member ids, kept OUTSIDE the repo
  * because it sits next to names) and a FRESH Subscription Manager Clients export:
@@ -15,23 +16,31 @@
  *                are simply cleared. Serene's own data on the member (facts, notes, snapshot) goes
  *                with it. A member holding vault items is refused unless --allow-vault-delete; one
  *                that a table refuses to let go of (a Sia ticket) is a stop in the plan.
- *   3. add     — creates a member for every Subscription Manager client with none (new clients,
+ *   3. keep    — a member the owner keeps although no client matches them: everything they hold
+ *                stays (links, facts, vault items), and their membership is set as decided
+ *                (queendom by name, membership type, status, amount, dates; the tier follows the
+ *                membership type, as for every imported member). Checked by the app's own
+ *                UpdateMemberSchema.
+ *   4. add     — creates a member for every Subscription Manager client with none (new clients,
  *                and a client that shares a phone with another client, which gets its own record
- *                with the shared number under "Other numbers": the main phone is unique).
- *   4. verify  — re-reads everything: the member count must equal the export's client count, every
- *                client must match exactly one member and every member exactly one client, and
+ *                with the shared number under "Other numbers": the main phone is unique). Checked
+ *                by the app's own CreateMemberSchema.
+ *   5. verify  — re-reads everything: the member count must equal the export's client count plus
+ *                the kept members, every client must match exactly one member, every member one
+ *                client (the kept members none), the kept members must hold what was decided, and
  *                every member not touched must be unchanged.
  *
  * SAFETY
  *   - Dry run by default: reads only, prints the plan, writes plan-….json to --out. The dry run
- *     already proves the result one to one (a full simulation), that the backup covers every table
- *     the database says points at a member, that no removal is blocked, and that the vault key opens
+ *     already proves the result (a full simulation), that the backup covers every table the
+ *     database says points at a member, that no removal is blocked, and that the vault key opens
  *     every item it must re-seal.
  *   - --apply first writes a full backup (the affected members, every row pointing at them, every
  *     log row about them, and every member before the run) to --out, then logs each step to
  *     run-….jsonl the moment it completes, and stops at the first failure. Re-running the same
  *     command finishes the job: a step counts as done only when an earlier run's log (or, for a
- *     merge, the kept member's own merge record) proves it. restore-members.ts undoes any of it.
+ *     merge, the kept member's own merge record) proves it; a kept member already holding what was
+ *     decided is left alone. restore-members.ts undoes any of it.
  *   - Refuses to apply when the export is more than 24 hours old (--allow-old-export overrides:
  *     the age is the file's, so download it again on the day) or when --out is inside the repo.
  *   - Ask the team not to edit members or link WhatsApp groups while it runs: an edit during the
@@ -49,10 +58,12 @@ import { mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { normalizeToE164 } from "../../src/lib/utils/phone";
 import { sanitizeText } from "../../src/lib/utils/sanitize";
+import { tierFromLabel } from "../../src/lib/constants/member-facets";
+import { CreateMemberSchema, UpdateMemberSchema } from "../../src/lib/validations/member-schema";
 import {
   LINKED, LOGS, better, client, fail, fkChildren, flag, has, logLine, markWritesStarted, memberKeys, oneToOne,
   openTarget, outDir, rank, readAll, readDecisions, readLogs, readMembers, readSmCsv, rowsFor, useTargetVaultKey,
-  matchRows, type Member, type SmRow,
+  matchRows, type KeepSet, type Member, type SmRow,
 } from "./sm-match-lib";
 
 const APPLY = has("--apply");
@@ -85,6 +96,8 @@ function toE164(raw: string): string | null {
   }
   return null;
 }
+/** The app's own message for the first thing its schema refused. */
+const firstIssue = (e: { issues: { path: PropertyKey[]; message: string }[] }) => `${e.issues[0]?.path.join(".") || "value"}: ${e.issues[0]?.message}`;
 
 async function main() {
   // ─── 1. Read ───────────────────────────────────────────────────────────────
@@ -92,6 +105,7 @@ async function main() {
   const dec = readDecisions(decPath);
   const members = await readMembers(db);
   const queendoms = await readAll<{ id: string; name: string }>(db, "sia", "queendoms", "id,name", "name");
+  const qdByName = new Map(queendoms.map((q) => [q.name.trim().toLowerCase(), q.id]));
   const byId = new Map(members.map((m) => [m.id, m]));
   console.log(`[${t.name}] ${members.length} members in Serene, ${rows.length} clients in the Subscription Manager export (${ageHours.toFixed(1)} h old).`);
 
@@ -124,14 +138,42 @@ async function main() {
   if (touched.size !== removeIds.length + dropIds.length) problems.push("a member appears twice in the decisions");
   for (const m of dec.merge) if (touched.has(m.keep)) problems.push(`the kept member for "${m.drop_name}" is itself being removed or merged`);
 
-  // ─── 3. Project the result ─────────────────────────────────────────────────
+  // ─── 3. The members the owner keeps: what each becomes, checked by the app's own schema ─────
+  const keptIds = new Set(dec.keep.map((k) => k.id));
+  if (keptIds.size !== dec.keep.length) problems.push("a kept member appears twice in the decisions");
+  const keepPlan = dec.keep.flatMap((k) => {
+    const cur = byId.get(k.id);
+    if (!cur) { problems.push(`"${k.name}" (${k.id}), a member to keep, is not in Serene (restore it first with restore-members.ts)`); return []; }
+    if (touched.has(k.id)) { problems.push(`"${k.name}" is both kept and removed or merged away`); return []; }
+    const s: KeepSet = k.set;
+    const target: Record<string, unknown> = {};
+    if ("queendom" in s) {
+      const q = s.queendom == null ? null : qdByName.get(String(s.queendom).trim().toLowerCase());
+      if (s.queendom != null && !q) problems.push(`"${k.name}": no queendom is named "${s.queendom}"`);
+      target.queendom_id = q ?? null;
+    }
+    if ("membership_type" in s) {
+      const tier = s.membership_type == null ? null : tierFromLabel(String(s.membership_type));
+      if (s.membership_type != null && !tier) problems.push(`"${k.name}": "${s.membership_type}" is not a membership type Serene knows`);
+      target.membership_type = s.membership_type == null ? null : String(s.membership_type).trim();
+      target.tier = tier;
+    }
+    for (const c of ["membership_status", "membership_amount_inr", "membership_start", "membership_end"] as const) if (c in s) target[c] = s[c];
+    const check = UpdateMemberSchema.safeParse({ member_id: k.id, ...Object.fromEntries(Object.entries(target).filter(([c]) => c !== "membership_type")) });
+    if (!check.success) problems.push(`"${k.name}": ${firstIssue(check.error)}`);
+    else for (const [c, v] of Object.entries(check.data)) if (c !== "member_id" && v !== undefined) target[c] = v;
+    const changed = Object.fromEntries(Object.entries(target).filter(([c, v]) => JSON.stringify(cur[c] ?? null) !== JSON.stringify(v)).map(([c, v]) => [c, { from: cur[c] ?? null, to: v }]));
+    return [{ ...k, target, changed }];
+  });
+
+  // ─── 4. Project the result ─────────────────────────────────────────────────
   const remaining = members.filter((m) => !touched.has(m.id));
   const extraKeys = new Map<string, Set<string>>();
   for (const m of dec.merge) {
     const drop = byId.get(m.drop);
     if (drop) extraKeys.set(m.keep, new Set([...(extraKeys.get(m.keep) ?? []), ...memberKeys(drop)]));
   }
-  const matches = matchRows(rows, remaining, extraKeys);
+  const matches = matchRows(rows, remaining.filter((m) => !keptIds.has(m.id)), extraKeys);
   const rowsByMember = new Map<string, number[]>();
   for (const x of matches) if (x.memberId) rowsByMember.set(x.memberId, [...(rowsByMember.get(x.memberId) ?? []), x.row]);
 
@@ -144,8 +186,7 @@ async function main() {
     for (const r of rs) if (r !== keepRow) addRows.push({ row: r, why: `separate client sharing a phone with "${m.full_name}"` });
   }
 
-  // ─── 4. New members, built from their rows ─────────────────────────────────
-  const qdByName = new Map(queendoms.map((q) => [q.name.toLowerCase(), q.id]));
+  // ─── 5. New members, built from their rows, checked by the app's own schema ─────
   const takenMain = new Set(remaining.map((m) => m.primary_phone).filter(Boolean) as string[]);
   const newMembers = addRows.map(({ row, why }) => {
     const r = rows[row] as SmRow;
@@ -164,15 +205,25 @@ async function main() {
     if (r["Start Date"].trim() && !start) problems.push(`"${name}": the start date "${r["Start Date"]}" is not DD/MM/YYYY`);
     if (r["End Date"].trim() && !end) problems.push(`"${name}": the end date "${r["End Date"]}" is not DD/MM/YYYY`);
     if (r["Amount (INR)"].trim() && amount === null) problems.push(`"${name}": the amount "${r["Amount (INR)"]}" is not a number`);
+    const type = r["Membership Type"].trim() || null;
+    const tier = tierFromLabel(type);
+    if (type && !tier) problems.push(`"${name}": "${type}" is not a membership type Serene knows`);
+    const check = CreateMemberSchema.safeParse({
+      full_name: name, primary_phone: main, queendom_id: queendom, tier,
+      membership_status: r.Status.trim() || null, membership_start: start, membership_end: end, membership_amount_inr: amount,
+    });
+    if (!check.success) problems.push(`"${name}": ${firstIssue(check.error)}`);
+    const v = check.success ? check.data : null;
     return {
       why,
       row: {
-        full_name: sanitizeText(name),
+        full_name: v?.full_name ?? sanitizeText(name),
         primary_phone: main,
         alt_phones: [...new Set(others)],
         queendom_id: queendom,
-        membership_type: r["Membership Type"].trim() || null,
-        membership_status: r.Status.trim() || null,
+        tier,
+        membership_type: type,
+        membership_status: v?.membership_status ?? (r.Status.trim() || null),
         membership_amount_inr: amount,
         membership_start: start,
         membership_end: end,
@@ -182,18 +233,20 @@ async function main() {
     };
   });
 
-  // The full simulation: the result must be one member per client, by the same test the verification uses.
+  // The full simulation: the result must be one member per client (the kept members none), by the same test the verification uses.
   const projected: Member[] = [
     ...remaining.map((m) => ({ ...m, alt_phones: [...(m.alt_phones ?? []), ...(extraKeys.get(m.id) ?? [])] })),
     ...newMembers.map((n, i) => ({ id: `new-${i}`, ...n.row } as unknown as Member)),
   ];
-  const sim = oneToOne(rows, projected);
-  if (projected.length !== rows.length) problems.push(`the result would be ${projected.length} members, not ${rows.length}`);
+  const expected = rows.length + keptIds.size;
+  const sim = oneToOne(rows, projected, undefined, keptIds);
+  if (projected.length !== expected) problems.push(`the result would be ${projected.length} members, not ${expected} (${rows.length} clients + ${keptIds.size} kept)`);
   for (const n of sim.unmatched) problems.push(`after the clean-up, client "${n}" would match no member`);
   for (const n of sim.shared) problems.push(`after the clean-up, member "${n}" would match several clients`);
   for (const n of sim.orphans) problems.push(`after the clean-up, member "${n}" would match no client`);
+  for (const n of sim.keptButMatched) problems.push(`"${n}" is on the keep list but matches a Subscription Manager client: it is a client, not a kept member`);
 
-  // ─── 5. The database's own list of linked tables; what blocks or carries ───
+  // ─── 6. The database's own list of linked tables; what blocks or carries ───
   const children = await fkChildren(db);
   const listed = new Set(LINKED.map((l) => `${l.schema}.${l.table}`));
   for (const c of children) {
@@ -210,7 +263,7 @@ async function main() {
     const jo = await rowsFor(db, "sia", "joker_openings", removeIds, "id");
     for (const id of new Set(jo.map((j) => j.member_id as string))) problems.push(`"${dec.remove.find((x) => x.id === id)?.name}" has Jokers items; removing the member deletes them (their messages and replies are not in the backup): merge instead, or decide first`);
   }
-  const vault = await rowsFor(db, "member", "member_vault", [...touched], "id");
+  const vault = await rowsFor(db, "member", "member_vault", [...touched, ...keptIds], "id");
   const vaultOf = (id: string) => vault.filter((v) => v.member_id === id);
   const removeWithVault = dec.remove.filter((x) => vaultOf(x.id).length);
   const mergeWithVault = dec.merge.filter((x) => vaultOf(x.drop).length);
@@ -229,7 +282,7 @@ async function main() {
     problems.push(`the export file is ${ageHours.toFixed(0)} h old; download the Clients CSV again today (or pass --allow-old-export)`);
   }
 
-  // ─── 6. The plan ───────────────────────────────────────────────────────────
+  // ─── 7. The plan ───────────────────────────────────────────────────────────
   const keeperIdConflicts = dec.merge.flatMap((x) => {
     const k = byId.get(x.keep)!, d = byId.get(x.drop)!;
     return (["freshdesk_contact_id", "zoho_customer_id", "app_member_id"] as const)
@@ -240,11 +293,16 @@ async function main() {
     target: t.name, members_now: members.length, clients_in_export: rows.length, already_done: alreadyDone,
     remove: dec.remove.map((x) => ({ ...x, vault_items: vaultOf(x.id).length })),
     merge: dec.merge.map((x) => ({ ...x, keep_name: byId.get(x.keep)?.full_name, vault_items: vaultOf(x.drop).length })),
+    keep: keepPlan.map((k) => ({ id: k.id, name: k.name, why: k.why, changes: k.changed, vault_items: vaultOf(k.id).length })),
     add: newMembers.map((n) => ({ name: n.row.full_name, why: n.why })),
     identifier_notes: keeperIdConflicts, members_after: projected.length, problems,
   };
   writeFileSync(join(OUT, `plan-${t.name}-${stamp}.json`), JSON.stringify(plan, null, 1));
-  console.log(`\nPlan: remove ${dec.remove.length}, merge ${dec.merge.length}, add ${newMembers.length} → ${projected.length} members (the export has ${rows.length}).`);
+  console.log(`\nPlan: remove ${dec.remove.length}, merge ${dec.merge.length}, keep ${keepPlan.length}, add ${newMembers.length} → ${projected.length} members (the export has ${rows.length} clients; ${keptIds.size} kept).`);
+  for (const k of keepPlan) {
+    const ch = Object.entries(k.changed).map(([c, v]) => `${c} ${JSON.stringify(v.from)} → ${JSON.stringify(v.to)}`);
+    console.log(`  keep: ${k.name} (${vaultOf(k.id).length} vault item(s) stay) — ${ch.length ? ch.join(", ") : "already as decided"}`);
+  }
   for (const n of newMembers) console.log(`  add: ${n.row.full_name} — ${n.why}`);
   if (removeWithVault.length) console.log(`  vault items on members to remove: ${removeWithVault.map((x) => `${x.name} (${vaultOf(x.id).length})`).join(", ")}`);
   if (mergeWithVault.length) console.log(`  vault items re-sealed on merge: ${mergeWithVault.map((x) => `${x.drop_name} → ${x.sm_client} (${vaultOf(x.drop).length})`).join(", ")}`);
@@ -253,11 +311,11 @@ async function main() {
     console.log(`\nNOT READY (${problems.length}):`);
     for (const p of problems) console.log(`  - ${p}`);
     if (APPLY) fail("Refusing to apply until every problem above is resolved.");
-  } else console.log("\nReady: the result is one member per Subscription Manager client.");
+  } else console.log(`\nReady: one member per Subscription Manager client${keptIds.size ? `, plus ${keptIds.size} kept` : ""}.`);
   if (!APPLY) { console.log(`\nDry run only. Plan written to ${OUT}.`); return; }
 
-  // ─── 7. Backup (before any write) ──────────────────────────────────────────
-  const affected = [...new Set([...touched, ...dec.merge.map((x) => x.keep)])];
+  // ─── 8. Backup (before any write) ──────────────────────────────────────────
+  const affected = [...new Set([...touched, ...dec.merge.map((x) => x.keep), ...keptIds])];
   const linked: Record<string, unknown[]> = {};
   for (const l of LINKED) linked[`${l.schema}.${l.table}`] = await rowsFor(db, l.schema, l.table, affected, l.pk, "member_id", l.optional);
   linked["member.member_relations#entity"] = await rowsFor(db, "member", "member_relations", affected, "id", "entity_id");
@@ -271,7 +329,7 @@ async function main() {
   console.log(`\nBackup written: ${backupFile}`);
   markWritesStarted(`Every completed step is in ${runLog}. Re-running the same command finishes the job; restore-members.ts --backup ${backupFile} undoes what was done.`);
 
-  // ─── 8. Merges: one transaction each, vault items re-sealed inside it ──────
+  // ─── 9. Merges: one transaction each, vault items re-sealed inside it ──────
   for (const m of dec.merge) {
     const p_vault = vaultOf(m.drop).map((v) => ({ id: v.id, ...encryptSecret(decryptSecret(v as { ciphertext: string; nonce: string; key_version: number }, m.drop), m.keep) }));
     const { data, error } = await db.schema("member").rpc("merge_members", { p_keep: m.keep, p_drop: m.drop, p_vault });
@@ -279,14 +337,23 @@ async function main() {
     if (error) fail(`Merging "${m.drop_name}" into "${m.sm_client}" failed: ${error.message}`);
     console.log(`  merged ${m.drop_name} → ${m.sm_client}`);
   }
-  // ─── 9. Removals ───────────────────────────────────────────────────────────
+  // ─── 10. Removals ──────────────────────────────────────────────────────────
   for (const x of dec.remove) {
     const { error } = await db.schema("member").from("members").delete().eq("id", x.id);
     logLine(runLog, { step: "remove", id: x.id, ok: !error, error: error?.message });
     if (error) fail(`Removing "${x.name}" failed: ${error.message}`);
     console.log(`  removed ${x.name}`);
   }
-  // ─── 10. Additions ─────────────────────────────────────────────────────────
+  // ─── 11. Kept members: only the fields that differ from what was decided ───
+  for (const k of keepPlan) {
+    if (!Object.keys(k.changed).length) { console.log(`  kept ${k.name} (already as decided)`); continue; }
+    const patch = { ...Object.fromEntries(Object.entries(k.changed).map(([c, v]) => [c, v.to])), updated_at: new Date().toISOString() };
+    const { error } = await db.schema("member").from("members").update(patch).eq("id", k.id);
+    logLine(runLog, { step: "keep", id: k.id, ok: !error, changed: k.changed, error: error?.message });
+    if (error) fail(`Setting the membership of "${k.name}" failed: ${error.message}`);
+    console.log(`  kept ${k.name}: ${Object.keys(k.changed).join(", ")}`);
+  }
+  // ─── 12. Additions ─────────────────────────────────────────────────────────
   for (const n of newMembers) {
     const { data, error } = await db.schema("member").from("members").insert(n.row).select("id").single();
     logLine(runLog, { step: "add", name: n.row.full_name, ok: !error, id: data?.id, error: error?.message });
@@ -294,9 +361,9 @@ async function main() {
     console.log(`  added ${n.row.full_name}`);
   }
 
-  // ─── 11. Verify ────────────────────────────────────────────────────────────
+  // ─── 13. Verify ────────────────────────────────────────────────────────────
   const after = await readMembers(db);
-  const check = oneToOne(rows, after);
+  const check = oneToOne(rows, after, undefined, keptIds);
   const afterById = new Map(after.map((m) => [m.id, m]));
   const changedUntouched = members
     .filter((m) => !affected.includes(m.id))
@@ -306,12 +373,23 @@ async function main() {
       const cols = Object.keys(m).filter((c) => JSON.stringify(m[c]) !== JSON.stringify(a[c]));
       return cols.length ? [`${m.full_name}: ${cols.join(", ")}`] : [];
     });
-  const ok = after.length === rows.length && !check.unmatched.length && !check.shared.length && !check.orphans.length && !changedUntouched.length;
-  const result = { members_after: after.length, clients: rows.length, clients_without_member: check.unmatched, members_shared_by_clients: check.shared, members_without_client: check.orphans, untouched_members_changed: changedUntouched, ok };
+  const keptWrong = keepPlan.flatMap((k) => {
+    const a = afterById.get(k.id);
+    if (!a) return [`${k.name}: missing`];
+    const cols = Object.entries(k.target).filter(([c, v]) => JSON.stringify(a[c] ?? null) !== JSON.stringify(v)).map(([c]) => c);
+    return cols.length ? [`${k.name}: ${cols.join(", ")}`] : [];
+  });
+  const ok = after.length === expected && !check.unmatched.length && !check.shared.length && !check.orphans.length
+    && !check.keptButMatched.length && !keptWrong.length && !changedUntouched.length;
+  const result = {
+    members_after: after.length, clients: rows.length, kept: keptIds.size, clients_without_member: check.unmatched,
+    members_shared_by_clients: check.shared, members_without_client: check.orphans, kept_but_matched: check.keptButMatched,
+    kept_not_as_decided: keptWrong, untouched_members_changed: changedUntouched, ok,
+  };
   writeFileSync(join(OUT, `result-${t.name}-${stamp}.json`), JSON.stringify(result, null, 1));
   console.log(`\nResult: ${JSON.stringify(result)}`);
   if (!ok) fail(`The result does not verify (see result-${t.name}-${stamp}.json). A changed member may just be someone's edit during the run; restore-members.ts can put records back from ${backupFile}.`);
-  console.log("\nVerified: one member per Subscription Manager client, and every other member unchanged.");
+  console.log(`\nVerified: one member per Subscription Manager client${keptIds.size ? `, ${keptIds.size} kept as decided` : ""}, and every other member unchanged.`);
 }
 
 main().catch((e) => fail(`Stopped: ${e instanceof Error ? e.message : String(e)}`));

@@ -13,6 +13,8 @@
  *     since stays), the member row goes back, and every row the merge moved returns, but only where
  *     it still sits on the kept member. Facts lose their merged_from stamp, vault items return with
  *     their original seal, relations the merge folded or re-pointed are put back as they were.
+ *   - a KEPT member (kept although no client matches them): each membership field the run set goes
+ *     back to what it was, but only where it still holds what the run set.
  *   - --additions: deletes the members the run added, refusing any that has gained a link since.
  * Append-only logs were never changed, so there is nothing to restore there.
  *
@@ -34,7 +36,11 @@ import {
 type Row = Record<string, unknown>;
 type Backup = {
   target: string; run_log?: string;
-  decisions: { remove: { id: string; name: string }[]; merge: { drop: string; drop_name: string; keep: string; sm_client: string }[] };
+  decisions: {
+    remove: { id: string; name: string }[];
+    merge: { drop: string; drop_name: string; keep: string; sm_client: string }[];
+    keep?: { id: string; name: string }[];
+  };
   members: Member[];
   linked: Record<string, Row[]>;
 };
@@ -265,6 +271,21 @@ async function restoreMerged(b: Backup, keepId: string, merges: Backup["decision
   }
 }
 
+// ─── A kept member: the membership fields the run set go back ─────────────────
+async function restoreKept(id: string, who: string, changed: Record<string, { from: unknown; to: unknown }>) {
+  console.log(`\n${who} (kept):`);
+  const cur = await existing(id);
+  if (!cur) { notes.push(`${who} is no longer in Serene; nothing to give back`); return; }
+  const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+  const patch: Row = {};
+  for (const [c, v] of Object.entries(changed)) {
+    if (same(cur[c], v.to)) patch[c] = v.from;
+    else if (!same(cur[c], v.from)) notes.push(`${who}: ${c} was changed after the run; left as is`);
+  }
+  if (!Object.keys(patch).length) { console.log("    already as before the run"); return; }
+  await write(`give back ${Object.keys(patch).join(", ")}`, () => db.schema("member").from("members").update(patch).eq("id", id));
+}
+
 // ─── The members the run added ────────────────────────────────────────────────
 async function removeAdditions(added: { id: string; name: string }[]) {
   const children = await fkChildren(db);
@@ -291,15 +312,20 @@ async function main() {
   const removed = b.decisions.remove.filter((x) => steps.some((s) => s.step === "remove" && s.id === x.id));
   const merged = b.decisions.merge.filter((x) => steps.some((s) => s.step === "merge" && s.drop === x.drop));
   const added = steps.filter((s) => s.step === "add" && s.id).map((s) => ({ id: String(s.id), name: String(s.name) }));
-  console.log(`[${t.name}] this run removed ${removed.length}, merged ${merged.length}, added ${added.length}.`);
+  const kept = (b.decisions.keep ?? []).flatMap((x) => {
+    const s = steps.filter((st) => st.step === "keep" && st.id === x.id).pop();
+    return s ? [{ ...x, changed: s.changed as Record<string, { from: unknown; to: unknown }> }] : [];
+  });
+  console.log(`[${t.name}] this run removed ${removed.length}, merged ${merged.length}, set the membership of ${kept.length} kept, added ${added.length}.`);
 
   if (has("--additions")) await removeAdditions(added);
   else {
-    const wanted = has("--all") ? [...removed.map((x) => x.id), ...merged.map((x) => x.drop)] : flags("--member");
+    const wanted = has("--all") ? [...removed.map((x) => x.id), ...merged.map((x) => x.drop), ...kept.map((x) => x.id)] : flags("--member");
     if (!wanted.length) fail("Say what to restore: --member <id> (repeatable), --all, or --additions.");
+    const planned = [...b.decisions.remove.map((x) => x.id), ...b.decisions.merge.map((x) => x.drop), ...(b.decisions.keep ?? []).map((x) => x.id)];
     for (const id of wanted) {
-      if (!removed.some((x) => x.id === id) && !merged.some((x) => x.drop === id)) {
-        fail(`${id} was not removed or merged by this run${[...b.decisions.remove.map((x) => x.id), ...b.decisions.merge.map((x) => x.drop)].includes(id) ? " (it was planned, but the run stopped before it)" : ""}.`);
+      if (!removed.some((x) => x.id === id) && !merged.some((x) => x.drop === id) && !kept.some((x) => x.id === id)) {
+        fail(`${id} was not removed, merged or changed by this run${planned.includes(id) ? " (it was planned, but the run stopped before it, or found it already as decided)" : ""}.`);
       }
     }
     const keepers = [...new Set(merged.filter((x) => wanted.includes(x.drop)).map((x) => x.keep))];
@@ -310,6 +336,7 @@ async function main() {
     }
     for (const x of removed.filter((r) => wanted.includes(r.id))) await restoreRemoved(b, x.id, x.name);
     for (const k of keepers) await restoreMerged(b, k, merged.filter((x) => x.keep === k));
+    for (const x of kept.filter((k) => wanted.includes(k.id))) await restoreKept(x.id, x.name, x.changed);
   }
 
   if (notes.length) { console.log("\nLeft as is (said, not guessed):"); for (const n of notes) console.log(`  - ${n}`); }

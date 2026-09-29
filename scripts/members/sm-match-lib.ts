@@ -141,17 +141,32 @@ export function readSmCsv(path: string): { rows: SmRow[]; ageHours: number } {
   return { rows, ageHours: (Date.now() - statSync(path).mtimeMs) / 3_600_000 };
 }
 
+/**
+ * What a kept member becomes (a member who is not a Subscription Manager client but stays, e.g. the
+ * founders as Celebrity members). `queendom` is a queendom NAME (ids differ between databases);
+ * the tier follows the membership type (tierFromLabel), as it does for every imported member.
+ */
+export const KEEP_FIELDS = ["queendom", "membership_type", "membership_status", "membership_amount_inr", "membership_start", "membership_end"] as const;
+export type KeepSet = Partial<Record<(typeof KEEP_FIELDS)[number], string | number | null>>;
+
 export type Decisions = {
   remove: { id: string; name: string; why: string }[];
   merge: { drop: string; drop_name: string; keep: string; sm_client: string; why: string }[];
+  keep: { id: string; name: string; why: string; set: KeepSet }[];
 };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** The owner's decisions, checked for shape: a mistyped id or key is a stop, never a silent skip. */
 export function readDecisions(path: string): Decisions {
   const d = JSON.parse(readFileSync(path, "utf8")) as Decisions;
-  if (!Array.isArray(d.remove) || !Array.isArray(d.merge)) fail(`${path}: expected "remove" and "merge" lists.`);
+  d.keep ??= [];
+  if (!Array.isArray(d.remove) || !Array.isArray(d.merge) || !Array.isArray(d.keep)) fail(`${path}: expected "remove", "merge" and (optionally) "keep" lists.`);
   for (const x of d.remove) if (!UUID.test(String(x.id)) || !x.name) fail(`${path}: a removal needs a member "id" (uuid) and a "name": ${JSON.stringify(x)}`);
   for (const x of d.merge) if (!UUID.test(String(x.drop)) || !UUID.test(String(x.keep)) || !x.drop_name || !x.sm_client) fail(`${path}: a merge needs "drop" and "keep" (uuids), "drop_name" and "sm_client": ${JSON.stringify(x)}`);
+  for (const x of d.keep) {
+    if (!UUID.test(String(x.id)) || !x.name || !x.set || typeof x.set !== "object") fail(`${path}: a kept member needs an "id" (uuid), a "name" and a "set" object: ${JSON.stringify(x)}`);
+    const unknown = Object.keys(x.set).filter((k) => !(KEEP_FIELDS as readonly string[]).includes(k));
+    if (unknown.length) fail(`${path}: "${x.name}" sets ${unknown.join(", ")}; a kept member may set only ${KEEP_FIELDS.join(", ")}.`);
+  }
   return d;
 }
 
@@ -215,15 +230,19 @@ export function matchRows(rows: SmRow[], members: Member[], extraKeys = new Map<
   });
 }
 
-/** The one-to-one test the plan and the verification both use. */
-export function oneToOne(rows: SmRow[], members: Member[], extraKeys?: Map<string, Set<string>>) {
+/**
+ * The one-to-one test the plan and the verification both use. `kept` = members who stay without a
+ * client (the owner's keep list): they are expected to match no client, and one that does is named.
+ */
+export function oneToOne(rows: SmRow[], members: Member[], extraKeys?: Map<string, Set<string>>, kept = new Set<string>()) {
   const m = matchRows(rows, members, extraKeys);
   const per = new Map<string, number>();
   for (const x of m) if (x.memberId) per.set(x.memberId, (per.get(x.memberId) ?? 0) + 1);
   return {
     unmatched: m.filter((x) => !x.memberId).map((x) => rows[x.row]["Client Name"]),
     shared: members.filter((mm) => (per.get(mm.id) ?? 0) > 1).map((mm) => mm.full_name),
-    orphans: members.filter((mm) => !per.has(mm.id)).map((mm) => mm.full_name),
+    orphans: members.filter((mm) => !per.has(mm.id) && !kept.has(mm.id)).map((mm) => mm.full_name),
+    keptButMatched: members.filter((mm) => kept.has(mm.id) && per.has(mm.id)).map((mm) => mm.full_name),
   };
 }
 
@@ -294,6 +313,7 @@ export async function rowsFor(db: SupabaseClient, schema: string, table: string,
 export type LogStep =
   | { step: "merge"; drop: string; keep: string; ok: boolean; error?: string; result?: unknown }
   | { step: "remove"; id: string; ok: boolean; error?: string }
+  | { step: "keep"; id: string; ok: boolean; changed: Record<string, { from: unknown; to: unknown }>; error?: string }
   | { step: "add"; name: string; ok: boolean; id?: string; error?: string };
 export const logLine = (file: string, s: LogStep) => appendFileSync(file, JSON.stringify({ at: new Date().toISOString(), ...s }) + "\n");
 /** Every step any earlier run in this folder completed. */
