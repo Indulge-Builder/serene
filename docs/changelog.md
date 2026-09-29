@@ -12,6 +12,123 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-29 -- Members: one member per Subscription Manager client (0252, clean-up tools)
+
+**Why.** The owner: Serene's member list must match the Subscription Manager, which is the truth
+for who is a client. A read-only comparison of the live list (622 members) with the Subscription
+Manager's Clients export (573 clients) on 2026-09-29 found:
+- 57 members with no Subscription Manager client:
+  - 22 team members and test accounts (the two Indulge founders among them);
+  - 14 member-app users who are not clients;
+  - 9 duplicates of a client already in Serene;
+  - 12 second persons listed on someone else's membership.
+- 6 new clients not yet in Serene.
+- 2 pairs of Subscription Manager clients that share one phone and so sat on one member.
+
+The owner decided each group:
+- remove 34;
+- merge 21 into the client they belong to;
+- add 8;
+- keep the two founders.
+
+The founders are not clients, but they have a personal concierge, their own WhatsApp groups and
+Freshdesk history, and vault documents. They stay as Celebrity members of Sanika's queendom:
+- nothing paid;
+- the membership dates already on record kept;
+- everything they hold untouched.
+
+So the list becomes 575: 573 clients plus the two founders. The decisions are kept outside the
+repo because they sit next to names. The members came from three import batches (4 Sep 598,
+14 Sep 16, 28 Sep 8), not one.
+
+**What.**
+- **Migration 0252.**
+  - `member.merge_members(keep, drop, vault)` folds one member into another in one transaction:
+    - moves the drop's vault items, which the caller re-seals for the keeper (they are sealed to the
+      member id), and refuses if any is left behind;
+    - stamps every moved fact, anticipation and health event with `evidence.merged_from` (whose it
+      was), so a second person's birthday stays recognisably theirs;
+    - folds the drop's relations the keeper already holds into the keeper's row instead of
+      dropping them, and re-points relations that name the drop as a person;
+    - re-points every row in every table with a foreign key to `member.members`, reading the list
+      from the catalog, so the Jokers tables are covered when they land;
+    - keeps the keeper's own WhatsApp group when it still is;
+    - moves the drop's numbers into the keeper's `alt_phones` ("Other numbers"; the main phone never
+      changes) and its identifiers where the keeper has none;
+    - records the drop's whole row in `import_raw.merged_from`, then deletes it.
+
+    Append-only logs keep the old id. Service role only; nothing in the app calls it.
+  - `member.member_fk_children()` lists the tables that point at a member with their delete rule,
+    so the script can prove its backup covers each one before it writes.
+- **`scripts/members/match-subscription-manager.ts`.** The clean-up: merge, remove, keep, add,
+  verify.
+  - A kept member (the decisions' `keep` list) keeps everything it holds. Only its membership is
+    set as decided:
+    - the queendom, by name;
+    - the membership type, with the tier following it as for every imported member;
+    - the status, amount and dates.
+
+    The values pass the app's own `UpdateMemberSchema`.
+  - New members pass the app's own `CreateMemberSchema` and now carry their tier (they had none).
+  - Dry run by default. The dry run already proves the whole result:
+    - a full simulation must give exactly one member per client of a fresh (24 h) export, plus
+      the kept members, who must match no client;
+    - every table the database says points at a member must be in the backup;
+    - no removal may be blocked by a Sia ticket or carry Jokers items;
+    - the vault key must open every item it will re-seal;
+    - dates, amounts and phones of new members must parse.
+  - `--apply` first writes a full backup (the affected members, every row pointing at them, every
+    log row about them, every member before the run) to a folder outside the repo (a folder inside
+    it is refused).
+  - Each step is logged the moment it completes, and the run stops at the first failure, saying
+    plainly that changes were made. Re-running finishes the job. A step counts as done only with
+    proof: an earlier run's log, or the kept member's own merge record.
+  - A member holding vault items is not removed without `--allow-vault-delete`.
+  - When two clients share a phone, the member keeps the client whose name matches best and the
+    other gets its own member.
+  - It verifies afterwards:
+    - the count equals the clients plus the kept members;
+    - every client has one member, and every member one client (the kept members none);
+    - the kept members hold what was decided;
+    - every member not touched is unchanged, column by column.
+- **`scripts/members/restore-members.ts`.** The undo, from that backup and its run log, so it only
+  undoes what the run did:
+  - a removed record comes back with what the delete took (facts, snapshot, vault items with their
+    original seal, intake cards), and what was only unlinked is linked again where it is still
+    unlinked;
+  - a merged record: the kept member gives back exactly what the merge gave it (numbers, identifiers,
+    sources, the merge record; anything added since stays), and every moved row returns where it
+    still sits on the kept member, without its `merged_from` stamp;
+  - records merged into the same member are restored together;
+  - a kept member's membership fields go back to what they were, where they still hold what the run
+    set;
+  - `--additions` deletes the members the run added, refusing any that gained a link since;
+  - re-running is safe.
+- **`scripts/members/sm-match-lib.ts`.** The shared matcher, env handling, linked-table list and run
+  log.
+- **`scripts/import-members-and-map-groups.py`.** Retired for member writes: `--apply` without
+  `--skip-import` now refuses, because a re-run would bring back the removed records. The
+  WhatsApp-group mapping phase still works.
+
+**Nothing in production is changed by this PR.** After review:
+1. The migration is applied.
+2. The owner exports a fresh Clients CSV.
+3. A dry run on production is reviewed.
+4. `--apply` runs on the owner's go-ahead.
+
+Rehearsed on a local copy of production:
+- 622 → 575, verified. The founders are in Sanika's queendom as Celebrity members and keep their 5
+  vault documents, their 1,591 Freshdesk tickets and their WhatsApp groups.
+- An undo test covered a kept member, two records merged into the same member, and a merge with a
+  vault item. It put 6 members and 1,321 linked rows back exactly as they were.
+- A second undo run changed nothing more.
+- Re-running the clean-up redid only what was undone: 575 again.
+
+An earlier rehearsal of the removal path (a removal with vault items, when the founders were still
+to be removed) also came back exactly.
+
+---
+
 ## 2026-09-28 — Finance module, step 1: the reimbursement invoice (plan only)
 
 **Why.** When a genie pays for a member's request, a finance person has to notice the

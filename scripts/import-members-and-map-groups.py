@@ -407,6 +407,15 @@ def main() -> int:
                     help="review CSV to apply (default: mapping-review.csv; a by-name batch carries member_id + member_jid)")
     ap.add_argument("--skip-import", action="store_true", help="skip the member upsert phase (mapping only)")
     args = ap.parse_args()
+    # Retired for member writes (2026-09-29): the member list now matches the Subscription Manager
+    # one to one (scripts/members/match-subscription-manager.ts). Re-running this import would bring
+    # back the team, test and app-only records that were removed, and re-split merged clients.
+    # The WhatsApp-group mapping phase still works with --skip-import.
+    if args.apply and not args.skip_import:
+        print("✗ The member import is retired (2026-09-29): it would re-add records that were removed on purpose.\n"
+              "  Members now follow the Subscription Manager: scripts/members/match-subscription-manager.ts.\n"
+              "  To apply only the WhatsApp-group mapping, run with --skip-import. Nothing was written.")
+        return 2
     if not BASE or not KEY:
         print("✗ NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing — source .env.local")
         return 1
