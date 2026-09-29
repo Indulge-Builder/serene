@@ -17,9 +17,11 @@ move the ticket to Resolved. Serene already holds the ticket, the note, the atta
 the member's Zoho id within a minute of the note being written. So the plan is: the note is
 the button. Serene reads it, shows the finance person a ready invoice on `/finance`, and on
 one click creates the invoice in Zoho, applies the member's credit, writes the invoice number
-and a note back to the ticket, sets billable to Yes, moves the status, and tells the genie.
-Finance stops watching Freshdesk. Concierge stops being asked to close tickets they are done
-with.
+and a note back to the ticket, sets billable to Yes, tags the ticket `invoiced`, and tells the
+genie. Serene does NOT move the status: only a genie may resolve a ticket, after checking the
+request is truly done. Finance stops watching Freshdesk, and never sees an invoiced ticket
+again, because their queue is Serene's own list and a row leaves it the moment its invoice
+exists, whatever the Freshdesk status says.
 
 ## 2. What the data says (read 2026-09-28, production mirror and Zoho, read only)
 
@@ -177,11 +179,20 @@ After D succeeds, in this order, each logged:
 
 1. `POST /tickets/{id}/notes` (private): "Invoice INV26/27-0135xx for ₹3,000 created in Zoho
    Books by Vishal. Credit applied ₹3,000, balance ₹0." plus the Zoho link.
-2. `PUT /tickets/{id}`: `status` = the agreed close status, `custom_fields.
-   cf_is_the_request_billable` = "Yes", `custom_fields.cf_invoice_number` = the full
-   invoice number, `cf_invoice_amount` = the total.
-3. Notify the genie (in-app, and WhatsApp under their preference): "Ticket #1234 invoiced
-   and moved to Resolved."
+2. `PUT /tickets/{id}`: `custom_fields.cf_is_the_request_billable` = "Yes",
+   `custom_fields.cf_invoice_number` = the full invoice number, `cf_invoice_amount` = the
+   total, and the tag `invoiced` added to the ticket's tags. **The status is not touched**
+   (founder, 2026-09-29): a genie resolves, after checking the request is truly done. The
+   two mandatory close fields are already filled, so the genie's close is one click.
+3. Notify the genie (in-app, and WhatsApp under their preference): "Ticket #1234 is
+   invoiced. Check it is done and resolve it."
+4. The nudge ladder: a ticket still in Invoice Due 24 hours after its invoice reminds the
+   genie once more; at 48 hours the bishop and the queen of that queendom are told. Nobody
+   in finance is involved again.
+
+Why a tag as well as our own queue: anyone still filtering in Freshdesk can use "Invoice
+Due and not tagged invoiced" and see only real work. The tag is for Freshdesk eyes; Serene's
+queue never needed it.
 
 A Freshdesk failure after a Zoho success is shown on the card as "invoice made, ticket not
 updated" with a Retry; it never creates a second invoice. Writes take a slice of the
@@ -212,10 +223,14 @@ The finance domain's home. Route map gains `/finance` for finance, admin and fou
 - **Zoho:** the organisation token we hold; the person's name goes in `salesperson_name` and
   in our own `invoiced_by`. This matches today's practice and is the only option: finance has
   no Zoho logins of their own.
-- **Freshdesk:** two ways, the founder to pick (decision 3). Either the company API key with
-  the person's name in the note body, or each finance person pastes their own Freshdesk API
-  key once on `/profile` (stored with `vault-crypto`, never shown again) so the note and the
-  status change appear as them in Freshdesk. The second is truer; the first ships in a day.
+- **Freshdesk:** each finance person's own API key. Read 2026-09-29: the key Serene holds
+  for the mirror belongs to a real person (Advita Bihani), so a write with it would show in
+  Freshdesk as written by her. No new seat is needed: Murtaza, Riya, Vasant and Vishal are
+  already Freshdesk agents, and every agent has a personal API key on their Freshdesk profile
+  page. Each pastes it once on `/profile` in Serene (stored with `vault-crypto`, never shown
+  again, removable). From then on the note and the field changes appear in Freshdesk under
+  their own name. A finance person with no key saved cannot create an invoice from Serene;
+  the card says so and links the profile page. The mirror keeps reading with the company key.
 - Gates: `requireProfile(['agent','manager','admin','founder'])` plus `domain === 'finance'`
   (or admin / founder) on every write action; reads the same. No queendom scoping: finance
   sees every queendom, as it does in Freshdesk today.
@@ -256,8 +271,8 @@ Move a queendom up only after a clean month at the level below.
 2. **Zoho writes.** Create + credit application behind the button. Decision Log entry: the
    first sanctioned Zoho writes, only through `finance-mutations.ts`. Test on one real
    ticket with finance watching. Two days.
-3. **Freshdesk writes.** Note + status + billable + invoice number, then the genie's
-   notification. Decision Log entry: the first sanctioned Freshdesk ticket writes, only
+3. **Freshdesk writes.** Note + billable + invoice number + the `invoiced` tag (never the
+   status), the key field on `/profile`, then the genie's notification and the nudge ladder. Decision Log entry: the first sanctioned Freshdesk ticket writes, only
    through the same core. One day.
 4. **Corrections and the reader's second pass.** The edits finance made in step 1 to 3 shape
    the model fallback prompt. Notifications digest. Two days.
@@ -295,14 +310,17 @@ Decided by the founder, 2026-09-28:
 
 Open, the founder to answer:
 
-1. **Close status.** After invoicing, Resolved directly, or Pending / a new "Invoiced" so a
-   genie takes a last look? The data says genies are the delay, so Resolved is the
-   recommendation.
-2. **Auto cap for L1**, in rupees per invoice, and the first queendom to try it.
-3. **Freshdesk identity.** Company key with the name in the note (a day), or each finance
-   person's own key pasted once on `/profile` (appears as them in Freshdesk).
-4. **Foreign currency.** Who converts, and at which rate: the finance person types the INR
+Decided by the founder, 2026-09-29:
+
+- **Status.** Serene never moves it. The genie resolves. Serene tags `invoiced`, fills the
+  billable and invoice-number fields, and nudges the genie, then the bishop and queen.
+- **Freshdesk identity.** Each finance person's own key (section 6G).
+- **Cost price.** Left alone for now. The template carries one cost price and one selling
+  price and the team writes the same amount in both; the invoice takes the selling price.
+- **Backlog.** Every ticket in Invoice Due is queued on the first run.
+
+Open, none of them blocks step 1:
+
+1. **Auto cap for L1**, in rupees per invoice. Only matters when auto mode is switched on.
+2. **Foreign currency.** Who converts, and at which rate: the finance person types the INR
    amount on the card, or we convert at the day's rate and they confirm.
-5. **Cost price.** Keep it only for a margin report, or show margin on the card now.
-6. **The 133 waiting tickets.** Let the first run queue all of them, or only those from the
-   last 30 days and let the rest be handled as today.
