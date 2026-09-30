@@ -15,15 +15,23 @@
 import { FINANCE_TEMPLATE_LABELS, type FinanceTemplateKey } from "@/lib/constants/finance";
 import type { FinanceInvoiceItem, ParsedTemplateNote } from "@/lib/types/finance";
 
+/**
+ * A label's separator: a hyphen, a colon or a dash. Written as an alternation, never as a
+ * bracketed character class: Tailwind scans every source file for class names and reads a
+ * bracketed hyphen-colon-dash as an arbitrary CSS property, which breaks the stylesheet build
+ * (2026-09-30).
+ */
+const SEP = "(?:-|:|–)";
+
 /** The scaffold's own words. Left in a field, they are removed; a field holding only them was never filled. */
 const SCAFFOLD_HINTS: RegExp[] = [
-  /date\s*[-:–]?\s*subject\s*[-:–]?\s*location\s*[-:–]?\s*pax/gi,
+  new RegExp(`date\\s*${SEP}?\\s*subject\\s*${SEP}?\\s*location\\s*${SEP}?\\s*pax`, "gi"),
   /razorpay\s*\/\s*card\s*\/\s*upi\s*\/\s*etc\.?/gi,
   /please mention if the bill has to be issued in any other name\.?/gi,
   /for online payments made,?\s*invoice from vendor is mandatory\.?/gi,
 ];
 /** A genie who treats the hint as labels writes "Date-26 Subject- Paid for the pen Location-Goa". */
-const HINT_LABELS = /\b(date|subject|location)\s*[-:–]\s*/gi;
+const HINT_LABELS = new RegExp(`\\b(date|subject|location)\\s*${SEP}\\s*`, "gi");
 
 const FOREIGN = /\b(aed|usd|eur|euro|euros|gbp|sgd|thb|idr|chf|jpy|aud|cad|qar|sar|omr|bhd|kwd|dhs|dirham|dirhams|dollar|dollars|pound|pounds)\b|[$€£]/i;
 const RUPEE_WORDS = /\b(inr|rs\.?|rupees?)\b|₹/gi;
@@ -40,7 +48,7 @@ function findLabels(text: string): Hit[] {
   const hits: Hit[] = [];
   for (const { key, label } of FINANCE_TEMPLATE_LABELS) {
     // "Note" is a plain word, so it counts as a label only with its separator.
-    const re = new RegExp(`(^|[\\s,;|])(${labelPattern(label)})\\s*${key === "note" ? "[-:–]" : "[-:–]?"}`, "i");
+    const re = new RegExp(`(^|[\\s,;|])(${labelPattern(label)})\\s*${key === "note" ? SEP : `${SEP}?`}`, "i");
     const m = re.exec(text);
     if (m) hits.push({ key, start: m.index + m[1].length, end: m.index + m[0].length });
   }

@@ -12,6 +12,21 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-30 — Fix: the finance note reader broke the stylesheet build
+
+**Why.** Tailwind scans every source file for class names. Three patterns in the note reader
+wrote a label's separator as a bracketed hyphen, colon and dash, which Tailwind read as an
+arbitrary CSS property and turned into a rule with no valid property name. The dev server then
+refused to parse `globals.css` ("Parsing CSS source code failed").
+
+**What.** `src/lib/utils/finance-note.ts` builds the separator as an alternation (`SEP`), so the
+bracketed form never appears in the source. The reader gives identical results on the same 600
+real notes, and Tailwind's own scanner now finds no bracketed class in the file (it found
+exactly one before). A scan of all of `src` finds no other bracketed class with an invalid
+property name.
+
+---
+
 ## 2026-09-29 — Finance, step 1: the reimbursement invoice is made from Serene (migration 0250)
 
 **Why.** A genie pays for a member's request, writes the team's template note on the Freshdesk
