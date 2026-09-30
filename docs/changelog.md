@@ -76,8 +76,8 @@ confirmed.
 **Verified.** Typecheck, lint and the token check are clean. The reader was benched on 600 real
 notes and the draft builder on the 40 newest Invoice Due tickets against production, read only:
 31 ready to invoice as read, 4 need an amount typed, 5 need a member or a Zoho customer linked.
-The request fields were checked against Zoho's own API description. **NOT yet done:** the
-migration is not applied, no invoice has been made (the first one must be made with a finance
+The request fields were checked against Zoho's own API description. Migration 0250 was applied
+to production on 2026-09-30. **NOT yet done:** no invoice has been made (the first one must be made with a finance
 person watching), the hourly task is not deployed, and no finance person has saved a key.
 
 Files: `supabase/migrations/20260929000250_finance_invoices.sql`, `src/lib/constants/finance.ts`,

@@ -1,6 +1,6 @@
 # Finance module, step 1: the invoice for a reimbursed request
 
-> Status: **step 1 built 2026-09-29** (migration 0250, not yet applied; no invoice made yet).
+> Status: **step 1 built 2026-09-29** (migration 0250, applied 2026-09-30; no invoice made yet).
 > Two things changed from the plan below while building, both the founder's call: finance works
 > in the `/freshdesk` page Serene already has, pinned to their queue, instead of a new `/finance`
 > page; and the tag is `Invoice Done`. There is no `finance` schema: the three tables live in
