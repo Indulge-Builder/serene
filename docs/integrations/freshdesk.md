@@ -15,9 +15,15 @@ takes, which member raised what, which agent handles what, and which vendor did 
 needs the data in our database, joinable to `member.members` and to the WhatsApp archive, with a
 change history Freshdesk does not expose on its own.
 
-**Serene never writes ticket data to Freshdesk.** Every read path is one-way. The only write
-Serene has ever made is configuration: `scripts/freshdesk/register-webhooks.ts` created the two
-"Serene mirror" automation rules that push ticket events to us.
+**The mirror never writes to Freshdesk.** Every read path is one-way. Configuration aside
+(`scripts/freshdesk/register-webhooks.ts` created the two "Serene mirror" automation rules that
+push ticket events to us), Serene writes to a Freshdesk ticket in exactly ONE place, since
+2026-09-29 (migration 0250, Decision Log): `finance-mutations.ts`, after a finance person
+confirmed a reimbursement invoice on a ticket in Invoice Due. That write is a private note with
+the invoice PDF, the fields Billable, Invoice Number and Invoice Amount, and the tag
+`Invoice Done`. It is made with that person's OWN Freshdesk API key (`staff-freshdesk-keys.ts`),
+never the company key, so Freshdesk shows their name. **It never changes a ticket's status**:
+only a genie resolves. See `docs/architecture/finance-plan.md`.
 
 ## The account
 

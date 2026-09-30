@@ -455,6 +455,11 @@ body {
   .serene-dossier-grid--340 {
     grid-template-columns: minmax(0, 1fr) 340px;
   }
+  /* --wide-aside: the aside is a working surface, not a summary (the invoice on a Freshdesk
+     ticket, 0250): the thread stays readable on the left while the invoice is checked. */
+  .serene-dossier-grid--wide-aside {
+    grid-template-columns: minmax(0, 1fr) minmax(400px, 480px);
+  }
   /* --aside-left: the sidebar column on the LEFT (the ticket page's help window, decided
      2026-09-15: "a help window on the left"). Same widths, mirrored; combine with --340. */
   .serene-dossier-grid--aside-left {

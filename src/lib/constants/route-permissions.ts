@@ -116,7 +116,9 @@ export const DOMAIN_ROUTE_MAP: Record<AppDomain, string[]> = {
   // /settings left the concierge map 2026-09-25: it holds the Gia lead-routing roster and the Teach
   // Elaya doors (admin/founder), nothing a queen or genie uses; a seated manager saw a hub of dead doors.
   concierge: ['/tasks', '/members', '/tickets', '/sia', '/freshdesk', '/vendors', '/hands'],
-  finance:   ['/tasks', '/subscriptions', '/settings'],
+  // /freshdesk for finance (2026-09-29, 0250): their pinned view, Invoice Due tickets not yet
+  // invoiced, and nothing else (sia-access.ts getFreshdeskViewerScope decides, not this map).
+  finance:   ['/tasks', '/subscriptions', '/settings', '/freshdesk'],
   marketing: ['/tasks', '/campaigns', '/settings'],
   tech:      ['/tasks', '/subscriptions', '/settings'],
   business:  ['/tasks', '/leads', '/deals', '/campaigns', '/settings'],

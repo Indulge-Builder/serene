@@ -4,6 +4,7 @@
 // (the DealsFilters shape): search, Status (multi), Queendom (group), Agent, Category,
 // Priority, and the created-date range with presets. Immediate-commit, URL-driven.
 // showGroup=false for a queendom-pinned viewer: the server pins the group, so no Queendom filter.
+// showStatus=false for a finance viewer (0250): the server pins the status to Invoice Due.
 
 import { FilterBar } from '@/components/ui/FilterBar';
 import { FilterDropdown } from '@/components/ui/FilterDropdown';
@@ -11,7 +12,7 @@ import { useUrlFilters, useMultiSelectUrlParam } from '@/hooks/useUrlFilters';
 import { FD_PRIORITY_LABELS } from '@/lib/constants/freshdesk';
 import type { FdFilterVocab } from '@/lib/services/freshdesk-service';
 
-export function FreshdeskFilters({ vocab, showGroup = true }: { vocab: FdFilterVocab; showGroup?: boolean }) {
+export function FreshdeskFilters({ vocab, showGroup = true, showStatus = true }: { vocab: FdFilterVocab; showGroup?: boolean; showStatus?: boolean }) {
   const url = useUrlFilters({ resetKeys: ['page'] });
   const { params, push } = url;
   const [statuses, setStatuses] = useMultiSelectUrlParam<string>(url, 'status');
@@ -27,7 +28,7 @@ export function FreshdeskFilters({ vocab, showGroup = true }: { vocab: FdFilterV
   const activeCount =
     (member ? 1 : 0) +
     (params.get('search') ? 1 : 0) +
-    (statuses.length ? 1 : 0) +
+    (showStatus && statuses.length ? 1 : 0) +
     (group ? 1 : 0) +
     (agent ? 1 : 0) +
     (category ? 1 : 0) +
@@ -54,14 +55,16 @@ export function FreshdeskFilters({ vocab, showGroup = true }: { vocab: FdFilterV
         onPresetSelect: (from, to) => push({ date_from: from, date_to: to }),
       }}
     >
-      <FilterDropdown
-        label="Status"
-        items={vocab.statuses.map((s) => ({ id: String(s.id), label: s.label }))}
-        selected={statuses}
-        onChange={setStatuses}
-        multi
-        menuPortal
-      />
+      {showStatus && (
+        <FilterDropdown
+          label="Status"
+          items={vocab.statuses.map((s) => ({ id: String(s.id), label: s.label }))}
+          selected={statuses}
+          onChange={setStatuses}
+          multi
+          menuPortal
+        />
+      )}
       {showGroup && (
         <FilterDropdown
           label="Queendom"

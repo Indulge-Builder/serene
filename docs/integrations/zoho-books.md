@@ -6,7 +6,9 @@
 > **Last verified:** 2026-09-26 against the files above, `src/app/(dashboard)/members/[id]/finance/page.tsx`, `src/lib/elaya/elaya-data.ts` (the books and member-finance reads), `src/lib/services/elaya-briefing.ts`, `src/lib/constants/route-permissions.ts`, `src/components/layout/Sidebar.tsx`, `.env.example`.
 
 Zoho Books is the company's ledger: invoices, payments, bills, bank accounts, the profit and
-loss. Serene reads it live and **never writes to it**. Nothing from Zoho is copied into
+loss. Serene reads it live. It writes ONE thing, since 2026-09-29 (migration 0250, Decision Log): the
+reimbursement invoice a finance person confirmed on a Freshdesk ticket (create, mark sent, apply
+the member's credit), in `finance-mutations.ts` and nowhere else. Nothing from Zoho is copied into
 Postgres; balances live in Redis for a few minutes at most, and Zoho stays the truth.
 
 Four things read it:

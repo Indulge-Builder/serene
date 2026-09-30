@@ -106,3 +106,14 @@ export function hasVendorAccess(profile: RouteProfile): boolean {
 export function hasVendorActionAccess(profile: RouteProfile): boolean {
   return profile.role === 'admin' || profile.role === 'founder' || profile.domain === 'concierge';
 }
+
+/**
+ * THE finance module's audience (0250): admin, founder, and everyone in the finance domain.
+ * Pure and client-safe. The /freshdesk pages ask it to give a finance person their pinned view
+ * (Invoice Due, not yet invoiced), and every finance action asks it before a write. Deliberately
+ * NOT hasElevatedPageAccess: the tech workbench may look, but only finance, admin and founder
+ * may make an invoice.
+ */
+export function hasFinanceAccess(profile: RouteProfile): boolean {
+  return profile.role === 'admin' || profile.role === 'founder' || profile.domain === 'finance';
+}

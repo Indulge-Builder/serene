@@ -90,12 +90,27 @@ export async function canViewMember(scope: SiaViewerScope, memberId: string): Pr
 }
 
 /**
+ * What of FRESHDESK a person may see. The Sia scope, plus one more kind (0250): a finance
+ * teammate sees every queendom's tickets but ONLY the ones waiting for an invoice (status
+ * Invoice Due, not yet tagged Invoice Done), so their list is their work and nothing else.
+ * Only the /freshdesk pages ask this; Sia keeps asking getSiaViewerScope, where finance is null.
+ */
+export type FreshdeskViewerScope = SiaViewerScope | { kind: "finance" };
+
+export async function getFreshdeskViewerScope(profile: ScopeProfile): Promise<FreshdeskViewerScope | null> {
+  const sia = await getSiaViewerScope(profile);
+  if (sia) return sia;
+  return profile.domain === "finance" && profile.role !== "guest" ? { kind: "finance" } : null;
+}
+
+/**
  * The Freshdesk groups a viewer is pinned to: not pinned = every group. A seated teammate has
  * their queendom's one group; the Joker head has every queendom's group. An empty list has
  * nothing to see there; the caller sends them home.
  */
-export function pinnedFreshdeskGroup(scope: SiaViewerScope): { pinned: false } | { pinned: true; groupIds: number[] } {
-  return scope.kind === "all" ? { pinned: false } : { pinned: true, groupIds: scope.freshdeskGroupIds };
+export function pinnedFreshdeskGroup(scope: FreshdeskViewerScope): { pinned: false } | { pinned: true; groupIds: number[] } {
+  // Finance is pinned by STATUS, not by group: every queendom's tickets, only the ones to invoice.
+  return scope.kind === "queendom" ? { pinned: true, groupIds: scope.freshdeskGroupIds } : { pinned: false };
 }
 
 /** A pinned viewer's group filter: the asked group when it is one of theirs, otherwise every one

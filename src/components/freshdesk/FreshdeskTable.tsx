@@ -28,7 +28,12 @@ const CELL: React.CSSProperties = {
   verticalAlign: 'middle',
 };
 
-export function FreshdeskTable({ tickets, hasFilters }: { tickets: FdTicketListItem[]; hasFilters: boolean }) {
+/** `allClear`: the list is a work queue (finance's invoices due, 0250), so empty means done. */
+export function FreshdeskTable({ tickets, hasFilters, allClear = false }: { tickets: FdTicketListItem[]; hasFilters: boolean; allClear?: boolean }) {
+  if (tickets.length === 0 && allClear && !hasFilters) {
+    // An all-clear takes the Serene mark, never an icon.
+    return <EmptyState framed variant="hero" title="No invoices are waiting." description="Every ticket in Invoice Due has its invoice. New ones appear here the moment a genie hands one over." />;
+  }
   if (tickets.length === 0) {
     return (
       <EmptyState

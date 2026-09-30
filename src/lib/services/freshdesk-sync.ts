@@ -824,6 +824,32 @@ export async function processWebhookEvent(eventId: number, ticketId: number, eve
   await finishRun(stats, budget, ok);
 }
 
+/**
+ * Re-read ONE ticket now, the same way a webhook push does (ticket, then its thread). Called
+ * after Serene wrote to that ticket (the finance invoice, 0250), so the mirror shows the note,
+ * the fields and the tag at once instead of at the next poll. Never throws: the minute poll
+ * carries whatever this misses.
+ */
+export async function resyncTicket(ticketId: number): Promise<boolean> {
+  const budget = createFdBudget(6);
+  const stats = await startRun("manual");
+  let ok = true;
+  try {
+    const ticket = await getTicket(ticketId, budget);
+    if (ticket) {
+      await upsertTickets([ticket], "manual", stats);
+      await syncThreadsWhileBudget([ticketId], budget, stats);
+    }
+    stats.detail.resync = ticketId;
+  } catch (e) {
+    ok = false;
+    stats.error = e instanceof Error ? e.message : String(e);
+    console.warn("[freshdesk-sync] resync failed", ticketId, stats.error);
+  }
+  await finishRun(stats, budget, ok);
+  return ok;
+}
+
 // ─── The cycle (what the minute task runs) ───────────────────────────────────
 
 export type FdCycleSummary = {

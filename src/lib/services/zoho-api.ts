@@ -1,4 +1,5 @@
-// zoho-api.ts — THE Zoho Books REST v3 client (server-only, READ ONLY). The only file that
+// zoho-api.ts — THE Zoho Books REST v3 client (server-only). READ ONLY except the four invoice
+// writes at the end of the file (finance, 0250), which only finance-mutations.ts calls. The only file that
 // talks to Zoho. OAuth 2 refresh-token flow: the hour-long access token is kept in Redis
 // (and a module memo) so a page open does not refresh it; a 401 refreshes once and retries.
 // Every call runs against a ZbBudget: at most ZOHO_RUN_MAX_CALLS per read, and never below
@@ -259,4 +260,88 @@ export function reportTotal(nodes: ZbReportNode[], label: string): number | null
     return null;
   };
   return walk(nodes);
+}
+
+// ─── Writes (finance, 0250) ──────────────────────────────────────────────────
+// The ONLY writes Serene makes to Zoho Books: create one reimbursement invoice, mark it sent,
+// apply the member's credit to it, and read its PDF. finance-mutations.ts is the only caller,
+// and only after a finance person confirmed the invoice on the ticket.
+//
+// A create is NEVER retried blind: a request that may have landed (a dropped connection, a 5xx)
+// throws, and the caller looks the invoice up by its reference number before trying again.
+
+async function zbSend<T extends { code?: number; message?: string }>(method: "POST" | "PUT", path: string, body: unknown | null, budget: ZbBudget): Promise<T> {
+  if (!isZohoConfigured()) throw new ZbRequestError(0, path, "Zoho Books is not configured (ZOHO_CLIENT_ID / SECRET / REFRESH_TOKEN / ORGANIZATION_ID)");
+  let token = await getToken();
+  for (let attempt = 0; attempt < 2; attempt++) {
+    assertRoom(budget);
+    const url = `${token.api_domain}${ZOHO_BOOKS_API_PREFIX}${path}?organization_id=${encodeURIComponent(zohoOrgId())}`;
+    budget.calls += 1;
+    const res = await fetch(url, {
+      method,
+      headers: { Authorization: `Zoho-oauthtoken ${token.access_token}`, Accept: "application/json", ...(body == null ? {} : { "Content-Type": "application/json" }) },
+      body: body == null ? undefined : JSON.stringify(body),
+      cache: "no-store",
+    });
+    const remaining = Number(res.headers.get("x-rate-limit-remaining"));
+    if (Number.isFinite(remaining)) budget.dailyRemaining = Math.floor(remaining);
+    // 401 and 429 mean Zoho did not take the request: safe to send once more.
+    if (res.status === 401 && attempt === 0) { token = await getToken(true); continue; }
+    if (res.status === 429 && attempt === 0) { await sleep(1500); continue; }
+    const json = (await res.json().catch(() => null)) as T | null;
+    if (!res.ok || !json || (typeof json.code === "number" && json.code !== 0)) {
+      throw new ZbRequestError(res.status, path, `Zoho ${path} failed: ${json?.message ?? res.statusText}`, json?.code);
+    }
+    return json;
+  }
+  throw new ZbRequestError(429, path, "Zoho rate limited");
+}
+
+export type ZbInvoiceLineInput = { item_id: string; account_id: string; description: string; rate: number; quantity: number };
+export type ZbCreateInvoiceInput = {
+  customer_id: string;
+  date: string;                 // YYYY-MM-DD
+  reference_number: string;     // our own key for the ticket: how a second create is prevented
+  salesperson_name: string;
+  line_items: ZbInvoiceLineInput[];
+};
+
+export async function createInvoice(input: ZbCreateInvoiceInput, budget: ZbBudget): Promise<ZbInvoiceDetail> {
+  return (await zbSend<{ code: number; invoice: ZbInvoiceDetail }>("POST", "/invoices", input, budget)).invoice;
+}
+
+/** The invoice already carrying this reference number for this customer, newest first; null when none. */
+export async function findInvoiceByReference(customerId: string, reference: string, budget: ZbBudget): Promise<ZbInvoice | null> {
+  const json = await zbGet<{ code: number; invoices?: ZbInvoice[] }>("/invoices", { customer_id: customerId, reference_number: reference, sort_column: "created_time", sort_order: "D" }, budget);
+  return (json.invoices ?? []).find((i) => i.status !== "void") ?? null;
+}
+
+/** Draft → sent, without emailing anyone. Credit can only be applied to an invoice that is not a draft. */
+export async function markInvoiceSent(invoiceId: string, budget: ZbBudget): Promise<void> {
+  await zbSend<{ code: number }>("POST", `/invoices/${invoiceId}/status/sent`, null, budget);
+}
+
+export type ZbCreditApplication = {
+  invoice_payments: { payment_id: string; amount_applied: number }[];
+  apply_creditnotes: { creditnote_id: string; amount_applied: number }[];
+};
+
+export async function applyCreditsToInvoice(invoiceId: string, credits: ZbCreditApplication, budget: ZbBudget): Promise<void> {
+  await zbSend<{ code: number }>("POST", `/invoices/${invoiceId}/credits`, credits, budget);
+}
+
+/** The invoice as the PDF Zoho prints (the organisation's own template). */
+export async function getInvoicePdf(invoiceId: string, budget: ZbBudget): Promise<Uint8Array> {
+  if (!isZohoConfigured()) throw new ZbRequestError(0, "/invoices/pdf", "Zoho Books is not configured");
+  let token = await getToken();
+  for (let attempt = 0; attempt < 2; attempt++) {
+    assertRoom(budget);
+    const url = `${token.api_domain}${ZOHO_BOOKS_API_PREFIX}/invoices/${invoiceId}?organization_id=${encodeURIComponent(zohoOrgId())}&accept=pdf`;
+    budget.calls += 1;
+    const res = await fetch(url, { headers: { Authorization: `Zoho-oauthtoken ${token.access_token}`, Accept: "application/pdf" }, cache: "no-store" });
+    if (res.status === 401 && attempt === 0) { token = await getToken(true); continue; }
+    if (!res.ok) throw new ZbRequestError(res.status, "/invoices/pdf", `Zoho invoice PDF failed: ${res.statusText}`);
+    return new Uint8Array(await res.arrayBuffer());
+  }
+  throw new ZbRequestError(401, "/invoices/pdf", "Zoho invoice PDF failed");
 }

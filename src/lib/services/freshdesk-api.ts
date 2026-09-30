@@ -93,7 +93,9 @@ function sleep(ms: number): Promise<void> {
 async function fdFetch<T>(
   path: string,
   budget: FdBudget,
-  init: { method?: "GET" | "POST"; body?: unknown } = {},
+  // `key`: a person's own API key (the finance writes, 0250) in place of the company key, so
+  // Freshdesk records the change under their name. `form`: a multipart body (a note with a file).
+  init: { method?: "GET" | "POST" | "PUT"; body?: unknown; key?: string; form?: FormData } = {},
 ): Promise<FdResponse<T>> {
   if (!isFreshdeskConfigured()) {
     throw new FdRequestError(0, path, "Freshdesk is not configured (FRESHDESK_DOMAIN / FRESHDESK_API_KEY)");
@@ -101,18 +103,17 @@ async function fdFetch<T>(
   if (!budgetHasRoom(budget)) throw new FdBudgetExhausted();
 
   const url = `https://${domain()}/api/v2${path}`;
-  const auth = Buffer.from(`${apiKey()}:X`, "utf8").toString("base64");
+  const auth = Buffer.from(`${init.key ?? apiKey()}:X`, "utf8").toString("base64");
 
   for (let attempt = 0; attempt < 2; attempt++) {
     budget.calls += 1;
     const res = await fetch(url, {
       method: init.method ?? "GET",
-      headers: {
-        Authorization: `Basic ${auth}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: init.body == null ? undefined : JSON.stringify(init.body),
+      // A multipart body names its own boundary: fetch sets that Content-Type itself.
+      headers: init.form
+        ? { Authorization: `Basic ${auth}`, Accept: "application/json" }
+        : { Authorization: `Basic ${auth}`, "Content-Type": "application/json", Accept: "application/json" },
+      body: init.form ?? (init.body == null ? undefined : JSON.stringify(init.body)),
       cache: "no-store",
     });
 
@@ -269,4 +270,52 @@ export async function createAutomationRule(
 ): Promise<FdAutomationRule> {
   const res = await fdFetch<FdAutomationRule>(`/automations/${type}/rules`, budget, { method: "POST", body: rule });
   return res.data;
+}
+
+// ─── Writes made as a person (finance, 0250) ─────────────────────────────────
+// The ONLY ticket writes Serene makes. Each one carries the API key of the person who confirmed
+// the invoice (staff-freshdesk-keys.ts), never the company key, so Freshdesk shows their name.
+// finance-mutations.ts is the only caller. The ticket's STATUS is never part of a write.
+
+export type FdAgentMe = { id: number; name: string; email: string | null; active: boolean };
+
+/** Who Freshdesk says a key belongs to; null when the key is not a working agent key. */
+export async function getAgentForKey(key: string, budget: FdBudget): Promise<FdAgentMe | null> {
+  try {
+    const res = await fdFetch<{ id: number; available?: boolean; contact?: { name?: string; email?: string; active?: boolean } } | null>("/agents/me", budget, { key });
+    if (!res.data?.id) return null;
+    return { id: res.data.id, name: res.data.contact?.name ?? "Agent", email: res.data.contact?.email ?? null, active: res.data.contact?.active !== false };
+  } catch (e) {
+    if (e instanceof FdRequestError && (e.status === 401 || e.status === 403)) return null;
+    throw e;
+  }
+}
+
+/** A private note on a ticket, with one optional file (the invoice PDF). Returns the note id. */
+export async function addPrivateNoteAs(
+  key: string,
+  ticketId: number,
+  note: { html: string; file?: { name: string; bytes: Uint8Array; type: string } },
+  budget: FdBudget,
+): Promise<number> {
+  if (note.file) {
+    const form = new FormData();
+    form.set("body", note.html);
+    form.set("private", "true");
+    form.append("attachments[]", new Blob([note.file.bytes as BlobPart], { type: note.file.type }), note.file.name);
+    const res = await fdFetch<{ id: number }>(`/tickets/${ticketId}/notes`, budget, { method: "POST", key, form });
+    return res.data.id;
+  }
+  const res = await fdFetch<{ id: number }>(`/tickets/${ticketId}/notes`, budget, { method: "POST", key, body: { body: note.html, private: true } });
+  return res.data.id;
+}
+
+/** Custom fields and tags on a ticket. Tags REPLACE the list, so the caller sends the whole list. */
+export async function updateTicketFieldsAs(
+  key: string,
+  ticketId: number,
+  patch: { custom_fields?: Record<string, string | number | boolean | null>; tags?: string[] },
+  budget: FdBudget,
+): Promise<void> {
+  await fdFetch<unknown>(`/tickets/${ticketId}`, budget, { method: "PUT", key, body: patch });
 }

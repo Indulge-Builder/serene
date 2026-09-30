@@ -1,7 +1,14 @@
 # Finance module, step 1: the invoice for a reimbursed request
 
-> Status: plan, written 2026-09-28 from the founder's brief and a read of the live data.
-> Nothing is built. The first slice is one pain point: the invoice a member gets when a
+> Status: **step 1 built 2026-09-29** (migration 0250, not yet applied; no invoice made yet).
+> Two things changed from the plan below while building, both the founder's call: finance works
+> in the `/freshdesk` page Serene already has, pinned to their queue, instead of a new `/finance`
+> page; and the tag is `Invoice Done`. There is no `finance` schema: the three tables live in
+> `public` (`finance_invoices`, `finance_invoice_log`, `staff_freshdesk_keys`). The reader is
+> deterministic only; the model fallback, the intake row per ticket, Elaya's tools and auto mode
+> (the trust ladder) are not built. The changelog entry of 2026-09-29 is the record of what is.
+>
+> Plan, written 2026-09-28 from the founder's brief and a read of the live data. The first slice is one pain point: the invoice a member gets when a
 > concierge agent paid for something on their behalf, and the Freshdesk ticket that waits
 > for it. The finance team keeps Zoho Books for everything else. Freshdesk stays the
 > concierge desk. Serene becomes the place this one invoice is born.

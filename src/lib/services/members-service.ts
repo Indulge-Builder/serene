@@ -187,11 +187,13 @@ export async function listMembers(filters: MemberListFilters): Promise<{ members
   return { members, totalCount: Number(count ?? 0) };
 }
 
-/** The picker behind "link this group to a member" (Sia panel) and the search box. */
-export async function searchMembersForPicker(q: string, limit = 8): Promise<MemberPickerHit[]> {
+/** The picker behind "link this group to a member" (Sia panel) and the search box. `db` = the
+ *  admin client for a caller RLS does not cover and whose own gate already ran (finance choosing
+ *  the member an invoice is for, 0250: hasFinanceAccess in the action). */
+export async function searchMembersForPicker(q: string, limit = 8, db?: Db): Promise<MemberPickerHit[]> {
   const token = searchToken(q);
   if (!token) return [];
-  const supabase = await createClient();
+  const supabase = db ?? (await createClient());
   const [{ data }, queendoms] = await Promise.all([
     memberDb(supabase).from("members").select("id, full_name, primary_phone, queendom_id")
       .or(`full_name.ilike.%${token}%,primary_phone.ilike.%${token.replace(/\s+/g, "")}%`)

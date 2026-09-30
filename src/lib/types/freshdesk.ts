@@ -444,6 +444,9 @@ export type FdTicketListFilters = {
   dateTo: string | null;
   /** Scope to one Serene member (the member page's "See tickets"); exact `member_id`. */
   member: string | null;
+  /** Leave out tickets carrying this tag. A scope, not a pick: the finance view sets it (0250:
+   *  "Invoice Done"), never the URL. */
+  excludeTag?: string | null;
   page: number;
 };
 

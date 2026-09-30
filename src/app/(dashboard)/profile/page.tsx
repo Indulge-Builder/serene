@@ -17,6 +17,9 @@ import { ConnectedApps } from "@/components/profile/ConnectedApps";
 import { ElayaMemoryCard } from "@/components/profile/ElayaMemoryCard";
 import { listUserMemoryForPage } from "@/lib/services/elaya-memory-service";
 import { listConnectedApps } from "@/lib/services/oauth-server-service";
+import { FreshdeskKeyCard } from "@/components/profile/FreshdeskKeyCard";
+import { getFreshdeskKeyStatus } from "@/lib/services/staff-freshdesk-keys";
+import { hasFinanceAccess } from "@/lib/utils/route-access";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { Button } from "@/components/ui/Button";
 import { ROLE_LABELS } from "@/lib/constants/roles";
@@ -35,11 +38,14 @@ export default async function ProfilePage() {
   // Seed the per-user notification matrix (migration 0133) — owner-scoped read.
   // + the per-user Elaya persona prefs (Jarvis Phase 2) — owner-scoped read.
   // + the AI apps connected through the MCP connector (owner-scoped, the OAuth server's own list).
-  const [notificationPrefs, elayaPersona, connectedApps, elayaMemory] = await Promise.all([
+  // + the person's own Freshdesk key status (0250): finance, admin and founder only; never the key.
+  const makesInvoices = hasFinanceAccess(profile);
+  const [notificationPrefs, elayaPersona, connectedApps, elayaMemory, freshdeskKey] = await Promise.all([
     getMyNotificationPrefs(),
     getMyElayaPersona(profile.id),
     listConnectedApps(),
     listUserMemoryForPage(profile.id),
+    makesInvoices ? getFreshdeskKeyStatus(profile.id) : Promise.resolve(null),
   ]);
 
   const memberSince = formatDate(profile.created_at, "MMM yyyy");
@@ -157,6 +163,15 @@ export default async function ProfilePage() {
           >
             <ConnectedApps initialApps={connectedApps} />
           </SectionCard>
+
+          {freshdeskKey && (
+            <SectionCard
+              title="Freshdesk key"
+              description="So an invoice you make from Serene shows on the ticket under your own name."
+            >
+              <FreshdeskKeyCard initial={freshdeskKey} />
+            </SectionCard>
+          )}
 
           <PasswordChangeForm />
         </div>

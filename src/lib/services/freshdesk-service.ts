@@ -150,6 +150,7 @@ function applyTicketFilters(q: TicketSelect, filters: FdTicketListFilters, withS
   if (filters.dateFrom) out = out.gte("fd_created_at", filters.dateFrom);
   if (filters.dateTo) out = out.lte("fd_created_at", filters.dateTo);
   if (filters.member) out = out.eq("member_id", filters.member);
+  if (filters.excludeTag) out = out.not("tags", "cs", `{"${filters.excludeTag.replace(/["\\]/g, "")}"}`);
   if (filters.search) {
     const token = searchToken(filters.search);
     if (token) {

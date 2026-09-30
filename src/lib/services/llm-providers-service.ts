@@ -256,3 +256,13 @@ export async function getHandsSettings(): Promise<{
     return { enabled: false, trustByCategory: {}, perJobCapInr: HANDS_PER_JOB_CAP_DEFAULT_INR, dailyCapInr: HANDS_DAILY_CAP_DEFAULT_INR, monthlyCapInr: HANDS_MONTHLY_CAP_DEFAULT_INR };
   }
 }
+
+/**
+ * The finance invoicing switch (row `finance_invoicing_enabled`, 0250). Read per call, never
+ * cached. Anything but `true` — a missing row, a failed read — is OFF: no write reaches Zoho
+ * Books or Freshdesk from the finance module.
+ */
+export async function getFinanceSettings(): Promise<{ enabled: boolean }> {
+  const { FINANCE_SETTING_KEYS } = await import('@/lib/constants/finance');
+  return { enabled: (await getSettingValue(FINANCE_SETTING_KEYS.enabled)) === true };
+}

@@ -12,6 +12,89 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-09-29 — Finance, step 1: the reimbursement invoice is made from Serene (migration 0250)
+
+**Why.** A genie pays for a member's request, writes the team's template note on the Freshdesk
+ticket and moves it to Invoice Due. A finance person then had to notice it, retype the note into
+Zoho Books, apply the member's credit, paste the invoice number back and wait for the genie to
+close the ticket: a median day in Invoice Due, one ticket in ten over four. Worse, their to-do
+list was the Freshdesk filter "Invoice Due", and a ticket stays in it until a genie moves it, so
+they kept opening tickets they had already invoiced.
+
+**What.** The Freshdesk page Serene already has becomes finance's work queue, and the ticket
+page makes the invoice.
+
+- **The queue.** A finance teammate opens `/freshdesk` and sees only tickets in Invoice Due that
+  are not yet tagged `Invoice Done`, from every queendom, and nothing else (`sia-access.ts`
+  `getFreshdeskViewerScope`, a third scope kind; the status is pinned on the server whatever the
+  URL says; the overview strip and the Status filter are hidden; an empty queue reads "No
+  invoices are waiting"). A ticket outside that set reads as not there. Admin and founder keep
+  the whole mirror and get the same panel on a ticket in Invoice Due.
+- **The reader.** `lib/utils/finance-note.ts` reads the template by its labels, with no model.
+  Run over 600 real notes it reads 89% fully; nearly all the rest is a foreign currency, which a
+  person types in rupees. It never guesses: an amount it is unsure of is left empty with a
+  sentence saying why. It bills the selling price, reads "800 + 215 = 1015" as the total, "a + b
+  + c" as three lines and a bracket as a breakdown, and knows that "Date- Subject-Location-Pax"
+  is the hint for a description, not four fields.
+- **The panel.** On the ticket, the right column is the invoice (`TicketInvoicePanel`), wide
+  enough to work in while the thread stays readable on the left. Generate invoice opens the
+  preview: the member (or a member search when the ticket is linked to none), the date, the
+  lines with editable descriptions and amounts, the credit the member holds in Zoho right now,
+  a toggle to apply it, the balance after, the reader's warnings and the notes it read. Confirm
+  and send asks once more, then writes.
+- **The Zoho half** (`createZohoInvoiceCore`). One invoice per ticket on the member's Zoho
+  customer, one line per item, always the item Reimbursement Of Expenses on the account of the
+  same name, no tax, the finance person's name as salesperson (as today). Then marked sent
+  (nobody is emailed) and the member's credit applied, oldest payment first; what the credit
+  does not cover stays as balance. The invoice carries the reference `FD-<ticket id>` and is
+  looked up by it before any create, so a request that landed but never answered is adopted
+  instead of repeated.
+- **The Freshdesk half** (`updateFreshdeskForInvoiceCore`). A private note with the invoice PDF
+  attached, Billable set to Yes, the full invoice number and the amount filled, and the tag
+  `Invoice Done` added. **The status is never changed**: only a genie resolves, after checking
+  the request is truly done. The mirror re-reads the ticket at once (`resyncTicket`), so the
+  ticket leaves finance's queue the same second.
+- **Under the person's own name.** Freshdesk records a change under the agent whose API key
+  made it, and the company key Serene reads with belongs to one person. So each finance person
+  saves their own Freshdesk key once on `/profile` (`FreshdeskKeyCard`): Serene asks Freshdesk
+  who the key is, stores it encrypted (`vault-crypto`, the profile id as authenticated data) and
+  never shows it again. No new Freshdesk seat. Without a saved key the Zoho half is refused, so
+  an invoice can never be made and then left off its ticket.
+- **The hand-back.** The ticket's agent gets a notification at once; a ticket still in Invoice
+  Due a day later reminds them once; after two days the queendom's bishops and queen are told
+  (`finance-nudges.ts`, hourly). Finance is not involved again.
+- **The trail.** `finance_invoices` records each step that landed, so a retry resumes and never
+  repeats; `finance_invoice_log` (append-only) holds every call to Zoho and Freshdesk with who
+  clicked and what came back.
+- **Migration 0250**: `finance_invoices`, `finance_invoice_log`, `staff_freshdesk_keys`, and
+  the switch `finance_invoicing_enabled` (seeded `true`: every invoice is confirmed by a person).
+
+**Two rules changed**, both in the Decision Log: Serene now writes to Zoho Books and to a
+Freshdesk ticket, each in exactly one place (`finance-mutations.ts`), each only after a person
+confirmed.
+
+**Verified.** Typecheck, lint and the token check are clean. The reader was benched on 600 real
+notes and the draft builder on the 40 newest Invoice Due tickets against production, read only:
+31 ready to invoice as read, 4 need an amount typed, 5 need a member or a Zoho customer linked.
+The request fields were checked against Zoho's own API description. **NOT yet done:** the
+migration is not applied, no invoice has been made (the first one must be made with a finance
+person watching), the hourly task is not deployed, and no finance person has saved a key.
+
+Files: `supabase/migrations/20260929000250_finance_invoices.sql`, `src/lib/constants/finance.ts`,
+`src/lib/types/finance.ts`, `src/lib/utils/finance-note.ts`, `src/lib/validations/finance-schema.ts`,
+`src/lib/validations/form-errors.ts`, `src/lib/services/finance-service.ts`,
+`finance-mutations.ts`, `finance-nudges.ts`, `staff-freshdesk-keys.ts`, `zoho-api.ts`,
+`freshdesk-api.ts`, `freshdesk-sync.ts` (`resyncTicket`), `freshdesk-service.ts` (the tag
+exclusion), `members-service.ts` (the picker takes a client), `sia-access.ts`,
+`llm-providers-service.ts` (`getFinanceSettings`), `src/lib/actions/finance.ts`,
+`src/lib/utils/route-access.ts` (`hasFinanceAccess`), `src/lib/constants/route-permissions.ts`,
+`src/components/finance/TicketInvoicePanel.tsx`, `src/components/profile/FreshdeskKeyCard.tsx`,
+`src/components/freshdesk/FreshdeskFilters.tsx`, `FreshdeskTable.tsx`, the two `/freshdesk`
+pages, `/profile`, `src/app/globals.css` (`.serene-dossier-grid--wide-aside`),
+`src/trigger/finance-nudges.ts`, the registries and the two integration contracts.
+
+---
+
 ## 2026-09-28 — Finance module, step 1: the reimbursement invoice (plan only)
 
 **Why.** When a genie pays for a member's request, a finance person has to notice the

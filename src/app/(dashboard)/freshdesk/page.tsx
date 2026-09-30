@@ -2,7 +2,7 @@ import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import type { SearchParams } from 'next/dist/server/request/search-params';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
-import { canViewMember, getSiaViewerScope, pinnedFreshdeskGroup, pinnedGroupFilter } from '@/lib/services/sia-access';
+import { canViewMember, getFreshdeskViewerScope, pinnedFreshdeskGroup, pinnedGroupFilter } from '@/lib/services/sia-access';
 import {
   getFreshdeskMemberScope,
   getFreshdeskFilterVocab,
@@ -21,6 +21,7 @@ import { TOP_BAR_ENABLED } from '@/lib/constants/feature-flags';
 import { PageControls } from '@/components/layout/PageControls';
 import Link from 'next/link';
 import { FRESHDESK_LIST_PAGE_SIZE, FRESHDESK_PATH } from '@/lib/constants/freshdesk';
+import { FINANCE_INVOICE_DUE_STATUS, FINANCE_INVOICED_TAG } from '@/lib/constants/finance';
 import { CLIENTS_PATH } from '@/lib/constants/sia-roles';
 import { dateFromUrlParam } from '@/lib/utils/filter-params';
 import { toISTMidnight, toISTEndOfDay } from '@/lib/utils/ist';
@@ -53,11 +54,11 @@ function parseFilters(sp: Awaited<SearchParams>): FdTicketListFilters {
   };
 }
 
-async function TicketsAsync({ filters }: { filters: FdTicketListFilters }) {
+async function TicketsAsync({ filters, finance }: { filters: FdTicketListFilters; finance: boolean }) {
   const { tickets, totalCount } = await listFreshdeskTickets(filters);
   return (
     <>
-      <FreshdeskTable tickets={tickets} hasFilters={hasFreshdeskFilters(filters)} />
+      <FreshdeskTable tickets={tickets} hasFilters={finance ? hasFreshdeskFilters({ ...filters, status: [] }) : hasFreshdeskFilters(filters)} allClear={finance} />
       {totalCount > FRESHDESK_LIST_PAGE_SIZE && (
         <Pagination page={filters.page} pageSize={FRESHDESK_LIST_PAGE_SIZE} totalCount={totalCount} noun="ticket" />
       )}
@@ -79,15 +80,24 @@ export default async function FreshdeskPage({ searchParams }: { searchParams: Pr
   // Freshdesk group, here on the server, whatever the URL says (2026-09-18, plan decision 6), and
   // the Joker head to every queendom's group (0244), one of them at a time or all together.
   // The tables are service_role only (0193), so this page gate is the trust boundary.
-  const viewer = await getSiaViewerScope(profile);
+  // A finance teammate (0250) is pinned by STATUS instead: every queendom's tickets, but only the
+  // ones waiting for an invoice (Invoice Due, not yet tagged Invoice Done). Their list is their
+  // work and nothing else, whatever the URL asks for.
+  const viewer = await getFreshdeskViewerScope(profile);
   if (!viewer) redirect('/dashboard');
+  const finance = viewer.kind === 'finance';
   const pin = pinnedFreshdeskGroup(viewer);
   if (pin.pinned && pin.groupIds.length === 0) redirect('/dashboard');
 
   const resolved = await searchParams;
   const asked = parseFilters(resolved);
-  const memberOk = asked.member ? await canViewMember(viewer, asked.member) : true;
-  const filters: FdTicketListFilters = { ...asked, member: memberOk ? asked.member : null, ...(pin.pinned ? pinnedGroupFilter(pin.groupIds, asked.group) : {}) };
+  const memberOk = asked.member ? (viewer.kind === 'finance' ? true : await canViewMember(viewer, asked.member)) : true;
+  const filters: FdTicketListFilters = {
+    ...asked,
+    member: memberOk ? asked.member : null,
+    ...(pin.pinned ? pinnedGroupFilter(pin.groupIds, asked.group) : {}),
+    ...(finance ? { status: [FINANCE_INVOICE_DUE_STATUS], excludeTag: FINANCE_INVOICED_TAG } : {}),
+  };
   const [fullVocab, scope, groupAgentSets] = await Promise.all([
     getFreshdeskFilterVocab(),
     filters.member ? getFreshdeskMemberScope(filters.member) : Promise.resolve(null),
@@ -112,20 +122,23 @@ export default async function FreshdeskPage({ searchParams }: { searchParams: Pr
     <main className="flex-1 p-4 sm:p-6 lg:p-8">
       <div className="flex items-center justify-between gap-4 mb-6">
         <h1 className="type-page-title m-0">
-          Freshdesk<span className="page-title-dot">.</span>
+          {finance ? 'Invoices due' : 'Freshdesk'}<span className="page-title-dot">.</span>
         </h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-          {!pin.pinned && <SyncNowButton />}
+          {!pin.pinned && !finance && <SyncNowButton />}
           {TOP_BAR_ENABLED && <PageControls isPrivileged={false} />}
         </div>
       </div>
 
-      <Suspense key={overviewKey} fallback={<FreshdeskOverviewSkeleton />}>
-        <OverviewAsync filters={filters} />
-      </Suspense>
+      {/* The strip counts by status; a finance view is one status, so it has nothing to say there. */}
+      {!finance && (
+        <Suspense key={overviewKey} fallback={<FreshdeskOverviewSkeleton />}>
+          <OverviewAsync filters={filters} />
+        </Suspense>
+      )}
 
       <div className="px-5 py-4 mb-4 rounded-md border border-(--theme-paper-border) bg-(--theme-paper) shadow-(--shadow-1)">
-        <FreshdeskFilters vocab={vocab} showGroup={!pin.pinned || pin.groupIds.length > 1} />
+        <FreshdeskFilters vocab={vocab} showGroup={!pin.pinned || pin.groupIds.length > 1} showStatus={!finance} />
       </div>
 
       {filters.member && (
@@ -138,7 +151,7 @@ export default async function FreshdeskPage({ searchParams }: { searchParams: Pr
       )}
 
       <Suspense key={`tickets:${JSON.stringify(filters)}`} fallback={<FreshdeskTableSkeleton />}>
-        <TicketsAsync filters={filters} />
+        <TicketsAsync filters={filters} finance={finance} />
       </Suspense>
     </main>
   );
