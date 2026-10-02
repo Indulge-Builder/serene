@@ -1680,7 +1680,13 @@ export async function executeProposedAction(
       );
       if (!core.ok) {
         await markActionResolved(action.id, "failed", principal.userId);
-        return { status: "failed", line: "I couldn't change the status just now — try again in a moment." };
+        return {
+          status: "failed",
+          line:
+            core.reason === "active_twin"
+              ? `${leadDisplayName(lead)} already has another active lead in this domain, so this one can't be re-opened. Work from that one.`
+              : "I couldn't change the status just now — try again in a moment.",
+        };
       }
 
       await markActionResolved(action.id, "executed", principal.userId, {

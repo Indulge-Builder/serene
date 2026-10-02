@@ -60,7 +60,8 @@ export async function sendWhatsAppMessage(
   // so a silently-undelivered message no longer gets persisted as "sent".
   let apiResult: Awaited<ReturnType<typeof sendTextMessage>>;
   try {
-    apiResult = await sendTextMessage(conversation.wa_id, content);
+    // The reply leaves from the number the conversation arrived on (0252).
+    apiResult = await sendTextMessage(conversation.wa_id, content, { line: conversation.line });
   } catch (err) {
     console.error('[sendWhatsAppMessage] send failed:', err instanceof Error ? err.message : err);
     return { data: null, error: "Couldn't send the message — the customer's WhatsApp window may be closed. Try a template, or ask them to message first." };
@@ -114,7 +115,7 @@ export async function sendWhatsAppMessage(
   };
 
   // Update conversation last_message_at + STAND ELAYA DOWN. An agent replying is a
-  // take-over: flip bot_active off so the customer-Elaya layer (handleCustomerReply,
+  // take-over: flip bot_active off so the public bot (handlePublicInbound,
   // gated on bot_active) stops auto-replying over the human. bot_paused_by/at record who
   // took over and when. Harmless for staff/non-customer conversations (Elaya never
   // auto-replies on those anyway — the customer layer only engages Gia-domain prospects).
@@ -183,6 +184,7 @@ export async function sendWhatsAppMediaMessage(
       signedUrl,
       caption,
       filename,
+      conversation.line,
     );
     waMessageId = apiResult.messages?.[0]?.id ?? null;
   } catch (err) {
@@ -301,13 +303,14 @@ export async function getConversationsAction(
   const auth = await requireProfile();
   if (!auth.ok) return { conversations: [], nextCursor: null };
 
-  const { period, customFrom, customTo, limit, cursor } = parsed.data;
+  const { period, customFrom, customTo, limit, cursor, line } = parsed.data;
   return serviceGetConversations({
     limit,
     cursor: cursor ?? undefined,
     period,
     customFrom: customFrom ?? undefined,
     customTo:   customTo   ?? undefined,
+    line:       line ?? null,
   });
 }
 
@@ -353,7 +356,9 @@ export async function initiateWhatsAppConversationAction(
   if (!lead.phone) return { data: null, error: "Lead has no phone number" };
 
   // Guard: return existing conversation if one already exists (race condition safety)
-  const existing = await serviceGetConversationByLeadId(leadId);
+  // The initiation template is a staff-line template, so this is the lead's staff-line thread
+  // (a lead may also have a thread on the public number since 0252).
+  const existing = await serviceGetConversationByLeadId(leadId, 'staff');
   if (existing) {
     // Synthesise a placeholder message so the card can transition — caller fetches real messages via Realtime
     const placeholderMessage: WhatsAppMessage = {
@@ -385,7 +390,7 @@ export async function initiateWhatsAppConversationAction(
 
   const { data: convRow, error: convError } = await giaDb(admin)
     .from("whatsapp_conversations")
-    .insert({ lead_id: leadId, wa_id: waId, phone: lead.phone, status: "open" })
+    .insert({ lead_id: leadId, wa_id: waId, phone: lead.phone, status: "open", line: "staff" })
     .select("*")
     .single();
 
@@ -393,7 +398,7 @@ export async function initiateWhatsAppConversationAction(
 
   if (convError || !convRow) {
     // UNIQUE conflict — re-fetch the existing row
-    const fallback = await serviceGetConversationByLeadId(leadId);
+    const fallback = await serviceGetConversationByLeadId(leadId, 'staff');
     if (!fallback) return { data: null, error: "Failed to create conversation" };
     conversation = fallback;
   } else {
@@ -408,6 +413,10 @@ export async function initiateWhatsAppConversationAction(
       bot_active:      raw["bot_active"] as boolean,
       bot_paused_by:   null,
       bot_paused_at:   null,
+      line:            "staff",
+      bot_state:       "active",
+      handed_over_at:  null,
+      handover_reason: null,
       created_at:      raw["created_at"] as string,
       updated_at:      raw["updated_at"] as string,
       lead_name:       leadName,

@@ -16,6 +16,8 @@ import { invalidateLeadCaches } from '@/lib/services/lead-cache';
 import { notifyLeadAssigned } from '@/lib/services/lead-assignment-notify';
 import type { MetaWebhookPayload, MetaInboundMessage, MetaStatusUpdate, WhatsAppConversation, MetaMediaObject } from '@/lib/types/whatsapp';
 import type { Lead } from '@/lib/types/database';
+import type { WhatsAppLine } from '@/lib/constants/whatsapp-lines';
+import { TERMINAL_LEAD_STATUSES } from '@/lib/constants/lead-statuses';
 
 // ─────────────────────────────────────────────
 // parseWebhookPayload
@@ -77,7 +79,11 @@ export async function processInboundMessage(
   phone:       string,
   message:     MetaInboundMessage,
   senderName?: string | null,
+  // The number it arrived on (0252): 'staff' (today's, the default) or 'public' (the Indulge
+  // number the public bot answers). `referral` = the click-to-WhatsApp ad, when Gupshup passes it.
+  opts:        { line?: WhatsAppLine; referral?: Record<string, unknown> | null } = {},
 ): Promise<void> {
+  const line = opts.line ?? 'staff';
   // 1. Normalize phone to E.164 — shared with the Elaya staff routing gate
   const normalizedPhone = normalizeWaPhone(phone);
 
@@ -95,6 +101,19 @@ export async function processInboundMessage(
 
   // 3. Resolve lead by phone
   let lead = await resolveLeadByPhone(normalizedPhone);
+
+  // 3b. The public line (0252) asks, in code and never the model, whether this number is a team
+  //     test phone or an existing member. A closed lead (won / lost / junk) is not today's
+  //     enquiry, so a new one is opened, except for a member, whose won lead is their home.
+  const publicContext = line === 'public'
+    ? await (await import('@/lib/services/elaya-customer')).getPublicInboundContext(normalizedPhone)
+    : null;
+  if (publicContext && lead && !publicContext.member &&
+      (TERMINAL_LEAD_STATUSES as readonly string[]).includes(lead.status)) {
+    lead = null;
+  }
+  // A test phone or a member makes no noise: no new-lead alert, no SLA clock.
+  const quietLead = publicContext !== null && (publicContext.isTestPhone || publicContext.member !== null);
 
   // 4. If no lead → create from WhatsApp
   if (!lead) {
@@ -133,7 +152,13 @@ export async function processInboundMessage(
     // On a duplicate-lead race (alreadyExisted), another inbound message already
     // created the lead AND fired its assignment notifications — skip the second
     // founder/agent alert + SLA arm; just attach this message to the conversation.
-    if (!alreadyExisted) {
+    if (!alreadyExisted && quietLead) {
+      await invalidateLeadCaches(
+        'processInboundMessage',
+        { leadId: lead.id, domain: newLeadDomain },
+        { lists: true, dashboard: true },
+      );
+    } else if (!alreadyExisted) {
       // Fire all assignment side-effects via the shared orchestrator
       const newLeadId = lead.id;
       const leadName = lead.last_name
@@ -223,7 +248,7 @@ export async function processInboundMessage(
   };
 
   const [conversation, mediaUrl] = await Promise.all([
-    getOrCreateConversation(leadId, waId, normalizedPhone),
+    getOrCreateConversation(leadId, waId, normalizedPhone, line),
     resolveInboundMediaUrl(),
   ]);
   const conversationId = conversation.id;
@@ -248,32 +273,19 @@ export async function processInboundMessage(
     console.warn('[whatsapp-ingestion] conversation last_message_at update failed (non-fatal):', convUpdateError.message);
   }
 
-  // 9. Customer-Elaya layer (FEATURE 2) — ADDITIVE, never replaces anything above. The lead
-  //    was created/resolved + assigned + (if new) the founder/agent alerts fired; the inbound
-  //    message is recorded. Now Elaya engages the PROSPECT:
-  //      • never welcomed (welcomed_at IS NULL) → the welcome TEMPLATE, exactly once (the
-  //        stamp guard inside maybeSendCustomerWelcome). The conversational blast follows on
-  //        their reply (the 24h-window rule — a cold number gets a template first).
-  //      • already welcomed → a conversational reply turn (KB-grounded), gated on bot_active
-  //        (an agent take-over flips bot_active off and Elaya stays quiet).
-  //    Dynamic-imported (server-only LLM deps kept out of this module's static graph + the
-  //    Trigger.dev scan; no import cycle). Non-fatal: a throw here never affects the lead
-  //    pipeline that already completed above. Awaited so it stays in the route's after() chain
-  //    (A-16) — a bare void would be orphaned on lambda freeze.
-  try {
-    const { maybeSendCustomerWelcome, handleCustomerReply } = await import('@/lib/services/elaya-customer');
-    if (!lead.welcomed_at) {
-      await maybeSendCustomerWelcome(lead);
-    } else {
-      await handleCustomerReply({
-        lead,
-        conversationId,
-        botActive: conversation.bot_active !== false,
-        message,
-      });
+  // 9. The public bot (0252, docs/architecture/indulge-bot-plan.md). Only on the public Indulge
+  //    number: everything above has already happened (lead, assignment, alert, the message row),
+  //    so the bot is a layer on a recorded conversation and a failure here loses nothing. The
+  //    June customer layer no longer runs on the staff number: the bot lives on the public line.
+  //    Dynamic-imported (the model code stays out of this module's static graph and the
+  //    Trigger.dev scan). Awaited so it stays in the route's after() chain (A-16).
+  if (line === 'public' && publicContext) {
+    try {
+      const { handlePublicInbound } = await import('@/lib/services/elaya-customer');
+      await handlePublicInbound({ lead, conversation, message, referral: opts.referral ?? null, context: publicContext });
+    } catch (err) {
+      console.error('[whatsapp-ingestion] public bot failed (non-fatal):', err);
     }
-  } catch (err) {
-    console.error('[whatsapp-ingestion] customer-Elaya layer failed (non-fatal):', err);
   }
 
   // 10. Realtime broadcast is automatic via supabase_realtime publication — no explicit call needed
@@ -340,6 +352,7 @@ async function getOrCreateConversation(
   leadId: string,
   waId:   string,
   phone:  string,
+  line:   WhatsAppLine,
 ): Promise<WhatsAppConversation> {
   const supabase = createAdminClient();
 
@@ -347,18 +360,41 @@ async function getOrCreateConversation(
   const { data: existing } = await giaDb(supabase)
     .from('whatsapp_conversations')
     .select('*')
+    .eq('line', line)
     .eq('lead_id', leadId)
     .maybeSingle();
 
   if (existing) return existing as WhatsAppConversation;
 
-  // INSERT, ignoring duplicate on lead_id UNIQUE constraint
+  // One thread per number per line (0252). When this person's newest lead is not the lead the
+  // thread was opened on (a closed lead followed by a new one, or a lead in another domain since
+  // 0251), the thread follows the person: it is pointed at the newest lead. Before 0252 the insert
+  // below collided on wa_id, the error was ignored, the re-select by lead_id found nothing, and
+  // the message was lost.
+  const { data: byNumber } = await giaDb(supabase)
+    .from('whatsapp_conversations')
+    .select('*')
+    .eq('line', line)
+    .eq('wa_id', waId)
+    .maybeSingle();
+  if (byNumber) {
+    const { data: moved } = await giaDb(supabase)
+      .from('whatsapp_conversations')
+      .update({ lead_id: leadId })
+      .eq('id', (byNumber as WhatsAppConversation).id)
+      .select('*')
+      .maybeSingle();
+    return (moved ?? byNumber) as WhatsAppConversation;
+  }
+
+  // INSERT, ignoring a duplicate on the (line, lead_id) / (line, wa_id) UNIQUEs
   await giaDb(supabase)
     .from('whatsapp_conversations')
     .insert({
       lead_id:         leadId,
       wa_id:           waId,
       phone,
+      line,
       status:          'open',
       bot_active:      true,
       bot_paused_by:   null,
@@ -366,14 +402,14 @@ async function getOrCreateConversation(
       last_message_at: null,
     });
   // Note: ignoreDuplicates() / ON CONFLICT DO NOTHING is not available via PostgREST
-  // insert directly — the unique constraint on lead_id will reject a duplicate insert
-  // with a 409, which we intentionally ignore via the re-SELECT below.
+  // insert directly — a concurrent insert's 409 is intentionally ignored via the re-SELECT below.
 
   // Re-SELECT — guaranteed to exist now (either our insert or the concurrent one)
   const { data: created, error } = await giaDb(supabase)
     .from('whatsapp_conversations')
     .select('*')
-    .eq('lead_id', leadId)
+    .eq('line', line)
+    .eq('wa_id', waId)
     .single();
 
   if (error || !created) {

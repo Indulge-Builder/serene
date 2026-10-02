@@ -69,6 +69,8 @@ export const HANDS_SETTING_KEYS = {
   perJobCapInr:     "hands_per_job_cap_inr",
   dailyCapInr:      "hands_daily_cap_inr",
   monthlyCapInr:    "hands_monthly_cap_inr",
+  rulebook:         "hands_rulebook",            // HandsGuideDoc: what the agent is told (editable on /settings/hands)
+  elayaGuide:       "hands_elaya_guide",         // HandsGuideDoc: how Elaya writes to the agent (folded into her hands tools)
 } as const;
 export const HANDS_PER_JOB_CAP_DEFAULT_INR = 10_000;
 export const HANDS_DAILY_CAP_DEFAULT_INR   = 20_000;
@@ -113,3 +115,37 @@ export const HANDS_RULEBOOK = [
   "Start every reply with one word: DONE (with the reference number and a screenshot), NEED (one question at a time, with the deadline if something is on hold), OPTIONS (numbered), FAILED (why, and the best alternative), or WAITING (what you are waiting for and when you will check).",
   "Never contact a phone number I did not give you. Never ask me for an identity document.",
 ].join("\n");
+
+/**
+ * How Elaya writes to the outside agent (2026-10-01). The starting text of the editable guide on
+ * /settings/hands; the live text is the `hands_elaya_guide` row, which Elaya receives with every
+ * hands read (follow_when_writing_to_the_agent). Privacy is NOT in this text's power: the
+ * disclosure filter and the leak check in hands-draft.ts hold whatever the guide says.
+ */
+export const HANDS_ELAYA_GUIDE_DEFAULT = [
+  `You are writing to an outside booking agent for the ${HANDS_IDENTITY_NAME} desk.`,
+  "One request per message. Say what, where, when, how many, and the budget when we have one.",
+  "Short pointers. No greetings, no small talk.",
+  "Every search or recommendation request ends with a short paragraph on our standard, so the agent filters before it answers. Write it in your own words, in this spirit:",
+  "Our standard: our members are ultra-premium. Only luxury and the best boutique options (5-star hotels, private villas and resorts, top-rated restaurants and experiences) with strong recent reviews, 4.5 and above on Google or TripAdvisor, and no recent complaints about cleanliness, service or safety. Well located, private where possible. Send 3 options, each with the full price, why it fits, and photos or a link. Skip budget chains, hostels and anything that is not truly premium.",
+  "Always ask for the full total before anything is booked, and never agree to pay without a person's yes.",
+  "When the member was not specific, ask for options and say how many.",
+  "When the agent replies NEED, answer only that one question.",
+  `Never share a member's name, phone, email, card, ID or address. Bookings are in the name ${HANDS_IDENTITY_NAME}.`,
+].join("\n");
+
+export type HandsGuideKind = "rulebook" | "elaya_guide";
+export const HANDS_GUIDE_LABELS: Record<HandsGuideKind, string> = {
+  rulebook: "The rulebook the agent receives",
+  elaya_guide: "How Elaya writes to the agent",
+};
+export const HANDS_GUIDE_MAX_CHARS = 6_000;
+export const HANDS_GUIDE_HISTORY = 20;
+export const HANDS_FEEDBACK_MAX_CHARS = 2_000;
+export const HANDS_GUIDE_WRITER_MAX_TOKENS = 4_000;
+export const HANDS_GUIDE_WRITER_TIMEOUT_MS = 90_000;
+
+/** The reply words the rulebook must keep: Serene reads the agent's first word (readHandsFrame), so a rulebook without them breaks every thread. */
+export function missingFrameWords(rulebook: string): string[] {
+  return HANDS_FRAMES.values.map((w) => w.toUpperCase()).filter((w) => !new RegExp(`\\b${w}\\b`).test(rulebook));
+}

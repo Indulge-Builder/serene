@@ -630,5 +630,6 @@ against a conversation).
 - Partitions run out: `sia.wag_*` and `member_events` in 2027-03, `sia.ticket_events` in 2027-12;
   nothing creates new months automatically (`docs/operations/maintenance.md`).
 - Counts to re-check before quoting: groups linked, profiler history read, tickets and verdicts.
-- The plan files at the repo root (`member-ticket-plan.md`, `plan-sia-intelligence.md`,
-  `plan-whatsapp.md`) are the design narratives Sia came from; they describe intent, not today.
+- The plan files in `docs/architecture/` (`sia-whatsapp-plan.md`, `sia-intelligence-plan.md`,
+  `member-ticket-plan.md`, `sia-resilience-plan.md`) are the design narratives Sia came from;
+  they describe intent, not today.

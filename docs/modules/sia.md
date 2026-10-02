@@ -197,9 +197,17 @@ Checked against the code on 2026-09-26.
 
 ## Background reading (plans, not truth)
 
-`member-ticket-plan.md`, `plan-sia-intelligence.md` and `plan-whatsapp.md` at the repo root
-are the design narratives Sia was built from. They are useful for the "why", but they describe
-intent. Where they and the code disagree, the code and the docs above win.
+The design narratives Sia was built from live in `../architecture/`, in the order they were
+written. Each opens with a note on where it stands today. They are useful for the "why", but they
+describe intent. Where they and the code disagree, the code and the docs above win.
+
+1. `../architecture/sia-whatsapp-plan.md` (2026-08-25): the group archive, the watcher, the `wag_`
+   schema and the privacy zones.
+2. `../architecture/sia-intelligence-plan.md` (2026-09-04): turning the archive into member facts
+   (the codename vault, the profiler).
+3. `../architecture/member-ticket-plan.md` (2026-09-15): the member twin and Serene's own tickets.
+   Code comments cite its section numbers (for example "7.8b" for intake).
+4. `../architecture/sia-resilience-plan.md` (2026-09-29): the answer to the watcher number ban.
 
 ## Open items
 

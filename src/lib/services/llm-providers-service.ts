@@ -151,6 +151,20 @@ export async function getElayaAlertsEnabled(): Promise<boolean> {
 }
 
 /**
+ * The reply clocks' two switches (0253, rows `reply_alerts_enabled` / `update_alerts_enabled`, seeded
+ * false): clock 1 (member waiting for any reply) and clock 2 (a holding reply owes an answer) are
+ * turned on separately. ON only when the row says exactly `true`; a failed read means OFF.
+ */
+export async function getReplyAlertSwitches(): Promise<{ reply: boolean; update: boolean }> {
+  try {
+    const [reply, update] = await Promise.all([getSettingValue('reply_alerts_enabled'), getSettingValue('update_alerts_enabled')]);
+    return { reply: reply === true, update: update === true };
+  } catch {
+    return { reply: false, update: false };
+  }
+}
+
+/**
  * The nightly label top-up's switch (row `elaya_labels_refresh_enabled`, no seed row): the one
  * switch that is ON by default. A top-up judges only the rows a saved label set has not seen, sends
  * nothing to anyone, and costs cents; it is OFF only when the row says exactly `false`. A failed
@@ -257,6 +271,43 @@ export async function getHandsSettings(): Promise<{
   }
 }
 
+// ─── Desks (0248) ───────────────────────────────────────────────────────────
+
+/** The desks switch and quiet hours in one read (constants/desks.ts DESK_SETTING_KEYS); a missing or malformed row = its default. */
+export async function getDesksSettings(): Promise<{ enabled: boolean; quietHours: { from: number; to: number } }> {
+  const { DESK_SETTING_KEYS, DESK_QUIET_HOURS_DEFAULT } = await import('@/lib/constants/desks');
+  const hour = (v: unknown, d: number) => (typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 23 ? v : d);
+  try {
+    const { data } = await createAdminClient().from('elaya_settings').select('key, value').in('key', Object.values(DESK_SETTING_KEYS));
+    const rows = new Map(((data ?? []) as { key: string; value: unknown }[]).map((r) => [r.key, r.value]));
+    const q = (rows.get(DESK_SETTING_KEYS.quietHours) ?? {}) as { from?: unknown; to?: unknown };
+    return {
+      enabled: rows.get(DESK_SETTING_KEYS.enabled) === true,
+      quietHours: { from: hour(q.from, DESK_QUIET_HOURS_DEFAULT.from), to: hour(q.to, DESK_QUIET_HOURS_DEFAULT.to) },
+    };
+  } catch {
+    return { enabled: false, quietHours: { ...DESK_QUIET_HOURS_DEFAULT } };
+  }
+}
+
+/** THE read of the Sia watcher settings (0249): the standby number and the daily
+ *  coverage check switch (ON unless the row is false). Fails to "no standby, check on". */
+export async function getSiaWatcherSettings(): Promise<{ standbyJid: string | null; membershipCheckEnabled: boolean; historyReprofileCapUsd: number }> {
+  const { SIA_WATCHER_SETTING_KEYS, SIA_HISTORY_REPROFILE_CAP_USD_DEFAULT } = await import('@/lib/constants/sia-watcher');
+  try {
+    const { data } = await createAdminClient().from('elaya_settings').select('key, value').in('key', Object.values(SIA_WATCHER_SETTING_KEYS));
+    const rows = new Map(((data ?? []) as { key: string; value: unknown }[]).map((r) => [r.key, r.value]));
+    const jid = rows.get(SIA_WATCHER_SETTING_KEYS.standbyJid);
+    return {
+      standbyJid: typeof jid === 'string' && jid.endsWith('@s.whatsapp.net') ? jid : null,
+      membershipCheckEnabled: rows.get(SIA_WATCHER_SETTING_KEYS.membershipCheckEnabled) !== false,
+      historyReprofileCapUsd: ((v) => (typeof v === 'number' && v >= 0 ? v : SIA_HISTORY_REPROFILE_CAP_USD_DEFAULT))(rows.get(SIA_WATCHER_SETTING_KEYS.historyReprofileCapUsd)),
+    };
+  } catch {
+    return { standbyJid: null, membershipCheckEnabled: true, historyReprofileCapUsd: SIA_HISTORY_REPROFILE_CAP_USD_DEFAULT };
+  }
+}
+
 /**
  * The finance invoicing switch (row `finance_invoicing_enabled`, 0250). Read per call, never
  * cached. Anything but `true` — a missing row, a failed read — is OFF: no write reaches Zoho
@@ -265,4 +316,57 @@ export async function getHandsSettings(): Promise<{
 export async function getFinanceSettings(): Promise<{ enabled: boolean }> {
   const { FINANCE_SETTING_KEYS } = await import('@/lib/constants/finance');
   return { enabled: (await getSettingValue(FINANCE_SETTING_KEYS.enabled)) === true };
+}
+
+/**
+ * The two editable hands documents (rows `hands_rulebook` and `hands_elaya_guide`, 2026-10-01):
+ * what the agent is told, and how Elaya writes to it. Read per call, never cached, so an edit on
+ * /settings/hands reaches Elaya's next hands read. A missing or malformed row falls back to the
+ * built-in text at version 0.
+ */
+export async function getHandsGuides(): Promise<{ rulebook: import('@/lib/types/hands').HandsGuideDoc; guide: import('@/lib/types/hands').HandsGuideDoc }> {
+  const { HANDS_SETTING_KEYS, HANDS_RULEBOOK, HANDS_ELAYA_GUIDE_DEFAULT } = await import('@/lib/constants/hands');
+  type Doc = import('@/lib/types/hands').HandsGuideDoc;
+  const fallback = (body: string): Doc => ({ body, version: 0, at: null, by: null, note: null, source: 'default', history: [] });
+  const read = (v: unknown, d: string): Doc => {
+    const o = (v && typeof v === 'object' ? v : {}) as Partial<Doc>;
+    if (typeof o.body !== 'string' || !o.body.trim()) return fallback(d);
+    return {
+      body: o.body, version: typeof o.version === 'number' ? o.version : 1, at: o.at ?? null, by: o.by ?? null, note: o.note ?? null,
+      source: o.source ?? 'edit', history: Array.isArray(o.history) ? o.history.filter((h) => h && typeof h.body === 'string') : [],
+    };
+  };
+  try {
+    const { data } = await createAdminClient().from('elaya_settings').select('key, value').in('key', [HANDS_SETTING_KEYS.rulebook, HANDS_SETTING_KEYS.elayaGuide]);
+    const rows = new Map(((data ?? []) as { key: string; value: unknown }[]).map((r) => [r.key, r.value]));
+    return { rulebook: read(rows.get(HANDS_SETTING_KEYS.rulebook), HANDS_RULEBOOK), guide: read(rows.get(HANDS_SETTING_KEYS.elayaGuide), HANDS_ELAYA_GUIDE_DEFAULT) };
+  } catch {
+    return { rulebook: fallback(HANDS_RULEBOOK), guide: fallback(HANDS_ELAYA_GUIDE_DEFAULT) };
+  }
+}
+
+/**
+ * THE read of the public bot's settings (0252): the switch (`public_bot_enabled`, OFF unless the
+ * row is exactly true), the daily spend cap in dollars, and the team's test phones (digits, last
+ * ten kept, compared by the caller the same way). Read per call, never cached: flipping the switch
+ * stops the very next message. A failed read is OFF.
+ */
+export async function getPublicBotSettings(): Promise<{ enabled: boolean; dailyCapUsd: number; testPhones: string[] }> {
+  const { PUBLIC_BOT_SETTING_KEYS, PUBLIC_BOT_DAILY_CAP_USD_DEFAULT } = await import('@/lib/constants/public-bot');
+  try {
+    const { data, error } = await createAdminClient().from('elaya_settings').select('key, value').in('key', Object.values(PUBLIC_BOT_SETTING_KEYS));
+    if (error) return { enabled: false, dailyCapUsd: PUBLIC_BOT_DAILY_CAP_USD_DEFAULT, testPhones: [] };
+    const rows = new Map(((data ?? []) as { key: string; value: unknown }[]).map((r) => [r.key, r.value]));
+    const cap = rows.get(PUBLIC_BOT_SETTING_KEYS.dailyCapUsd);
+    const phones = rows.get(PUBLIC_BOT_SETTING_KEYS.testPhones);
+    return {
+      enabled: rows.get(PUBLIC_BOT_SETTING_KEYS.enabled) === true,
+      dailyCapUsd: typeof cap === 'number' && cap >= 0 ? cap : PUBLIC_BOT_DAILY_CAP_USD_DEFAULT,
+      testPhones: Array.isArray(phones)
+        ? phones.filter((p): p is string => typeof p === 'string').map((p) => p.replace(/\D/g, '').slice(-10)).filter((p) => p.length === 10)
+        : [],
+    };
+  } catch {
+    return { enabled: false, dailyCapUsd: PUBLIC_BOT_DAILY_CAP_USD_DEFAULT, testPhones: [] };
+  }
 }

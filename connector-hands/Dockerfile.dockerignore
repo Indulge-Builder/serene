@@ -1,0 +1,10 @@
+# The image is built from the repo root; send Docker only the two folders it copies.
+*
+!connector/package.json
+!connector/package-lock.json
+!connector/tsconfig.json
+!connector/src
+!connector-hands/package.json
+!connector-hands/package-lock.json
+!connector-hands/tsconfig.json
+!connector-hands/src

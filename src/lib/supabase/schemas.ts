@@ -38,6 +38,7 @@ export const GIA_TABLES = [
   "whatsapp_messages",
   "whatsapp_conversation_reads",
   "whatsapp_notification_logs",
+  "whatsapp_bot_turns",
   "service_cases",
   "conversation_hooks",
 ] as const;

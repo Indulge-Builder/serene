@@ -1209,6 +1209,7 @@ export type Database = {
           medium: string | null
           personal_details: Json | null
           phone: string | null
+          phone_key: string
           previous_lead_id: string | null
           resolution_reason: string | null
           search_text: string | null
@@ -1407,6 +1408,9 @@ export type Database = {
           id: string
           is_featured: boolean
           outcome_note: string | null
+          public_approved_at: string | null
+          public_approved_by: string | null
+          public_summary: string | null
           search_vector: unknown
           sort_order: number
           summary: string
@@ -1425,6 +1429,9 @@ export type Database = {
           id?: string
           is_featured?: boolean
           outcome_note?: string | null
+          public_approved_at?: string | null
+          public_approved_by?: string | null
+          public_summary?: string | null
           search_vector?: unknown
           sort_order?: number
           summary: string
@@ -1443,6 +1450,9 @@ export type Database = {
           id?: string
           is_featured?: boolean
           outcome_note?: string | null
+          public_approved_at?: string | null
+          public_approved_by?: string | null
+          public_summary?: string | null
           search_vector?: unknown
           sort_order?: number
           summary?: string
@@ -1569,10 +1579,14 @@ export type Database = {
           bot_active: boolean
           bot_paused_at: string | null
           bot_paused_by: string | null
+          bot_state: string
           created_at: string
+          handed_over_at: string | null
+          handover_reason: string | null
           id: string
           last_message_at: string | null
           lead_id: string
+          line: string
           phone: string
           status: string
           updated_at: string
@@ -1582,10 +1596,14 @@ export type Database = {
           bot_active?: boolean
           bot_paused_at?: string | null
           bot_paused_by?: string | null
+          bot_state?: string
           created_at?: string
+          handed_over_at?: string | null
+          handover_reason?: string | null
           id?: string
           last_message_at?: string | null
           lead_id: string
+          line?: string
           phone: string
           status?: string
           updated_at?: string
@@ -1595,10 +1613,14 @@ export type Database = {
           bot_active?: boolean
           bot_paused_at?: string | null
           bot_paused_by?: string | null
+          bot_state?: string
           created_at?: string
+          handed_over_at?: string | null
+          handover_reason?: string | null
           id?: string
           last_message_at?: string | null
           lead_id?: string
+          line?: string
           phone?: string
           status?: string
           updated_at?: string
@@ -1615,7 +1637,7 @@ export type Database = {
           {
             foreignKeyName: "whatsapp_conversations_lead_id_fkey"
             columns: ["lead_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
@@ -1637,6 +1659,7 @@ export type Database = {
           sender_type: string
           status: string | null
           status_at: string | null
+          training_asset_id: string | null
           wa_message_id: string | null
         }
         Insert: {
@@ -1654,6 +1677,7 @@ export type Database = {
           sender_type: string
           status?: string | null
           status_at?: string | null
+          training_asset_id?: string | null
           wa_message_id?: string | null
         }
         Update: {
@@ -1671,6 +1695,7 @@ export type Database = {
           sender_type?: string
           status?: string | null
           status_at?: string | null
+          training_asset_id?: string | null
           wa_message_id?: string | null
         }
         Relationships: [
@@ -1709,6 +1734,7 @@ export type Database = {
           lead_id: string | null
           lead_name: string | null
           lead_phone: string | null
+          line: string
           recipient_id: string | null
           recipient_phone: string
           type: string
@@ -1724,6 +1750,7 @@ export type Database = {
           lead_id?: string | null
           lead_name?: string | null
           lead_phone?: string | null
+          line?: string
           recipient_id?: string | null
           recipient_phone: string
           type: string
@@ -1739,6 +1766,7 @@ export type Database = {
           lead_id?: string | null
           lead_name?: string | null
           lead_phone?: string | null
+          line?: string
           recipient_id?: string | null
           recipient_phone?: string
           type?: string
@@ -1759,6 +1787,72 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      whatsapp_bot_turns: {
+        Row: {
+          cache_read_tokens: number
+          cache_write_tokens: number
+          conversation_id: string
+          cost_usd: number
+          created_at: string
+          handover_reason: string | null
+          id: string
+          input_guard: Json
+          input_tokens: number
+          latency_ms: number | null
+          lead_id: string | null
+          line: string
+          model: string | null
+          outcome: string
+          output_guard: Json
+          output_tokens: number
+          pack_version: number | null
+          sent_asset_ids: string[]
+          tools: Json
+        }
+        Insert: {
+          cache_read_tokens?: number
+          cache_write_tokens?: number
+          conversation_id: string
+          cost_usd?: number
+          created_at?: string
+          handover_reason?: string | null
+          id?: string
+          input_guard?: Json
+          input_tokens?: number
+          latency_ms?: number | null
+          lead_id?: string | null
+          line?: string
+          model?: string | null
+          outcome: string
+          output_guard?: Json
+          output_tokens?: number
+          pack_version?: number | null
+          sent_asset_ids?: string[]
+          tools?: Json
+        }
+        Update: {
+          cache_read_tokens?: number
+          cache_write_tokens?: number
+          conversation_id?: string
+          cost_usd?: number
+          created_at?: string
+          handover_reason?: string | null
+          id?: string
+          input_guard?: Json
+          input_tokens?: number
+          latency_ms?: number | null
+          lead_id?: string | null
+          line?: string
+          model?: string | null
+          outcome?: string
+          output_guard?: Json
+          output_tokens?: number
+          pack_version?: number | null
+          sent_asset_ids?: string[]
+          tools?: Json
+        }
+        Relationships: []
       }
     }
     Views: {
@@ -5038,48 +5132,159 @@ export type Database = {
         }
         Relationships: []
       }
+      bot_corrections: {
+        Row: {
+          conversation_id: string | null
+          created_at: string
+          created_by: string
+          id: string
+          lead_id: string | null
+          message_id: string | null
+          note: string | null
+          resolution_note: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          should_have_said: string
+          status: string
+          what_she_said: string
+        }
+        Insert: {
+          conversation_id?: string | null
+          created_at?: string
+          created_by: string
+          id?: string
+          lead_id?: string | null
+          message_id?: string | null
+          note?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          should_have_said: string
+          status?: string
+          what_she_said: string
+        }
+        Update: {
+          conversation_id?: string | null
+          created_at?: string
+          created_by?: string
+          id?: string
+          lead_id?: string | null
+          message_id?: string | null
+          note?: string | null
+          resolution_note?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          should_have_said?: string
+          status?: string
+          what_she_said?: string
+        }
+        Relationships: []
+      }
+      bot_knowledge_versions: {
+        Row: {
+          asset_ids: string[]
+          compiled_text: string
+          created_at: string
+          id: string
+          item_count: number
+          leak_check: Json
+          published_by: string | null
+          restored_from: number | null
+          story_ids: string[]
+          version: number
+        }
+        Insert: {
+          asset_ids?: string[]
+          compiled_text: string
+          created_at?: string
+          id?: string
+          item_count: number
+          leak_check?: Json
+          published_by?: string | null
+          restored_from?: number | null
+          story_ids?: string[]
+          version?: never
+        }
+        Update: {
+          asset_ids?: string[]
+          compiled_text?: string
+          created_at?: string
+          id?: string
+          item_count?: number
+          leak_check?: Json
+          published_by?: string | null
+          restored_from?: number | null
+          story_ids?: string[]
+          version?: never
+        }
+        Relationships: []
+      }
       elaya_training_assets: {
         Row: {
           active: boolean
+          approved_at: string | null
+          approved_by: string | null
+          attachments: string[]
+          byte_size: number | null
           created_at: string
           description: string | null
           domain: Database["public"]["Enums"]["app_domain"] | null
+          expires_at: string | null
           id: string
           kind: string
+          mime_type: string | null
           send_order: number
+          status: string
           storage_path: string | null
           tags: string[]
           title: string
           updated_at: string
           url: string | null
+          when_to_send: string | null
         }
         Insert: {
           active?: boolean
+          approved_at?: string | null
+          approved_by?: string | null
+          attachments?: string[]
+          byte_size?: number | null
           created_at?: string
           description?: string | null
           domain?: Database["public"]["Enums"]["app_domain"] | null
+          expires_at?: string | null
           id?: string
           kind: string
+          mime_type?: string | null
           send_order?: number
+          status?: string
           storage_path?: string | null
           tags?: string[]
           title: string
           updated_at?: string
           url?: string | null
+          when_to_send?: string | null
         }
         Update: {
           active?: boolean
+          approved_at?: string | null
+          approved_by?: string | null
+          attachments?: string[]
+          byte_size?: number | null
           created_at?: string
           description?: string | null
           domain?: Database["public"]["Enums"]["app_domain"] | null
+          expires_at?: string | null
           id?: string
           kind?: string
+          mime_type?: string | null
           send_order?: number
+          status?: string
           storage_path?: string | null
           tags?: string[]
           title?: string
           updated_at?: string
           url?: string | null
+          when_to_send?: string | null
         }
         Relationships: []
       }
@@ -6755,11 +6960,19 @@ export type Database = {
         }[]
       }
       generate_lead_slug: {
-        Args: { p_first_name: string; p_last_name: string; p_phone: string }
+        Args: {
+          p_domain?: string
+          p_first_name: string
+          p_last_name: string
+          p_phone: string
+        }
         Returns: string
       }
       get_active_lead_by_phone: {
-        Args: { p_phone: string }
+        Args: {
+          p_domain?: Database["public"]["Enums"]["app_domain"]
+          p_phone: string
+        }
         Returns: {
           archived_at: string
           assigned_to: string

@@ -1,5 +1,10 @@
 # Elaya for customers: the welcome blast and prospect replies
 
+> **SUPERSEDED 2026-10-01.** The public bot replaced this layer in place (migration 0252, not yet
+> applied): it runs on its own public WhatsApp line, reads a published knowledge pack, and never
+> runs on the staff number. The current record is [public-bot.md](public-bot.md); this page is kept
+> as the history of the June design.
+
 > **Purpose:** the as-built record of customer-facing Elaya on WhatsApp: the one-time welcome to a new prospect, her replies from the curated knowledge base, and the guardrails that keep her away from every staff and CRM record.
 > **Audience:** engineers. · **Source-of-truth scope:** the customer principal, persona, brain and tools, the welcome orchestrator and its wiring into the lead pipeline. The training page is specified in [../pages/elaya-training.md](../pages/elaya-training.md). Staff Elaya lives in [elaya.md](elaya.md).
 > **Last verified:** 2026-09-26 against `src/lib/services/elaya-customer.ts`, `src/lib/services/whatsapp-ingestion.ts`, `src/lib/elaya/principal.ts`, `customer-persona.ts`, `customer-brain.ts`, `tools/customer-registry.ts`, `src/lib/services/whatsapp-api.ts`, `src/lib/constants/whatsapp.ts`, `src/lib/actions/whatsapp.ts`, migrations 0150, 0151 and 0210.

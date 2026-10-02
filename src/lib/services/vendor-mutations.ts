@@ -38,7 +38,7 @@ import type {
   AddVendorNoteInput,
   SetAgentPreferenceInput,
 } from "@/lib/validations/vendor-schema";
-import type { VendorSource, VendorStatus } from "@/lib/constants/vendors";
+import type { VendorSource, VendorStatus, VendorKind } from "@/lib/constants/vendors";
 import type {
   VendorRow,
   VendorCapabilityRow,
@@ -156,6 +156,27 @@ export async function updateVendorCore(
 }
 
 /** active / paused / blacklisted — the ranker reads this on every request. */
+/**
+ * A person or an outside agent (0245: vendors.kind). Set to `agent` when a WhatsApp number is
+ * linked to the vendor on /settings/hands, which is what makes the ticket page offer the Hands
+ * line for it. The caller gates (admin / founder); idempotent.
+ */
+export async function setVendorKindCore(
+  actor: MutationActor,
+  id: string,
+  kind: VendorKind,
+): Promise<VendorMutationResult<VendorRow>> {
+  void actor;
+  const admin = createAdminClient();
+  const { data, error } = await from(admin, "vendors").update({ kind }).eq("id", id).select("*").maybeSingle();
+  if (error) {
+    console.error(`${LOG} setVendorKindCore failed:`, error);
+    return { ok: false, error: classify(error) };
+  }
+  if (!data) return { ok: false, error: "not_found" };
+  return { ok: true, row: data as VendorRow };
+}
+
 export async function setVendorStatusCore(
   actor: MutationActor,
   id: string,

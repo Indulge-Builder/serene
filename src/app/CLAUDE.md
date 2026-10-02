@@ -9,6 +9,7 @@ Thin orchestrators in `src/app/`. Data fetching lives in async children (`*Async
 | `(auth)/login`, `forgot-password`, `update-password` | — |
 | `(dashboard)/dashboard` | `(dashboard)/CLAUDE.md` — widgets, `initialData` RSC |
 | `(dashboard)/leads`, `leads/[id]` | `(dashboard)/leads/CLAUDE.md` |
+| `(dashboard)/leads/[id]/also/[other]` | the read-only history of the SAME person's lead in another domain (0251): `[id]` is a lead the viewer can open, `[other]` the sibling; `getSharedLeadView` (lead-identity.ts) is the only gate and a refusal is a 404. Notes + timeline only, nothing editable |
 | `(dashboard)/deals` | `(dashboard)/deals/CLAUDE.md` |
 | `(dashboard)/campaigns`, `campaigns/[id]` | `(dashboard)/campaigns/CLAUDE.md` |
 | `(dashboard)/performance` | `(dashboard)/performance/CLAUDE.md` |

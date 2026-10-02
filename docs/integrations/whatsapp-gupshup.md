@@ -18,6 +18,14 @@ on the first SEND if one is missing, so the Trigger.dev build scan can import th
 secrets. The `WHATSAPP_*` Meta vars are optional (dormant path).
 `GUPSHUP_CUSTOMER_WELCOME_TEMPLATE_ID` is optional; the customer welcome is skipped until it is set.
 
+**A second number (2026-10-01, 0252).** Serene now runs two Gupshup apps: the staff line above and
+the public Indulge line answered by the public bot. The public line reads `GUPSHUP_PUBLIC_APP_NAME`,
+`GUPSHUP_PUBLIC_NUMBER`, `GUPSHUP_PUBLIC_WEBHOOK_SECRET` and `GUPSHUP_PUBLIC_API_KEY` (which falls
+back to `GUPSHUP_API_KEY`), all read at send time (`gupshupApp(line)`); it is off until they are
+set. Both apps call the same webhook; the `x-gupshup-secret` value says which line an event belongs
+to. Every conversation carries its `line` and every send leaves from it. The hand-over alert is a
+template on the staff app, `GUPSHUP_HANDOVER_TEMPLATE_ID`. Full record: `../modules/public-bot.md`.
+
 **Sends happen in two runtimes.** Vercel sends lead assignment, task assignment, lead
 initiation, agent replies, Elaya replies and customer replies. The Trigger.dev worker sends the SLA alerts, task reminders and nudges, the Sia
 watcher alarm, the founders' brief and the live alerts. The `GUPSHUP_*` vars must therefore exist

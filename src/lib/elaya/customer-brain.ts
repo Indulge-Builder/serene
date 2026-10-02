@@ -1,98 +1,119 @@
-// Elaya CUSTOMER brain — the tool-calling loop for the outward-facing customer channel.
-// SERVER ONLY. (FEATURE 2.)
+// The PUBLIC bot's turn (0252, docs/architecture/indulge-bot-plan.md). SERVER ONLY.
+// Rewritten in place from the June customer brain; there is no second copy.
 //
-// Deliberately SEPARATE from the staff brain (brain.ts): a customer turn has NO
-// confirmation resolver (customers never confirm a state change — there are no
-// state-changing customer tools), NO staff persona/learned-memory fold, NO elaya_actions
-// ledger. Keeping it separate keeps the security-critical staff confirmation loop simple
-// and means the customer path literally cannot reach staff machinery. It shares only the
-// provider contract + the customer toolset.
+// Deliberately separate from the staff brains: no confirmation resolver, no staff persona, no
+// memory, no elaya_actions ledger, no import from staff Elaya. It shares only the provider
+// contract (on its own credential and its own model row, `public_bot`) and the IST formatter.
 //
-// The principal is a CustomerPrincipal — its toolset is the hard cap (customer-registry.ts);
-// the model is only ever handed those tools, and executeCustomerTool refuses anything else.
+// One turn: the cached system prompt (persona + published pack) → the conversation → the turn's
+// volatile context on the latest message → up to PUBLIC_BOT_LIMITS.maxModelCalls model calls with
+// the three tools → the reply text. Only the LAST call's text is the reply: text the model wrote
+// before a tool call is never sent (the June "Let me pull our brochure" leak). Never throws.
 
-import { resolveLlmForJob } from '@/lib/elaya/registry';
+import { resolveLlmForJob, type ResolvedLlm } from '@/lib/elaya/registry';
 import type { LlmChatMessage } from '@/lib/elaya/provider';
 import type { CustomerPrincipal } from '@/lib/elaya/principal';
-import { buildCustomerSystemPrompt } from '@/lib/elaya/customer-persona';
-import {
-  getCustomerToolDefinitions,
-  executeCustomerTool,
-} from '@/lib/elaya/tools/customer-registry';
-import { buildElayaTimeContext } from '@/lib/elaya/persona';
+import { buildPublicBotSystemPrompt } from '@/lib/elaya/customer-persona';
+import { executeCustomerTool, getCustomerToolDefinitions, type HandoverRequest, type PublicToolContext } from '@/lib/elaya/tools/customer-registry';
+import { formatIstNow } from '@/lib/utils/ist';
+import { costForTokens, PUBLIC_BOT_LIMITS } from '@/lib/constants/public-bot';
 import type { ElayaToolCallRecord } from '@/lib/types/elaya';
 
-/** Hard ceiling on tool round-trips per customer turn — a runaway-loop backstop. */
-const MAX_TOOL_ITERATIONS = 4;
+export type CustomerTurnInput = { role: 'user' | 'assistant'; content: string };
 
-export type CustomerTurnInput = {
-  role: 'user' | 'assistant';
-  content: string;
+export type PublicTurnContext = {
+  /** Their first name when they have given one (never a phone number). */
+  firstName: string | null;
+  /** Is this the first reply Indulge has ever sent them? (She introduces herself once.) */
+  firstReply: boolean;
+  /** Titles of library items they already received. */
+  alreadySent: string[];
+  /** Interests on record. */
+  interests: string[];
+  /** The ad they came from, when the payload says (headline / body). */
+  cameFrom: string | null;
+  /** Already handed over once (she keeps answering, does not hand over again for the same thing). */
+  handedOver: boolean;
 };
 
-/** A sendable asset the turn fetched via get_company_material (deduped, in send_order). */
-export type CustomerTurnMedia = {
-  kind: string;
-  title: string;
-  url: string;
-};
-
-export type CustomerTurnResult = {
-  /** The model-authored reply (raw markdown; the caller converts to WhatsApp-native). */
+export type PublicTurnResult = {
   text: string;
-  /** The tool calls made this turn (audit). */
   toolCalls: ElayaToolCallRecord[];
-  /** The sendable media surfaced by get_company_material this turn (the orchestrator
-   *  sends these as actual WhatsApp media after the text reply — spaced + capped). */
-  media: CustomerTurnMedia[];
-  meta: Record<string, unknown>;
+  queuedSends: string[];
+  interests: string[];
+  handover: HandoverRequest | null;
+  model: string;
+  usage: { inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number };
+  costUsd: number;
+  error: string | null;
 };
+
+function turnContextLine(c: PublicTurnContext): string {
+  const parts = [
+    `[For you, not the person: it is ${formatIstNow(new Date())}.`,
+    c.firstName ? `Their first name is ${c.firstName}.` : `You do not know their name yet.`,
+    c.firstReply ? `This is your first reply to them: introduce yourself once as Indulge's digital concierge.` : `You have spoken before; do not introduce yourself again.`,
+    c.cameFrom ? `They came from this ad: ${c.cameFrom}.` : null,
+    c.interests.length ? `Interests on record: ${c.interests.join(', ')}.` : null,
+    c.alreadySent.length ? `Already sent to them: ${c.alreadySent.join('; ')}.` : null,
+    c.handedOver ? `The team already has their brief; hand over again only for something new.` : null,
+  ].filter(Boolean);
+  return `${parts.join(' ')}]`;
+}
 
 /**
- * Run one customer assistant turn. `history` is the conversation so far (oldest→newest),
- * ending with the customer's latest message (or, for the very first welcome, a single
- * synthetic 'system has just connected' user line the orchestrator supplies). Returns the
- * reply text + the tool calls made (so the orchestrator can also send any media assets the
- * model fetched). No streaming — WhatsApp gets one reply.
+ * Collapse the stored thread into a valid conversation: it starts with the person, and two turns
+ * in a row from the same side are joined (an agent's line and the bot's line are both "us").
  */
+function toConversation(history: CustomerTurnInput[]): LlmChatMessage[] {
+  const out: { role: 'user' | 'assistant'; content: string }[] = [];
+  for (const m of history) {
+    const content = m.content.trim();
+    if (!content) continue;
+    if (out.length === 0 && m.role === 'assistant') continue;
+    const last = out[out.length - 1];
+    if (last && last.role === m.role) last.content = `${last.content}\n${content}`;
+    else out.push({ role: m.role, content });
+  }
+  return out;
+}
+
 export async function runCustomerTurn(args: {
   principal: CustomerPrincipal;
+  packText: string;
+  libraryIds: ReadonlySet<string>;
+  sentIds: ReadonlySet<string>;
   history: CustomerTurnInput[];
-}): Promise<CustomerTurnResult> {
-  const { principal, history } = args;
-
-  const llm = await resolveLlmForJob('reasoning');
-  const system = buildCustomerSystemPrompt(principal);
-  const tools = getCustomerToolDefinitions();
-
-  const messages: LlmChatMessage[] = history
-    .filter((m) => m.content.trim().length > 0)
-    .map((m) =>
-      m.role === 'user'
-        ? { role: 'user' as const, content: m.content }
-        : { role: 'assistant' as const, content: m.content },
-    );
-
-  // The per-turn "today" anchor rides the latest user message (outside the cached
-  // system prefix), same pattern as the staff brain — so relative dates resolve correctly.
-  const timeContext = buildElayaTimeContext();
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].role === 'user') {
-      messages[i] = { role: 'user', content: `${timeContext}\n\n${messages[i].content}` };
-      break;
-    }
-  }
-
-  const allToolCalls: ElayaToolCallRecord[] = [];
-  const mediaByUrl = new Map<string, CustomerTurnMedia>();
-  let fullText = '';
-  let inputTokens = 0;
-  let outputTokens = 0;
-  let iterations = 0;
-  let turnError = false;
+  context: PublicTurnContext;
+  /** The bench only: a model chosen by the caller, and tools that write nothing. */
+  bench?: { llm: ResolvedLlm };
+}): Promise<PublicTurnResult> {
+  const ctx: PublicToolContext = {
+    dryRun: !!args.bench,
+    principal: args.principal,
+    libraryIds: args.libraryIds,
+    sentIds: args.sentIds,
+    queuedSends: [],
+    interests: [],
+    handover: null,
+  };
+  const usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 };
+  const toolCalls: ElayaToolCallRecord[] = [];
+  let model = '';
+  let text = '';
+  let error: string | null = null;
 
   try {
-    for (;;) {
+    const llm = args.bench?.llm ?? (await resolveLlmForJob('public_bot'));
+    model = llm.model;
+    const system = buildPublicBotSystemPrompt(args.packText);
+    const tools = getCustomerToolDefinitions();
+    const messages = toConversation(args.history);
+    const lastUser = [...messages].reverse().find((m) => m.role === 'user');
+    if (!lastUser || lastUser.role !== 'user') return { text: '', toolCalls, queuedSends: [], interests: [], handover: null, model, usage, costUsd: 0, error: 'no message from the person' };
+    lastUser.content = `${turnContextLine(args.context)}\n\n${lastUser.content}`;
+
+    for (let call = 0; call < PUBLIC_BOT_LIMITS.maxModelCalls; call += 1) {
       const result = await llm.adapter.complete({
         model: llm.model,
         maxTokens: llm.maxTokens,
@@ -100,66 +121,46 @@ export async function runCustomerTurn(args: {
         messages,
         tools,
         cachePrefix: true,
-        onTextDelta: () => {}, // no streaming on WhatsApp
+        timeoutMs: PUBLIC_BOT_LIMITS.callTimeoutMs,
+        credential: 'public_bot',
       });
+      usage.inputTokens += result.usage.inputTokens;
+      usage.outputTokens += result.usage.outputTokens;
+      usage.cacheReadTokens += result.usage.cacheReadTokens ?? 0;
+      usage.cacheWriteTokens += result.usage.cacheWriteTokens ?? 0;
+      if (result.text.trim()) text = result.text.trim();
 
-      fullText += result.text;
-      inputTokens += result.usage.inputTokens;
-      outputTokens += result.usage.outputTokens;
-
-      if (result.stopReason !== 'tool_use' || result.toolCalls.length === 0) break;
-
-      iterations += 1;
-      if (iterations > MAX_TOOL_ITERATIONS) {
-        console.warn('[elaya-customer-brain] tool iteration ceiling hit for lead', principal.leadId);
+      if (result.stopReason === 'refusal') {
+        text = '';
+        error = 'the model declined';
         break;
       }
+      if (result.stopReason !== 'tool_use' || result.toolCalls.length === 0) break;
 
+      // A reply written alongside tool calls is the lead-in, not the answer: keep the latest
+      // text only when the model finishes without calling another tool.
+      text = '';
       messages.push({ role: 'assistant', content: result.text, toolCalls: result.toolCalls });
-      for (const call of result.toolCalls) {
-        allToolCalls.push(call);
-        const execution = await executeCustomerTool(principal, call.name, call.input);
-        messages.push({ role: 'tool', toolCallId: call.id, content: execution.content });
-        // Surface the sendable media a get_company_material call returned so the
-        // orchestrator can push the actual files (deduped by url, send_order kept).
-        if (call.name === 'get_company_material' && !execution.isError) {
-          collectMedia(execution.content, mediaByUrl);
-        }
+      for (const tc of result.toolCalls) {
+        toolCalls.push(tc);
+        const exec = await executeCustomerTool(ctx, tc.name, tc.input);
+        messages.push({ role: 'tool', toolCallId: tc.id, content: exec.content });
       }
     }
   } catch (e) {
-    console.error('[elaya-customer-brain] turn loop failed:', e instanceof Error ? e.message : e);
-    turnError = true;
+    error = e instanceof Error ? e.message : String(e);
+    console.error('[public-bot-brain] turn failed:', error);
   }
-
-  const media = [...mediaByUrl.values()];
 
   return {
-    text: fullText.trim(),
-    toolCalls: allToolCalls,
-    media,
-    meta: {
-      provider: llm.adapter.name,
-      model: llm.model,
-      usage: { inputTokens, outputTokens },
-      toolIterations: iterations,
-      turnError,
-    },
+    text,
+    toolCalls,
+    queuedSends: ctx.queuedSends,
+    interests: ctx.interests,
+    handover: ctx.handover,
+    model,
+    usage,
+    costUsd: model ? costForTokens(model, usage) : 0,
+    error,
   };
-}
-
-/** Pull the sendable `material[]` out of a get_company_material tool result. */
-function collectMedia(serialized: string, into: Map<string, CustomerTurnMedia>): void {
-  try {
-    const parsed = JSON.parse(serialized) as {
-      material?: { kind?: string; title?: string; url?: string | null }[];
-    };
-    for (const m of parsed.material ?? []) {
-      if (m.url && !into.has(m.url)) {
-        into.set(m.url, { kind: m.kind ?? 'doc', title: m.title ?? '', url: m.url });
-      }
-    }
-  } catch {
-    // non-JSON / unexpected shape — no media to collect, never throw
-  }
 }

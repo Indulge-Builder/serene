@@ -35,18 +35,16 @@ persona.ts             ← STAFF system prompt (sets expectations; NEVER the enf
                           ONLY — never a permission) + the user's free-form NOTES via buildNotesPromptBlock
                           (Feature 3 — CONTEXT to remember, never permission; '' = zero bytes when none, so
                           a no-notes user keeps the shared cache prefix). Persona vocab: constants/elaya-persona.ts
-customer-persona.ts    ← (FEATURE 2) the CUSTOMER system prompt — the psychology-trained concierge
-                          salesperson voice + hard guardrails (KB-only facts, ₹ only, no AI/Serene reveal,
-                          no other-customer/internal talk). Voice + expectations only — never permission.
-customer-brain.ts      ← (FEATURE 2) runCustomerTurn — a SEPARATE, simpler tool loop for the outward
-                          customer channel (NO confirmation resolver, NO staff persona/memory, NO
-                          elaya_actions). Shares only the provider contract + the customer toolset. Surfaces
-                          the media get_company_material fetched so the orchestrator sends the actual files.
-tools/customer-registry.ts ← (FEATURE 2) THE customer toolset + dispatch. CUSTOMER_TOOLSET = exactly two
-                          lead-scoped tools (get_company_material read-only KB; note_customer_interest writes
-                          ONLY principal.leadId's service_interests). executeCustomerTool refuses anything
-                          outside it — the Golden Rule's hard edge. NO staff tool / executeTool / CRM read is
-                          reachable from a customer turn, by construction.
+customer-persona.ts    ← (0252) the PUBLIC bot's persona: the playbook voice, honest about being AI,
+                          prices only from the pack, NDAs on members; buildPublicBotSystemPrompt(packText) =
+                          persona + the published pack, byte-stable so the cache holds it.
+customer-brain.ts      ← (0252) runCustomerTurn — the public bot's tool loop (NO resolver, NO staff persona,
+                          NO memory, NO elaya_actions, NO import from staff Elaya): the `public_bot` model row
+                          and credential, only the LAST call's text is the reply, usage → the ledger.
+tools/customer-registry.ts ← (0252) THE public bot's three tools, none of which reads anything:
+                          send_material (pack ids only), note_interest (THIS lead), hand_over (a brief).
+                          executeCustomerTool refuses anything else. The four bot files are walled off from
+                          staff Elaya and every data service by ESLint (eslint.config.mjs).
 memory.ts              ← (Jarvis Phase 3) the learned-memory summarizer (bounded Haiku, reuses
                           provider+PII) + learnFromTurn (the after-turn reader of the living memory, 0237; every turn, called
                           by the SSE route + WhatsApp gate, non-fatal). (retrieveMemoryContext was

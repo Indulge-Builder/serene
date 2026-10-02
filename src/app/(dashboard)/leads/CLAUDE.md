@@ -613,3 +613,32 @@ Header checkbox is indeterminate when some (not all) rows are selected. Row chec
 `ExportButton` lives in the **`LeadsTable` toolbar** — right of the Columns picker, alongside the sort-order toggle. It is always visible (not conditional on filter state). Receives the resolved `filters: LeadFilters` prop from `LeadsTableAsync`. Opens `ExportModal` which shows format toggle (CSV / XLSX) before triggering the action.
 
 Never use `MotionButton` for `ExportButton` — it is a table-toolbar utility button, not a primary CTA.
+
+---
+
+## Lead identity: one active lead per person per domain (migration 0251)
+
+The identity of a lead is **phone + domain**. One person can hold one ACTIVE lead
+(new / touched / in discussion / nurturing) in each Gia domain. Every identity question goes
+through `src/lib/services/lead-identity.ts`:
+
+- `findActiveLeadInDomain(phone, domain)` is the only duplicate check. Never call the
+  `get_active_lead_by_phone` RPC from anywhere else, and never match on `phone` by hand.
+- `findPreviousLeadId(phone, domain)` is the returning-client link (`previous_lead_id`).
+- The database backstop is the unique index `idx_leads_active_person_domain` on
+  `(phone_key, domain)`. A 23505 from it means: on an INSERT, someone else won the race (return
+  their lead); on a domain move or a re-open, the person already has an active lead there
+  (`formErrors.leadActiveTwin`).
+- `phone_key` is a generated column. Never write it.
+
+**The "Also in" pills** (`LeadSiblingPillsAsync`, first thing under the dossier title) list the
+same person's other leads. A pill opens the real dossier when the viewer may open it, else
+`/leads/<own>/also/<other>`: the read-only notes and timeline.
+
+**The slug of a second lead** carries the domain (`ashish-kumar-3210-shop`). "In practice
+impossible" in the Lead Slug section above is no longer true: two leads of one person share the
+name and the last four digits by design.
+
+**Do not regress:** no RLS policy on `leads`, `lead_notes` or `lead_activities` may be widened so
+that another domain's lead becomes readable. The shared view is an admin-client read behind one
+gate, and no write action accepts a sibling lead.

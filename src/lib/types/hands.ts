@@ -2,6 +2,7 @@
 // TicketingDatabase / FreshdeskDatabase posture: the generated database.ts does not carry the
 // schema until the next regen, so handsDb() casts onto this. Types only, no runtime values.
 
+import type { LinkPreview } from "@/lib/utils/link-preview";
 import type { HandsDirection, HandsFrame, HandsMessageKind, HandsOutboxSource, HandsOutboxStatus, HandsThreadKind, HandsThreadStatus } from "@/lib/constants/hands";
 
 type Table<Row, Insert = Partial<Row>, Update = Partial<Row>> = { Row: Row; Insert: Insert; Update: Update; Relationships: [] };
@@ -59,6 +60,11 @@ export type HandsMessageRow = {
   created_at: string;
 };
 
+/** A hands message as a chat shows it: reactions folded onto it (hands-service foldHandsChat). */
+export type HandsChatMessage = HandsMessageRow & { reactions: { emoji: string; count: number }[]; link_preview: LinkPreview | null };
+/** A chat line as the browser gets it: a signed url for its file, and no raw WhatsApp payload (it can be large). */
+export type HandsChatLine = HandsChatMessage & { media_url: string | null };
+
 export type HandsOutboxRow = {
   id: string;
   thread_id: string;
@@ -103,3 +109,7 @@ export type HandsDatabase = {
     CompositeTypes: Record<string, never>;
   };
 };
+
+/** One editable hands document (the rulebook, or how Elaya writes to the agent), as its settings row holds it. */
+export type HandsGuideVersion = { body: string; version: number; at: string | null; by: string | null; note: string | null; source: "default" | "edit" | "feedback" | "restore" };
+export type HandsGuideDoc = HandsGuideVersion & { history: HandsGuideVersion[] };

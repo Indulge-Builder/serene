@@ -22,7 +22,7 @@
 // and use `after()` per the root CLAUDE.md Pattern Note — the two routes have
 // genuinely different auth/branching structures, so that stays per-route.
 
-import { timingSafeEqual } from 'crypto';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { NextResponse } from 'next/server';
 
 export type JsonBodyResult<T> =
@@ -101,4 +101,28 @@ export function safeSecretCompare(
   const b = Buffer.from(expected, 'utf8');
   if (a.length !== b.length) return false;
   return timingSafeEqual(a, b);
+}
+
+// ─────────────────────────────────────────────
+// Framer form webhook signature
+// ─────────────────────────────────────────────
+
+/**
+ * Framer's form webhook cannot send an Authorization header; it signs instead.
+ * `Framer-Signature` = "sha256=" + hex HMAC-SHA256(secret, rawBody + submissionId),
+ * where submissionId is the `Framer-Webhook-Submission-Id` header. The HMAC must run
+ * over the RAW body text, never a re-serialised JSON. Timing-safe via safeSecretCompare.
+ */
+export function verifyFramerSignature(
+  rawBody: string,
+  submissionId: string | null | undefined,
+  signature: string | null | undefined,
+  secret: string | null | undefined,
+): boolean {
+  if (!submissionId || !signature || !secret) return false;
+  if (signature.length !== 71 || !signature.startsWith('sha256=')) return false;
+  const hmac = createHmac('sha256', secret);
+  hmac.update(rawBody, 'utf8');
+  hmac.update(submissionId, 'utf8');
+  return safeSecretCompare(signature, `sha256=${hmac.digest('hex')}`);
 }

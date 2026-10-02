@@ -70,3 +70,19 @@ locally, prove the pilot.
 | `SUPABASE_SERVICE_ROLE_KEY` | `../.env.local` | direct writes |
 | `WAG_AUTH_DIR` | optional | session store (default `connector/auth`) |
 | `WAG_MEDIA_DIR` | optional | media store (default `connector/media`) |
+
+## The history harvester (`src/harvest.ts`)
+
+A separate laptop program, never the watcher. It links to one staff phone for one sitting, takes
+the history WhatsApp hands a new linked device, keeps linked member groups only, skips what the
+archive holds, then unlinks and deletes its login. Plan and laws:
+`docs/architecture/sia-resilience-plan.md` section 8b.
+
+```bash
+npm run harvest -- --label bench --selftest --max-groups 3   # no phone, no writes
+npm run harvest -- --label advita                            # dry run: links, counts, writes nothing
+npm run harvest -- --label advita --apply                    # files the history
+npm run harvest -- --label advita --apply --deep             # and walks further back
+```
+
+Keep the phone unlocked and on Wi-Fi while it runs. Never run it against the watcher's number.

@@ -4,6 +4,7 @@ import { getConversations, getUnreadCount } from "@/lib/services/whatsapp-servic
 import { WhatsAppShell } from "@/components/whatsapp/WhatsAppShell";
 import { WHATSAPP_CONVERSATIONS_PAGE_SIZE } from "@/lib/constants/whatsapp";
 import { parseWhatsAppPeriodFromSearchParams } from "@/lib/utils/whatsapp-period";
+import { isWhatsAppLine } from "@/lib/constants/whatsapp-lines";
 
 export const metadata = { title: "WhatsApp" };
 
@@ -30,6 +31,7 @@ export default async function WhatsAppPage({ searchParams }: PageProps) {
       period:     periodParams.period ?? undefined,
       customFrom: periodParams.customFrom,
       customTo:   periodParams.customTo,
+      line:       isWhatsAppLine(params.line) ? params.line : null,
     }),
     getUnreadCount(),
   ]);

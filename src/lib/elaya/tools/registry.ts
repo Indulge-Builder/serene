@@ -1263,6 +1263,7 @@ const getHandsThreadTool: ElayaTool = {
         payment: m.payment ? { amountInr: m.payment.amount_inr, payee: m.payment.payee, paid: Boolean(m.payment.paid_at), paidAmountInr: m.payment.paid_amount_inr ?? null, messageId: m.id } : null,
       })),
       queued: r.outbox.map((o) => ({ status: o.status, text: o.text, requestedAt: o.requested_at, error: o.error })),
+      followWhenWritingToTheAgent: r.guide,
     };
   },
 };
@@ -1274,7 +1275,8 @@ const draftHandsMessage: ElayaTool = {
     'the brief fields the table allows go in (dates, places, budget ceiling, product), the member\'s name, phone, ' +
     'address and contact never do. Returns the exact text, what was sent, what was held back, and any leak that ' +
     'blocks it. Sends NOTHING: show the user the text and the held-back list, then call send_hands_message only ' +
-    'when they agree. Optional `reply` drafts a follow-up line instead of the opening one.',
+    'when they agree. Optional `reply` drafts a follow-up line instead of the opening one. Any line you write ' +
+    'to the agent follows followWhenWritingToTheAgent (the team\'s live guide).',
   schema: z.object({ ticket: z.string().trim().min(1).max(60), reply: z.string().trim().max(2000).optional(), tickDeliveryAddress: z.boolean().optional() }),
   jsonSchema: {
     type: 'object',
@@ -1294,6 +1296,7 @@ const draftHandsMessage: ElayaTool = {
       ticketNo: r.ticketNo, ticketId: r.ticketId, handsEnabled: r.enabled, hasThread: r.hasThread, vendorSet: r.vendorIsAgent,
       text: r.draft.text, sent: r.draft.sent, heldBack: r.draft.heldBack, leaks: r.draft.leaks, trust: r.allows.label,
       canSend: r.enabled && r.draft.leaks.length === 0,
+      followWhenWritingToTheAgent: r.guide,
       note: r.draft.leaks.length ? 'A name, phone or email is in the text; it cannot be sent as written.' : !r.enabled ? 'Hands is switched off in Settings; the line can be drafted but not sent.' : !r.vendorIsAgent ? 'The ticket has no vendor yet: the agent must be set as its vendor before a thread opens.' : 'Show the user the text and the held-back list, then send_hands_message on a yes.',
     };
   },

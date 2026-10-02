@@ -26,6 +26,8 @@ import {
   SIA_ALERT_TEMPLATE_CONFIGURED,
 } from '@/lib/constants/whatsapp';
 import { SIA_ALERT_TIER1_PROFILE_IDS } from '@/lib/constants/sia-alerts';
+import { WHATSAPP_LINE_ENV, type WhatsAppLine } from '@/lib/constants/whatsapp-lines';
+import { PUBLIC_BOT_ENV } from '@/lib/constants/public-bot';
 import { createAdminClient } from '@/lib/supabase/admin';
 import {
   isChannelEnabled,
@@ -55,6 +57,37 @@ function assertGupshupConfigured(): void {
     throw new Error(
       '[whatsapp-api] Missing required env vars: GUPSHUP_API_KEY, GUPSHUP_APP_NAME, GUPSHUP_PARTNER_NUMBER, and GUPSHUP_WEBHOOK_SECRET must be set.',
     );
+  }
+}
+
+/**
+ * THE per-line Gupshup app (0252). The staff line is today's number and keeps its four env vars
+ * and its fail-fast guard; the public line reads its own app name and number, and its API key
+ * falls back to the staff one (both apps normally live on the same Gupshup account). Read at send
+ * time, so a number pasted into the environment later starts working with no code change.
+ */
+function gupshupApp(line: WhatsAppLine): { apiKey: string; appName: string; source: string } {
+  if (line === 'staff') {
+    assertGupshupConfigured();
+    return { apiKey: GUPSHUP_API_KEY!, appName: GUPSHUP_APP_NAME!, source: GUPSHUP_PARTNER_NUMBER!.replace(/^\+/, '') };
+  }
+  const env = WHATSAPP_LINE_ENV[line];
+  const apiKey = process.env[env.apiKey] || (env.apiKeyFallback ? process.env[env.apiKeyFallback] : undefined);
+  const appName = process.env[env.appName];
+  const number = process.env[env.number];
+  if (!apiKey || !appName || !number) {
+    throw new Error(`[whatsapp-api] The ${line} line is not configured: set ${env.appName}, ${env.number} and ${env.apiKey} (or ${env.apiKeyFallback ?? 'GUPSHUP_API_KEY'}).`);
+  }
+  return { apiKey, appName, source: number.replace(/^\+/, '') };
+}
+
+/** Whether a line has its Gupshup app configured (no throw). The public line is off until it does. */
+export function isWhatsAppLineConfigured(line: WhatsAppLine): boolean {
+  try {
+    gupshupApp(line);
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -90,23 +123,24 @@ async function metaFetch<T>(
 export async function sendTextMessage(
   to:   string,
   text: string,
+  opts: { line?: WhatsAppLine; previewUrl?: boolean } = {},
 ): Promise<MetaApiResponse> {
-  assertGupshupConfigured();
-  const source = GUPSHUP_PARTNER_NUMBER!.replace(/^\+/, '');
+  const app = gupshupApp(opts.line ?? 'staff');
+  const source = app.source;
   const destination = to.replace(/^\+/, '');
 
   const params = new URLSearchParams({
     channel:     'whatsapp',
     source,
     destination,
-    message:     JSON.stringify({ type: 'text', text }),
-    'src.name':  GUPSHUP_APP_NAME!,
+    message:     JSON.stringify(opts.previewUrl ? { type: 'text', text, previewUrl: true } : { type: 'text', text }),
+    'src.name':  app.appName,
   });
 
   const res = await fetch('https://api.gupshup.io/wa/api/v1/msg', {
     method:  'POST',
     headers: {
-      apikey:         GUPSHUP_API_KEY!,
+      apikey:         app.apiKey,
       'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: params.toString(),
@@ -156,9 +190,10 @@ export async function sendGupshupMediaMessage(
   url:      string,
   caption?: string,
   filename?: string,
+  line:     WhatsAppLine = 'staff',
 ): Promise<MetaApiResponse> {
-  assertGupshupConfigured();
-  const source      = GUPSHUP_PARTNER_NUMBER!.replace(/^\+/, '');
+  const app         = gupshupApp(line);
+  const source      = app.source;
   const destination = to.replace(/^\+/, '');
 
   // Gupshup message body shape per media type. Caption is honoured for
@@ -172,23 +207,31 @@ export async function sendGupshupMediaMessage(
     source,
     destination,
     message:     JSON.stringify(messageBody),
-    'src.name':  GUPSHUP_APP_NAME!,
+    'src.name':  app.appName,
   });
 
   const res = await fetch('https://api.gupshup.io/wa/api/v1/msg', {
     method:  'POST',
     headers: {
-      apikey:         GUPSHUP_API_KEY!,
+      apikey:         app.apiKey,
       'Content-Type': 'application/x-www-form-urlencoded',
     },
     body: params.toString(),
   });
 
-  if (!res.ok) {
-    throw new Error(`[whatsapp-api] Gupshup media API error: ${res.status}`);
+  // Gupshup answers HTTP 200 with { status: 'error' } for a closed window or a refused file, so
+  // the body is read the way sendTextMessage reads it (0252: the library sends depend on it).
+  const bodyText = await res.text();
+  if (!isGupshupDelivered(res.ok, bodyText)) {
+    throw new Error(`[whatsapp-api] Gupshup media send not delivered: HTTP ${res.status} body=${bodyText.slice(0, 200)}`);
   }
 
-  const data = (await res.json()) as { messageId?: string };
+  let data: { messageId?: string } = {};
+  try {
+    data = JSON.parse(bodyText) as { messageId?: string };
+  } catch {
+    // non-JSON success body: the send is confirmed, the id stays empty
+  }
 
   return {
     messaging_product: 'whatsapp',
@@ -302,7 +345,9 @@ function isGupshupDelivered(httpOk: boolean, body: string): boolean {
 // ─────────────────────────────────────────────
 
 interface NotificationLogEntry {
-  type:           'agent_assignment' | 'founder_alert' | 'sla_breach' | 'lead_initiation' | 'task_due_reminder' | 'task_overdue_manager' | 'task_due_soon' | 'task_overdue_agent' | 'task_overdue_manager_generic' | 'elaya_reply' | 'customer_welcome' | 'customer_reply' | 'task_assigned' | 'sia_alert';
+  type:           'agent_assignment' | 'founder_alert' | 'sla_breach' | 'lead_initiation' | 'task_due_reminder' | 'task_overdue_manager' | 'task_due_soon' | 'task_overdue_agent' | 'task_overdue_manager_generic' | 'elaya_reply' | 'customer_welcome' | 'customer_reply' | 'task_assigned' | 'sia_alert' | 'public_reply' | 'public_media' | 'public_welcome' | 'handover_alert' | 'library_send';
+  /** Which number sent it (0252). Absent = staff. */
+  line?:          WhatsAppLine;
   leadId?:        string | null;
   recipientId?:   string | null;
   recipientPhone: string;
@@ -330,6 +375,7 @@ async function logNotification(entry: NotificationLogEntry): Promise<void> {
       gupshup_status:  entry.gupshupStatus,
       gupshup_body:    entry.gupshupBody.slice(0, 2000),
       delivered:       entry.delivered,
+      line:            entry.line ?? 'staff',
     });
   } catch (err) {
     console.error('[whatsapp-api] Failed to write notification log:', err);
@@ -356,16 +402,18 @@ async function sendGupshupTemplate(opts: {
   logRecipient:   string;   // console suffix, e.g. `agent ${agentId}`
   log:            Omit<NotificationLogEntry, 'recipientPhone' | 'gupshupStatus' | 'gupshupBody' | 'delivered'>;
   throwOnError?:  boolean;
+  /** The number it leaves from (0252). Absent = staff. Templates belong to one Gupshup app. */
+  line?:          WhatsAppLine;
 }): Promise<{ delivered: boolean; gupshupBody: string }> {
-  assertGupshupConfigured();
-  const source      = GUPSHUP_PARTNER_NUMBER!.replace(/^\+/, '');
+  const app         = gupshupApp(opts.line ?? 'staff');
+  const source      = app.source;
   const destination = opts.destination.replace(/^\+/, '');
 
   const params = new URLSearchParams({
     channel:    'whatsapp',
     source,
     destination,
-    'src.name': GUPSHUP_APP_NAME!,
+    'src.name': app.appName,
     template:   JSON.stringify({
       id:     opts.templateId,
       params: opts.templateParams,
@@ -380,7 +428,7 @@ async function sendGupshupTemplate(opts: {
     const res = await fetch('https://api.gupshup.io/wa/api/v1/template/msg', {
       method:  'POST',
       headers: {
-        apikey:         GUPSHUP_API_KEY!,
+        apikey:         app.apiKey,
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: params.toString(),
@@ -405,6 +453,7 @@ async function sendGupshupTemplate(opts: {
     }
     await logNotification({
       ...opts.log,
+      line:           opts.line ?? 'staff',
       recipientPhone: destination,
       gupshupStatus,
       gupshupBody,
@@ -1151,38 +1200,90 @@ export async function sendCustomerWelcomeTemplate(
   }
 }
 
-/**
- * A free-form session reply to a CUSTOMER inside the open 24h window — the blast material
- * + conversational replies. The twin of sendElayaWhatsAppReply but for the customer
- * channel (log type 'customer_reply', migration 0151). Wraps sendTextMessage with the
- * one-log-row-per-attempt finally contract. Never throws.
- */
-export async function sendCustomerWhatsAppReply(
-  to:     string,
-  text:   string,
-  leadId: string,
-): Promise<boolean> {
+// ─────────────────────────────────────────────
+// The public bot's senders (0252, docs/architecture/indulge-bot-plan.md). Each wraps a core
+// sender with the one-log-row-per-attempt finally contract and never throws.
+// ─────────────────────────────────────────────
+
+/** A text the public bot sends inside the 24-hour window. Link previews on (store links, site). */
+export async function sendPublicBotText(to: string, text: string, leadId: string | null, line: WhatsAppLine = 'public'): Promise<{ delivered: boolean; messageId: string | null }> {
   let delivered   = false;
   let gupshupBody = '';
+  let messageId: string | null = null;
   try {
-    const res   = await sendTextMessage(to, text);
+    const res   = await sendTextMessage(to, text, { line, previewUrl: true });
     delivered   = true;
-    gupshupBody = `messageId: ${res.messages[0]?.id ?? ''}`;
-    console.log(`[whatsapp-api] Customer reply sent to lead ${leadId}`);
+    messageId   = res.messages[0]?.id || null;
+    gupshupBody = `messageId: ${messageId ?? ''}`;
   } catch (err) {
     gupshupBody = String(err);
-    console.error(`[whatsapp-api] Customer reply failed for lead ${leadId}:`, err);
+    console.error(`[whatsapp-api] public bot reply failed for lead ${leadId ?? '(none)'}:`, err);
   } finally {
-    await logNotification({
-      type:           'customer_reply',
-      leadId,
-      recipientPhone: to.replace(/^\+/, ''),
-      gupshupStatus:  delivered ? 200 : 0,
-      gupshupBody,
-      delivered,
-    });
+    await logNotification({ type: 'public_reply', line, leadId, recipientPhone: to.replace(/^\+/, ''), gupshupStatus: delivered ? 200 : 0, gupshupBody, delivered });
   }
-  return delivered;
+  return { delivered, messageId };
+}
+
+/** One library file, by URL, on a conversation's line. `logType` says who sent it. */
+export async function sendLibraryMedia(args: {
+  to: string;
+  type: 'image' | 'video' | 'document' | 'audio';
+  url: string;
+  caption?: string;
+  filename?: string;
+  leadId: string | null;
+  line: WhatsAppLine;
+  logType: 'public_media' | 'library_send';
+}): Promise<{ delivered: boolean; messageId: string | null }> {
+  let delivered   = false;
+  let gupshupBody = '';
+  let messageId: string | null = null;
+  try {
+    const res   = await sendGupshupMediaMessage(args.to, args.type, args.url, args.caption, args.filename, args.line);
+    delivered   = true;
+    messageId   = res.messages[0]?.id || null;
+    gupshupBody = `messageId: ${messageId ?? ''}`;
+  } catch (err) {
+    gupshupBody = String(err);
+    console.error(`[whatsapp-api] library media send failed for lead ${args.leadId ?? '(none)'}:`, err);
+  } finally {
+    await logNotification({ type: args.logType, line: args.line, leadId: args.leadId, recipientPhone: args.to.replace(/^\+/, ''), gupshupStatus: delivered ? 200 : 0, gupshupBody, delivered });
+  }
+  return { delivered, messageId };
+}
+
+/**
+ * The hand-over alert to the assigned agent, on the STAFF line (the agent's own WhatsApp), from
+ * an approved template whose id is in GUPSHUP_HANDOVER_TEMPLATE_ID. Params: {{1}} the agent's
+ * first name, {{2}} the prospect's first name, {{3}} the three-line brief, {{4}} the promised call.
+ * Not configured = no send (the in-app notification still goes). Never throws.
+ */
+export async function sendHandoverAlertTemplate(args: {
+  agentPhone: string;
+  agentFirstName: string;
+  prospectName: string;
+  brief: string;
+  promised: string;
+  leadId: string;
+  agentId: string;
+}): Promise<boolean> {
+  const templateId = process.env[PUBLIC_BOT_ENV.handoverTemplateId];
+  if (!templateId) return false;
+  try {
+    const { delivered } = await sendGupshupTemplate({
+      templateId,
+      destination:    args.agentPhone,
+      templateParams: [args.agentFirstName, args.prospectName, args.brief.slice(0, 900), args.promised.slice(0, 200)],
+      label:          'Hand-over alert',
+      logRecipient:   `agent ${args.agentId}`,
+      log:            { type: 'handover_alert', leadId: args.leadId, recipientId: args.agentId },
+      line:           'staff',
+    });
+    return delivered;
+  } catch (err) {
+    console.error('[whatsapp-api] sendHandoverAlertTemplate failed (non-fatal):', err);
+    return false;
+  }
 }
 
 export { WEBHOOK_VERIFY_TOKEN };

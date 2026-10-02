@@ -17,6 +17,13 @@ import {
 } from "@/lib/services/lead-mutations";
 import { extractServiceInterests } from "@/lib/services/lead-ingestion";
 import {
+  findActiveLeadInDomain,
+  findPreviousLeadId,
+  isActiveTwinViolation,
+} from "@/lib/services/lead-identity";
+import { getProfileFullName } from "@/lib/services/sla-service";
+import { canAccessLead } from "@/lib/elaya/access";
+import {
   AddCallNoteSchema,
   AddLeadNoteSchema,
   UpdateLeadEmailSchema,
@@ -151,7 +158,12 @@ export async function updateLeadStatus(
     { leadId, status, reason: reason ?? null },
     { slug, domain: lead.domain as string },
   );
-  if (!core.ok) return { data: null, error: formErrors.generic };
+  if (!core.ok) {
+    return {
+      data: null,
+      error: core.reason === "active_twin" ? formErrors.leadActiveTwin : formErrors.generic,
+    };
+  }
 
   // RPC returned early — status was already the same. No RSC cache work needed.
   if (!core.result.changed) return { data: { leadId }, error: null };
@@ -560,7 +572,16 @@ export async function updatePersonalDetails(
 // ─────────────────────────────────────────────
 export async function createManualLead(
   input: unknown,
-): Promise<ActionResult<{ leadId: string; duplicate?: boolean }>> {
+): Promise<
+  ActionResult<{
+    leadId: string;
+    duplicate?: boolean;
+    /** Slug or id of the existing lead when the caller can open it; null when they cannot. */
+    duplicateRef?: string | null;
+    /** Who holds the existing lead, so the form can say it. */
+    duplicateOwner?: string | null;
+  }>
+> {
   // 1. Zod validate — first line, always (Rule S-01)
   const parsed = CreateManualLeadSchema.safeParse(input);
   if (!parsed.success) {
@@ -659,19 +680,17 @@ export async function createManualLead(
     resolvedDomain,
   );
 
-  // 6. Duplicate check via get_active_lead_by_phone (Rule S-09 / dedup spec).
-  //    The RPC returns ONLY active leads (new/touched/in_discussion/nurturing).
-  const { data: existingLeads } = await admin.rpc("get_active_lead_by_phone", {
-    p_phone: phone,
-  });
+  // 6. Duplicate check: one active lead per person PER DOMAIN (migration 0251).
+  //    The same person being worked in another domain is not a duplicate; this
+  //    lead is created and the dossier shows the other one as an "Also in" pill.
+  const existingLead = await findActiveLeadInDomain(phone, resolvedDomain);
 
-  if (existingLeads && existingLeads.length > 0) {
-    // Active duplicate — log a duplicate_submission on the existing lead so the
-    // re-enquiry is visible in its timeline (parity with the webhook path, audit #15),
-    // then return the existing lead without inserting.
-    const existingId = existingLeads[0].id;
+  if (existingLead) {
+    // Active duplicate in this domain. Log a duplicate_submission on the existing
+    // lead so the re-enquiry is visible in its timeline (parity with the webhook
+    // path, audit #15), then return the existing lead without inserting.
     const { error: dupActivityError } = await giaDb(admin).from("lead_activities").insert({
-      lead_id: existingId,
+      lead_id: existingLead.id,
       actor_id: caller.id,
       action_type: "duplicate_submission",
       details: { source: "manual", lead_source: source ?? null, domain: resolvedDomain },
@@ -679,26 +698,28 @@ export async function createManualLead(
     if (dupActivityError) {
       console.error("[leads:createManualLead] duplicate_submission activity insert failed:", dupActivityError.message);
     }
+    // The person adding it may not be allowed to open it (an agent sees only his
+    // own leads): say who holds it, and link only when the link will open.
+    const canOpen = canAccessLead(
+      { role: caller.role, domain: caller.domain, userId: caller.id },
+      { domain: existingLead.domain, assigned_to: existingLead.assigned_to },
+    );
     return {
-      data: { leadId: existingId, duplicate: true },
+      data: {
+        leadId: existingLead.id,
+        duplicate: true,
+        duplicateRef: canOpen ? (existingLead.slug ?? existingLead.id) : null,
+        duplicateOwner: existingLead.assigned_to
+          ? await getProfileFullName(existingLead.assigned_to)
+          : null,
+      },
       error: null,
     };
   }
 
-  // 6b. Returning-prospect chain: if a TERMINAL (won/lost/junk) lead exists for
-  //     this phone, link the new lead to it via previous_lead_id — parity with
-  //     the webhook path, which the manual path previously skipped (audit #3 dedup).
-  let previousLeadId: string | null = null;
-  const { data: terminalLead } = await giaDb(admin)
-    .from("leads")
-    .select("id")
-    .eq("phone", phone)
-    .is("archived_at", null)
-    .in("status", ["won", "lost", "junk"])
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (terminalLead) previousLeadId = terminalLead.id as string;
+  // 6b. Returning client: the newest CLOSED (won/lost/junk) lead of this person in
+  //     THIS domain, linked through previous_lead_id. Same read as the webhook path.
+  const previousLeadId = await findPreviousLeadId(phone, resolvedDomain);
 
   // 7. INSERT lead — source from modal when set; form_data empty for manual leads
   const now = new Date().toISOString();
@@ -731,12 +752,12 @@ export async function createManualLead(
     .single();
 
   if (insertError || !inserted) {
-    // 23505 = the active-phone unique index (0137) rejected a concurrent insert
+    // 23505 = the active-person unique index (0251) rejected a concurrent insert
     // that raced past dedup (audit #1). Resolve to the lead that won the race.
-    if (insertError?.code === "23505") {
-      const { data: raced } = await admin.rpc("get_active_lead_by_phone", { p_phone: phone });
-      if (raced && raced.length > 0) {
-        return { data: { leadId: raced[0].id, duplicate: true }, error: null };
+    if (isActiveTwinViolation(insertError)) {
+      const raced = await findActiveLeadInDomain(phone, resolvedDomain);
+      if (raced) {
+        return { data: { leadId: raced.id, duplicate: true, duplicateRef: null, duplicateOwner: null }, error: null };
       }
     }
     return { data: null, error: formErrors.generic };
@@ -929,6 +950,8 @@ export async function updateLeadDomain(
     .update({ domain })
     .eq("id", leadId);
 
+  // The person already has an active lead in the target domain (0251 unique index).
+  if (isActiveTwinViolation(updateError)) return { data: null, error: formErrors.leadActiveTwin };
   if (updateError) return { data: null, error: formErrors.generic };
 
   await giaDb(admin).from("lead_activities").insert({

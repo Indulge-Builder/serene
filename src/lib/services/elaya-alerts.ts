@@ -20,12 +20,14 @@ import { createHash } from 'node:crypto';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { resolveLlmForJob } from '@/lib/elaya/registry';
 import { maskPii } from '@/lib/elaya/pii';
-import { getPiiMaskingDepth } from '@/lib/services/llm-providers-service';
+import { getPiiMaskingDepth, getReplyAlertSwitches } from '@/lib/services/llm-providers-service';
 import { runElayaQuery } from '@/lib/services/elaya-query-service';
 import { getWaitingGroups } from '@/lib/services/pulse-service';
 import { sendElayaWhatsAppReply, sendElayaTemplatePing, sendSiaAlertNotification } from '@/lib/services/whatsapp-api';
 import { createNotification } from '@/lib/services/notifications-service';
 import { waFreeTextWindowOpen } from '@/lib/services/elaya-service';
+import { queueDeskMessageCore } from '@/lib/services/desk-mutations';
+import { memberDb } from '@/lib/supabase/schemas';
 import { markdownToWhatsApp } from '@/lib/utils/whatsapp-format';
 import { mapWithConcurrency } from '@/lib/utils/concurrency';
 import { mapRows } from '@/lib/utils/rows';
@@ -44,8 +46,10 @@ const md5 = (s: string) => createHash('md5').update(s).digest('hex');
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- 0235 is not in the generated types until the next regen
 const admin = () => createAdminClient() as any;
 
-type Founder = { id: string; full_name: string; phone: string | null };
-type Alert = {
+/** A person an alert reaches: in-app always, WhatsApp when a phone is on file. */
+export type AlertPerson = { id: string; full_name: string; phone: string | null };
+type Founder = AlertPerson;
+export type Alert = {
   kind: ElayaAlertKind;
   severity: 1 | 2 | 3;
   dedupeKey: string;
@@ -56,8 +60,12 @@ type Alert = {
   ticketId?: number | null;
   conversationId?: string | null;
   actionUrl: string;
-  /** Who hears it: founders (the default) or the tech responders. */
-  audience: 'founders' | 'tech';
+  /** Who hears it: founders (the default), the tech responders, or the queendom seats the reply clocks pick (0253). */
+  audience: 'founders' | 'tech' | 'seats';
+  /** The queendom whose table should hear it (0248); resolved from the member when absent. */
+  queendomId?: string | null;
+  /** What the TABLE hears and sees (0248): the group's name, never the member's name or their words. */
+  desk?: { title: string; body: string };
 };
 
 export type AlertSweepResult = { since: string; until: string; considered: Record<string, number>; fired: number; skipped: number; judged: number };
@@ -97,6 +105,7 @@ async function unansweredAlerts(now: Date): Promise<Alert[]> {
       memberId: r.member_id,
       actionUrl: siaGroupHref(r.group_jid),
       audience: 'founders' as const,
+      desk: { title: `${r.subject ?? 'A member group'} is waiting on us, ${hours} h`, body: `Nobody has replied since ${formatIstClock(new Date(r.last_message_at))} IST.` },
     };
   });
 }
@@ -105,7 +114,7 @@ async function unansweredAlerts(now: Date): Promise<Alert[]> {
 
 async function ticketAlerts(since: string, until: string): Promise<Alert[]> {
   const r = await runElayaQuery(
-    `select c.ticket_id, c.field, c.old_value, c.new_value, c.changed_at, left(t.subject, 120) as subject, t.requester_name as requester, t.priority, t.status_label as status, coalesce(q.name, g.name, 'other') as queendom
+    `select c.ticket_id, c.field, c.old_value, c.new_value, c.changed_at, left(t.subject, 120) as subject, t.requester_name as requester, t.priority, t.status_label as status, coalesce(q.name, g.name, 'other') as queendom, q.id as queendom_id
      from freshdesk_ticket_changes c join freshdesk_tickets t on t.ticket_id = c.ticket_id left join freshdesk_groups g on g.group_id = t.group_id left join queendoms q on q.freshdesk_group_id = t.group_id
      where c.changed_at > '${since}'::timestamptz and c.changed_at <= '${until}'::timestamptz
        and ((c.field = 'is_escalated' and lower(c.new_value) in ('true','t','1')) or (c.field = 'priority' and c.new_value = '4') or (c.field = 'status' and c.old_value in ('4','5') and c.new_value not in ('4','5')))
@@ -127,6 +136,8 @@ async function ticketAlerts(since: string, until: string): Promise<Alert[]> {
       ticketId: ticket,
       actionUrl: `${FRESHDESK_PATH}/${ticket}`,
       audience: 'founders' as const,
+      queendomId: typeof x.queendom_id === 'string' ? x.queendom_id : null,
+      desk: { title: `Freshdesk ticket ${ticket} ${what}`, body: `It is now ${x.status ?? 'open'}, priority ${x.priority ?? '?'}.` },
     };
   });
 }
@@ -199,6 +210,7 @@ async function toneAlerts(since: string, settleUntil: string, deadline: number, 
         body: `${String(v.summary ?? '').slice(0, 300)}${v.quote ? ` "${String(v.quote).slice(0, 160)}"` : ''} (${g.subject ?? 'their group'})`,
         groupJid: g.group_jid,
         memberId: g.member_id,
+        desk: { title: `${g.subject ?? 'A member group'} sounds unhappy`, body: String(v.title ?? v.concern).slice(0, 120) },
         actionUrl: siaGroupHref(g.group_jid),
         audience: 'founders',
       });
@@ -240,7 +252,8 @@ async function silentTurnAlerts(now: Date): Promise<Alert[]> {
 
 // ── Delivery ─────────────────────────────────────────────────────────────────
 
-async function record(a: Alert): Promise<string | null> {
+/** The alert's row in elaya_alerts, written BEFORE anything is sent; null = already fired (the dedupe key) or failed. */
+export async function recordAlert(a: Alert): Promise<string | null> {
   const { data, error } = await admin().from('elaya_alerts').insert({
     kind: a.kind, severity: a.severity, dedupe_key: a.dedupeKey, group_jid: a.groupJid ?? null, member_id: a.memberId ?? null,
     ticket_id: a.ticketId ?? null, conversation_id: a.conversationId ?? null, title: a.title, body: a.body,
@@ -252,22 +265,45 @@ async function record(a: Alert): Promise<string | null> {
   return (data as { id: string }).id;
 }
 
+/**
+ * One Elaya WhatsApp message to one person: free text while their 24-hour window is open (they wrote
+ * to Elaya today), else the approved alert template (first name, title, one-line body). Never throws.
+ */
+export async function sendElayaAlertWhatsApp(p: AlertPerson, title: string, body: string): Promise<'whatsapp' | 'pinged' | 'none'> {
+  if (!p.phone) return 'none';
+  if (await waFreeTextWindowOpen(p.id)) {
+    return (await sendElayaWhatsAppReply(p.phone, markdownToWhatsApp(`**${title}**\n${body}`), p.id)) ? 'whatsapp' : 'none';
+  }
+  const first = p.full_name.split(' ')[0] ?? p.full_name;
+  return (await sendElayaTemplatePing(p.phone, p.id, first, title, body)) ? 'pinged' : 'none';
+}
+
 async function deliverToFounders(a: Alert, founders: Founder[]): Promise<Record<string, unknown>> {
-  const text = `**${a.title}**\n${a.body}`;
   const delivered: Record<string, unknown> = { in_app: 0, whatsapp: 0, pinged: 0 };
   for (const f of founders) {
-    const first = f.full_name.split(' ')[0] ?? f.full_name;
-    if (f.phone) {
-      if (await waFreeTextWindowOpen(f.id)) {
-        if (await sendElayaWhatsAppReply(f.phone, markdownToWhatsApp(text), f.id)) delivered.whatsapp = (delivered.whatsapp as number) + 1;
-      } else if (await sendElayaTemplatePing(f.phone, f.id, first, a.title, a.body)) {
-        delivered.pinged = (delivered.pinged as number) + 1;
-      }
-    }
+    const sent = await sendElayaAlertWhatsApp(f, a.title, a.body);
+    if (sent !== 'none') delivered[sent] = (delivered[sent] as number) + 1;
     const { error } = await createNotification({ recipient_id: f.id, type: 'system', action_url: a.actionUrl, title: a.title, body: a.body.slice(0, 240) });
     if (!error) delivered.in_app = (delivered.in_app as number) + 1;
   }
   return delivered;
+}
+
+/**
+ * D. The queendom's own table (0248): the alert as one spoken line on that queendom's speakers and
+ * a card on its TV, through the desks outbox (queueDeskMessageCore applies the switch, quiet hours
+ * and the never-say-aloud law). A member alert finds its queendom through the member; an alert
+ * with no queendom is founders-only. Never throws; 'disabled' is not an error.
+ */
+async function deliverToDesks(a: Alert, alertId: string): Promise<'queued' | 'skipped'> {
+  let queendomId = a.queendomId ?? null;
+  if (!queendomId && a.memberId) {
+    const { data } = await memberDb(createAdminClient()).from('members').select('queendom_id').eq('id', a.memberId).maybeSingle();
+    queendomId = (data as { queendom_id: string | null } | null)?.queendom_id ?? null;
+  }
+  if (!queendomId) return 'skipped';
+  const r = await queueDeskMessageCore({ kind: 'alert', severity: a.severity, title: a.desk?.title ?? a.title, body: a.desk?.body ?? '', audience: { queendom_id: queendomId }, source: 'sweep', alertId }, null);
+  return r.error ? 'skipped' : 'queued';
 }
 
 async function deliverToTech(a: Alert): Promise<Record<string, unknown>> {
@@ -294,8 +330,11 @@ export async function runAlertSweep(opts: { apply: boolean; deadlineMs: number }
   const { data: fdata } = await admin().from('profiles').select('id, full_name, phone').eq('role', 'founder').eq('is_active', true);
   const founders = mapRows<Founder, Founder>(fdata, (x) => x);
 
+  // With the reply clocks on (0253), the founders' hour-long wait is a step of THAT ladder (around
+  // the clock, once per wait); this older read stays only as the fallback while they are off.
+  const replyClocksOn = (await getReplyAlertSwitches()).reply;
   const settled = await Promise.allSettled([
-    unansweredAlerts(now),
+    replyClocksOn ? Promise.resolve([] as Alert[]) : unansweredAlerts(now),
     ticketAlerts(since, until),
     toneAlerts(since, settleUntil, deadline, judged),
     silentTurnAlerts(now),
@@ -312,9 +351,10 @@ export async function runAlertSweep(opts: { apply: boolean; deadlineMs: number }
   const admin_ = admin();
   for (const a of all.sort((x, y) => y.severity - x.severity)) {
     if (!opts.apply) { skipped++; continue; }
-    const id = await record(a);
+    const id = await recordAlert(a);
     if (!id) { skipped++; continue; }
     const delivered = a.audience === 'tech' ? await deliverToTech(a) : await deliverToFounders(a, founders);
+    if (a.audience !== 'tech') delivered.desk = await deliverToDesks(a, id);
     await admin_.from('elaya_alerts').update({ delivered }).eq('id', id);
     fired++;
   }

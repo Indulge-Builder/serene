@@ -53,7 +53,7 @@ export type ElayaActionRow = {
   resolved_by: string | null;
 };
 
-export type LlmJobType = 'routing' | 'reasoning';
+export type LlmJobType = 'routing' | 'reasoning' | 'public_bot';
 export type LlmProviderName = 'anthropic' | 'google' | 'openai';
 
 export type LlmProviderRow = {

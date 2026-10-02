@@ -1,13 +1,51 @@
 # TODO
 
 > **Purpose:** the short live list of open loose ends that are not features: things to check, switch, or fix. Features and roadmap live in `01-vision.md`; per-area gaps live in each doc's "Open items".
-> **Audience:** the tech team. · **Last verified:** 2026-09-26 (collected during the full docs refresh).
+> **Audience:** the tech team. · **Last verified:** 2026-09-26 (collected during the full docs refresh); security plan added 2026-09-29.
 
 Check items off (or delete them) as they are done. Each item names the doc that has the detail.
 
 ---
 
 ## Security and access
+
+**Data protection plan (security review, 2026-09-29).** Chat text is stored readable in the
+database: about 198,000 Sia WhatsApp messages, 219,000 Freshdesk conversations, 70,000 file
+readings and 2,100 Elaya messages. That is expected. Serene has to read its own messages (Elaya,
+the profiler, intake, search), and the Baileys connector is itself the "end" of WhatsApp's
+end-to-end encryption, so true end-to-end is not possible here. What protects the text today:
+HTTPS everywhere, Supabase disk encryption, row security on every chat table, and names masked
+before AI calls. The cards and IDs vault is the one place with its own encryption (AES-256-GCM,
+key outside the database). **Decided: do not encrypt message text field by field.** The server
+would hold the key anyway, so it adds little over disk encryption, and it would break search,
+Elaya's read-only query door and the deep read. The real gaps, in the order to fix them:
+
+- [ ] **1. Find out who `jerry_readonly` is, or remove it.** A database role with SELECT on 68
+  tables, including every WhatsApp message (`sia.wag_messages`) and every Elaya chat
+  (`elaya_messages`), through 74 policies (the two checked allow every row, `USING (true)`). It cannot log in itself, but
+  `authenticator` (the API's login) is a member, so anyone holding an API token that says
+  `role: jerry_readonly` reads all of it over the REST API. It was created by hand: no migration,
+  doc or script mentions it. If nobody can name the owner, drop the role and its policies and
+  rotate the project's JWT signing secret (which also signs any token already issued for it).
+- [ ] **2. Encrypt the WhatsApp session keys.** `sia.wag_auth_state` (the Sia number) and
+  `hands.auth_state` (the Hands number) hold the Signal keys as plain JSON. Row security keeps
+  normal users out, but anyone with the service-role key could copy them and send as the company
+  number. Encrypt the `value` column in `connector/src/auth-postgres.ts` with a key that lives
+  only in the connectors' environment (the `vault-crypto.ts` pattern: AES-256-GCM, key version
+  for rotation). Migrate the existing rows with the watcher stopped, and follow the Sia
+  session-state discipline (freeze, read-only audit, then change). Never experiment on the live
+  session.
+- [ ] **3. Shrink and rotate the service-role key.** The key that reads everything sits on
+  Vercel, the Trigger.dev worker, the AWS Fargate brain, the connector box(es), and developer
+  laptops (`.env.local` points at production). List every copy, take it off the laptops (use a
+  local database or a read-only role for benches), then rotate it once.
+- [ ] **4. Log who reads whose chats.** Nothing records reads today, including the new admin
+  Chats page (`/settings/elaya-chats`) and the Sia and Freshdesk pages. Add an append-only access
+  log (the `logMemberAccess` / vault-trail shape): who, whose conversation, when.
+- [ ] **5. Set a retention period.** Nothing is ever deleted: chat text, media and file
+  readings are kept forever. Decide with the founders how long each kind is kept, then add a
+  scheduled purge (or archive) job. Also check Supabase backup and point-in-time settings, since
+  backups keep deleted rows.
 
 - [ ] **Close the sign-up hole for good.** The new-user trigger `handle_new_user` (latest
   definition in migration 0201) still copies `role`, `domain`, `sia_role` and `queendom_id` from

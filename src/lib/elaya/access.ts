@@ -14,7 +14,10 @@ import { LEAD_STATUS_LABELS } from '@/lib/constants/lead-statuses';
 import { isCompanyWideSeat } from '@/lib/constants/sia-roles';
 import type { LeadStatus } from '@/lib/types/database';
 
-export function canAccessLead(principal: StaffPrincipal, lead: LeadWithAssignee): boolean {
+export function canAccessLead(
+  principal: Pick<StaffPrincipal, 'role' | 'domain' | 'userId'>,
+  lead: Pick<LeadWithAssignee, 'domain' | 'assigned_to'>,
+): boolean {
   if (principal.role === 'admin' || principal.role === 'founder') return true;
   if (principal.role === 'manager') return lead.domain === principal.domain;
   if (principal.role === 'agent') return lead.assigned_to === principal.userId;

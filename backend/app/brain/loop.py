@@ -11,8 +11,9 @@ instead of a dead turn ("that tool isn't in my hands this turn", 11 times in the
 transcript). The role gate is untouched: a name outside principal.toolset is never
 sent to the model at all. Laws carried over:
 
-  • ITERATION CEILING (6): a runaway tool spiral ends with a calm handoff,
-    never an infinite loop.
+  • ITERATION CEILING (MAX_ITERATIONS): a runaway tool spiral ends, never an
+    infinite loop, with one tools-withheld closing call that answers from what
+    was gathered (or says what was checked and not found), never a bare refusal.
   • PII GATEWAY: every tool result is masked BEFORE the model sees it. The
     depth is read once per turn from elaya_settings.
   • CACHE PREFIX: the stable prefix (system + tools) carries a prompt-cache
@@ -60,6 +61,20 @@ TOOL_RESULT_MAX_CHARS = 12_000
 # Tools that are a whole picture by design carry a larger allowance (mirrors
 # `maxResultChars` on the Node tool; Node has already fitted the result under it).
 TOOL_RESULT_MAX_CHARS_BY_TOOL: dict[str, int] = {"get_member_360": 24_000}
+
+
+# The closing call's instruction (tools withheld). An empty reply had gathered enough;
+# a ceiling stopped mid-search, so the answer must say what was checked and what is left.
+_EMPTY_CLOSING = (
+    "You have finished gathering. Answer now, in short lines, from what the tool results "
+    "above hold. Do not call any more tools."
+)
+_CEILING_CLOSING = (
+    "You have used every lookup this turn allows, so stop searching and answer now from "
+    "the tool results above. Do not call any more tools. If they hold the answer, give it. "
+    "If they do not, say so plainly: name what you checked, say it was not found there, and "
+    "say what could be checked next or who on the team could confirm it. Never invent a match."
+)
 
 
 def _cap(name: str) -> int:
@@ -180,6 +195,7 @@ async def run_turn(
     if not messages:
         return TurnResult(text="", specialist=specialist.id)
     result_text = ""
+    hit_ceiling = False
     tools_used: list[str] = []
     in_tokens = out_tokens = 0
 
@@ -248,10 +264,12 @@ async def run_turn(
                     ChatMessage(role="tool", content=serialized, tool_call_id=call.id)
                 )
     else:
-        # Ceiling hit — same calm posture as the Node brain.
-        closing = " I've hit my step limit on this one — try asking a smaller piece."
-        await on_delta(closing)
-        result_text += closing
+        # Ceiling hit. The rounds are spent, but what they found is not thrown away
+        # (2026-10-01: three founder turns ended "I've hit my step limit" after 10+ good
+        # queries, one of them having found the answer). The closing call below answers
+        # from the gathered results, and says plainly what was checked when nothing matched.
+        hit_ceiling = True
+        result_text = ""
 
     # An EMPTY final reply is never an answer (2026-09-21: a 16-call playbook turn ended with
     # stop_reason max_tokens and "" — the Claude 5 models think inside the output allowance, and a
@@ -267,7 +285,7 @@ async def run_turn(
             ]
             closing_messages.append(ChatMessage(
                 role="user",
-                content="You have finished gathering. Answer now, in short lines, from what the tool results above hold. Do not call any more tools.",
+                content=_CEILING_CLOSING if hit_ceiling else _EMPTY_CLOSING,
             ))
             closing_result = await llm.complete(
                 CompleteRequest(

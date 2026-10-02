@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse, after } from 'next/server';
 import { giaDb } from '@/lib/supabase/schemas';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { createRateLimiter, getClientIp, readJsonBody, safeSecretCompare } from '@/lib/utils/webhook';
+import {
+  createRateLimiter,
+  getClientIp,
+  parseJsonBody,
+  safeSecretCompare,
+  verifyFramerSignature,
+} from '@/lib/utils/webhook';
 import { ingestLead, sanitizeRawPayload } from '@/lib/services/lead-ingestion';
 import { notifyLeadAssigned } from '@/lib/services/lead-assignment-notify';
 import { LEAD_SOURCES, type LeadSource } from '@/lib/constants/lead-sources';
+import { isGiaDomain } from '@/lib/constants/domains';
 import type { JsonValue } from '@/lib/types/database';
 
 const LEAD_SOURCES_SET = new Set<string>(LEAD_SOURCES);
@@ -59,6 +66,15 @@ export async function GET(): Promise<NextResponse> {
 // ─────────────────────────────────────────────
 // POST /api/webhooks/leads?source=meta|google|website|shop_app
 //
+// Two ways to authenticate, chosen by the sender:
+//   - Bearer token (Pabbly: PABBLY_WEBHOOK_SECRET; shop app: SHOP_APP_WEBHOOK_SECRET)
+//   - Framer form webhook (the website): a request carrying `Framer-Signature` is
+//     verified against FRAMER_WEBHOOK_SECRET and is ALWAYS ingested as source
+//     'website'. Framer cannot add headers or hidden fields reliably, so an optional
+//     `?domain=<gia domain>` on the URL we paste into Framer pins the lead's domain
+//     when the form itself sends none. Requests without the Framer header take the
+//     Bearer path exactly as before.
+//
 // Order of operations:
 //   1. Rate limit check (no body read yet)
 //   2. Parse body — log raw payload immediately on success
@@ -66,7 +82,10 @@ export async function GET(): Promise<NextResponse> {
 //   4. Ingest — on failure, mark ingestion_error on the raw log row
 // ─────────────────────────────────────────────
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const rawSource = request.nextUrl.searchParams.get('source') ?? 'website';
+  const framerSignature = request.headers.get('framer-signature');
+  const isFramer = framerSignature !== null;
+
+  const rawSource = isFramer ? 'website' : (request.nextUrl.searchParams.get('source') ?? 'website');
   let source: LeadSource;
   if (LEAD_SOURCES_SET.has(rawSource)) {
     source = rawSource as LeadSource;
@@ -81,7 +100,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   // 2. Parse body — log immediately so no payload is ever lost, even on auth failure
-  const parsed = await readJsonBody(request);
+  //    The raw text is kept: the Framer signature is an HMAC over the exact bytes.
+  let rawBody: string;
+  try {
+    rawBody = await request.text();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+  const parsed = parseJsonBody(rawBody);
   if (!parsed.ok) return parsed.response;
   const rawPayload = parsed.body;
 
@@ -91,18 +117,34 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   //    The shop app is a different organisation's deployment on different
   //    infrastructure; sharing Pabbly's token would mean a leak on either side
   //    forces a rotation that breaks the other. Both are compared timing-safe.
-  const webhookSecret =
-    source === 'shop_app'
+  //    Framer signs instead of sending a token, with its own secret, so a leak on
+  //    the website side never forces a Pabbly or shop rotation either.
+  const webhookSecret = isFramer
+    ? process.env.FRAMER_WEBHOOK_SECRET
+    : source === 'shop_app'
       ? process.env.SHOP_APP_WEBHOOK_SECRET
       : process.env.PABBLY_WEBHOOK_SECRET;
   if (!webhookSecret) {
-    console.error(`[webhook/leads] No webhook secret configured for source "${source}"`);
+    console.error(
+      `[webhook/leads] No webhook secret configured for ${isFramer ? 'Framer' : `source "${source}"`}`,
+    );
     return NextResponse.json({ error: 'Server misconfiguration' }, { status: 500 });
   }
 
-  const authHeader = request.headers.get('authorization');
-  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-  if (!safeSecretCompare(token, webhookSecret)) {
+  let authorized: boolean;
+  if (isFramer) {
+    authorized = verifyFramerSignature(
+      rawBody,
+      request.headers.get('framer-webhook-submission-id'),
+      framerSignature,
+      webhookSecret,
+    );
+  } else {
+    const authHeader = request.headers.get('authorization');
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    authorized = safeSecretCompare(token, webhookSecret);
+  }
+  if (!authorized) {
     // Payload is already logged — mark it so it's distinguishable from a success
     if (rawPayloadId) {
       const supabase = createAdminClient();
@@ -115,7 +157,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   }
 
   // 4. Ingest — pass rawPayloadId so ingestLead can backfill lead_id without re-logging
-  const result = await ingestLead(rawPayload, source, rawPayloadId);
+  //    A Framer form with no `domain` field takes the URL's ?domain= (a Gia domain
+  //    only; anything else is ignored and the usual campaign/default rule applies).
+  //    The raw log above keeps the payload exactly as it arrived.
+  let ingestPayload: unknown = rawPayload;
+  if (isFramer && rawPayload && typeof rawPayload === 'object' && !Array.isArray(rawPayload)) {
+    const body = rawPayload as Record<string, unknown>;
+    const urlDomain = request.nextUrl.searchParams.get('domain');
+    if (!body.domain && urlDomain && isGiaDomain(urlDomain)) {
+      ingestPayload = { ...body, domain: urlDomain };
+    }
+  }
+
+  const result = await ingestLead(ingestPayload, source, rawPayloadId);
 
   if (!result.success) {
     return NextResponse.json({ error: result.error }, { status: result.status });

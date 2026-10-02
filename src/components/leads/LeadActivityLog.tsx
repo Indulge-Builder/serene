@@ -1,4 +1,4 @@
-import { Activity, Phone, UserCheck, ArrowRight, PlusCircle, Pencil, Copy } from 'lucide-react';
+import { Activity, Phone, UserCheck, ArrowRight, PlusCircle, Pencil, Copy, Bot } from 'lucide-react';
 import { CardHeader } from '@/components/leads/CardHeader';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { LEAD_STATUS_LABELS } from '@/lib/constants/lead-statuses';
@@ -37,6 +37,13 @@ function describeActivity(act: LeadActivityWithActor): string {
         const label = raw ? getLeadSourceLabel(raw) : '';
         return label ? `Source changed to ${label}` : 'Source updated';
       }
+      // The identity rule (0251): a same-domain twin folded into this lead, or a lead
+      // made now for an enquiry that an older build filed under another domain.
+      if (d?.type === 'duplicate_lead_archived') return 'A duplicate of this lead was folded in';
+      if (d?.type === 'lead_rescued') {
+        const label = d.domain ? (DOMAIN_LABELS[d.domain as AppDomain] ?? d.domain) : '';
+        return label ? `Recovered: first filed under ${label}` : 'Recovered from an earlier enquiry';
+      }
       // Plain notes are paired with call_logged — skipped at the filter step
       return '';
     }
@@ -57,6 +64,11 @@ function describeActivity(act: LeadActivityWithActor): string {
     case 'agent_assigned': {
       return 'Agent assigned';
     }
+    case 'concierge_brief': {
+      // The public bot's hand-over (0252): the brief for the person who calls.
+      const d = act.details as { reason_label?: string; promised?: string | null } | null;
+      return d?.promised ? 'Indulge concierge: brief for the call' : `Indulge concierge: ${(d?.reason_label ?? 'handed over').toLowerCase()}`;
+    }
     default: {
       return '';
     }
@@ -72,8 +84,45 @@ function activityIcon(act: LeadActivityWithActor): React.ReactNode {
     case 'agent_assigned':      return <UserCheck   {...style} />;
     case 'duplicate_submission':return <Copy        {...style} />;
     case 'note_added':          return <Pencil      {...style} />;
+    case 'concierge_brief':     return <Bot         {...style} />;
     default:                    return <Activity    {...style} />;
   }
+}
+
+/** The concierge's brief, as the agent reads it before the call (0252). */
+function ConciergeBrief({ details }: { details: unknown }) {
+  const d = (details ?? {}) as {
+    summary?: string;
+    in_their_words?: string | null;
+    interests?: string[];
+    sent?: string[];
+    promised?: string | null;
+    next_step?: string | null;
+  };
+  const rows: [string, string][] = [
+    ['Summary', d.summary ?? ''],
+    ['In their words', d.in_their_words ?? ''],
+    ['Interested in', (d.interests ?? []).join(', ')],
+    ['Already sent', (d.sent ?? []).join(', ')],
+    ['Promised', d.promised ?? ''],
+    ['Next step', d.next_step ?? ''],
+  ].filter(([, v]) => v.trim().length > 0) as [string, string][];
+  if (rows.length === 0) return null;
+  return (
+    <dl
+      style={{
+        margin: 'var(--space-2) 0 0', padding: 'var(--space-3)', borderRadius: 'var(--radius-md)',
+        background: 'var(--theme-paper-subtle)', display: 'grid', gap: 'var(--space-2)',
+      }}
+    >
+      {rows.map(([k, v]) => (
+        <div key={k}>
+          <dt className="label-micro" style={{ margin: 0 }}>{k}</dt>
+          <dd style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--theme-text-primary)', whiteSpace: 'pre-wrap' }}>{v}</dd>
+        </div>
+      ))}
+    </dl>
+  );
 }
 
 function formatTimestamp(iso: string): string {
@@ -206,6 +255,7 @@ export function LeadActivityLog({ activities }: Props) {
                   >
                     {description}
                   </p>
+                  {act.action_type === 'concierge_brief' && <ConciergeBrief details={act.details} />}
 
                   <div
                     style={{

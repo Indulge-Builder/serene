@@ -10,10 +10,11 @@ import { getDomainInterests } from '@/lib/constants/interests';
 import { canonicalizePhone } from '@/lib/utils/phone';
 import { invalidateLeadCaches } from '@/lib/services/lead-cache';
 import { recordProductEnquiry } from '@/lib/services/lead-enquiries-service';
+import { findActiveLeadInDomain, findPreviousLeadId } from '@/lib/services/lead-identity';
 import type { Database, AppDomain, JsonValue } from '@/lib/types/database';
 
 // PostgreSQL unique-violation — thrown by the active-phone partial UNIQUE index
-// (migration 0137) when a concurrent insert races dedup. Caught so the loser of
+// (migration 0251, one active lead per person per domain) when a concurrent insert races dedup. Caught so the loser of
 // the race returns the existing active lead instead of erroring (audit #1/#2).
 const PG_UNIQUE_VIOLATION = '23505';
 
@@ -192,12 +193,14 @@ export async function ingestLead(
     console.warn(`[lead-ingestion] Unknown campaign prefix: ${data.utm_campaign}`);
   }
 
-  // 4. Dedup check — phone is the identity key (migration 0008)
-  //    Active statuses: new | touched | in_discussion | nurturing → log duplicate_submission, no insert
-  //    Terminal statuses: lost | junk | won → allow new lead with previous_lead_id chain
+  // 4. Dedup check — the identity key is PHONE + DOMAIN (migrations 0008 → 0251)
+  //    An active lead (new | touched | in_discussion | nurturing) in THIS domain →
+  //    log duplicate_submission, no insert. A closed one (lost | junk | won) in this
+  //    domain → a new lead linked through previous_lead_id. A lead of the same person
+  //    in ANOTHER domain changes nothing here.
   //
   //    canonicalizePhone makes the stored value consistent across paths (E.164
-  //    when parseable, else digits-only) so dedup and the 0137 unique index can
+  //    when parseable, else digits-only) so dedup and the 0251 unique index can
   //    never miss a format variant (audit #3/#7). An empty phone is NOT a valid
   //    lead identity (phone is the required dedup key) — reject rather than insert
   //    a blank-phone lead that dedup would forever miss (audit #4/#7).
@@ -220,95 +223,87 @@ export async function ingestLead(
     return { success: false, error: 'Product enquiry missing external id or product name', status: 422 };
   }
 
-  let previousLeadId: string | null = null;
+  // One active lead per person PER DOMAIN (migration 0251). The same person in another
+  // domain is not a duplicate: a Legacy ad click from someone Onboarding is already
+  // working becomes a Legacy lead, with its own owner, status and campaign credit.
+  const existing = await findActiveLeadInDomain(phone, domain);
 
-  if (phone) {
-    const { data: existingLeads } = await supabase.rpc('get_active_lead_by_phone', {
-      p_phone: phone,
-    });
-
-    if (existingLeads && existingLeads.length > 0) {
-      const existing = existingLeads[0];
-      const activeStatuses = ['new', 'touched', 'in_discussion', 'nurturing'];
-
-      if (activeStatuses.includes(existing.status)) {
-        // ── The two dedup models meet here ──
-        // Our identity key is PHONE, so this is the same human. The shop's key is
-        // (member, product, type), so this may still be a genuinely NEW enquiry —
-        // the same member asking about a second piece. One lead per person, many
-        // enquiries hanging off it: append to the ledger, do not create a lead.
-        // Before migration 0180 the product was dropped on the floor here and the
-        // agent called about the wrong item.
-        let enquiry: EnquiryOutcome = 'none';
-        if (data.product_enquiry) {
-          const recorded = await recordProductEnquiry(existing.id, source, data.product_enquiry);
-          enquiry = recorded.ok ? (recorded.duplicate ? 'duplicate' : 'new') : 'failed';
-          if (enquiry === 'new') {
-            // The card reads this ledger, so the dossier must not serve a cached
-            // page that predates the new enquiry (P-08 — awaited, non-fatal).
-            await invalidateLeadCaches(
-              'ingestLead:repeatEnquiry',
-              // slug MUST be passed: the dossier caches under leadRowSlug on every
-              // normal load and leadRowId only on the UUID fallback. Deleting one
-              // key is a silent no-op (P-08 dual-key invariant).
-              { leadId: existing.id, slug: existing.slug, domain },
-              { row: true, activities: true },
-            );
-          }
-        }
-
-        // Log a duplicate_submission activity on the existing lead — non-fatal,
-        // but surface failures so a silently-missing re-enquiry is detectable (audit #25).
-        // A REDELIVERY writes no activity: the sender's retry loop replays the same
-        // payload up to 3 times, and three identical timeline rows for one enquiry is
-        // noise, not history.
-        if (enquiry !== 'duplicate') {
-          const { error: dupActivityError } = await giaDb(supabase).from('lead_activities').insert({
-            lead_id:     existing.id,
-            actor_id:    null,
-            action_type: 'duplicate_submission',
-            details: {
-              source:         source,
-              utm_campaign:   data.utm_campaign ?? null,
-              domain,
-              raw_payload_id: rawPayloadId,
-              // The product the person actually asked about. This is the field whose
-              // absence made repeat enquiries invisible.
-              product_name:   data.product_enquiry?.product_name ?? null,
-              enquiry_type:   data.product_enquiry?.enquiry_type ?? null,
-            },
-          });
-          if (dupActivityError) {
-            console.error('[lead-ingestion] duplicate_submission activity insert failed:', dupActivityError.message);
-          }
-        }
-
-        if (rawPayloadId) {
-          await giaDb(supabase)
-            .from('lead_raw_payloads')
-            .update({ lead_id: existing.id })
-            .eq('id', rawPayloadId);
-        }
-
-        return {
-          success:      true,
-          leadId:       existing.id,
-          rawPayloadId: rawPayloadId ?? '',
-          assigned_to:  existing.assigned_to,
-          agent_name:   null,
-          domain,
-          lead_name:    data.last_name ? `${data.first_name} ${data.last_name}` : data.first_name,
-          lead_phone:   phone,
-          is_duplicate: true,
-          enquiry,
-          enquiry_product_name: data.product_enquiry?.product_name ?? null,
-        };
+  if (existing) {
+    // ── The two dedup models meet here ──
+    // Our identity key is PHONE, so this is the same human. The shop's key is
+    // (member, product, type), so this may still be a genuinely NEW enquiry —
+    // the same member asking about a second piece. One lead per person, many
+    // enquiries hanging off it: append to the ledger, do not create a lead.
+    // Before migration 0180 the product was dropped on the floor here and the
+    // agent called about the wrong item.
+    let enquiry: EnquiryOutcome = 'none';
+    if (data.product_enquiry) {
+      const recorded = await recordProductEnquiry(existing.id, source, data.product_enquiry);
+      enquiry = recorded.ok ? (recorded.duplicate ? 'duplicate' : 'new') : 'failed';
+      if (enquiry === 'new') {
+        // The card reads this ledger, so the dossier must not serve a cached
+        // page that predates the new enquiry (P-08 — awaited, non-fatal).
+        await invalidateLeadCaches(
+          'ingestLead:repeatEnquiry',
+          // slug MUST be passed: the dossier caches under leadRowSlug on every
+          // normal load and leadRowId only on the UUID fallback. Deleting one
+          // key is a silent no-op (P-08 dual-key invariant).
+          { leadId: existing.id, slug: existing.slug, domain },
+          { row: true, activities: true },
+        );
       }
-
-      // Terminal lead exists — new lead is a returning prospect; link the chain
-      previousLeadId = existing.id;
     }
+
+    // Log a duplicate_submission activity on the existing lead — non-fatal,
+    // but surface failures so a silently-missing re-enquiry is detectable (audit #25).
+    // A REDELIVERY writes no activity: the sender's retry loop replays the same
+    // payload up to 3 times, and three identical timeline rows for one enquiry is
+    // noise, not history.
+    if (enquiry !== 'duplicate') {
+      const { error: dupActivityError } = await giaDb(supabase).from('lead_activities').insert({
+        lead_id:     existing.id,
+        actor_id:    null,
+        action_type: 'duplicate_submission',
+        details: {
+          source:         source,
+          utm_campaign:   data.utm_campaign ?? null,
+          domain,
+          raw_payload_id: rawPayloadId,
+          // The product the person actually asked about. This is the field whose
+          // absence made repeat enquiries invisible.
+          product_name:   data.product_enquiry?.product_name ?? null,
+          enquiry_type:   data.product_enquiry?.enquiry_type ?? null,
+        },
+      });
+      if (dupActivityError) {
+        console.error('[lead-ingestion] duplicate_submission activity insert failed:', dupActivityError.message);
+      }
+    }
+
+    if (rawPayloadId) {
+      await giaDb(supabase)
+        .from('lead_raw_payloads')
+        .update({ lead_id: existing.id })
+        .eq('id', rawPayloadId);
+    }
+
+    return {
+      success:      true,
+      leadId:       existing.id,
+      rawPayloadId: rawPayloadId ?? '',
+      assigned_to:  existing.assigned_to,
+      agent_name:   null,
+      domain,
+      lead_name:    data.last_name ? `${data.first_name} ${data.last_name}` : data.first_name,
+      lead_phone:   phone,
+      is_duplicate: true,
+      enquiry,
+      enquiry_product_name: data.product_enquiry?.product_name ?? null,
+    };
   }
+
+  // Returning client: the newest closed lead of this person in THIS domain.
+  const previousLeadId = await findPreviousLeadId(phone, domain);
 
   // 5. Round-robin agent assignment
   const assignedTo = await getNextRoundRobinAgent(domain);
@@ -380,14 +375,13 @@ export async function ingestLead(
     .single();
 
   if (insertError || !inserted) {
-    // 23505 = the active-phone unique index (0137) rejected a concurrent insert
+    // 23505 = the active-person unique index (0251) rejected a concurrent insert
     // that raced past dedup (audit #1). The other submission won — re-read and
     // return its lead as a duplicate rather than failing this request.
     if (insertError?.code === PG_UNIQUE_VIOLATION) {
       console.warn('[lead-ingestion] active-phone race lost (23505) — returning existing lead');
-      const { data: raced } = await supabase.rpc('get_active_lead_by_phone', { p_phone: phone });
-      if (raced && raced.length > 0) {
-        const existing = raced[0];
+      const existing = await findActiveLeadInDomain(phone, domain);
+      if (existing) {
         // The enquiry belongs on whichever lead won the race, not on the row we
         // failed to insert. Same append-to-ledger path as the dedup branch above.
         let racedEnquiry: EnquiryOutcome = 'none';
@@ -516,7 +510,7 @@ export async function ingestLead(
 //
 // Dedup is the caller's responsibility (resolveLeadByPhone runs first), but two
 // distinct first-messages from the same new number can race past that read and
-// both reach here (audit #2). The active-phone UNIQUE index (0137) is the
+// both reach here (audit #2). The active-person UNIQUE index (0251) is the
 // backstop: the loser gets 23505, which we catch and resolve to the existing
 // active lead — and we flag it via `alreadyExisted` so the caller skips the
 // duplicate assignment notification.
@@ -530,7 +524,7 @@ export async function createLeadFromWhatsApp(
   const domain   = DEFAULT_LEAD_DOMAIN;
 
   // Canonicalize so the stored value matches the manual/webhook paths and the
-  // 0137 unique index keys consistently. The caller already normalizes via
+  // 0251 unique index keys consistently. The caller already normalizes via
   // normalizeWaPhone; this is idempotent on an E.164 value.
   const canonicalPhone = canonicalizePhone(phone);
 
@@ -574,9 +568,9 @@ export async function createLeadFromWhatsApp(
     // Lost the active-phone race — resolve to the existing active lead instead
     // of throwing and losing the inbound message (audit #2/#12).
     if (error?.code === PG_UNIQUE_VIOLATION) {
-      const { data: raced } = await supabase.rpc('get_active_lead_by_phone', { p_phone: canonicalPhone });
-      if (raced && raced.length > 0) {
-        return { leadId: raced[0].id, assignedTo: raced[0].assigned_to, assignedAt: null, domain, alreadyExisted: true };
+      const raced = await findActiveLeadInDomain(canonicalPhone, domain);
+      if (raced) {
+        return { leadId: raced.id, assignedTo: raced.assigned_to, assignedAt: null, domain, alreadyExisted: true };
       }
     }
     throw new Error(`[createLeadFromWhatsApp] Insert failed: ${error?.message ?? 'unknown'}`);

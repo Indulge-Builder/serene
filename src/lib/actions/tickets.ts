@@ -111,6 +111,19 @@ export async function createTicketAction(input: unknown): Promise<ActionResult<T
     });
   }
   revalidateTicket(res.data.id, res.data.member_id);
+  // Hands (2026-10-01): Elaya reads the new ticket and, if the outside agent can help, writes to it
+  // (sends on her own only where the category's trust allows; otherwise the draft waits on the
+  // ticket card). After the response: a model call never holds up the genie.
+  if (res.data.status === "open") {
+    const ticketId = res.data.id;
+    const actor = actorFromProfile(auth.profile);
+    after(async () => {
+      try {
+        const { startHandsForTicket } = await import("@/lib/services/hands-ticket");
+        await startHandsForTicket(ticketId, { actor });
+      } catch (e) { console.error("[tickets-action] hands start failed (non-fatal)", e); }
+    });
+  }
   return { data: res.data, error: null };
 }
 

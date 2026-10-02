@@ -1,5 +1,5 @@
 /**
- * scripts/members/profile-pilot.ts — the member profiler's pilot (plan-sia-intelligence.md,
+ * scripts/members/profile-pilot.ts — the member profiler's pilot (sia-intelligence-plan.md,
  * decision 4: "read twenty groups first, the founder checks the quality, then the full run is
  * approved or not").
  *

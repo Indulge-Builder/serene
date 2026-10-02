@@ -8,8 +8,13 @@ import {
   getSiaMediaPayload,
   getSiaMessages,
   getSiaWatcherStatus,
+  getStandbyCoverage,
+  listSiaSessionShelf,
   requestSiaSessionRepair,
   requestSiaWatcherRestart,
+  restoreSiaSession,
+  saveSiaStandbyJid,
+  shelfSiaSession,
   searchSiaMessages,
   updateSiaGroupMapping,
   type SiaGroupInfo,
@@ -20,7 +25,11 @@ import {
   type SiaMessageRow,
   type SiaSearchHit,
   type SiaWatcherState,
+  type SiaShelvedSession,
 } from "@/lib/services/sia-service";
+import { getSiaWatcherSettings } from "@/lib/services/llm-providers-service";
+import { phoneToWhatsAppJid, whatsAppJidToPhone } from "@/lib/constants/sia-watcher";
+import { normalizeToE164 } from "@/lib/utils/phone";
 import { canViewSiaGroup, getQueendomGroupJids, getSiaViewerScope, type SiaViewerScope } from "@/lib/services/sia-access";
 import { formErrors } from "@/lib/validations/form-errors";
 import type { ActionResult } from "@/lib/types";
@@ -228,6 +237,92 @@ export async function requestSiaRepairAction(): Promise<ActionResult<{ requested
   const ok = await requestSiaSessionRepair();
   if (!ok) return { data: null, error: formErrors.generic };
   return { data: { requested: true }, error: null };
+}
+
+// ── Watcher number (migration 0249, docs/architecture/sia-resilience-plan.md) ──
+//    The Session panel's second half: which number is the watcher, the sessions on
+//    the shelf, the standby number and whether it really sits in every member group.
+
+export type SiaWatcherNumberPanel = {
+  watcherPhone: string | null;
+  standbyPhone: string | null;
+  closeStreak: number;
+  lastCloseCode: number | null;
+  shelf: { shelvedAt: string; phone: string | null; reason: SiaShelvedSession["reason"] }[];
+  coverage: {
+    memberGroups: number;
+    missingStandby: { groupJid: string; subject: string | null }[];
+    missingWatcher: { groupJid: string; subject: string | null }[];
+  } | null;
+};
+
+export async function getSiaWatcherNumberPanelAction(): Promise<ActionResult<SiaWatcherNumberPanel>> {
+  const auth = await requireProfile(SIA_ROLES);
+  if (!auth.ok) return auth.result;
+  try {
+    const [status, settings, shelf] = await Promise.all([getSiaWatcherStatus(), getSiaWatcherSettings(), listSiaSessionShelf()]);
+    const cov = settings.standbyJid ? await getStandbyCoverage(settings.standbyJid) : null;
+    const trim = (g: { group_jid: string; subject: string | null }) => ({ groupJid: g.group_jid, subject: g.subject });
+    return {
+      data: {
+        watcherPhone: whatsAppJidToPhone(status?.account_jid),
+        standbyPhone: whatsAppJidToPhone(settings.standbyJid),
+        closeStreak: status?.close_streak ?? 0,
+        lastCloseCode: status?.last_close_code ?? null,
+        // The key material never leaves the server: who, when and why only.
+        shelf: shelf.map((r) => ({ shelvedAt: r.shelved_at, phone: whatsAppJidToPhone(r.account_jid), reason: r.reason })),
+        coverage: cov
+          ? { memberGroups: cov.memberGroups, missingStandby: cov.missingStandby.map(trim), missingWatcher: cov.missingWatcher.map(trim) }
+          : null,
+      },
+      error: null,
+    };
+  } catch (err) {
+    console.error("[sia-action] getSiaWatcherNumberPanel failed:", err);
+    return { data: null, error: formErrors.generic };
+  }
+}
+
+// ── changeSiaWatcherNumberAction — shelve the live session, restart into pairing.
+//    The QR then appears in the console; it is scanned with the NEW number's phone.
+//    The old session is kept (never deleted) and can be restored. ──
+export async function changeSiaWatcherNumberAction(): Promise<ActionResult<{ shelvedAt: string | null }>> {
+  const auth = await requireProfile(SIA_ROLES);
+  if (!auth.ok) return auth.result;
+  const r = await shelfSiaSession("change_number");
+  if (!r.ok) return { data: null, error: formErrors.generic };
+  return { data: { shelvedAt: r.shelvedAt }, error: null };
+}
+
+// ── restoreSiaSessionAction — bring a shelved session back as the live one ──
+export async function restoreSiaSessionAction(shelvedAt: unknown): Promise<ActionResult<{ restored: true }>> {
+  const auth = await requireProfile(SIA_ROLES);
+  if (!auth.ok) return auth.result;
+  if (!isIsoTimestamp(shelvedAt)) return { data: null, error: formErrors.generic };
+  const ok = await restoreSiaSession(shelvedAt);
+  if (!ok) return { data: null, error: formErrors.generic };
+  return { data: { restored: true }, error: null };
+}
+
+// ── setSiaStandbyNumberAction — the standby number, as a phone (blank clears it) ──
+export async function setSiaStandbyNumberAction(phone: unknown): Promise<ActionResult<{ standbyPhone: string | null }>> {
+  const auth = await requireProfile(SIA_ROLES);
+  if (!auth.ok) return auth.result;
+  if (typeof phone !== "string") return { data: null, error: formErrors.phoneInvalid };
+  const typed = phone.trim();
+  if (!typed) {
+    const ok = await saveSiaStandbyJid(null);
+    return ok ? { data: { standbyPhone: null }, error: null } : { data: null, error: formErrors.generic };
+  }
+  let e164: string;
+  try {
+    e164 = normalizeToE164(typed); // throws on a number that is not one
+  } catch {
+    return { data: null, error: formErrors.phoneInvalid };
+  }
+  const ok = await saveSiaStandbyJid(phoneToWhatsAppJid(e164));
+  if (!ok) return { data: null, error: formErrors.generic };
+  return { data: { standbyPhone: e164 }, error: null };
 }
 
 // ── updateSiaGroupMappingAction — classify a group + hide/show it ──

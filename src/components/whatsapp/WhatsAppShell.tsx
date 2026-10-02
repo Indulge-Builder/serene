@@ -17,6 +17,7 @@ import {
 } from "@/lib/actions/whatsapp";
 import { WHATSAPP_CONVERSATIONS_PAGE_SIZE } from "@/lib/constants/whatsapp";
 import { parseWhatsAppPeriodFromSearchParams } from "@/lib/utils/whatsapp-period";
+import { isWhatsAppLine } from "@/lib/constants/whatsapp-lines";
 import type {
   WhatsAppConversation,
   WhatsAppMessage,
@@ -54,6 +55,8 @@ export function WhatsAppShell({
   const searchParams = useSearchParams();
   const pathname = usePathname();
   const { period, customFrom, customTo } = parseWhatsAppPeriodFromSearchParams(searchParams);
+  const lineParam = searchParams.get("line");
+  const line = isWhatsAppLine(lineParam) ? lineParam : null;
   const skipPeriodRefetch = useRef(true);
   // ?c=<conversationId>: below md an open conversation is a history entry, so
   // hardware Back closes it instead of leaving the page (mobile audit
@@ -103,6 +106,7 @@ export function WhatsAppShell({
     period:     period ?? undefined,
     customFrom: customFrom ?? undefined,
     customTo:   customTo   ?? undefined,
+    line,
   };
 
   // ── Refetch list when period URL params change ────────────────────────────────
@@ -126,7 +130,7 @@ export function WhatsAppShell({
       );
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [period, customFrom, customTo]);
+  }, [period, customFrom, customTo, line]);
 
   // ── Realtime — conversation list updates ────────────────────────────────────
 

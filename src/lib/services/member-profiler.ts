@@ -1,4 +1,4 @@
-// member-profiler.ts — THE member profiler (migration 0215; plan-sia-intelligence.md S1+S2).
+// member-profiler.ts — THE member profiler (migration 0215; sia-intelligence-plan.md S1+S2).
 //
 // Reads each LINKED member group's WhatsApp chat one finished conversation at a time and
 // writes what it learns into the twin (0194): facts, the people around the member, relations,
@@ -672,4 +672,151 @@ export async function profileGroupNow(groupJid: string, memberId: string, opts: 
     console.warn(`${LOG} flush failed`, groupJid, msg);
     return done("failed", msg);
   }
+}
+
+// ─── The history re-profile (0249, docs/architecture/sia-resilience-plan.md section 9) ───
+//
+// A chat export brings in the years before the watcher joined (scripts/sia/import-chat-export.ts,
+// source 'export'). Those conversations are OLDER than every group's bookmark, so the sweep will
+// never reach them. This walks each import, oldest conversation first, through the SAME
+// profileWindow the sweep uses, and never touches the group's bookmark: the live sweep keeps its
+// place. A fact already on file is not repeated (the reader is shown what is on file and
+// writeReading counts a known fact as known).
+//
+// Three guards:
+//   unresolved  a conversation holding a sender the import could not match to a person is HELD,
+//               not read: a stranger reads as member-side, and a staff line filed as the
+//               member's own words is a wrong fact with evidence. The walk of that import STOPS
+//               there (its bookmark must not pass an unread conversation). Settle the names
+//               with the import's --map-file, run again.
+//   money       every reading's cost is added to its import's row; the run stops at the cap
+//               (getSiaWatcherSettings().historyReprofileCapUsd) and says so.
+//   resumable   the import's `profiled_until` moves after each conversation, so a stopped run
+//               picks up where it was and nothing is paid for twice.
+
+export type HistoryBackfillOptions = {
+  apply: boolean;
+  deadlineMs: number;
+  /** One group only. */
+  groupJid?: string;
+  maxImports?: number;
+  /** Overrides the settings row (a bench, or a one-off larger allowance). */
+  capUsd?: number;
+  /** Count the conversations and price them from past readings; call no model, write nothing. */
+  estimate?: boolean;
+  onWindow?: (o: WindowOutcome) => void;
+};
+
+export type HistoryBackfillReport = {
+  imports: number;
+  finished: number;
+  windows: number;
+  read: number;
+  thin: number;
+  failed: number;
+  held: number;
+  spentUsd: number;
+  spentBeforeUsd: number;
+  capUsd: number;
+  /** Estimate mode: conversations × what a reading has cost on average so far. */
+  estimatedUsd: number | null;
+  stopped: "done" | "cap" | "deadline" | "outage";
+  members: string[];
+};
+
+type ImportRow = { id: string; group_jid: string; from_at: string | null; to_at: string | null; profiled_until: string | null; profile_cost_usd: number | string };
+
+export async function runHistoryBackfill(opts: HistoryBackfillOptions): Promise<HistoryBackfillReport> {
+  const { getSiaWatcherSettings } = await import("@/lib/services/llm-providers-service");
+  const { SIA_HISTORY_PAGE, SIA_UNRESOLVED_SENDER_SUFFIX } = await import("@/lib/constants/sia-watcher");
+  const capUsd = opts.capUsd ?? (await getSiaWatcherSettings()).historyReprofileCapUsd;
+  const deadline = Date.now() + opts.deadlineMs;
+
+  const { data: paid } = await sia().from("wag_chat_imports").select("profile_cost_usd").limit(5000);
+  const spentBeforeUsd = ((paid ?? []) as { profile_cost_usd: number | string }[]).reduce((n, r) => n + Number(r.profile_cost_usd ?? 0), 0);
+  const report: HistoryBackfillReport = { imports: 0, finished: 0, windows: 0, read: 0, thin: 0, failed: 0, held: 0, spentUsd: 0, spentBeforeUsd, capUsd, estimatedUsd: null, stopped: "done", members: [] };
+  const apply = opts.apply && !opts.estimate;
+
+  let q = sia().from("wag_chat_imports").select("id, group_jid, from_at, to_at, profiled_until, profile_cost_usd").is("profiled_at", null).not("from_at", "is", null).order("created_at", { ascending: true }).limit(opts.maxImports ?? 50);
+  if (opts.groupJid) q = q.eq("group_jid", opts.groupJid);
+  const { data: importRows, error } = await q;
+  if (error) { console.warn(`${LOG} history imports read failed`, error.message); return report; }
+  const imports = (importRows ?? []) as ImportRow[];
+  if (imports.length === 0) return report;
+
+  const broad = await getBroadSenders();
+  let outages = 0;
+
+  for (const imp of imports) {
+    if (report.stopped !== "done") break;
+    const { data: g } = await sia().from("wag_groups").select("member_id").eq("group_jid", imp.group_jid).maybeSingle();
+    const memberId = (g as { member_id: string | null } | null)?.member_id ?? null;
+    if (!memberId) continue; // an unlinked group has no member to file anything under
+    report.imports++;
+
+    let cursor = imp.profiled_until ?? new Date(new Date(imp.from_at as string).getTime() - 1).toISOString();
+    let cost = Number(imp.profile_cost_usd ?? 0);
+    let clean = true;
+    const save = async (patch: Record<string, unknown>) => { if (apply) await sia().from("wag_chat_imports").update(patch).eq("id", imp.id); };
+
+    walk: for (;;) {
+      const { data: rows, error: mErr } = await sia().from("wag_messages_read").select("id, sender_jid, text:text_read, type, wa_timestamp")
+        .eq("chat_jid", imp.group_jid).eq("is_revoked", false).not("text_read", "is", null)
+        .gt("wa_timestamp", cursor).lte("wa_timestamp", imp.to_at as string)
+        .order("wa_timestamp", { ascending: true }).limit(SIA_HISTORY_PAGE);
+      if (mErr) { console.warn(`${LOG} history messages failed`, mErr.message); clean = false; break; }
+      const msgs = ((rows ?? []) as Msg[]).filter((m) => m.text && m.text.trim());
+      if (msgs.length === 0) break;
+      const lastPage = (rows ?? []).length < SIA_HISTORY_PAGE;
+      // Every conversation here is long finished. On a full page the last one may continue on the
+      // next page, so it is left for the next read; on the last page all of them are whole.
+      const all = buildWindows(imp.group_jid, memberId, msgs, Date.now());
+      const windows = lastPage || all.length <= 1 ? all : all.slice(0, -1);
+      if (windows.length === 0) break;
+
+      for (const w of windows) {
+        if (Date.now() >= deadline) { report.stopped = "deadline"; clean = false; break walk; }
+        if (!opts.estimate && spentBeforeUsd + report.spentUsd >= capUsd) { report.stopped = "cap"; clean = false; break walk; }
+        report.windows++;
+        if (w.messages.some((m) => m.sender_jid.endsWith(SIA_UNRESOLVED_SENDER_SUFFIX))) {
+          report.held++; clean = false;
+          // An estimate counts on past it; a real run stops this import here.
+          if (opts.estimate) { cursor = w.to_at; continue; }
+          break walk;
+        }
+        if (opts.estimate) { cursor = w.to_at; continue; }
+        const o = await profileWindow(w, { broad, apply });
+        opts.onWindow?.(o);
+        const spent = o.tokens ? (o.tokens.in * PROFILER_COST_PER_MTOK.input + o.tokens.out * PROFILER_COST_PER_MTOK.output) / 1_000_000 : 0;
+        report.spentUsd += spent; cost += spent;
+        if (o.status === "failed") {
+          report.failed++; clean = false;
+          if (o.provider_side && ++outages >= PROFILER_OUTAGE_STOP) { report.stopped = "outage"; await save({ profile_cost_usd: cost }); break walk; }
+          // The bookmark does not pass a conversation that failed: the next run reads it again.
+          await save({ profile_cost_usd: cost });
+          break walk;
+        }
+        outages = 0;
+        if (o.status === "read") report.read++; else report.thin++;
+        cursor = w.to_at;
+        await save({ profiled_until: cursor, profile_cost_usd: cost });
+      }
+      if (lastPage) break;
+    }
+
+    if (clean && report.stopped === "done" && !opts.estimate) {
+      await save({ profiled_at: new Date().toISOString(), profiled_until: imp.to_at, profile_cost_usd: cost });
+      report.finished++;
+      if (!report.members.includes(memberId)) report.members.push(memberId);
+    }
+  }
+
+  if (opts.estimate) {
+    // What a reading has really cost, from the ledger of the readings already made.
+    const { data: past } = await sia().from("extraction_runs").select("cost_usd").eq("kind", PROFILER_RUN_KIND).eq("ok", true).not("cost_usd", "is", null).order("started_at", { ascending: false }).limit(500);
+    const costs = ((past ?? []) as { cost_usd: number | string }[]).map((r) => Number(r.cost_usd)).filter((n) => n > 0);
+    const avg = costs.length ? costs.reduce((a, b) => a + b, 0) / costs.length : 0;
+    report.estimatedUsd = Number(((report.windows - report.held) * avg).toFixed(2));
+  }
+  return report;
 }

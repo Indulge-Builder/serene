@@ -652,7 +652,7 @@ All go through the Elaya provider layer (`resolveLlmForJob`), so the model behin
 
 ## 19. What the plan described but is not built
 
-`../../member-ticket-plan.md` section 7 is the plan. These parts of it do not exist in code:
+`../architecture/member-ticket-plan.md` section 7 is the plan. These parts of it do not exist in code:
 
 - **The scored genie picker** (`pick_genie_for_ticket`, shifts, load, speciality). `genie_roster`
   is empty and unused; assignment is by hand.

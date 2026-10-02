@@ -57,3 +57,22 @@ export const LEAD_STATUS_COLORS: Record<LeadStatus, { text: string; light: strin
 
 export const JOURNEY_STATUSES: LeadStatus[] = ['new', 'touched', 'in_discussion', 'won'];
 export const RESOLUTION_STATUSES: LeadStatus[] = ['nurturing', 'lost', 'junk'];
+
+/**
+ * The statuses the identity rule counts as ACTIVE: one active lead per person per domain
+ * (migration 0251). The SQL twins are the predicate of idx_leads_active_person_domain and
+ * the body of get_active_lead_by_phone; change all three together.
+ */
+export const ACTIVE_LEAD_STATUSES = [
+  'new',
+  'touched',
+  'in_discussion',
+  'nurturing',
+] as const satisfies readonly LeadStatus[];
+
+/** Closed leads: outside the identity rule, so a returning client always gets a new lead. */
+export const TERMINAL_LEAD_STATUSES = [
+  'won',
+  'lost',
+  'junk',
+] as const satisfies readonly LeadStatus[];

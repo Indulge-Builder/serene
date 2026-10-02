@@ -164,13 +164,55 @@ const eslintConfig = [
         'error',
         {
           selector:
-            "CallExpression[callee.property.name='from'][arguments.0.value=/^(members|member_access_log|member_anticipations|member_chunks|member_documents|member_events|member_facts|member_health_events|member_health_policy|member_people|member_relations|member_snapshot|leads|lead_activities|lead_notes|lead_raw_payloads|lead_sla_timers|lead_product_enquiries|deals|sla_policies|agent_routing_config|revival_candidates|revival_policies|domain_targets|ad_creatives|ad_spend_daily|ad_account_recharges|task_gia_meta|whatsapp_conversations|whatsapp_messages|whatsapp_conversation_reads|whatsapp_notification_logs|service_cases|conversation_hooks)$/]:not([callee.object.callee.name=/^(giaDb|memberDb|freshdeskDb)$/]):not([callee.object.callee.property.name='schema'])",
+            "CallExpression[callee.property.name='from'][arguments.0.value=/^(members|member_access_log|member_anticipations|member_chunks|member_documents|member_events|member_facts|member_health_events|member_health_policy|member_people|member_relations|member_snapshot|leads|lead_activities|lead_notes|lead_raw_payloads|lead_sla_timers|lead_product_enquiries|deals|sla_policies|agent_routing_config|revival_candidates|revival_policies|domain_targets|ad_creatives|ad_spend_daily|ad_account_recharges|task_gia_meta|whatsapp_conversations|whatsapp_messages|whatsapp_conversation_reads|whatsapp_notification_logs|whatsapp_bot_turns|service_cases|conversation_hooks)$/]:not([callee.object.callee.name=/^(giaDb|memberDb|freshdeskDb)$/]):not([callee.object.callee.property.name='schema'])",
           message:
             'This table lives in the gia or member schema — query it through giaDb(client) / memberDb(client).from(…) (src/lib/supabase/schemas.ts), never an unscoped .from().',
         },
       ],
     },
   },
+  // The public bot's wall (0252, docs/architecture/indulge-bot-plan.md section 10, layer 2): the
+  // files that talk to strangers on the public WhatsApp number may never import staff Elaya, the
+  // staff tool registries, the analyst door or the staff persona. A tool a stranger's model could
+  // reach is a door into the database; this keeps the door out of the import graph.
+  {
+    files: [
+      'src/lib/elaya/customer-brain.ts',
+      'src/lib/elaya/customer-persona.ts',
+      'src/lib/elaya/tools/customer-registry.ts',
+      'src/lib/services/elaya-customer.ts',
+    ],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          paths: [...SUPABASE_RESTRICTED_PATHS, ANTHROPIC_RESTRICTED_PATH],
+          patterns: [
+            {
+              group: [
+                '@/lib/elaya/tools/registry',
+                '@/lib/elaya/tools/write-registry',
+                '@/lib/elaya/brain',
+                '@/lib/elaya/persona',
+                '@/lib/elaya/elaya-data',
+                '@/lib/elaya/python-brain',
+                '@/lib/services/elaya-query-service',
+                '@/lib/services/elaya-service',
+                '@/lib/services/elaya-whatsapp',
+                '@/lib/services/members-service',
+                '@/lib/services/leads-service',
+                '@/lib/services/vendors-service',
+                '@/lib/services/freshdesk-service',
+                '@/lib/services/sia-service',
+              ],
+              message: 'The public bot never imports staff Elaya or a data service: its model must have no door into the database (indulge-bot-plan section 10).',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   // The Anthropic adapter keeps the supabase restriction but may import the SDK.
   {
     files: ['src/lib/elaya/adapters/anthropic.ts'],

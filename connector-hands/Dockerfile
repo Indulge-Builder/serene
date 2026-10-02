@@ -14,4 +14,6 @@ RUN cd connector-hands && npm install --omit=dev
 COPY connector-hands/tsconfig.json ./connector-hands/
 COPY connector-hands/src ./connector-hands/src
 WORKDIR /app/connector-hands
-CMD ["npx", "tsx", "src/index.ts"]
+# tsx comes from the watcher's install above (npm ci keeps dev tools); the hands install omits
+# them, and `npx tsx` would download it on every start.
+CMD ["/app/connector/node_modules/.bin/tsx", "src/index.ts"]

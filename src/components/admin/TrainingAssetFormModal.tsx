@@ -8,13 +8,18 @@ import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/Button";
 import { LogoSpinner } from "@/components/ui/LogoSpinner";
 import { Toggle } from "@/components/ui/Toggle";
+import { Checkbox } from "@/components/ui/Checkbox";
+import { resolveOutboundMediaType, whatsappMaxBytesFor } from "@/lib/constants/whatsapp";
 import { createClient } from "@/lib/supabase/client";
 import { upsertTrainingAsset } from "@/lib/actions/elaya-training";
 import { useToast } from "@/hooks/useToast";
 import {
-  TRAINING_ASSET_KIND_OPTIONS,
+  TRAINING_ASSET_KIND_LABELS,
+  TRAINING_LIBRARY_KINDS,
+  TRAINING_TEXT_KINDS,
   TRAINING_UPLOAD_HINTS,
   TRAINING_BUCKET,
+  READY_MESSAGE_NAME_TOKEN,
   trainingInputMode,
   type TrainingAssetKind,
 } from "@/lib/constants/elaya-training";
@@ -30,7 +35,21 @@ interface TrainingAssetFormModalProps {
   defaultKind?: TrainingAssetKind;
   /** Called with the saved row so the parent updates its list without a refetch. */
   onSaved:  (row: TrainingAssetRow, wasEdit: boolean) => void;
+  /** Approved files and links a ready message may attach (0252). */
+  attachable: TrainingAssetRow[];
+  /** Admin / founder: the item may be approved as it is saved. */
+  canApprove: boolean;
 }
+
+/** What each knowledge kind's text box is for (0252, the pack). */
+const TEXT_GUIDE: Partial<Record<TrainingAssetKind, { label: string; placeholder: string }>> = {
+  fact:      { label: "The fact", placeholder: "One topic per fact: who we are, membership and price, how expenses work, hours, privacy. Write it exactly as the concierge may say it." },
+  story:     { label: "The story", placeholder: "Two or three lines: the moment, what made it hard, how it ended. No names, no exact dates." },
+  answer:    { label: "The answer", placeholder: "The question goes in the title; the honest answer here." },
+  objection: { label: "The honest answer", placeholder: "What they say goes in the title (\"4 lakh is a lot\"); how we answer, and a story that fits, here." },
+  news:      { label: "The news", placeholder: "The fact, its date, where it came from, and one line on how Indulge fits. It drops out of the pack after 60 days." },
+  forbidden: { label: "Never say", placeholder: "One per line: names, words or topics the concierge must never mention, in any language." },
+};
 
 const inputBase: React.CSSProperties = {
   width:        "100%",
@@ -53,6 +72,8 @@ export function TrainingAssetFormModal({
   editing,
   defaultKind,
   onSaved,
+  attachable,
+  canApprove,
 }: TrainingAssetFormModalProps) {
   const toast = useToast;
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -68,6 +89,11 @@ export function TrainingAssetFormModal({
   const [domain, setDomain]           = useState<GiaDomain | "">("");
   const [sendOrder, setSendOrder]     = useState("0");
   const [active, setActive]           = useState(true);
+  const [whenToSend, setWhenToSend]   = useState("");
+  const [mimeType, setMimeType]       = useState<string | null>(null);
+  const [byteSize, setByteSize]       = useState<number | null>(null);
+  const [attachments, setAttachments] = useState<string[]>([]);
+  const [approve, setApprove]         = useState(false);
 
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving]       = useState(false);
@@ -78,7 +104,7 @@ export function TrainingAssetFormModal({
     if (!open) return;
     const initialKind = editing?.kind ?? defaultKind ?? "image";
     setKind(initialKind);
-    setTitle(editing?.title ?? (initialKind === "fact" ? "Company Facts" : ""));
+    setTitle(editing?.title ?? "");
     setDescription(editing?.description ?? "");
     setUrl(editing?.url ?? "");
     setStoragePath(editing?.storage_path ?? null);
@@ -88,6 +114,11 @@ export function TrainingAssetFormModal({
     setDomain((editing?.domain as GiaDomain | null) ?? "");
     setSendOrder(String(editing?.send_order ?? 0));
     setActive(editing?.active ?? true);
+    setWhenToSend(editing?.when_to_send ?? "");
+    setMimeType(editing?.mime_type ?? null);
+    setByteSize(editing?.byte_size ?? null);
+    setAttachments(editing?.attachments ?? []);
+    setApprove(editing?.status === "approved");
     setError(null);
   }, [open, editing, defaultKind]);
 
@@ -109,8 +140,14 @@ export function TrainingAssetFormModal({
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (uploadHint && file.size > uploadHint.maxMb * 1024 * 1024) {
-      setError(`File must be ${uploadHint.maxMb} MB or smaller.`);
+    // WhatsApp's own rules, checked here so a file never fails later at send (0252).
+    if (!resolveOutboundMediaType(file.type)) {
+      setError("WhatsApp cannot send this kind of file. Use a JPEG or PNG image, an MP4 video, an MP3 or M4A audio, or a PDF.");
+      return;
+    }
+    const limit = Math.min(whatsappMaxBytesFor(file.type), (uploadHint?.maxMb ?? 16) * 1024 * 1024);
+    if (file.size > limit) {
+      setError(`This file is over WhatsApp's ${Math.round(limit / (1024 * 1024))} MB limit. Upload a shorter or smaller version, or paste a link (YouTube, Drive) instead.`);
       return;
     }
     setError(null);
@@ -133,6 +170,8 @@ export function TrainingAssetFormModal({
       const { data: { publicUrl } } = supabase.storage.from(TRAINING_BUCKET).getPublicUrl(path);
       setStoragePath(path);
       setPreviewUrl(publicUrl);
+      setMimeType(file.type);
+      setByteSize(file.size);
       // A fresh upload supersedes any pasted link for a media asset.
       setUrl("");
     } catch {
@@ -173,8 +212,8 @@ export function TrainingAssetFormModal({
       setError("A link asset needs a link.");
       return;
     }
-    if (mode === "text" && !description.trim()) {
-      setError("Write the company facts before saving.");
+    if ((mode === "text" || mode === "message") && !description.trim()) {
+      setError(mode === "message" ? "Write the message before saving." : "Write the text before saving.");
       return;
     }
     if (mode === "media" && !storagePath && !url.trim()) {
@@ -198,6 +237,11 @@ export function TrainingAssetFormModal({
       if (domain) fd.append("domain", domain);
       fd.append("sendOrder", sendOrder || "0");
       fd.append("active", active ? "true" : "false");
+      if (whenToSend.trim()) fd.append("whenToSend", whenToSend.trim());
+      if (storagePath && mimeType) fd.append("mimeType", mimeType);
+      if (storagePath && byteSize != null) fd.append("byteSize", String(byteSize));
+      fd.append("attachments", JSON.stringify(mode === "message" ? attachments : []));
+      if (canApprove && approve) fd.append("approve", "true");
 
       const result = await upsertTrainingAsset({ data: null, error: null }, fd);
       if (result.error || !result.data) {
@@ -272,9 +316,16 @@ export function TrainingAssetFormModal({
               onValueChange={(nextValue) => handleKindChange(nextValue as TrainingAssetKind)}
               style={{ width:        "100%", height:       "2.5rem" }}
             >
-              {TRAINING_ASSET_KIND_OPTIONS.map((o) => (
-                <option key={o.id} value={o.id}>{o.label}</option>
-              ))}
+              <optgroup label="What the concierge knows">
+                {TRAINING_TEXT_KINDS.map((k) => (
+                  <option key={k} value={k}>{TRAINING_ASSET_KIND_LABELS[k]}</option>
+                ))}
+              </optgroup>
+              <optgroup label="What can be sent">
+                {TRAINING_LIBRARY_KINDS.map((k) => (
+                  <option key={k} value={k}>{TRAINING_ASSET_KIND_LABELS[k]}</option>
+                ))}
+              </optgroup>
             </FormSelect>
 
           </div>
@@ -284,17 +335,56 @@ export function TrainingAssetFormModal({
         {mode === "text" ? (
           <div>
             <label htmlFor="ta-facts" className="label-micro block mb-2">
-              {kind === "fact" ? "Company Facts" : "Text"} {requiredStar}
+              {TEXT_GUIDE[kind]?.label ?? "Text"} {requiredStar}
             </label>
             <textarea
               id="ta-facts"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={8}
-              placeholder="What Elaya should know about the company, services, and tone — the only source of company facts she may state to a customer."
+              placeholder={TEXT_GUIDE[kind]?.placeholder ?? ""}
               className="serene-input"
               style={{ ...inputBase, height: "auto", padding: "var(--space-3)", resize: "vertical", lineHeight: "var(--leading-normal)" }}
             />
+          </div>
+        ) : mode === "message" ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
+            <div>
+              <label htmlFor="ta-message" className="label-micro block mb-2">
+                The message {requiredStar}
+              </label>
+              <textarea
+                id="ta-message"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={6}
+                placeholder={`Written once, sent word for word. ${READY_MESSAGE_NAME_TOKEN} becomes their first name.`}
+                className="serene-input"
+                style={{ ...inputBase, height: "auto", padding: "var(--space-3)", resize: "vertical", lineHeight: "var(--leading-normal)" }}
+              />
+            </div>
+            <div>
+              <p className="label-micro" style={{ margin: "0 0 var(--space-2)" }}>Sent after it, in this order</p>
+              {attachable.length === 0 ? (
+                <p style={{ fontSize: "var(--text-xs)", color: "var(--theme-text-tertiary)", margin: 0 }}>
+                  Approve some files or links first; they can then be attached here.
+                </p>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)", maxHeight: "12rem", overflowY: "auto" }}>
+                  {attachable.map((a) => {
+                    const at = attachments.indexOf(a.id);
+                    return (
+                      <Checkbox
+                        key={a.id}
+                        checked={at >= 0}
+                        onChange={(on) => setAttachments((prev) => (on ? [...prev, a.id] : prev.filter((x) => x !== a.id)))}
+                        label={`${at >= 0 ? `${at + 1}. ` : ""}${a.title} (${TRAINING_ASSET_KIND_LABELS[a.kind]})`}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
         ) : mode === "link" ? (
           <div>
@@ -415,6 +505,22 @@ export function TrainingAssetFormModal({
           />
         </div>
 
+        {/* When to send — the bot reads it, the agent sees it (library items only) */}
+        {mode !== "text" && (
+          <div>
+            <label htmlFor="ta-when" className="label-micro block mb-2">When to send it</label>
+            <input
+              id="ta-when"
+              type="text"
+              value={whenToSend}
+              onChange={(e) => setWhenToSend(e.target.value)}
+              placeholder="e.g. When someone asks what membership includes"
+              className="serene-input"
+              style={inputBase}
+            />
+          </div>
+        )}
+
         {/* Tags */}
         <div>
           <label htmlFor="ta-tags" className="label-micro block mb-2">Tags</label>
@@ -495,8 +601,15 @@ export function TrainingAssetFormModal({
         <Toggle
           checked={active}
           onChange={setActive}
-          label="Active — Elaya may send this to customers"
+          label="Active: the concierge and the team may use this"
         />
+        {canApprove && (
+          <Toggle
+            checked={approve}
+            onChange={setApprove}
+            label="Approved: it goes into the next published pack"
+          />
+        )}
       </div>
     </Modal>
   );

@@ -14,8 +14,8 @@ import { ticketsAdminDb } from "@/lib/services/tickets-service";
 import { getAllowedContactForVendor, getHandsThreadForTicket } from "@/lib/services/hands-service";
 import { sanitizeText } from "@/lib/utils/sanitize";
 import type { MutationActor } from "@/lib/services/lead-mutations";
-import type { HandsOutboxRow, HandsThreadRow, HandsMessageRow, HandsPayment } from "@/lib/types/hands";
-import type { HandsOutboxSource } from "@/lib/constants/hands";
+import type { HandsOutboxRow, HandsThreadRow, HandsMessageRow, HandsPayment, HandsGuideDoc, HandsGuideVersion } from "@/lib/types/hands";
+import type { HandsGuideKind, HandsOutboxSource } from "@/lib/constants/hands";
 import type { TicketRow } from "@/lib/types/ticket";
 
 const LOG = "[hands-mutations]";
@@ -23,21 +23,26 @@ export type HandsResult<T> = { data: T; error: null } | { data: null; error: str
 const fail = <T,>(error: string, e?: { message: string } | null): HandsResult<T> => { if (e) console.error(`${LOG} ${error}`, e.message); return { data: null, error }; };
 
 /**
- * Open (or return) the one live thread between a ticket and its agent vendor. The ticket must
- * already carry the vendor (setTicketVendorCore); the contact comes from hands.allowed_contacts
- * through vendor_id, so a vendor nobody has allow-listed can never be messaged.
+ * Open (or return) the one live thread between a ticket and an outside agent. By default the agent
+ * is the ticket's vendor (setTicketVendorCore). `via` (2026-10-01) names an allow-listed agent
+ * contact instead, so Elaya can ask the agent for help on a ticket WITHOUT making it the vendor of
+ * record (the genie still chooses who delivers). Either way the contact comes from
+ * hands.allowed_contacts, so a number nobody has allow-listed can never be messaged.
  */
-export async function openHandsThreadCore(ticketId: string, actor: MutationActor): Promise<HandsResult<HandsThreadRow>> {
+export async function openHandsThreadCore(ticketId: string, actor: MutationActor, opts: { via?: { jid: string } } = {}): Promise<HandsResult<HandsThreadRow>> {
   const existing = await getHandsThreadForTicket(ticketId);
   if (existing) return { data: existing, error: null };
   const { data: t } = await ticketsAdminDb().from("tickets").select("*").eq("id", ticketId).maybeSingle();
   if (!t) return fail("Ticket not found.");
   const ticket = t as TicketRow;
-  if (!ticket.vendor_id) return fail("Choose the agent as the ticket's vendor first.");
-  const contact = await getAllowedContactForVendor(ticket.vendor_id);
-  if (!contact) return fail("That vendor is not an agent the hands number may message.");
+  let contact = ticket.vendor_id ? await getAllowedContactForVendor(ticket.vendor_id) : null;
+  if (!contact && opts.via) {
+    const { data: c } = await handsDb(createAdminClient()).from("allowed_contacts").select("*").eq("jid", opts.via.jid).eq("is_active", true).maybeSingle();
+    contact = (c as typeof contact) ?? null;
+  }
+  if (!contact) return fail(ticket.vendor_id ? "That vendor is not an agent the hands number may message." : "Choose the agent as the ticket's vendor first.");
   const { data, error } = await handsDb(createAdminClient()).from("threads").insert({
-    jid: contact.jid, kind: "ticket", ticket_id: ticket.id, vendor_id: ticket.vendor_id, queendom_id: ticket.queendom_id ?? null,
+    jid: contact.jid, kind: "ticket", ticket_id: ticket.id, vendor_id: contact.vendor_id ?? ticket.vendor_id, queendom_id: ticket.queendom_id ?? null,
     status: "open", opened_by: actor.userId,
   }).select("*").single();
   if (error || !data) {
@@ -54,10 +59,28 @@ export async function openTalkThreadCore(jid: string, actor: MutationActor): Pro
   const { data: contact } = await db.from("allowed_contacts").select("*").eq("jid", jid).eq("is_active", true).maybeSingle();
   if (!contact) return fail("That number is not on the hands allowlist.");
   const { data: open } = await db.from("threads").select("*").eq("jid", jid).eq("kind", "talk").eq("status", "open").maybeSingle();
-  if (open) return { data: open as HandsThreadRow, error: null };
+  if (open) return { data: await adoptUnfiled(open as HandsThreadRow), error: null };
   const { data, error } = await db.from("threads").insert({ jid, kind: "talk", status: "open", opened_by: actor.userId }).select("*").single();
   if (error || !data) return fail("Could not open the conversation.", error);
-  return { data: data as HandsThreadRow, error: null };
+  return { data: await adoptUnfiled(data as HandsThreadRow), error: null };
+}
+
+/**
+ * Files the messages this number sent while no conversation was open into the Talk thread, so
+ * the chat shows everything the agent said (found 2026-10-01: Instinct's first replies arrived
+ * before any thread existed and were invisible). Best-effort: a failure leaves them unfiled.
+ */
+async function adoptUnfiled(thread: HandsThreadRow): Promise<HandsThreadRow> {
+  const db = handsDb(createAdminClient());
+  const { data, error } = await db.from("messages").update({ thread_id: thread.id }).eq("jid", thread.jid).is("thread_id", null).select("wa_timestamp, direction, text, kind");
+  if (error) { console.error(`${LOG} adopting unfiled messages failed`, error.message); return thread; }
+  const rows = (data ?? []) as { wa_timestamp: string; direction: "in" | "out"; text: string | null; kind: string }[];
+  if (rows.length === 0) return thread;
+  const latest = rows.reduce((a, b) => (b.wa_timestamp > a.wa_timestamp ? b : a));
+  if (thread.last_message_at && thread.last_message_at >= latest.wa_timestamp) return thread;
+  const patch = { last_message_at: latest.wa_timestamp, last_direction: latest.direction, last_preview: (latest.text ?? `[${latest.kind}]`).slice(0, 160) };
+  const { data: updated } = await db.from("threads").update(patch).eq("id", thread.id).select("*").maybeSingle();
+  return (updated as HandsThreadRow | null) ?? { ...thread, ...patch };
 }
 
 /**
@@ -148,4 +171,62 @@ export async function saveHandsSettingsCore(actor: MutationActor, input: { enabl
   if (error) return fail("Could not save the hands settings.", error);
   void actor;
   return { data: { keys: rows.map((r) => r.key) }, error: null };
+}
+
+// ─── The editable rulebook and Elaya's guide (2026-10-01) ────────────────────
+
+async function guideKey(kind: HandsGuideKind): Promise<string> {
+  const { HANDS_SETTING_KEYS } = await import("@/lib/constants/hands");
+  return kind === "rulebook" ? HANDS_SETTING_KEYS.rulebook : HANDS_SETTING_KEYS.elayaGuide;
+}
+
+/**
+ * Save a new version of one hands document. The version it replaces goes to the front of the
+ * history (the last HANDS_GUIDE_HISTORY kept), so any earlier version can be restored. Elaya's next
+ * hands read carries the new text.
+ */
+export async function saveHandsGuideCore(
+  actor: MutationActor,
+  kind: HandsGuideKind,
+  body: string,
+  opts: { note?: string | null; source: "edit" | "feedback" | "restore" },
+): Promise<HandsResult<HandsGuideDoc>> {
+  const { HANDS_GUIDE_MAX_CHARS, HANDS_GUIDE_HISTORY } = await import("@/lib/constants/hands");
+  const { getHandsGuides } = await import("@/lib/services/llm-providers-service");
+  const clean = sanitizeText(body).trim();
+  if (!clean) return fail("The text cannot be empty.");
+  if (clean.length > HANDS_GUIDE_MAX_CHARS) return fail(`Keep it under ${HANDS_GUIDE_MAX_CHARS.toLocaleString("en-IN")} characters.`);
+  if (kind === "rulebook") {
+    const { missingFrameWords } = await import("@/lib/constants/hands");
+    const missing = missingFrameWords(clean);
+    if (missing.length) return fail(`The rulebook must keep the reply words ${missing.join(", ")}: Serene reads the agent's first word to know where a job stands.`);
+  }
+  const docs = await getHandsGuides();
+  const current = kind === "rulebook" ? docs.rulebook : docs.guide;
+  if (clean === current.body.trim()) return { data: current, error: null };
+  const { history: _drop, ...previous } = current;
+  void _drop;
+  const at = new Date().toISOString();
+  const next: HandsGuideDoc = {
+    body: clean,
+    version: current.version + 1,
+    at,
+    by: actor.fullName,
+    note: opts.note ? sanitizeText(opts.note).slice(0, 500) : null,
+    source: opts.source,
+    history: [previous as HandsGuideVersion, ...current.history].slice(0, HANDS_GUIDE_HISTORY),
+  };
+  const { error } = await createAdminClient().from("elaya_settings").upsert({ key: await guideKey(kind), value: next, updated_at: at }, { onConflict: "key" });
+  if (error) return fail("Could not save the text.", error);
+  return { data: next, error: null };
+}
+
+/** Bring back an earlier version: it is saved again as the newest version, so nothing is lost. */
+export async function restoreHandsGuideCore(actor: MutationActor, kind: HandsGuideKind, version: number): Promise<HandsResult<HandsGuideDoc>> {
+  const { getHandsGuides } = await import("@/lib/services/llm-providers-service");
+  const docs = await getHandsGuides();
+  const doc = kind === "rulebook" ? docs.rulebook : docs.guide;
+  const found = doc.history.find((h) => h.version === version);
+  if (!found) return fail("That version is no longer kept.");
+  return saveHandsGuideCore(actor, kind, found.body, { note: `Restored version ${version}`, source: "restore" });
 }

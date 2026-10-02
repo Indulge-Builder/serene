@@ -115,7 +115,7 @@ export const REDIS_KEYS = {
 } as const;
 
 /** The alarm kinds sia-silence.ts latches on (used to clear all on recovery). */
-export const SIA_ALERT_KINDS = ['down', 'session_lost', 'unreachable', 'quiet'] as const;
+export const SIA_ALERT_KINDS = ['banned', 'down', 'session_lost', 'unreachable', 'quiet'] as const;
 
 // The glob the snapshot job SCANs to enumerate live presence keys.
 export const PRESENCE_KEY_PATTERN = 'presence:*';

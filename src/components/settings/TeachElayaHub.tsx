@@ -1,11 +1,12 @@
-// TeachElayaHub — the doors to teaching Elaya (2026-09-22; Requests added 2026-09-25): Training (what
-// she can show and say to customers), Playbooks (how she answers the team), Requests (what the team
-// told her she got wrong), Exam (how well she does).
+// TeachElayaHub — the doors to teaching Elaya (2026-09-22; Requests added 2026-09-25, Chats 2026-09-29):
+// Training (what she can show and say to customers), Playbooks (how she answers the team), Chats (every
+// conversation she has had, to correct a reply), Requests (what the team told her she got wrong), Exam
+// (how well she does).
 // Display-only (A-06): a server component of links and copy; every door's page owns its own
 // data and its own gate. Tokens only.
 import Link from "next/link";
-import { GraduationCap, BookOpen, ClipboardCheck, MessageSquareWarning, ChevronRight, type LucideIcon } from "lucide-react";
-import { ELAYA_PLAYBOOKS_PATH, ELAYA_TRAINING_PATH } from "@/lib/constants/elaya";
+import { GraduationCap, BookOpen, ClipboardCheck, MessageSquareWarning, MessagesSquare, ChevronRight, type LucideIcon } from "lucide-react";
+import { ELAYA_CHATS_PATH, ELAYA_PLAYBOOKS_PATH, ELAYA_TRAINING_PATH } from "@/lib/constants/elaya";
 import { ELAYA_REQUESTS_PATH } from "@/lib/constants/elaya-memory";
 
 type Door = {
@@ -42,6 +43,18 @@ const DOORS: Door[] = [
     ],
     who: "Admin and founder.",
     href: ELAYA_PLAYBOOKS_PATH,
+  },
+  {
+    icon: MessagesSquare,
+    title: "Chats",
+    oneLine: "Everything Elaya has said to the team.",
+    does: [
+      "Every person's conversations with her, on WhatsApp, in the app and on calls, in one thread per person.",
+      "Under each reply: when, which channel, which tools she used, and whether the turn failed.",
+      "When a reply is wrong, press Correct and write the right answer. It lands in Requests and she reads it from the next message.",
+    ],
+    who: "Admin and founder.",
+    href: ELAYA_CHATS_PATH,
   },
   {
     icon: MessageSquareWarning,

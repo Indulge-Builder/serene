@@ -18,6 +18,7 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import { formatDate } from "@/lib/utils/dates";
 import { SPRING_CONFIG, FAST_DURATION, EASE_IN_OUT } from "@/lib/constants/motion";
 import { renderWaText } from "@/components/ui/WaText";
+import { LinkPreviewCard } from "@/components/ui/LinkPreviewCard";
 import { SiaMediaAttachment } from "./SiaMedia";
 import { formatSystemText, senderInk, senderLabel, TYPE_PREVIEW } from "./sia-shared";
 import type { SiaMessageRow } from "@/lib/services/sia-service";
@@ -101,14 +102,15 @@ function QuoteStrip({
   );
 }
 
-function ReactionChips({ m, fromMe }: { m: SiaMessageRow; fromMe: boolean }) {
-  if (m.reactions.length === 0) return null;
+/** THE floating reaction chips on a bubble's corner (Sia's bubble and the Hands chat). The parent is `relative`. */
+export function ReactionChips({ reactions, fromMe }: { reactions: { emoji: string; count: number }[]; fromMe: boolean }) {
+  if (reactions.length === 0) return null;
   return (
     <div
       className="absolute flex gap-1"
       style={{ bottom: "-10px", [fromMe ? "right" : "left"]: "10px" } as React.CSSProperties}
     >
-      {m.reactions.slice(0, 4).map((r) => (
+      {reactions.slice(0, 4).map((r) => (
         <motion.span
           key={r.emoji}
           initial={{ scale: 0.6, opacity: 0 }}
@@ -214,7 +216,7 @@ export function SiaMessageBubble({
           >
             {formatDate(m.wa_timestamp, "h:mm a")}
           </div>
-          <ReactionChips m={m} fromMe={fromMe} />
+          <ReactionChips reactions={m.reactions} fromMe={fromMe} />
         </div>
       ) : (
         <div
@@ -301,6 +303,8 @@ export function SiaMessageBubble({
                 </span>
               )}
 
+              {m.link_preview && <LinkPreviewCard preview={m.link_preview} />}
+
               {m.text && (
                 <p
                   className="m-0"
@@ -337,7 +341,7 @@ export function SiaMessageBubble({
             </span>
           </div>
 
-          <ReactionChips m={m} fromMe={fromMe} />
+          <ReactionChips reactions={m.reactions} fromMe={fromMe} />
         </div>
       )}
     </motion.div>

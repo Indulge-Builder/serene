@@ -15,9 +15,11 @@ const OUTCOME_BADGE: Record<string, { bg: string; text: string }> = {
 
 type Props = {
   notes: LeadNoteWithAuthor[];
+  /** The viewer cannot write here (another domain's lead): the empty state offers no action. */
+  readOnly?: boolean;
 };
 
-export function LeadNotesSection({ notes }: Props) {
+export function LeadNotesSection({ notes, readOnly = false }: Props) {
   return (
     <div
       style={{
@@ -47,7 +49,10 @@ export function LeadNotesSection({ notes }: Props) {
 
       {/* Timeline */}
       {notes.length === 0 ? (
-        <EmptyState title="No calls logged yet." description="Use the Called button to log your first call." />
+        <EmptyState
+          title="No calls logged yet."
+          description={readOnly ? 'Nothing has been written on this lead so far.' : 'Use the Called button to log your first call.'}
+        />
       ) : (
         <div style={{ padding: 'var(--space-5)' }}>
           {/* Notes */}

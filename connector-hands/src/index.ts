@@ -53,7 +53,10 @@ function readPayment(kind: string, text: string | null, recentText: string | nul
   return { amount_inr: amount ? Number(amount[1].replace(/,/g, "")) : null, payee, expires_at: new Date(new Date(at).getTime() + QR_LIFETIME_MS).toISOString() };
 }
 
-type Parsed = { kind: string; text: string | null; mime: string | null; media: boolean };
+// `quiet`: a reaction, an edit, a delete or a key exchange. Filed (the app folds it onto the line it is
+// about, hands-service foldHandsChat) but it is not a line of its own: no ticket event, and only a
+// reaction moves the thread preview ("Reacted 👀").
+type Parsed = { kind: string; text: string | null; mime: string | null; media: boolean; quiet?: "reaction" | "silent"; emoji?: string };
 
 function parseContent(msg: WAMessage): Parsed {
   const m = msg.message ?? undefined;
@@ -65,6 +68,8 @@ function parseContent(msg: WAMessage): Parsed {
   if (type === "documentMessage") return { kind: "document", text: m.documentMessage?.caption ?? m.documentMessage?.fileName ?? null, mime: m.documentMessage?.mimetype ?? null, media: true };
   if (type === "audioMessage") return { kind: "audio", text: null, mime: m.audioMessage?.mimetype ?? null, media: true };
   if (type === "videoMessage") return { kind: "video", text: m.videoMessage?.caption ?? null, mime: m.videoMessage?.mimetype ?? null, media: true };
+  if (type === "reactionMessage") return { kind: "other", text: null, mime: null, media: false, quiet: "reaction", emoji: m.reactionMessage?.text ?? "" };
+  if (type === "protocolMessage" || type === "senderKeyDistributionMessage" || type === "messageContextInfo") return { kind: "other", text: null, mime: null, media: false, quiet: "silent" };
   return { kind: "other", text: null, mime: null, media: false };
 }
 
@@ -81,12 +86,33 @@ async function refreshAllowlist(): Promise<void> {
   allowlist = await loadAllowlist();
 }
 
+/**
+ * The phone jid behind a chat. WhatsApp increasingly addresses a 1:1 chat by a hidden id
+ * (`…@lid`) instead of the number, and the allowlist holds numbers: matched raw, an agent's
+ * reply under its hidden id would be recorded and silently dropped (found 2026-10-01, before
+ * the first real thread). The message key usually carries the number (`remoteJidAlt`);
+ * otherwise Baileys' own id↔number store answers. Anything unresolved stays as it is, so it
+ * fails closed against the allowlist.
+ */
+async function phoneJidFor(msg: WAMessage, remote: string): Promise<string> {
+  if (!remote.endsWith("@lid")) return normalizeJid(remote);
+  const alt = (msg.key as { remoteJidAlt?: string } | undefined)?.remoteJidAlt;
+  if (alt && alt.endsWith("@s.whatsapp.net")) return normalizeJid(alt);
+  try {
+    const pn = await sock?.signalRepository?.lidMapping?.getPNForLID(remote);
+    if (pn) return normalizeJid(pn);
+  } catch (e) {
+    console.warn(`${LOG} hidden id lookup failed:`, e instanceof Error ? e.message : e);
+  }
+  return normalizeJid(remote);
+}
+
 // ─── Inbound: raw → parse → allowlist → message row → thread → ticket event ──
 async function handleMessage(msg: WAMessage): Promise<void> {
   const remote = msg.key?.remoteJid ?? null;
   const waMessageId = msg.key?.id ?? null;
   if (!remote || !waMessageId || remote.endsWith("@g.us") || remote === "status@broadcast") return;
-  const jid = normalizeJid(remote);
+  const jid = await phoneJidFor(msg, remote);
   if (!allowlist.has(jid)) return; // recorded raw, never filed
   const direction: "in" | "out" = msg.key?.fromMe ? "out" : "in";
   const at = new Date(Number(msg.messageTimestamp ?? Date.now() / 1000) * 1000).toISOString();
@@ -114,6 +140,10 @@ async function handleMessage(msg: WAMessage): Promise<void> {
     raw: JSON.parse(JSON.stringify(msg, (_k, v) => (v instanceof Uint8Array ? { _bytes: v.length } : v))),
   });
   if (!id || !thread) return;
+  if (parsed.quiet) {
+    if (parsed.quiet === "reaction" && parsed.emoji) await touchThread(thread.id, at, direction, `Reacted ${parsed.emoji}`);
+    return;
+  }
   await touchThread(thread.id, at, direction, parsed.text ?? `[${parsed.kind}]`);
   // A line typed on the hands phone itself (fromMe, no outbox row) is a human's line too; the ticket sees it.
   if (thread.ticket_id) {
@@ -197,8 +227,11 @@ async function boot(): Promise<void> {
     auth: { creds: auth.creds, keys: makeCacheableSignalKeyStore(auth.keys, logger) },
     logger,
     markOnlineOnConnect: false,
-    syncFullHistory: false,           // a fresh number; nothing to sync
-    shouldSyncHistoryMessage: () => false,
+    syncFullHistory: false,           // a fresh number; only the small recent sync, never the deep one
+    // Accept the recent history sync (2026-10-01): it carries WhatsApp's hidden-id ↔ number map,
+    // which phoneJidFor needs (Baileys warns that refusing it causes session errors). Nothing
+    // here listens to messaging-history.set, so no old chat is stored or filed.
+    shouldSyncHistoryMessage: () => true,
   });
   sock.ev.on("creds.update", saveCreds);
 

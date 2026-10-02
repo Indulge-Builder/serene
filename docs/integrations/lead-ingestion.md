@@ -2,7 +2,7 @@
 
 > **Purpose:** the inbound form-lead pipeline: webhook contract, source adapters, domain resolution, dedup, round-robin assignment, the shop app's product enquiries, raw-payload policy.
 > **Audience:** engineers. · **Source-of-truth scope:** Pipeline A (form/webhook leads). The WhatsApp-origin pipeline (Pipeline B) lives in `whatsapp-gupshup.md`; the lead lifecycle after ingestion lives in `../modules/gia.md`; notification dispatch lives in `whatsapp-gupshup.md` §4.
-> **Last verified:** 2026-09-26 against `src/app/api/webhooks/leads/route.ts`, `src/lib/services/lead-ingestion.ts`, `src/lib/leads/adapters.ts`, `src/lib/services/lead-enquiries-service.ts`, `src/lib/services/lead-assignment-notify.ts`, `src/lib/constants/lead-sources.ts`, `src/lib/constants/campaign-domain-map.ts`, `src/lib/constants/whatsapp.ts`, `src/lib/supabase/schemas.ts`, `src/lib/utils/phone.ts`.
+> **Last verified:** 2026-09-30 against `src/app/api/webhooks/leads/route.ts`, `src/lib/services/lead-ingestion.ts`, `src/lib/leads/adapters.ts`, `src/lib/services/lead-enquiries-service.ts`, `src/lib/services/lead-assignment-notify.ts`, `src/lib/constants/lead-sources.ts`, `src/lib/constants/campaign-domain-map.ts`, `src/lib/constants/whatsapp.ts`, `src/lib/supabase/schemas.ts`, `src/lib/utils/phone.ts`.
 
 ---
 
@@ -33,18 +33,43 @@ Order of operations (the order matters; it is an auditability decision):
 4. **Log the raw payload to `gia.lead_raw_payloads` *before* the auth check** so auth failures
    are auditable. `sanitizeRawPayload` strips sensitive envelope keys (`res2`, the Meta page
    access token).
-5. Bearer-token check, timing-safe via `safeSecretCompare`. The secret is picked **per
-   sender**, not per endpoint: `SHOP_APP_WEBHOOK_SECRET` when `source=shop_app`,
-   `PABBLY_WEBHOOK_SECRET` otherwise. They are separate so a leak on one sender can be
-   rotated without breaking the other. On failure, mark the raw row
-   `ingestion_error: 'unauthorized'`, return 401.
-6. `ingestLead(rawPayload, source, rawPayloadId)`.
+5. Auth, picked **per sender**, not per endpoint, so a leak on one sender can be rotated
+   without breaking the others. On failure, mark the raw row `ingestion_error: 'unauthorized'`,
+   return 401.
+   - **Bearer token**, timing-safe via `safeSecretCompare`: `SHOP_APP_WEBHOOK_SECRET` when
+     `source=shop_app`, `PABBLY_WEBHOOK_SECRET` otherwise.
+   - **Framer signature** (2026-09-30), for the website form posting directly: a request
+     carrying a `Framer-Signature` header is checked with `verifyFramerSignature`
+     (`src/lib/utils/webhook.ts`): `sha256=` + HMAC-SHA256 of the raw body then the
+     `Framer-Webhook-Submission-Id`, keyed by `FRAMER_WEBHOOK_SECRET`. Such a request is always
+     ingested as source `website`, whatever the URL says. Requests without that header take
+     the bearer path exactly as before.
+6. `ingestLead(rawPayload, source, rawPayloadId)`. For a Framer request whose body has no
+   `domain`, the URL's `?domain=` is added first when it is a Gia domain (Framer forms have no
+   reliable hidden field). The raw log keeps the payload as it arrived.
 7. A shop redelivery (the enquiry's external id is already recorded) returns `200 { leadId,
    duplicate: true }` and notifies nobody.
 8. Otherwise: `after(notifyLeadAssigned({ … }))` then return `201 { leadId }`. The sender is
    acked at once; Vercel keeps the lambda alive until the awaited Gupshup sends settle (A-16).
    A new enquiry on a lead that already exists goes out as a repeat enquiry (in-app only). Dispatch
    details: `whatsapp-gupshup.md` §4.
+
+### The Framer website form (2026-09-30)
+
+The website is built on Framer. Its form sends submissions straight to Serene through Framer's
+form webhook, with no Pabbly in between.
+
+- **URL to paste in Framer:** `https://<serene domain>/api/webhooks/leads?domain=legacy` (or
+  another Gia domain: `onboarding`, `house`, `shop`). No `?source=` is needed.
+- **Secret:** the same value as `FRAMER_WEBHOOK_SECRET` in the app's environment (32+
+  characters). Framer shows it once; keep it in the password manager.
+- **Input names:** `full_name` (or `first_name` + `last_name`), `phone` (make it required:
+  a lead without a phone is refused), `email`. Every other input lands in `form_data`, and
+  one named `city` fills the lead's City. A 10-digit number is read as Indian; foreign
+  numbers need the `+` and country code.
+- **Retries:** Framer retries up to 5 times on a non-2xx answer. A retry of a lead that
+  landed is absorbed by the phone dedup; a refused one (no phone) leaves one error row per try
+  on /error-log.
 
 ## 2. Source adapters — `src/lib/leads/adapters.ts`
 

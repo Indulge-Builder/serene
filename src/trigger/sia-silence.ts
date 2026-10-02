@@ -12,7 +12,10 @@
  * moment they happen); this task is the dispatcher, ticking EVERY MINUTE, so
  * failure → WhatsApp/in-app is at most ~60 seconds.
  *
- * Four conditions, most severe first (one alert per tick):
+ * Five conditions, most severe first (one alert per tick):
+ *   banned        — WhatsApp refused the number three times in a row (403, 0249):
+ *                   the watcher holds; a HUMAN requests a review on the phone and
+ *                   switches to the standby number (Sia console → Session).
  *   down          — no heartbeat for 3+ min (3 missed beats): process not running.
  *   session_lost  — WhatsApp logged the watcher out, or it has sat unpaired
  *                   15+ min: a HUMAN must scan the QR (Sia console → Session).
@@ -37,7 +40,7 @@ const QUIET_HOURS = 6;
 const REMIND_TTL_SECONDS = 10 * 60;
 const ESCALATE_AFTER_MS = 60 * 60_000;
 
-type AlertKind = "down" | "session_lost" | "unreachable" | "quiet";
+type AlertKind = "banned" | "down" | "session_lost" | "unreachable" | "quiet";
 
 export const siaSilenceWatchTask = schedules.task({
   id: "sia-silence-watch",
@@ -61,7 +64,12 @@ export const siaSilenceWatchTask = schedules.task({
     let kind: AlertKind | null = null;
     let title = "";
     let body = "";
-    if (beatAgeMin > BEAT_STALE_MIN) {
+    if (status?.state === "banned" && beatAgeMin <= BEAT_STALE_MIN) {
+      // The watcher itself said it: it is alive, holding, and must not reconnect.
+      kind = "banned";
+      title = "Sia watcher number is banned";
+      body = `WhatsApp refused the number ${status.close_streak} times in a row. Request a review on the watcher phone, then switch to the standby number from Sia → Session → Change watcher number. Serene is not capturing group messages until then.`;
+    } else if (beatAgeMin > BEAT_STALE_MIN) {
       kind = "down";
       title = "Sia watcher is down";
       body = status

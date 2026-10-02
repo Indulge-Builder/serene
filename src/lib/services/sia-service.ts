@@ -6,8 +6,11 @@ import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { parseS3Path, siaS3 } from "@/lib/services/sia-media-store";
 import { getReadingsForSiaMessages } from "@/lib/services/media-readings-service";
 import type { MediaReadingBrief } from "@/lib/types/media";
+import { mapRows } from "@/lib/utils/rows";
+import { mayCarryLinkPreview, readLinkPreview, type LinkPreview, type WaPreviewFields } from "@/lib/utils/link-preview";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { SIA_WATCHER_SETTING_KEYS, type SiaShelfReason } from "@/lib/constants/sia-watcher";
 
 // Every wag_ table lives in the `sia` schema (migration 0172). This admin client is
 // scoped to it, so `.from("wag_…")` resolves to sia.wag_…; service_role-only grants +
@@ -80,14 +83,16 @@ export type SiaMessageRow = {
   reactions: { emoji: string; count: number }[];
   /** Resolved preview of the quoted (replied-to) message, when captured. */
   quoted: SiaQuotedPreview | null;
+  /** The link preview the sender's phone put in the message (readLinkPreview), or null. */
+  link_preview: LinkPreview | null;
 };
 
-export type SiaSearchHit = Omit<SiaMessageRow, "media" | "reactions" | "quoted"> & {
+export type SiaSearchHit = Omit<SiaMessageRow, "media" | "reactions" | "quoted" | "link_preview"> & {
   group_jid: string;
   group_subject: string | null;
 };
 
-export type SiaWatcherState = "pairing" | "connecting" | "connected" | "logged_out";
+export type SiaWatcherState = "pairing" | "connecting" | "connected" | "logged_out" | "banned";
 
 /** The watcher's self-reported pulse (migration 0175) — one row, beat every 60s.
  *  0177 adds the pairing QR (published while state='pairing', cleared on connect)
@@ -101,6 +106,9 @@ export type SiaWatcherStatus = {
   qr: string | null;
   qr_at: string | null;
   restart_requested_at: string | null;
+  /** Closes in a row without a clean open (0249); three 403s = banned. */
+  close_streak: number;
+  last_close_code: number | null;
 };
 
 export type SiaHealth = {
@@ -133,7 +141,7 @@ const MESSAGE_SELECT =
 /** The message types that can carry a wag_media row (keeps the .in lists small). */
 const MEDIA_TYPES = new Set(["image", "video", "audio", "voice", "sticker", "document"]);
 
-type BareMessage = Omit<SiaMessageRow, "sender_name" | "media" | "reactions" | "quoted">;
+type BareMessage = Omit<SiaMessageRow, "sender_name" | "media" | "reactions" | "quoted" | "link_preview">;
 
 // ─────────────────────────────────────────────
 // Groups — ONE table read + ONE aggregate RPC, never N+1 (466+ groups today).
@@ -640,7 +648,7 @@ export async function getSiaWatcherStatus(): Promise<SiaWatcherStatus | null> {
   const db = siaDb();
   const { data, error } = await db
     .from("wag_watcher_status")
-    .select("beat_at, state, connected, state_since, account_jid, qr, qr_at, restart_requested_at")
+    .select("beat_at, state, connected, state_since, account_jid, qr, qr_at, restart_requested_at, close_streak, last_close_code")
     .eq("id", 1)
     .limit(1);
   if (error) {
@@ -672,18 +680,157 @@ export async function requestSiaWatcherRestart(): Promise<boolean> {
   return true;
 }
 
-/** Re-pair: wipe the WhatsApp session, then ask the watcher to restart. The
- *  next boot finds empty auth, arms pairing, and publishes the QR into the
- *  status row — the console renders it for scanning. DESTRUCTIVE for the
- *  session (never the data); the action layer gates + confirms. */
-export async function requestSiaSessionRepair(): Promise<boolean> {
+/** Put the live session on the shelf, then ask the watcher to restart (0249). The copy
+ *  and the delete are ONE transaction (sia.shelve_auth_state), so a session is never
+ *  lost between the two. The next boot finds empty auth, arms pairing, and publishes
+ *  the QR into the status row. Returns when it was shelved, or null when there was no
+ *  session to shelve (the watcher is already waiting to be paired). */
+export async function shelfSiaSession(reason: SiaShelfReason): Promise<{ ok: boolean; shelvedAt: string | null }> {
   const db = siaDb();
-  const { error: wipeErr } = await db.from("wag_auth_state").delete().neq("key", "");
-  if (wipeErr) {
-    console.error("[sia-service] session wipe failed:", wipeErr.message);
+  const { data, error } = await db.rpc("shelve_auth_state" as never, { p_reason: reason } as never);
+  if (error) {
+    console.error("[sia-service] session shelve failed:", error.message);
+    return { ok: false, shelvedAt: null };
+  }
+  const ok = await requestSiaWatcherRestart();
+  return { ok, shelvedAt: (data as string | null) ?? null };
+}
+
+/** Re-pair: the session goes to the shelf (never deleted, 0249), the watcher restarts
+ *  into pairing. DESTRUCTIVE for the live session only; the action layer gates + confirms. */
+export async function requestSiaSessionRepair(): Promise<boolean> {
+  return (await shelfSiaSession("repair")).ok;
+}
+
+export type SiaShelvedSession = { shelved_at: string; account_jid: string | null; reason: SiaShelfReason; keys: number };
+
+/** The sessions on the shelf, newest first. Never the key material: only the `creds` row
+ *  of each session is read, for who and when; the count comes from a head count. */
+export async function listSiaSessionShelf(): Promise<SiaShelvedSession[]> {
+  const db = siaDb();
+  const { data, error } = await db
+    .from("wag_auth_state_shelf" as never)
+    .select("shelved_at, account_jid, reason")
+    .eq("key", "creds")
+    .order("shelved_at", { ascending: false })
+    .limit(20);
+  if (error) {
+    console.error("[sia-service] shelf list failed:", error.message);
+    return [];
+  }
+  const rows = (data ?? []) as unknown as Omit<SiaShelvedSession, "keys">[];
+  return Promise.all(
+    rows.map(async (r) => {
+      const { count } = await db
+        .from("wag_auth_state_shelf" as never)
+        .select("key", { count: "exact", head: true })
+        .eq("shelved_at", r.shelved_at);
+      return { ...r, keys: Number(count ?? 0) };
+    }),
+  );
+}
+
+/** Bring a shelved session back: the live one is shelved first (reason swap), the chosen
+ *  one is copied in, the watcher restarts and resumes as that number. One transaction
+ *  (sia.restore_auth_state). */
+export async function restoreSiaSession(shelvedAt: string): Promise<boolean> {
+  const db = siaDb();
+  const { data, error } = await db.rpc("restore_auth_state" as never, { p_shelved_at: shelvedAt } as never);
+  if (error) {
+    console.error("[sia-service] session restore failed:", error.message);
+    return false;
+  }
+  if (Number(data ?? 0) === 0) {
+    console.error("[sia-service] session restore found no rows for", shelvedAt);
     return false;
   }
   return requestSiaWatcherRestart();
+}
+
+// ─────────────────────────────────────────────
+// Standby coverage (0249) — is the fallback real? For every LINKED member group:
+// is the standby number in it, and is the watcher's own number in it.
+// ─────────────────────────────────────────────
+
+export type SiaCoverageGroup = { group_jid: string; subject: string | null; member_id: string };
+export type SiaStandbyCoverage = {
+  standbyJid: string | null;
+  watcherJid: string | null;
+  memberGroups: number;
+  missingStandby: SiaCoverageGroup[];
+  missingWatcher: SiaCoverageGroup[];
+};
+
+/** A number sits in a group under its phone jid OR its hidden id (`@lid`); the phone
+ *  row's `lid` is the bridge the connector records. Both forms count as "in". */
+async function jidForms(db: SiaDb, jid: string | null): Promise<string[]> {
+  if (!jid) return [];
+  const { data } = await db.from("wag_contacts").select("jid, lid").eq("jid", jid).limit(1);
+  const lid = (data?.[0] as { lid?: string | null } | undefined)?.lid ?? null;
+  return lid ? [jid, lid] : [jid];
+}
+
+async function groupsHolding(db: SiaDb, forms: string[]): Promise<Set<string>> {
+  const held = new Set<string>();
+  if (forms.length === 0) return held;
+  // Paged: one number in ~500 groups is under the 1,000-row cap today, not forever.
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await db
+      .from("wag_group_members")
+      .select("group_jid")
+      .in("member_jid", forms)
+      .is("left_at", null)
+      .order("group_jid")
+      .range(from, from + 999);
+    if (error) {
+      console.error("[sia-service] coverage read failed:", error.message);
+      break;
+    }
+    for (const r of (data ?? []) as { group_jid: string }[]) held.add(r.group_jid);
+    if ((data ?? []).length < 1000) break;
+  }
+  return held;
+}
+
+export async function getStandbyCoverage(standbyJid: string | null): Promise<SiaStandbyCoverage> {
+  const db = siaDb();
+  const status = await getSiaWatcherStatus();
+  const watcherJid = status?.account_jid ?? null;
+
+  const { data: groups, error } = await db
+    .from("wag_groups")
+    .select("group_jid, subject, member_id")
+    .not("member_id", "is", null)
+    .eq("is_active", true)
+    .order("group_jid")
+    .limit(5000);
+  if (error) console.error("[sia-service] coverage groups read failed:", error.message);
+  const linked = (groups ?? []) as SiaCoverageGroup[];
+
+  const [standbyIn, watcherIn] = await Promise.all([
+    groupsHolding(db, await jidForms(db, standbyJid)),
+    groupsHolding(db, await jidForms(db, watcherJid)),
+  ]);
+
+  return {
+    standbyJid,
+    watcherJid,
+    memberGroups: linked.length,
+    missingStandby: standbyJid ? linked.filter((g) => !standbyIn.has(g.group_jid)) : [],
+    missingWatcher: watcherJid ? linked.filter((g) => !watcherIn.has(g.group_jid)) : [],
+  };
+}
+
+/** The standby number (an elaya_settings row). Null clears it. */
+export async function saveSiaStandbyJid(jid: string | null): Promise<boolean> {
+  const { error } = await createAdminClient()
+    .from("elaya_settings")
+    .upsert([{ key: SIA_WATCHER_SETTING_KEYS.standbyJid, value: jid }] as never, { onConflict: "key" });
+  if (error) {
+    console.error("[sia-service] standby save failed:", error.message);
+    return false;
+  }
+  return true;
 }
 
 // ─────────────────────────────────────────────
@@ -790,11 +937,14 @@ async function enrichMessages(
   const jids = new Set(rows.map((r) => r.sender_jid));
   for (const q of quotedByWaId.values()) jids.add(q.sender_jid);
 
-  const [nameByJid, mediaByWaId, reactionsByWaId, readingByWaId] = await Promise.all([
+  const linkIds = rows.filter((r) => r.type === "text" && mayCarryLinkPreview(r.text)).map((r) => r.wa_message_id);
+
+  const [nameByJid, mediaByWaId, reactionsByWaId, readingByWaId, previewByWaId] = await Promise.all([
     fetchContactNames(db, [...jids]),
     fetchMediaRows(db, groupJid, mediaIds),
     fetchReactionAggregates(db, groupJid, allIds),
     getReadingsForSiaMessages(groupJid, mediaIds),
+    fetchLinkPreviews(db, groupJid, linkIds),
   ]);
 
   return rows.map((r) => {
@@ -805,11 +955,37 @@ async function enrichMessages(
       media: mediaByWaId.get(r.wa_message_id) ?? null,
       reading: readingByWaId.get(r.wa_message_id) ?? null,
       reactions: reactionsByWaId.get(r.wa_message_id) ?? [],
+      link_preview: previewByWaId.get(r.wa_message_id) ?? null,
       quoted: q
         ? { sender_name: nameByJid.get(q.sender_jid) ?? null, text: q.text, type: q.type }
         : null,
     };
   });
+}
+
+/** Link previews for the messages whose text holds a link: five fields read out of `raw` by JSON
+ *  path, never the whole payload (it can be large). One batch, like the other enrichments. */
+async function fetchLinkPreviews(db: SiaDb, groupJid: string, waIds: string[]): Promise<Map<string, LinkPreview>> {
+  const out = new Map<string, LinkPreview>();
+  if (waIds.length === 0) return out;
+  const { data, error } = await db
+    .from("wag_messages")
+    .select(
+      "wa_message_id, title:raw->message->extendedTextMessage->>title, description:raw->message->extendedTextMessage->>description, " +
+        "canonicalUrl:raw->message->extendedTextMessage->>canonicalUrl, matchedText:raw->message->extendedTextMessage->>matchedText, " +
+        "jpegThumbnail:raw->message->extendedTextMessage->>jpegThumbnail",
+    )
+    .eq("chat_jid", groupJid)
+    .in("wa_message_id", waIds);
+  if (error) {
+    console.warn("[sia-service] link previews failed (non-fatal):", error.message);
+    return out;
+  }
+  mapRows<WaPreviewFields & { wa_message_id: string }, void>(data, (r) => {
+    const preview = readLinkPreview(r);
+    if (preview) out.set(r.wa_message_id, preview);
+  });
+  return out;
 }
 
 async function fetchContactNames(db: SiaDb, jids: string[]): Promise<Map<string, string>> {

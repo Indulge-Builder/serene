@@ -8,12 +8,39 @@ import { createRateLimiter, getClientIp, parseJsonBody, safeSecretCompare } from
 import { parseWebhookPayload, processInboundMessage, processStatusUpdate } from '@/lib/services/whatsapp-ingestion';
 import { tryHandleElayaWhatsAppMessage } from '@/lib/services/elaya-whatsapp';
 import type { MetaInboundMessage, MetaMediaObject, MetaWebhookPayload } from '@/lib/types/whatsapp';
+import { WHATSAPP_LINE_ENV, type WhatsAppLine } from '@/lib/constants/whatsapp-lines';
 
 // ─────────────────────────────────────────────
 // Gupshup secret — resolved once at module load
 // ─────────────────────────────────────────────
 
 const GUPSHUP_WEBHOOK_SECRET = process.env.GUPSHUP_WEBHOOK_SECRET ?? '';
+const GUPSHUP_PUBLIC_WEBHOOK_SECRET = process.env[WHATSAPP_LINE_ENV.public.webhookSecret] ?? '';
+
+/**
+ * Which of our numbers a Gupshup event belongs to (0252). Each Gupshup app has its own webhook
+ * secret, so the secret IS the line: the public app's secret means the public Indulge number, the
+ * original secret means the staff number, anything else is refused. An unset public secret never
+ * matches (safeSecretCompare refuses an empty expected value).
+ */
+function lineForSecret(secret: string): WhatsAppLine | null {
+  if (safeSecretCompare(secret, GUPSHUP_PUBLIC_WEBHOOK_SECRET)) return 'public';
+  if (safeSecretCompare(secret, GUPSHUP_WEBHOOK_SECRET)) return 'staff';
+  return null;
+}
+
+/**
+ * The second check: Gupshup names the sending app at the top of its envelope (`app`). When both
+ * the envelope and our env name an app and they differ, the event is refused on the public line
+ * (a secret pasted into the wrong app) and only logged on the staff line, which has run for months
+ * without reading the field.
+ */
+function appMatchesLine(line: WhatsAppLine, app: unknown): boolean {
+  const expected = process.env[WHATSAPP_LINE_ENV[line].appName];
+  if (typeof app !== 'string' || !app || !expected || app === expected) return true;
+  console.warn(`[whatsapp/webhook] envelope app "${app}" does not match the ${line} line's app "${expected}"`);
+  return line === 'staff';
+}
 
 // processInboundMessage runs inside after() and now awaits notifyLeadAssigned's
 // Gupshup sends. Give the lambda headroom (default Vercel timeout can be 10–15s)
@@ -133,13 +160,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // ── Gupshup v2 path ──────────────────────────
   const gupshupSecret = req.headers.get('x-gupshup-secret');
   if (gupshupSecret !== null) {
-    if (!safeSecretCompare(gupshupSecret, GUPSHUP_WEBHOOK_SECRET)) {
+    const line = lineForSecret(gupshupSecret);
+    if (!line) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const parsed = parseJsonBody<Record<string, unknown>>(rawBody);
     if (!parsed.ok) return parsed.response;
     const body = parsed.body;
+    if (!appMatchesLine(line, body.app)) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
     // Delivery receipts and billing pings — acknowledge, no processing
     if (body.type === 'message-event' || body.type === 'billing-event') {
@@ -189,6 +220,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             messageId,
             waId,
           );
+
+          // The public Indulge number (0252): no staff gate. Everyone who writes there is
+          // treated as a prospect, staff included (that is how the team tests it). The ad a
+          // click-to-WhatsApp person came from rides along when Gupshup passes it.
+          if (line === 'public') {
+            const referral = (payload.referral ?? inner?.referral ?? null) as Record<string, unknown> | null;
+            await processInboundMessage(waId, phone, message, senderName, { line: 'public', referral });
+            return;
+          }
 
           // Routing gate: sender number matches an active profile → Elaya
           // (staff channel); otherwise the existing lead pipeline, unchanged.

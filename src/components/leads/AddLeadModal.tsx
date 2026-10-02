@@ -85,7 +85,7 @@ export function AddLeadModal({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [serverError, setServerError] = useState<string | null>(null);
-  const [duplicateLeadId, setDuplicateLeadId] = useState<string | null>(null);
+  const [duplicate, setDuplicate] = useState<{ ref: string | null; owner: string | null } | null>(null);
   const [agentsLoading, setAgentsLoading] = useState(false);
   const [agentError, setAgentError] = useState<string | null>(null);
   const [agentRetry, setAgentRetry] = useState(0);
@@ -228,7 +228,7 @@ export function AddLeadModal({
         service_interests: [],
       });
       setServerError(null);
-      setDuplicateLeadId(null);
+      setDuplicate(null);
       // Unseeded: keep the list fetched on first open (the domain reset above
       // re-runs the fetch effect only if the domain actually changed).
       if (initialAgents.length > 0) setAgents(initialAgents);
@@ -243,7 +243,7 @@ export function AddLeadModal({
   function onSubmit(values: FormValues) {
     if (isPending || agentsLoading || agentError) return;
     setServerError(null);
-    setDuplicateLeadId(null);
+    setDuplicate(null);
 
     startTransition(async () => {
       try {
@@ -264,7 +264,10 @@ export function AddLeadModal({
         }
 
         if (result.data?.duplicate) {
-          setDuplicateLeadId(result.data.leadId);
+          setDuplicate({
+            ref: result.data.duplicateRef ?? null,
+            owner: result.data.duplicateOwner ?? null,
+          });
           return;
         }
 
@@ -309,10 +312,18 @@ export function AddLeadModal({
       }
     >
       {/* Duplicate warning banner */}
-      {duplicateLeadId && (
+      {duplicate && (
         <Alert tone="warning" style={{ marginBottom: 'var(--space-5)' }}>
-          An active lead with this phone number already exists.{' '}
-          <a href={`/leads/${duplicateLeadId}`}>View existing lead →</a>
+          This person already has an active lead in this domain
+          {duplicate.owner ? `, with ${duplicate.owner}` : ''}.
+          {duplicate.ref ? (
+            <>
+              {' '}
+              <a href={`/leads/${duplicate.ref}`}>View existing lead →</a>
+            </>
+          ) : (
+            ' Ask a manager if it should move to you.'
+          )}
         </Alert>
       )}
 

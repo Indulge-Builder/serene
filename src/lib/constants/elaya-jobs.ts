@@ -76,7 +76,7 @@ export const LABELS_REFRESH_MAX_SETS = 20;
 // ── The live alert sweep ─────────────────────────────────────────────────────
 export const ALERTS_SETTING_KEY = 'elaya_alerts_enabled';
 export const ALERTS_STATE_KEY = 'elaya_alerts_state';
-export const ALERT_KINDS = ['unanswered', 'tone', 'ticket_escalated', 'ticket_reopened', 'silent_turn'] as const;
+export const ALERT_KINDS = ['unanswered', 'tone', 'ticket_escalated', 'ticket_reopened', 'silent_turn', 'reply_wait', 'update_owed'] as const;
 export type ElayaAlertKind = (typeof ALERT_KINDS)[number];
 /** A member whose last word stood unanswered this long is an alert (inside the active hours). */
 export const ALERT_UNANSWERED_MINUTES = 60;

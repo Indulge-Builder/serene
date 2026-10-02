@@ -29,6 +29,7 @@ import {
   type SiaPairingStatus,
 } from "@/lib/actions/sia";
 import { groupTitle, KindPillRow } from "./sia-shared";
+import { SiaWatcherNumberCard } from "./SiaWatcherNumberCard";
 import type { SiaGroupKind, SiaGroupRow, SiaHealth } from "@/lib/services/sia-service";
 
 const PAIRING_POLL_MS = 5000;
@@ -160,7 +161,9 @@ export function SiaControlModal({
                         ? "Connecting to WhatsApp…"
                         : health.watcherState === "logged_out"
                           ? "Session lost — re-pairing needed"
-                          : "Watcher is offline";
+                          : health.watcherState === "banned"
+                            ? "WhatsApp has banned the watcher number"
+                            : "Watcher is offline";
                 const caption = [
                   health.beatAt ? `heartbeat ${formatRelativeTime(health.beatAt)}` : "no heartbeat yet",
                   health.lastEventAt ? `last event ${formatRelativeTime(health.lastEventAt)}` : "no events recorded yet",
@@ -279,7 +282,9 @@ export function SiaControlModal({
                           ? "Connecting to WhatsApp…"
                           : pairing?.state === "logged_out"
                             ? "Session lost — reset it to show a pairing code"
-                            : "Watcher offline — controls apply when it returns"}
+                            : pairing?.state === "banned"
+                              ? "Number banned — request a review on the phone, or re-pair with the standby number"
+                              : "Watcher offline — controls apply when it returns"}
                   </div>
                   <div className="type-caption" style={{ color: "var(--theme-text-tertiary)" }}>
                     Restart keeps the session. Re-pair signs WhatsApp out and shows a QR here to scan.
@@ -310,6 +315,9 @@ export function SiaControlModal({
               </div>
             )}
           </div>
+
+          {/* ── Watcher number (migration 0249) — change it, the standby, the shelf ── */}
+          <SiaWatcherNumberCard open={open} locked={busy !== null || !!pairing?.restartPending} />
 
           {/* ── Group mapping ── */}
           <div className="label-micro mb-2" style={{ color: "var(--theme-text-tertiary)" }}>

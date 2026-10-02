@@ -49,6 +49,7 @@ import {
   type DealCategory,
   type DealDuration,
 } from "@/lib/constants/deal-types";
+import { isActiveTwinViolation } from "@/lib/services/lead-identity";
 import { isGiaDomain, type GiaDomain } from "@/lib/constants/domains";
 import {
   REVIVAL_TASK_TYPE,
@@ -385,7 +386,12 @@ export async function updateLeadStatusCore(
   actor: MutationActor,
   input: { leadId: string; status: LeadStatus; reason: string | null },
   leadCtx: { slug: string | null; domain: string },
-): Promise<{ ok: true; result: UpdateLeadStatusCoreResult } | { ok: false }> {
+): Promise<
+  | { ok: true; result: UpdateLeadStatusCoreResult }
+  // `active_twin`: re-opening this lead would make a second ACTIVE lead for the same
+  // person in the same domain; the 0251 unique index refused it.
+  | { ok: false; reason?: "active_twin" }
+> {
   const admin = createAdminClient();
   const now = new Date().toISOString();
 
@@ -401,6 +407,7 @@ export async function updateLeadStatusCore(
     },
   );
 
+  if (isActiveTwinViolation(rpcError)) return { ok: false, reason: "active_twin" };
   if (rpcError || !rpcResult) return { ok: false };
 
   const result = rpcResult as {

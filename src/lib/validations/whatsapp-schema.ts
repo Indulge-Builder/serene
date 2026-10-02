@@ -34,6 +34,8 @@ export const WhatsAppListFilterSchema = z.object({
   customTo:   z.string().optional().nullable(),
   limit:      z.number().int().min(1).max(100).optional(),
   cursor:     z.string().optional().nullable(),
+  /** One number's threads only (0252); absent = both. */
+  line:       z.enum(["staff", "public"]).optional().nullable(),
 });
 
 export type WhatsAppListFilterInput = z.infer<typeof WhatsAppListFilterSchema>;

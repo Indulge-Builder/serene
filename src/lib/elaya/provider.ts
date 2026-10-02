@@ -51,9 +51,22 @@ export type LlmToolDefinition = {
 export type LlmStopReason = 'end_turn' | 'tool_use' | 'max_tokens' | 'refusal' | 'other';
 
 export type LlmUsage = {
+  /** Input tokens billed at the full rate (excludes cache reads and writes). */
   inputTokens: number;
   outputTokens: number;
+  /** Prompt-cache reads, when the provider caches (0252, the public bot's ledger costs them). */
+  cacheReadTokens?: number;
+  /** Prompt-cache writes, when the provider caches. */
+  cacheWriteTokens?: number;
 };
+
+/**
+ * Which account a call is billed to (0252). `internal` is every Serene job today. `public_bot` is
+ * the public WhatsApp bot, on its own key so its spend shows apart from everything internal. Set
+ * in code by the caller, never read from the database, never chosen by the model. An adapter with
+ * one account ignores it.
+ */
+export type LlmCredential = 'internal' | 'public_bot';
 
 export type LlmCompleteRequest = {
   model: string;
@@ -89,6 +102,8 @@ export type LlmCompleteRequest = {
   effort?: 'low' | 'medium' | 'high';
   /** Streamed text deltas (assistant prose only — never tool-call JSON). */
   onTextDelta?: (delta: string) => void;
+  /** The account the call is billed to. Absent = `internal`. */
+  credential?: LlmCredential;
 };
 
 export type LlmCompleteResult = {

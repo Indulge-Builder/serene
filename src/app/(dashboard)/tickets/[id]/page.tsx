@@ -1,9 +1,10 @@
 import Link from 'next/link';
 import { redirect, notFound } from 'next/navigation';
+import { after } from 'next/server';
 import { getCurrentProfile } from '@/lib/services/profiles-service';
 import { getTicketDetail, getTicketHelp, getTicketSettings } from '@/lib/services/tickets-service';
 import { logMemberAccess } from '@/lib/services/member-mutations';
-import { canAccessRoute } from '@/lib/utils/route-access';
+import { canAccessRoute, hasVendorActionAccess } from '@/lib/utils/route-access';
 import { BackButton } from '@/components/ui/BackButton';
 import { TicketHeaderControls } from '@/components/tickets/TicketHeaderControls';
 import { TicketBriefCard } from '@/components/tickets/TicketBriefCard';
@@ -13,9 +14,9 @@ import { TicketMoneyCard } from '@/components/tickets/TicketMoneyCard';
 import { TicketLinkedMessagesCard, TicketHelpPanel, TicketSentinelCard } from '@/components/tickets/TicketSideCards';
 import { TicketVendorCard } from '@/components/tickets/TicketVendorCard';
 import { getTicketVendor, getTicketVendorReview } from '@/lib/services/ticket-vendor';
-import { getHandsThreadForTicket } from '@/lib/services/hands-service';
-import { getHandsSettings } from '@/lib/services/llm-providers-service';
-import { TicketHandsCard } from '@/components/tickets/TicketHandsCard';
+import { getHandsTicketView, startHandsForTicket } from '@/lib/services/hands-ticket';
+import { actorFromProfile } from '@/lib/actions/_auth';
+import { HandsTicketCard } from '@/components/hands/HandsTicketCard';
 import { TicketTasksCard } from '@/components/tickets/TicketTasksCard';
 import { TicketTagsCard } from '@/components/tickets/TicketTagsCard';
 import { TICKETS_PATH } from '@/lib/constants/tickets';
@@ -41,8 +42,19 @@ export default async function TicketPage({ params, searchParams }: Props) {
     detail.ticket.vendor_id ? getTicketVendor(detail.ticket.vendor_id) : Promise.resolve(null),
   ]);
   const review = await getTicketVendorReview(detail.ticket);
-  // The line to an outside agent (0245): only when the ticket's vendor is one.
-  const [handsThread, handsSettings] = vendor?.kind === 'agent' ? await Promise.all([getHandsThreadForTicket(detail.ticket.id), getHandsSettings()]) : [null, null];
+  // The outside agent (Hands, 2026-10-01): shown whenever an agent is set up or a chat exists. A
+  // fresh ticket Elaya has not read yet is read now, after the response (she writes the first
+  // message; it sends itself only where the category's trust allows).
+  const handsView = await getHandsTicketView(detail.ticket.id);
+  const canWriteHands = hasVendorActionAccess(profile);
+  if (handsView && canWriteHands && handsView.enabled && handsView.agent && handsView.autoEligible && !handsView.attempted && !handsView.thread && !handsView.dismissed && !handsView.working) {
+    const ticketId = detail.ticket.id;
+    const actor = actorFromProfile(profile);
+    after(async () => {
+      try { await startHandsForTicket(ticketId, { actor }); } catch (e) { console.error('[ticket-page] hands start failed (non-fatal)', e); }
+    });
+    handsView.working = true;
+  }
   await logMemberAccess(detail.member.id, profile.id, 'ticket_help');
   const canApprove = profile.role !== 'agent';
   const t = detail.ticket;
@@ -73,7 +85,7 @@ export default async function TicketPage({ params, searchParams }: Props) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-6)', minWidth: 0 }}>
           <TicketSentinelCard ticket={t} />
           <TicketVendorCard ticketId={t.id} vendor={vendor} live={!['resolved', 'closed', 'dropped'].includes(t.status)} status={t.status} review={review} />
-          {vendor?.kind === 'agent' && <TicketHandsCard ticketId={t.id} vendorName={vendor.name} thread={handsThread} live={!['resolved', 'closed', 'dropped'].includes(t.status)} enabled={Boolean(handsSettings?.enabled)} />}
+          {handsView && (handsView.agent || handsView.thread) && <HandsTicketCard ticketId={t.id} initial={handsView} live={!['resolved', 'closed', 'dropped'].includes(t.status)} canWrite={canWriteHands} />}
           <TicketTagsCard ticketId={t.id} tags={t.tags ?? []} vocabulary={settings.tags} />
           <TicketHelpPanel help={help} clientId={detail.member.id} memberName={detail.member.full_name} />
         </div>

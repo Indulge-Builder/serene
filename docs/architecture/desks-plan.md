@@ -1,6 +1,6 @@
 # Desks plan: Elaya on every table, out loud and on the wall
 
-> Written 2026-09-28. Status: **plan only, nothing built.** Decisions the founder must make are
+> Written 2026-09-28. Status: **step 2 built 2026-09-28 (migration 0248 written, not applied; the outbox, the sender, the alert delivery, /settings/desks); steps 1, 3 to 6 open.** Decisions the founder must make are
 > marked **Decide**. Everything else is my recommendation and I will build it exactly as written
 > unless told otherwise.
 

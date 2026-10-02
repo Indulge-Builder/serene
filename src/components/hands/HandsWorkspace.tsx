@@ -1,70 +1,82 @@
 "use client";
 
-// HandsWorkspace — THE /hands page body (0245; hands plan Layer E). The Sia workspace's
-// anatomy on the shared SplitWorkspace: a rail of live jobs (ConversationRailRow) beside the
-// thread pane. Jobs and Talk are two rail filters. The pane shows the conversation as bubbles
-// (ours on the right), the payment card when the agent sent a QR, a disclosure line under each
-// line we sent, Elaya's draft with what was held back before Approve, and a composer whose text
-// runs through the same leak check as every other line. Display and calls only: every write is a
-// server action (actions/hands.ts); nothing here sends a WhatsApp message.
+// HandsWorkspace — THE /hands page body (0245; hands plan Layer E), laid out like the WhatsApp
+// page (2026-10-01): one conversation list on the shared SplitWorkspace (ConversationRailRow; every
+// open job and chat, plus each allowed agent with no chat yet, which a click opens), and the chat
+// on the right in the WhatsApp page's own MessageBubble under Sia's day chips. Hands adds the reply
+// word and "Paid" under a bubble, the payment card when the agent sent a QR, Ask Elaya (she writes
+// the line into the composer), Draft from the brief on a job, Send the rulebook, and Teach. Every
+// typed line runs through the same leak check. Display and calls only: every write is a server
+// action (actions/hands.ts); nothing here sends a WhatsApp message.
 
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Bot, ClipboardList, ExternalLink, Eye, EyeOff, IndianRupee, Sparkles, X } from "lucide-react";
+import { ArrowLeft, BookOpen, Bot, ClipboardList, ExternalLink, Eye, EyeOff, GraduationCap, IndianRupee, MessageCircle, Sparkles, X } from "lucide-react";
 import { SplitWorkspace, SplitRail, SplitRailHeader, SplitRailList, SplitPane } from "@/components/ui/SplitWorkspace";
 import { ConversationRailRow } from "@/components/ui/ConversationRailRow";
-import { SelectionButton } from "@/components/ui/SelectionButton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { MessageBar } from "@/components/ui/MessageBar";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { Avatar } from "@/components/ui/Avatar";
 import { Checkbox } from "@/components/ui/Checkbox";
-import { Input } from "@/components/ui/Field";
+import { Input, Textarea } from "@/components/ui/Field";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { PageControls } from "@/components/layout/PageControls";
 import { TOP_BAR_ENABLED } from "@/lib/constants/feature-flags";
-import { renderWaText } from "@/components/ui/WaText";
+import { HandsChatLines } from "@/components/hands/HandsChatLines";
+import { useMediaQuery, MQ } from "@/hooks/useMediaQuery";
 import { toast } from "@/lib/toast";
-import { formatDate, formatRelativeTime } from "@/lib/utils/dates";
+import { formatRelativeTime } from "@/lib/utils/dates";
 import { formatCurrency } from "@/lib/utils/numbers";
 import { scrollToBottom } from "@/lib/utils/scroll";
-import { HANDS_QR_LIFETIME_MS, HANDS_FRAMES, type HandsFrame } from "@/lib/constants/hands";
+import { HANDS_QR_LIFETIME_MS } from "@/lib/constants/hands";
 import {
-  closeHandsThreadAction, draftHandsMessageAction, getHandsThreadAction, listHandsThreadsAction, markHandsPaymentAction, openTalkThreadAction, sendHandsMessageAction,
+  closeHandsThreadAction, draftHandsMessageAction, getHandsGuidesAction, getHandsThreadAction, improveHandsGuidesAction, listHandsThreadsAction, listHandsUnfiledAction, markHandsPaymentAction,
+  openTalkThreadAction, sendHandsMessageAction, writeHandsLineAction,
   type HandsThreadView,
 } from "@/lib/actions/hands";
-import type { HandsThreadSummary } from "@/lib/services/hands-service";
+import type { HandsThreadSummary, HandsUnfiled } from "@/lib/services/hands-service";
 import type { HandsDraft } from "@/lib/services/hands-draft";
 import type { HandsAllowedContactRow, HandsConnectorStatusRow, HandsMessageRow } from "@/lib/types/hands";
 
 const POLL_MS = 8_000;
 const HANDS_THREAD_PARAM = "thread";
 
-type RailFilter = "jobs" | "talk";
 
-const FRAME_TONE: Record<HandsFrame, "success" | "warning" | "info" | "danger" | "neutral"> = { done: "success", need: "warning", options: "info", failed: "danger", waiting: "neutral" };
+type RailItem =
+  | { type: "thread"; key: string; at: number; t: HandsThreadSummary }
+  | { type: "contact"; key: string; at: number; c: HandsAllowedContactRow; waiting: { count: number; lastAt: string; lastText: string | null } | null };
 
-export function HandsWorkspace({ initialThreads, contacts, connector, canConfigure, initialThreadId, perJobCapInr, viewerCanPayAbove }: {
+export function HandsWorkspace({ initialThreads, contacts, connector, canConfigure, canTeach, initialThreadId, perJobCapInr, viewerCanPayAbove, unfiled: initialUnfiled = {} }: {
   initialThreads: HandsThreadSummary[];
   contacts: HandsAllowedContactRow[];
   connector: HandsConnectorStatusRow | null;
   canConfigure: boolean;
+  /** admin / founder: may rewrite the rulebook and Elaya's guide from a conversation. */
+  canTeach: boolean;
   initialThreadId: string | null;
   perJobCapInr: number;
   /** admin / founder / manager / a bishop or queen: may mark a payment above the per-job cap. */
   viewerCanPayAbove: boolean;
+  /** Messages an agent sent while no chat with it was open, per number. Opening the chat files them. */
+  unfiled?: HandsUnfiled;
 }) {
   const router = useRouter();
   const params = useSearchParams();
   const [threads, setThreads] = useState(initialThreads);
-  const [filter, setFilter] = useState<RailFilter>("jobs");
+  const [unfiled, setUnfiled] = useState<HandsUnfiled>(initialUnfiled);
   const [selectedId, setSelectedId] = useState<string | null>(initialThreadId);
   const [view, setView] = useState<HandsThreadView | null>(null);
   const [loadingThread, setLoadingThread] = useState(false);
+  const [opening, startOpening] = useTransition();
+  const isMobile = useMediaQuery(MQ.mobile);
 
   const refreshList = useCallback(async () => {
-    const r = await listHandsThreadsAction({ status: "open" });
+    const [r, u] = await Promise.all([listHandsThreadsAction({ status: "open" }), listHandsUnfiledAction()]);
     if (r.data) setThreads(r.data);
+    if (u.data) setUnfiled(u.data);
   }, []);
 
   const loadThread = useCallback(async (id: string, quiet = false) => {
@@ -91,10 +103,29 @@ export function HandsWorkspace({ initialThreads, contacts, connector, canConfigu
     return () => clearInterval(t);
   }, [refreshList, loadThread, selectedId]);
 
-  const shown = useMemo(() => threads.filter((t) => (filter === "talk" ? t.kind === "talk" : t.kind === "ticket")), [threads, filter]);
-  const selected = threads.find((t) => t.id === selectedId) ?? view?.thread ?? null;
+  // One list, like the WhatsApp page: every open conversation, plus every allowed agent that has no
+  // open chat yet (clicking it opens one and files what it already sent). Newest activity first.
+  const items = useMemo<RailItem[]>(() => {
+    const withTalk = new Set(threads.filter((t) => t.kind === "talk").map((t) => t.jid));
+    const rows: RailItem[] = threads.map((t) => ({ type: "thread", key: t.id, at: t.last_message_at ? new Date(t.last_message_at).getTime() : 0, t }));
+    for (const c of contacts) {
+      if (!c.is_active || withTalk.has(c.jid)) continue;
+      const waiting = unfiled[c.jid] ?? null;
+      rows.push({ type: "contact", key: `c-${c.jid}`, at: waiting ? new Date(waiting.lastAt).getTime() : -1, c, waiting });
+    }
+    return rows.sort((a, b) => b.at - a.at);
+  }, [threads, contacts, unfiled]);
 
+  const openChat = (c: HandsAllowedContactRow) => startOpening(async () => {
+    const r = await openTalkThreadAction({ jid: c.jid });
+    if (r.error || !r.data) { toast.danger(r.error ?? "Could not open the chat."); return; }
+    await refreshList();
+    setSelectedId(r.data.id);
+  });
+
+  const selected = threads.find((t) => t.id === selectedId) ?? view?.thread ?? null;
   const connected = connector?.connected && Date.now() - new Date(connector.beat_at).getTime() < 3 * 60_000;
+  const firstWaiting = items.find((i): i is Extract<RailItem, { type: "contact" }> => i.type === "contact" && Boolean(i.waiting));
 
   return (
     <>
@@ -110,38 +141,55 @@ export function HandsWorkspace({ initialThreads, contacts, connector, canConfigu
       </div>
 
       <SplitWorkspace>
+        {(!isMobile || !selectedId) && (
         <SplitRail>
           <SplitRailHeader>
-            <div style={{ display: "flex", gap: "var(--space-2)" }}>
-              <SelectionButton selected={filter === "jobs"} onClick={() => setFilter("jobs")}>Jobs</SelectionButton>
-              <SelectionButton selected={filter === "talk"} onClick={() => setFilter("talk")}>Talk</SelectionButton>
-            </div>
-            {filter === "talk" && <NewTalk contacts={contacts} onOpened={(id) => { void refreshList(); setSelectedId(id); }} />}
+            <span className="label-micro" style={{ color: "var(--theme-text-tertiary)" }}>Conversations</span>
           </SplitRailHeader>
           <SplitRailList>
-            {shown.length === 0 ? (
+            {items.length === 0 ? (
               <div style={{ padding: "var(--space-6) var(--space-4)" }}>
-                <EmptyState variant="inline" title={filter === "talk" ? "No open talk" : "No jobs on the line"} description={filter === "talk" ? "Open a free thread with the agent to ask what it can do or re-send the rulebook." : "A job starts from a ticket: set the agent as its vendor, then open the line from the ticket page or ask Elaya."} />
+                <EmptyState variant="inline" title="No conversations yet" description={canConfigure ? "Add the agent's number in Settings. Its chat appears here." : "When the agent's number is set up, its chat appears here."} />
               </div>
-            ) : shown.map((t, i) => (
+            ) : items.map((item, i) => item.type === "thread" ? (
               <ConversationRailRow
-                key={t.id}
+                key={item.key}
                 index={i}
-                title={t.kind === "talk" ? `Talk · ${t.contact_label}` : `${t.ticket_no ?? "Ticket"} · ${t.member_name ?? "Member"}`}
-                avatarName={t.kind === "talk" ? t.contact_label : t.member_name ?? t.contact_label}
-                meta={t.last_message_at ? formatRelativeTime(t.last_message_at) : null}
-                preview={<span>{t.last_direction === "in" ? "Agent: " : t.last_direction === "out" ? "Us: " : ""}{t.last_preview ?? t.ticket_title ?? "No lines yet"}{t.queued > 0 ? ` · ${t.queued} queued` : ""}</span>}
-                selected={t.id === selectedId}
-                unread={t.last_direction === "in"}
-                onSelect={() => setSelectedId(t.id)}
+                title={item.t.kind === "talk" ? item.t.contact_label : `${item.t.ticket_no ?? "Ticket"} · ${item.t.member_name ?? "Member"}`}
+                avatarName={item.t.kind === "talk" ? item.t.contact_label : item.t.member_name ?? item.t.contact_label}
+                meta={item.t.last_message_at ? formatRelativeTime(item.t.last_message_at) : null}
+                preview={<span>{item.t.kind === "ticket" ? `${item.t.contact_label}: ` : ""}{item.t.last_direction === "out" ? "You: " : ""}{item.t.last_preview ?? item.t.ticket_title ?? "No messages yet"}{item.t.queued > 0 ? ` · ${item.t.queued} sending` : ""}</span>}
+                selected={item.t.id === selectedId}
+                unread={item.t.last_direction === "in"}
+                onSelect={() => setSelectedId(item.t.id)}
+              />
+            ) : (
+              <ConversationRailRow
+                key={item.key}
+                index={i}
+                title={item.c.label}
+                avatarName={item.c.label}
+                meta={item.waiting ? formatRelativeTime(item.waiting.lastAt) : null}
+                preview={<span>{item.waiting ? `${item.waiting.count} new · ${item.waiting.lastText ?? ""}` : "No chat yet. Click to start one."}</span>}
+                selected={false}
+                unread={Boolean(item.waiting)}
+                onSelect={() => { if (!opening) openChat(item.c); }}
               />
             ))}
           </SplitRailList>
         </SplitRail>
+        )}
 
         <SplitPane className={selectedId ? "flex flex-col" : "hidden md:flex items-center justify-center"}>
           {!selectedId || !selected ? (
-            <EmptyState icon={Bot} title="Pick a job" description="The conversation with the agent opens here, with what we told it and what we kept back." />
+            <EmptyState
+              icon={Bot}
+              title={firstWaiting ? `${firstWaiting.c.label} wrote to us` : "Pick a conversation"}
+              description={firstWaiting?.waiting
+                ? `${firstWaiting.waiting.count} message${firstWaiting.waiting.count === 1 ? "" : "s"}, the last ${formatRelativeTime(firstWaiting.waiting.lastAt)}. Open the chat to read and answer.`
+                : "Choose a conversation on the left. Elaya can write the lines for you; nothing is sent until you press send."}
+              action={firstWaiting ? <Button size="sm" loading={opening} onClick={() => openChat(firstWaiting.c)}><MessageCircle className="w-4 h-4" strokeWidth={1.5} /> Open the chat</Button> : undefined}
+            />
           ) : (
             <ThreadPane
               key={selected.id}
@@ -150,6 +198,8 @@ export function HandsWorkspace({ initialThreads, contacts, connector, canConfigu
               loading={loadingThread}
               perJobCapInr={perJobCapInr}
               viewerCanPayAbove={viewerCanPayAbove}
+              canTeach={canTeach}
+              onBack={isMobile ? () => setSelectedId(null) : undefined}
               onChanged={() => { void loadThread(selected.id, true); void refreshList(); }}
               onClosed={() => { setSelectedId(null); void refreshList(); }}
             />
@@ -160,32 +210,17 @@ export function HandsWorkspace({ initialThreads, contacts, connector, canConfigu
   );
 }
 
-// ─── The rail's Talk opener ───────────────────────────────────────────────────
-
-function NewTalk({ contacts, onOpened }: { contacts: HandsAllowedContactRow[]; onOpened: (id: string) => void }) {
-  const [pending, start] = useTransition();
-  const active = contacts.filter((c) => c.is_active);
-  if (active.length === 0) return <span className="type-caption" style={{ color: "var(--theme-text-tertiary)" }}>No agent on the allowlist yet.</span>;
-  return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-2)" }}>
-      {active.map((c) => (
-        <Button key={c.jid} size="xs" variant="control" disabled={pending} onClick={() => start(async () => {
-          const r = await openTalkThreadAction({ jid: c.jid });
-          if (r.error || !r.data) { toast.danger(r.error ?? "Could not open the talk."); return; }
-          onOpened(r.data.id);
-        })}>Talk to {c.label}</Button>
-      ))}
-    </div>
-  );
-}
-
 // ─── The pane ────────────────────────────────────────────────────────────────
 
-function ThreadPane({ summary, view, loading, perJobCapInr, viewerCanPayAbove, onChanged, onClosed }: {
-  summary: HandsThreadSummary; view: HandsThreadView | null; loading: boolean; perJobCapInr: number; viewerCanPayAbove: boolean;
-  onChanged: () => void; onClosed: () => void;
+function ThreadPane({ summary, view, loading, perJobCapInr, viewerCanPayAbove, canTeach, onBack, onChanged, onClosed }: {
+  summary: HandsThreadSummary; view: HandsThreadView | null; loading: boolean; perJobCapInr: number; viewerCanPayAbove: boolean; canTeach: boolean;
+  onBack?: () => void; onChanged: () => void; onClosed: () => void;
 }) {
   const [text, setText] = useState("");
+  const [panel, setPanel] = useState<"ask" | "teach" | null>(null);
+  const [ask, setAsk] = useState("");
+  const [teach, setTeach] = useState("");
+  const [rulebook, setRulebook] = useState<{ body: string; version: number } | null>(null);
   const [draft, setDraft] = useState<HandsDraft | null>(null);
   const [tickAddress, setTickAddress] = useState(false);
   const [pending, start] = useTransition();
@@ -208,6 +243,29 @@ function ThreadPane({ summary, view, loading, perJobCapInr, viewerCanPayAbove, o
     setDraft(r.data);
   });
 
+  // Elaya writes the line from an instruction, following the live guide; it lands in the composer.
+  const askElayaToWrite = () => start(async () => {
+    const r = await writeHandsLineAction({ threadId: summary.id, instruction: ask });
+    if (r.error || !r.data) { toast.danger(r.error ?? "Could not write a line."); return; }
+    setText(r.data.text); setAsk(""); setPanel(null);
+    toast.success("Elaya wrote it into the box below. Read it, change anything, then send.");
+  });
+
+  const teachElaya = () => start(async () => {
+    const r = await improveHandsGuidesAction({ feedback: teach, threadId: summary.id });
+    if (r.error || !r.data) { toast.danger(r.error ?? "Could not rewrite."); return; }
+    const { changed, summary: what } = r.data;
+    setTeach(""); setPanel(null);
+    const which = changed.rulebook && changed.guide ? "The rulebook and Elaya's guide" : changed.rulebook ? "The rulebook" : changed.guide ? "Elaya's guide" : null;
+    toast.success(which ? `${which} updated${what ? `: ${what}` : "."}${changed.rulebook ? " Send the rulebook again so the agent has it." : ""}` : "Elaya read it; nothing needed to change.");
+  });
+
+  const openRulebook = () => start(async () => {
+    const r = await getHandsGuidesAction();
+    if (r.error || !r.data) { toast.danger(r.error ?? "Could not read the rulebook."); return; }
+    setRulebook({ body: r.data.rulebook.body, version: r.data.rulebook.version });
+  });
+
   const close = () => start(async () => {
     const r = await closeHandsThreadAction({ threadId: summary.id });
     if (r.error) { toast.danger(r.error); return; }
@@ -219,33 +277,36 @@ function ThreadPane({ summary, view, loading, perJobCapInr, viewerCanPayAbove, o
 
   return (
     <>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-3)", padding: "var(--space-3) var(--space-4)", borderBottom: "1px solid var(--theme-paper-border)" }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: "var(--text-sm)", fontWeight: "var(--weight-medium)", display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
-            <Bot className="w-4 h-4" strokeWidth={1.5} />
-            <span>{summary.contact_label}</span>
-            {summary.ticket_no && <Link href={`/tickets/${summary.ticket_id}`} className="type-caption" style={{ color: "var(--neu-accent-deep)", display: "inline-flex", alignItems: "center", gap: 4 }}><ClipboardList className="w-3 h-3" strokeWidth={1.5} />{summary.ticket_no}<ExternalLink className="w-3 h-3" strokeWidth={1.5} /></Link>}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-3)", padding: "var(--space-3) var(--space-4)", borderBottom: "1px solid var(--theme-paper-border)", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)", minWidth: 0 }}>
+          {onBack && <Button variant="ghost" iconOnly size="sm" onClick={onBack} aria-label="Back to conversations"><ArrowLeft className="w-4 h-4" strokeWidth={1.5} /></Button>}
+          <Avatar name={summary.contact_label} size="sm" style={{ flexShrink: 0 }} />
+          <div style={{ minWidth: 0 }}>
+            <p style={{ fontFamily: "var(--font-serif)", fontStyle: "italic", fontSize: "var(--text-base)", color: "var(--theme-text-primary)", margin: "0 0 1px", lineHeight: 1.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{summary.contact_label}</p>
+            <p className="type-caption" style={{ margin: 0, color: "var(--theme-text-tertiary)", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              {summary.ticket_no
+                ? <><Link href={`/tickets/${summary.ticket_id}`} style={{ color: "var(--neu-accent-deep)", display: "inline-flex", alignItems: "center", gap: 4 }}><ClipboardList className="w-3 h-3" strokeWidth={1.5} />{summary.ticket_no}<ExternalLink className="w-3 h-3" strokeWidth={1.5} /></Link><span>{summary.ticket_title ?? ""}</span></>
+                : <span style={{ fontFamily: "var(--font-mono)" }}>+{summary.jid.split("@")[0]} · no member data in this chat</span>}
+            </p>
           </div>
-          <div className="type-caption" style={{ color: "var(--theme-text-secondary)" }}>{summary.kind === "talk" ? "Free talk, no member data in reach" : `${summary.ticket_title ?? ""}${summary.member_name ? ` · for ${summary.member_name}` : ""}`}</div>
         </div>
         <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center" }}>
-          {summary.ticket_id && <Button size="xs" variant="control" disabled={pending} onClick={askElaya}><Sparkles className="w-3 h-3" strokeWidth={1.5} /> Let Elaya draft</Button>}
+          <Button size="xs" variant={panel === "ask" ? "primary" : "control"} disabled={pending} onClick={() => setPanel(panel === "ask" ? null : "ask")}><Sparkles className="w-3 h-3" strokeWidth={1.5} /> Ask Elaya</Button>
+          {summary.ticket_id && <Button size="xs" variant="control" disabled={pending} onClick={askElaya}><ClipboardList className="w-3 h-3" strokeWidth={1.5} /> Draft from the brief</Button>}
+          {summary.kind === "talk" && <Button size="xs" variant="control" disabled={pending} onClick={openRulebook}><BookOpen className="w-3 h-3" strokeWidth={1.5} /> Send the rulebook</Button>}
+          {canTeach && <Button size="xs" variant={panel === "teach" ? "primary" : "ghost"} disabled={pending} onClick={() => setPanel(panel === "teach" ? null : "teach")}><GraduationCap className="w-3 h-3" strokeWidth={1.5} /> Teach</Button>}
           <Button size="xs" variant="ghost" disabled={pending} onClick={close}>Close line</Button>
         </div>
       </div>
 
-      <div ref={listRef} style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "var(--space-4)", display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
-        {loading && !view && <div className="type-caption" style={{ color: "var(--theme-text-tertiary)" }}>Opening…</div>}
+      <div ref={listRef} style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "var(--space-5)", display: "flex", flexDirection: "column", gap: "var(--space-2)", background: "var(--theme-paper-subtle)", overscrollBehavior: "contain" }}>
+        {loading && !view && <div className="type-caption" style={{ color: "var(--theme-text-tertiary)", margin: "auto" }}>Opening…</div>}
         {view && view.messages.length === 0 && view.outbox.length === 0 && (
-          <EmptyState variant="inline" title="Nothing said yet" description={summary.ticket_id ? "Let Elaya draft the opening line from the brief, or write it yourself." : "Write to the agent. The rulebook is a good first line."} />
-        )}
-        {view?.messages.map((m) => <Bubble key={m.id} m={m} agent={summary.contact_label} />)}
-        {view?.outbox.map((o) => (
-          <div key={o.id} style={{ alignSelf: "flex-end", maxWidth: "78%", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
-            <div style={{ padding: "var(--space-2) var(--space-3)", borderRadius: "var(--neu-radius-tile, var(--radius-md))", background: "var(--theme-accent-surface)", color: "var(--theme-text-primary)", fontSize: "var(--text-sm)", opacity: 0.8, whiteSpace: "pre-wrap" }}>{o.text}</div>
-            <span className="type-caption" style={{ color: o.status === "queued" ? "var(--theme-text-tertiary)" : "var(--color-danger-text)" }}>{o.status === "queued" ? "Queued…" : o.status === "refused" ? `Refused: ${o.error ?? "not allowed"}` : `Failed: ${o.error ?? "unknown"}`}</span>
+          <div style={{ margin: "auto" }}>
+            <EmptyState variant="inline" title="Nothing said yet" description={summary.ticket_id ? "Draft the opening line from the brief, ask Elaya to write one, or write it yourself." : "Send the rulebook first, then ask Elaya to write, or write it yourself."} />
           </div>
-        ))}
+        )}
+        {view && <HandsChatLines messages={view.messages} outbox={view.outbox} agent={summary.contact_label} />}
       </div>
 
       {payment && payment.payment && (
@@ -276,34 +337,48 @@ function ThreadPane({ summary, view, loading, perJobCapInr, viewerCanPayAbove, o
         </div>
       )}
 
+      {panel && (
+        <div style={{ margin: "0 var(--space-4) var(--space-3)", padding: "var(--space-3) var(--space-4)", borderRadius: "var(--neu-radius-tile, var(--radius-md))", border: "1px solid var(--theme-paper-border)", background: "var(--theme-paper-subtle)", display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ fontSize: "var(--text-sm)", fontWeight: "var(--weight-medium)", display: "inline-flex", alignItems: "center", gap: 6 }}>
+              {panel === "ask" ? <><Sparkles className="w-3.5 h-3.5" strokeWidth={1.5} /> What should Elaya say to {summary.contact_label}?</> : <><GraduationCap className="w-3.5 h-3.5" strokeWidth={1.5} /> What should change about how we work with {summary.contact_label}?</>}
+            </span>
+            <button type="button" onClick={() => setPanel(null)} aria-label="Close" style={{ background: "none", border: 0, color: "var(--theme-text-tertiary)", cursor: "pointer" }}><X className="w-4 h-4" strokeWidth={1.5} /></button>
+          </div>
+          {panel === "ask" ? (
+            <>
+              <Textarea rows={2} maxLength={1000} value={ask} onChange={(e) => setAsk(e.target.value)} placeholder="For example: ask what they can book in Dubai this weekend, and how they take payment." aria-label="What Elaya should say" />
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-2)", flexWrap: "wrap" }}>
+                <span className="type-caption" style={{ color: "var(--theme-text-tertiary)" }}>She follows the guide in Settings and reads this chat. Nothing is sent until you press send.</span>
+                <Button size="sm" disabled={pending || !ask.trim()} loading={pending} onClick={askElayaToWrite}>Write it</Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <Textarea rows={2} maxLength={2000} value={teach} onChange={(e) => setTeach(e.target.value)} placeholder="For example: it sent five options, two is enough. Or: Elaya was too formal, keep it short." aria-label="Your feedback" />
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-2)", flexWrap: "wrap" }}>
+                <span className="type-caption" style={{ color: "var(--theme-text-tertiary)" }}>Elaya reads this chat, rewrites the rulebook and her guide, and keeps every earlier version in Settings.</span>
+                <Button size="sm" disabled={pending || !teach.trim()} loading={pending} onClick={teachElaya}>Rewrite the guides</Button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      <ConfirmDialog
+        open={rulebook !== null}
+        title={`Send the rulebook to ${summary.contact_label}?`}
+        body={<pre style={{ margin: 0, whiteSpace: "pre-wrap", fontFamily: "inherit", fontSize: "var(--text-sm)", color: "var(--theme-text-secondary)", maxHeight: 320, overflowY: "auto" }}>{rulebook?.body}</pre>}
+        confirmLabel={rulebook ? `Send version ${rulebook.version}` : "Send"}
+        pending={pending}
+        onConfirm={() => { if (rulebook) { send(rulebook.body, false); setRulebook(null); } }}
+        onCancel={() => setRulebook(null)}
+      />
+
       <div style={{ padding: "var(--space-3) var(--space-4)", borderTop: "1px solid var(--theme-paper-border)" }}>
-        <MessageBar value={text} onChange={setText} onSend={() => text.trim() && send(text, false)} placeholder={`Write to ${summary.contact_label}… a name, phone or email is refused`} disabled={pending} loading={pending} maxLength={4000} />
+        <MessageBar value={text} onChange={setText} onSend={() => text.trim() && send(text, false)} sendOnEnter placeholder={`Message ${summary.contact_label}… (a name, phone or email is refused)`} disabled={pending} loading={pending} maxLength={4000} maxHeight={96} />
       </div>
     </>
-  );
-}
-
-// ─── One line ────────────────────────────────────────────────────────────────
-
-function Bubble({ m, agent }: { m: HandsMessageRow & { media_url: string | null }; agent: string }) {
-  const ours = m.direction === "out";
-  return (
-    <div style={{ alignSelf: ours ? "flex-end" : "flex-start", maxWidth: "78%", display: "flex", flexDirection: "column", alignItems: ours ? "flex-end" : "flex-start", gap: 2 }}>
-      <div style={{ padding: "var(--space-2) var(--space-3)", borderRadius: "var(--neu-radius-tile, var(--radius-md))", background: ours ? "var(--theme-accent-surface)" : "var(--theme-paper-subtle)", border: ours ? "none" : "1px solid var(--theme-paper-border)", fontSize: "var(--text-sm)", color: "var(--theme-text-primary)", display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
-        {m.media_url && m.kind === "image" && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={m.media_url} alt={m.payment ? "Payment QR from the agent" : "Image from the agent"} style={{ maxWidth: 260, maxHeight: 260, borderRadius: "var(--radius-sm)", display: "block" }} />
-        )}
-        {m.media_url && m.kind !== "image" && <a href={m.media_url} target="_blank" rel="noreferrer" className="type-caption" style={{ color: "var(--neu-accent-deep)" }}>Open the {m.kind}</a>}
-        {m.text && <div style={{ whiteSpace: "pre-wrap" }}>{renderWaText(m.text)}</div>}
-        {!m.text && !m.media_url && <span className="type-caption" style={{ color: "var(--theme-text-tertiary)" }}>[{m.kind}]</span>}
-      </div>
-      <div className="type-caption" style={{ color: "var(--theme-text-tertiary)", display: "flex", gap: 6, alignItems: "center" }}>
-        <span>{ours ? "Us" : agent} · {formatDate(m.wa_timestamp, "HH:mm")}</span>
-        {m.frame && HANDS_FRAMES.values.includes(m.frame) && <Badge tone={FRAME_TONE[m.frame]} size="xs">{m.frame.toUpperCase()}</Badge>}
-        {m.payment?.paid_at && <Badge tone="success" size="xs">Paid {m.payment.paid_amount_inr != null ? formatCurrency(m.payment.paid_amount_inr) : ""}</Badge>}
-      </div>
-    </div>
   );
 }
 

@@ -9,6 +9,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import type {
   LlmChatMessage,
   LlmCompleteRequest,
+  LlmCredential,
   LlmCompleteResult,
   LlmProviderAdapter,
   LlmStopReason,
@@ -25,14 +26,27 @@ const ELAYA_REQUEST_TIMEOUT_MS = 30_000;
 /** The image media types Anthropic accepts as a base64 image block; anything else is dropped. */
 const ANTHROPIC_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 
-let client: Anthropic | null = null;
+// One client per credential (0252). `internal` = ANTHROPIC_API_KEY, every Serene job.
+// `public_bot` = ANTHROPIC_PUBLIC_BOT_API_KEY, the public WhatsApp bot's own key, so its spend
+// shows apart in the Anthropic console. When the bot's key is not set yet it falls back to the
+// internal key (with one warning), so the bot works before the founder creates the workspace.
+const clients = new Map<LlmCredential, Anthropic>();
+let warnedPublicFallback = false;
 
-function getClient(): Anthropic {
-  if (!client) {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) throw new Error('[elaya-anthropic] ANTHROPIC_API_KEY is not set');
-    client = new Anthropic({ apiKey });
+function getClient(credential: LlmCredential = 'internal'): Anthropic {
+  const existing = clients.get(credential);
+  if (existing) return existing;
+  let apiKey = credential === 'public_bot' ? process.env.ANTHROPIC_PUBLIC_BOT_API_KEY : process.env.ANTHROPIC_API_KEY;
+  if (!apiKey && credential === 'public_bot') {
+    if (!warnedPublicFallback) {
+      console.warn('[elaya-anthropic] ANTHROPIC_PUBLIC_BOT_API_KEY is not set; the public bot is billed to ANTHROPIC_API_KEY');
+      warnedPublicFallback = true;
+    }
+    apiKey = process.env.ANTHROPIC_API_KEY;
   }
+  if (!apiKey) throw new Error('[elaya-anthropic] ANTHROPIC_API_KEY is not set');
+  const client = new Anthropic({ apiKey });
+  clients.set(credential, client);
   return client;
 }
 
@@ -139,7 +153,7 @@ export const anthropicAdapter: LlmProviderAdapter = {
         ? [{ type: 'text', text: req.system, cache_control: { type: 'ephemeral' } }]
         : req.system;
 
-    const stream = getClient().messages.stream(
+    const stream = getClient(req.credential).messages.stream(
       {
         model: req.model,
         max_tokens: req.maxTokens,
@@ -195,6 +209,8 @@ export const anthropicAdapter: LlmProviderAdapter = {
       usage: {
         inputTokens: final.usage.input_tokens,
         outputTokens: final.usage.output_tokens,
+        cacheReadTokens: final.usage.cache_read_input_tokens ?? 0,
+        cacheWriteTokens: final.usage.cache_creation_input_tokens ?? 0,
       },
     };
   },

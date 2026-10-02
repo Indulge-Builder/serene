@@ -17,6 +17,7 @@ import { LeadWhatsAppCardAsync } from '@/components/leads/LeadWhatsAppCardAsync'
 import { LeadTasksAsync } from '@/components/leads/LeadTasksAsync';
 import { ServiceInterestCardAsync } from '@/components/leads/ServiceInterestCardAsync';
 import { ProductEnquiryCardAsync } from '@/components/leads/ProductEnquiryCardAsync';
+import { LeadSiblingPillsAsync } from '@/components/leads/LeadSiblingPillsAsync';
 import { LeadTasksCardSkeleton } from '@/components/leads/LeadTasksCardSkeleton';
 import { DossierCardSkeleton } from '@/components/leads/LeadDossierSkeletons';
 
@@ -112,6 +113,17 @@ export default async function LeadDossierPage({ params, searchParams }: Props) {
             )}
           </div>
         </div>
+
+        {/* The same person's other leads (another domain, or an earlier one here).
+            null fallback: most leads have none, a skeleton would flash for nothing. */}
+        <Suspense fallback={null}>
+          <LeadSiblingPillsAsync
+            leadId={lead.id}
+            ownRef={lead.slug ?? lead.id}
+            ownDomain={lead.domain}
+            viewer={{ userId: profile.id, role: profile.role, domain: profile.domain }}
+          />
+        </Suspense>
 
         {/* Status action panel */}
         <StatusActionPanel lead={lead} callerProfile={profile} />

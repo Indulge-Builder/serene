@@ -17,6 +17,7 @@ import { getWhatsAppPeriodRange } from '@/lib/utils/whatsapp-period';
 import { mapRows } from '@/lib/utils/rows';
 import { signMediaPath } from '@/lib/services/whatsapp-media';
 import type { WhatsAppConversation, WhatsAppMessage } from '@/lib/types/whatsapp';
+import type { WhatsAppLine } from '@/lib/constants/whatsapp-lines';
 
 export type WhatsAppConversationListFilters = {
   period?:     WhatsAppPeriod;
@@ -124,6 +125,8 @@ export async function getConversations(options: {
   period?:     WhatsAppPeriod;
   customFrom?: string | null;
   customTo?:   string | null;
+  /** Only one number's threads (0252); absent = both. */
+  line?:       WhatsAppLine | null;
 }): Promise<{ conversations: WhatsAppConversation[]; nextCursor: string | null }> {
   const supabase = await createClient();
   const limit    = options.limit ?? WHATSAPP_CONVERSATIONS_PAGE_SIZE;
@@ -145,6 +148,7 @@ export async function getConversations(options: {
     .limit(limit);
 
   query = applyLastMessagePeriodFilter(query, listFilters);
+  if (options.line) query = query.eq('line', options.line);
 
   if (options.cursor) {
     query = query.lt('last_message_at', options.cursor);
@@ -196,16 +200,18 @@ export async function getConversation(
 
 // ─────────────────────────────────────────────
 // getConversationByLeadId
-// Finds the single conversation row for a given lead (UNIQUE on lead_id).
-// Returns null when no conversation exists — not an error.
+// The lead's conversation. Since 0252 a lead can have one thread per line (the staff number and
+// the public Indulge number): with `line` it is that line's thread; without, the most recently
+// active one. Returns null when no conversation exists — not an error.
 // ─────────────────────────────────────────────
 
 export async function getConversationByLeadId(
   leadId: string,
+  line?:  WhatsAppLine,
 ): Promise<WhatsAppConversation | null> {
   const supabase = await createClient();
 
-  const { data, error } = await giaDb(supabase)
+  const query = giaDb(supabase)
     .from('whatsapp_conversations')
     .select(`
       *,
@@ -215,8 +221,11 @@ export async function getConversationByLeadId(
         phone
       )
     `)
-    .eq('lead_id', leadId)
-    .single();
+    .eq('lead_id', leadId);
+  const { data: rows, error } = await (line ? query.eq('line', line) : query)
+    .order('last_message_at', { ascending: false, nullsFirst: false })
+    .limit(1);
+  const data = rows?.[0];
 
   if (error || !data) return null;
 
@@ -373,6 +382,9 @@ export async function getLeadWhatsAppThreadForElaya(
     .from('whatsapp_conversations')
     .select('*, leads!inner (first_name, last_name, phone)')
     .eq('lead_id', leadId)
+    // A lead may have a thread per line since 0252: Elaya reads the most recently active one.
+    .order('last_message_at', { ascending: false, nullsFirst: false })
+    .limit(1)
     .maybeSingle();
   if (!conv) return null;
   const conversation = mapConversationRow(conv as WaConversationRow);

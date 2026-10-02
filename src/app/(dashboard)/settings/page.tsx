@@ -78,6 +78,13 @@ export default async function SettingsPage() {
                 index={3}
               />
               <SettingsLinkCard
+                href="/settings/desks"
+                icon="speaker"
+                title="Desks"
+                description="Elaya on the office tables: the speakers and TV boards, one announcement to every table, quiet hours, and what was said."
+                index={4}
+              />
+              <SettingsLinkCard
                 href="/settings/lead-revival"
                 icon="sparkles"
                 title="Lead Revival"

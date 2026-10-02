@@ -12,6 +12,648 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-10-01 — Reply clocks: two timers per member group, and alerts to bishops and queens (migration 0253, applied 2026-10-02)
+
+**Why.** The goal is a reply to a member inside one minute, and the five-minute alert sweep cannot
+see that. A quick "Noted, checking" also stopped every timer while the member still had no answer
+(one week: 1,428 holding replies, a median of 17 minutes to the real answer, 308 over two hours).
+
+**What.**
+- Migration 0253: `sia.reply_clocks` (one row per member group) and `sia.reply_waits` (one row per
+  closed clock, the score for later), kept by a trigger on `sia.wag_messages`. Clock 1 (reply)
+  starts at the member's first unanswered message and stops at any staff message; clock 2 (update)
+  starts at a holding reply and stops at the next real answer. Live messages only, never an import;
+  the trigger catches its own errors, so a message is always saved.
+- `src/trigger/reply-alerts.ts` + `services/reply-alerts.ts` + `constants/reply-clocks.ts`: the
+  alert ladder to bishops, the queen and the founders. Both switches (`reply_alerts_enabled`,
+  `update_alerts_enabled`) ship OFF. The old "unanswered" check in the alert sweep yields to it.
+
+---
+
+## 2026-10-01 — The public Indulge bot: a second WhatsApp line, the knowledge pack, the concierge (built, switched off, migration 0252 applied 2026-10-02)
+
+**Why.** Indulge needs a public WhatsApp number anyone can message (Meta ads, the website, a
+podcast), answered at once by a concierge who knows the company inside out, sells the way the
+best private banker would, hands the person to an agent with a brief at the right moment, and
+gives the onboarding team their brochures, videos, app links and standard messages one click
+away. The June customer layer had the right shape but had never sent a message, its library was
+empty, and it lived on the staff number. Plan: `docs/architecture/indulge-bot-plan.md`.
+
+**What.**
+- `supabase/migrations/20261001000252_public_bot.sql` (new, NOT applied): the `line` on a
+  conversation (staff / public; one thread per person per line), the bot's state, the library's
+  new kinds and draft / approved status, `bot_knowledge_versions` (the published pack, append
+  only), `gia.whatsapp_bot_turns` (the turn ledger, append only), `bot_corrections`, the
+  `public_bot` model row (Claude Haiku 4.5) and three settings, the bot OFF.
+- Two lines: `lib/constants/whatsapp-lines.ts` (new) names them; `whatsapp-api.ts` sends on a
+  line (`gupshupApp(line)`, default staff, so every existing caller is unchanged; the public line
+  reads `GUPSHUP_PUBLIC_*` at send time) and the media sender now reads Gupshup's HTTP-200 error
+  body like the text sender; the webhook picks the line from the webhook secret (and checks the
+  envelope's app name); the public line never runs the staff gate; `processInboundMessage` takes
+  the line. `getOrCreateConversation` works per line and, when a person's newest lead is not the
+  one the thread was opened on, points the thread at the newest lead: before, the insert collided
+  on `wa_id`, the error was ignored, and the message was lost.
+- The bot (rewritten in place, no second copy): `elaya-customer.ts` (the orchestrator: switch,
+  opt-out, existing member, a file with no words, a 5-second settle, a per-conversation lock,
+  per-phone ceilings in Redis, the daily spend cap from the ledger, the published pack, the turn,
+  the output guard, the reply, the library sends, the hand-over, the ledger),
+  `customer-brain.ts` (only the last call's text is sent: the June lead-in leak is gone; its own
+  credential and model row), `customer-persona.ts` (the playbook, honest about being AI, the pack
+  as the cached system prompt), `tools/customer-registry.ts` (three tools that read nothing:
+  send_material, note_interest, hand_over).
+- New services: `bot-guards.ts` (input and output guards, pure; compose `redactSensitiveShapes`
+  and `leakCheck`; full-name matching; prices must be in the pack or said by the person),
+  `bot-knowledge-service.ts` (compile, leak-check, publish, restore, read the live pack, cached
+  five minutes), `bot-library-service.ts` (THE library send for the bot and the agents: type from
+  the file, ready messages with attachments, `training_asset_id` on every row),
+  `public-bot-handover.ts` (the `concierge_brief` lead activity, the alerts, who answers a chat,
+  corrections). `getPublicBotSettings()` in llm-providers-service.
+- The model layer: a `credential` on a request (`internal` / `public_bot`; the bot's key is
+  `ANTHROPIC_PUBLIC_BOT_API_KEY`, falling back to the internal key with one warning) and cache
+  token counts in the usage, so the ledger costs a turn exactly. `LlmJobType` gains `public_bot`.
+- The library page (`/admin/elaya-training`): the Publish card (live version, what a publish
+  would hold, the leak check, earlier versions with Restore), the corrections queue, one list
+  with Knowledge / Files & messages / Drafts views, Draft / Approved badges and Approve
+  (admin / founder). The form: the new kinds, the "when to send" line, ready messages with
+  attachments, WhatsApp's file limits checked at upload. Fixes: the Active switch could never be
+  turned off (`z.coerce.boolean()` read "false" as true); the June rule that folded every new
+  fact into one row per domain is gone (the pack has many facts); long text keeps its line
+  breaks.
+- The inbox: a number filter and an "Indulge" mark on public-line rows; on a public chat, a strip
+  saying who answers with Take over / Hand back to the concierge; a Library button in the
+  composer; Correct under the concierge's messages. The lead timeline shows the concierge's brief.
+- The import wall: ESLint refuses any import of staff Elaya or a data service into the bot's four
+  files.
+- Benches: `scripts/public-bot/guards-bench.ts` (free; 30 cases pass; it caught a price written
+  without ₹), `scripts/public-bot/bench.ts` (the real turn on red-team attacks and sales openings;
+  a one-message smoke run passed for about ₹0.5), `scripts/public-bot/launch-pack.ts` (the
+  founder's facts, the 25 website stories, the never-say list, the app links) and
+  `scripts/public-bot/seed-pack.ts` (files them as drafts; dry run by default).
+- Removed: `sendCustomerWhatsAppReply` and `getTrainingAssetsForBlast` (replaced). The June bot no
+  longer runs on the staff number.
+
+---
+
+## 2026-10-01 — Link previews in the chats, one reader and one card
+
+**Why.** On WhatsApp a link shows a small card (picture, title, site). In Serene it was a bare
+line of text. The preview is already inside the message: the sender's phone builds it and
+WhatsApp carries it along. 1,652 Sia messages in the last 30 days hold one, and the Instinct
+chat has one too.
+
+**What.**
+- `src/lib/utils/link-preview.ts` (new): `readLinkPreview(fields)`, THE reader. It reads title,
+  description, link and thumbnail from what the message carries and never fetches the page, so a
+  link can never make our server visit an address. Only http(s) links; a thumbnail is used only
+  when it is real base64 under ~64 KB. `mayCarryLinkPreview(text)` is the cheap pre-check.
+- `src/components/ui/LinkPreviewCard.tsx` (new): THE card, above the text in a bubble.
+- `src/lib/services/sia-service.ts`: `fetchLinkPreviews`, one more batch in the message
+  enrichment, run only for messages whose text holds a link, reading five fields out of `raw` by
+  JSON path (never the whole payload). `SiaMessageRow.link_preview`.
+- `src/lib/services/hands-service.ts`: `foldHandsChat` fills `link_preview` from the stored payload.
+- `src/components/sia/SiaMessageBubble.tsx`, `src/components/whatsapp/MessageBubble.tsx`,
+  `src/components/hands/HandsChatLines.tsx`, `src/lib/types/whatsapp.ts`, `src/lib/types/hands.ts`:
+  the card drawn in both bubbles; `WhatsAppMessage.link_preview` is optional.
+- /whatsapp (the lead chats on Gupshup) shows no preview: Gupshup does not pass one, and building
+  one would mean our server fetching links, which this deliberately avoids.
+
+---
+
+## 2026-10-01 — Hands: a reaction shows on the message it is about, not as "[other]"
+
+**Why.** Instinct reacted 👀 to one of our messages. WhatsApp sends a reaction as a message of its
+own, the hands connector filed it as kind `other`, and the chat printed a line that said "[other]".
+The same would have happened to edits, deletes and key-exchange payloads.
+
+**What.**
+- `src/lib/services/hands-service.ts`: `foldHandsChat(rows)`, run inside `getHandsThread`, so the
+  /hands chat, the ticket card and Elaya's hands tools all get it. A reaction becomes a chip on its
+  message (latest per person wins, an empty one takes it back), an edit replaces the text, a delete
+  empties the line, and payloads with no line of their own are hidden. It reads the stored `raw`
+  payload, so the reaction already on record is repaired with no migration.
+- `src/components/sia/SiaMessageBubble.tsx`: `ReactionChips` exported and takes `reactions` directly;
+  `src/components/hands/HandsChatLines.tsx` composes it under the bubble. A still unknown kind
+  (a sticker, a location) shows the bubble's own "Unsupported message", never "[other]".
+- `src/lib/actions/hands.ts`, `src/lib/services/hands-ticket.ts`: the browser gets `HandsChatLine`
+  (`src/lib/types/hands.ts`) with the raw WhatsApp payload left out, which keeps the poll light.
+- `connector-hands/src/index.ts`: a reaction moves the thread preview to "Reacted 👀" and writes no
+  ticket event; an edit, delete or key exchange touches neither. Needs a connector redeploy; until
+  then the page already shows reactions correctly.
+
+---
+
+## 2026-10-01 — Elaya answers from what she found when she runs out of lookups
+
+**Why.** Murtaza sent Elaya bank lines to match to members. Three turns in a row ended with
+"I've hit my step limit on this one" after 10 or more good database queries. The searches had
+worked; the payment simply had no trail in Serene, and on one turn she had already narrowed it
+down. When the Python brain hit its 10-round ceiling, it threw everything it had gathered away.
+
+**What.**
+- `backend/app/brain/loop.py`: when the ceiling is reached, the brain no longer sends the canned
+  line. It makes the same tools-withheld closing call that an empty reply already gets, with its
+  own instruction: give the answer if the results hold it; if not, name what was checked, say it
+  was not found, and say what to check next or who could confirm it. It never invents a match.
+  The ceiling stays at 10, so a runaway turn still ends.
+- Tested with a fake model (the ceiling ends in one closing call without tools, and a normal turn
+  is unchanged) and one real Haiku call with tool history and no tools (the API accepts it).
+- The Node brain (`src/lib/elaya/brain.ts`) keeps its old ceiling; both channels run on the
+  Python brain.
+
+**Ships with** the next Python brain deploy (Copilot service).
+
+---
+
+## 2026-10-01 — Hands on tickets: Elaya reads each new ticket and asks Instinct, and the reply shows on the ticket
+
+**Why.** Asked to "get hotel recommendations from Instinct", Ask Elaya wrote back to the founder
+("I don't have a member request...") instead of writing to Instinct: its instructions said a free
+chat has no facts, so it refused. And the founder wants the real flow: a ticket comes in, Elaya
+reads it, asks Instinct before the genie even starts, and Instinct's reply is right there on the
+ticket.
+
+**What.**
+- `hands-line-writer.ts` v2: the teammate's words are the request; Elaya always writes the message
+  to the agent, never back to us, and asks the agent for missing details. Names are masked before
+  the model sees them (`maskNames` in hands-draft.ts, the same parts the leak check looks for).
+- `hands-ticket.ts` (new): `startHandsForTicket` = one routing-tier read of the ticket as the
+  privacy filter lets it out → HELPS yes/no, why, the first message (to the live guide). Trust L1
+  "open" and up for the category: she opens the chat and sends it herself. L0 "draft" (today's
+  setting everywhere): the message waits on the ticket card. Runs once per ticket, after the
+  response, from `createTicketAction` and from the ticket page for a fresh unread ticket (status
+  open or sourcing, under 72 hours old); "Ask Instinct" on the card runs it on any live ticket.
+  Each read is a `sia.extraction_runs` row (kind `hands_ticket`; "Not now" is `hands_ticket_dismiss`),
+  so nothing is updated in place.
+- Asking Instinct never makes it the ticket's vendor: `openHandsThreadCore` takes `via` (an
+  allow-listed agent contact); the vendor stays the genie's choice.
+- Ticket page: `HandsTicketCard` (components/hands, replaces `TicketHandsCard`) on every live
+  ticket while an agent is set up: Elaya reading; her draft, editable, with Send to Instinct / Not
+  now and what it shares; why Instinct cannot help, with Ask anyway; or the chat itself in the
+  WhatsApp page's bubbles with a reply box and Open the full chat. Polls every 6 seconds.
+- `HandsChatLines` (components/hands): the chat lines, now shared by /hands and the ticket card.
+- Actions: `getHandsTicketViewAction`, `startHandsForTicketAction`, `sendHandsTicketLineAction`
+  (leak check first), `dismissHandsTicketDraftAction`, each gated by the ticket's queendom.
+- Bench (no message sent): the founder's exact words now give a real message to Instinct; a Dubai
+  hotel ticket "for Mr Kapoor" gave a clean message without the name; a nanny hire gave "no, our own
+  people". Typecheck, lint and tokens clean. Not committed.
+- Elaya's built-in guide (`HANDS_ELAYA_GUIDE_DEFAULT`) now ends every search with a short "our
+  standard" paragraph (luxury and top boutique only, 4.5+ recent reviews, no recent complaints, 3
+  options with full price, why it fits and photos). A starting text: the founder edits it on
+  /settings/hands. Bench: a Goa jungle ticket and "search for a hotel stay in goa jungle" both came
+  out with the paragraph.
+- Known limit: Instinct is one WhatsApp chat. A reply lands on the agent's most recently active
+  open chat, so two jobs talking to Instinct at the same moment can cross. Routing a reply by the
+  message it quotes needs a connector change and a Hands redeploy.
+
+---
+
+## 2026-10-01 — Hands: the chat with the agent is easy to find, Elaya writes the lines, and the rulebook is editable and learns from feedback
+
+**Why.** After linking Instinct, the founder could not find where to read its messages or talk to
+it, Elaya had no way to write in a free chat, and the rulebook was fixed text in the code. The team
+wants to shape how Elaya talks to the agent and see the change in her very next line, and to
+improve both the rulebook and her guide just by saying what went wrong.
+
+**What.**
+- `/hands` (`HandsWorkspace`) now works like the WhatsApp page: one conversation list (no Jobs /
+  Talk switch) where every allowed agent shows as a conversation even before a chat exists, with
+  its waiting messages as unread; a click opens the chat and files them. The chat uses the WhatsApp
+  page's own `MessageBubble` (as the lead page does) under Sia's day chips (`SiaDaySeparator`), the
+  same header (avatar, name, number) and Enter to send; on a phone one card shows at a time. The
+  reply word and "Paid" sit under a bubble; unsent lines show as faded bubbles with "Sending…".
+  `listUnfiledByContact` now carries the newest waiting text, and `listHandsUnfiledAction` keeps the
+  list fresh on the 8-second poll. In a chat: **Ask Elaya** (say
+  what to tell the agent, she writes it into the composer, a person sends it), **Send the
+  rulebook** (the current version, after a confirm), and **Teach** for admin and founder (feedback
+  on this chat rewrites the documents). "Let Elaya draft" on a job is now "Draft from the brief".
+- Two editable documents in `elaya_settings`, read per call (no deploy): `hands_rulebook` (what
+  the agent is told) and `hands_elaya_guide` (how Elaya writes to it). Each save is a new version
+  with who, when and why; the last 20 are kept and any can be restored (`saveHandsGuideCore`,
+  `restoreHandsGuideCore` in hands-mutations.ts; `getHandsGuides()` in llm-providers-service.ts;
+  defaults `HANDS_RULEBOOK` and `HANDS_ELAYA_GUIDE_DEFAULT` in constants/hands.ts). A rulebook
+  without the five reply words (DONE, NEED, OPTIONS, FAILED, WAITING) is refused, since Serene
+  reads them (`missingFrameWords`).
+- `/settings/hands` (`HandsGuidesCard`): a Teach Elaya box, then both documents as editable text
+  with Save, Undo changes and their earlier versions with Restore.
+- `hands-guide-writer.ts` `improveHandsGuides`: one reasoning-tier call rewrites both documents from
+  the feedback (and the chat it is about, masked). Plain-text reply, never JSON. Saves nothing when
+  the reply is cut off, misses a document, carries a phone or an email, or drops the reply words.
+  Each run is a `sia.extraction_runs` row (kind `hands_guide`).
+- `hands-line-writer.ts` `writeHandsLine`: Elaya writes one line on the routing tier, following
+  the live guide. On a job she sees only what the disclosure filter already lets out of the
+  ticket, never the member's name or contact; the line is leak-checked here and again at send.
+  Each run is a `sia.extraction_runs` row (kind `hands_line`, prompt version carries the guide
+  version).
+- Elaya's `get_hands_thread` and `draft_hands_message` tools return the guide as
+  `followWhenWritingToTheAgent`, so she follows it in the Elaya chat too (live there once the app
+  is deployed, since the Python brain reads these through the bridge).
+- Hands actions now show the words for a validation problem instead of an internal code
+  (`handsIssue` in actions/hands.ts).
+- Typecheck, lint and tokens clean; the reader, the reply parser and the reply-word guard were run.
+  The model calls were not run. Not committed.
+
+---
+
+## 2026-10-01 — Hands: link any vendor to a number, and read what the agent wrote before a chat existed
+
+**Why.** Setting Hands up for Instinct showed three gaps. The vendor form has no type field, so the
+Instinct vendor was saved as a person and the "Stands for the vendor" list (agents only) was empty.
+The allow list showed numbers without the plus sign. And Instinct's first four replies arrived
+before any chat with it was open, so the connector stored them with no thread and the Hands page
+had nothing to show.
+
+**What.**
+- `/settings/hands` (`HandsSettingsPanel`): the vendor field is a search over all vendors; saving a
+  number with a vendor marks that vendor as an outside agent (`setVendorKindCore` in
+  `vendor-mutations.ts`, called by `upsertAllowedContactAction`). Each saved number has Edit, which
+  loads it back into the form to link its vendor or change its label. Numbers show with "+".
+- `openTalkThreadCore` files every message the number sent while no chat was open into the Talk
+  thread it opens, and moves the thread's last line and time to the newest one.
+- `/hands`: `listUnfiledByContact()` (hands-service) counts those waiting messages per number; the
+  rail says "Instinct wrote 4 messages" and the button reads "Open chat with Instinct (4 new)", on
+  either tab. Shown to admin, founder and the workbench only (a Talk belongs to no queendom).
+- Typecheck, lint and tokens clean; the new lookup returns Instinct's 4 messages. Not committed.
+
+---
+
+## 2026-10-01 — Hands runs on the server: the second WhatsApp number on Fargate
+
+**Why.** The Hands phone was paired from a laptop, so it only worked while that laptop was on
+with the program open. Elaya's hands need to be reachable all day, like the Sia watcher.
+
+**What.** A Copilot Backend Service `hands` (`backend/copilot/hands/manifest.yml`): one task,
+256 CPU / 1024 MB, arm64, rolling `recreate` so the old task always stops before the new one
+connects. It needs only the Supabase URL and the service key the watcher already uses. The
+session lives in `hands.auth_state`, so the server took over the laptop's pairing with no new
+QR. The laptop copy was stopped first; two copies on one session must never run together.
+`connector-hands/Dockerfile` now starts the program with the `tsx` already installed for the
+watcher's code in the same image (the hands install omits dev tools, so `npx tsx` would have
+downloaded it on every start), and `connector-hands/Dockerfile.dockerignore` keeps the build to
+the two folders it copies. Deployed from a clean worktree of main plus the hidden-id fix below.
+Proof: the server log says `connected as 918956664972@s.whatsapp.net`, the heartbeat in
+`hands.connector_status` is fresh, and the session warnings seen on the laptop are gone.
+**Not committed yet**: the running task was built from files that are only in the working tree.
+Runbook: `connector-hands/README.md`.
+
+---
+
+## 2026-10-01 — Fix: the Hands number now reads an agent's reply sent under a hidden id
+
+**Why.** WhatsApp increasingly addresses a one-to-one chat by a hidden id (`…@lid`) instead of
+the phone number, and the Hands allowlist holds numbers. An agent's reply arriving under its
+hidden id would have been recorded raw and silently dropped. Pairing the Hands phone on
+2026-10-01 also showed Baileys' warning that refusing the history sync withholds the hidden-id
+map and causes session errors.
+
+**What.** `connector-hands/src/index.ts`: `phoneJidFor()` turns a hidden id into the number (the
+message key's `remoteJidAlt`, else Baileys' own id-to-number store) before the allowlist check;
+anything unresolved still fails closed. The connector now accepts the small recent history sync
+(`shouldSyncHistoryMessage: () => true`, `syncFullHistory` stays false); nothing listens to
+history events, so no old chat is stored. Typecheck clean. Not committed.
+
+---
+
+## 2026-09-30 — Leads webhook: the Framer website form can post straight to Serene
+
+**Why.** The Legacy website is moving to a new Framer form, and its leads should come to
+Serene directly instead of through Meta and Pabbly. `/api/webhooks/leads?source=website` was
+already built, but it only accepts a bearer token, and Framer's form webhook cannot send one:
+it signs each request instead. Pointed straight at us, every Framer lead would have been
+refused.
+
+**What.**
+
+1. `verifyFramerSignature()` in `src/lib/utils/webhook.ts`: `sha256=` + HMAC-SHA256 of the raw
+   body then the `Framer-Webhook-Submission-Id` header, compared timing-safe.
+2. `src/app/api/webhooks/leads/route.ts`: a request carrying `Framer-Signature` is checked
+   against the new `FRAMER_WEBHOOK_SECRET` (its own secret, never Pabbly's or the shop's),
+   always ingested as source `website`, and takes its domain from `?domain=` when the form
+   sends none (Gia domains only). The route now reads the raw text once for the signature, then
+   the same `parseJsonBody`. Requests without the Framer header (Pabbly, the shop app) take
+   the bearer path exactly as before.
+3. `.env.example`, `docs/integrations/lead-ingestion.md` (a Framer section: the URL, the secret,
+   the input names) and `src/app/api/webhooks/CLAUDE.md`.
+
+**To switch on.** Set `FRAMER_WEBHOOK_SECRET` in Vercel (production), deploy, then in Framer add
+a webhook to the form with the URL `https://<serene domain>/api/webhooks/leads?domain=legacy`
+and the same secret. Until the secret is set, a Framer request answers 500 and nothing else
+changes. No migration.
+
+**Checked.** A bench against Framer's documented algorithm: a valid signature passes (a body
+with non-English characters too); a changed body, another submission id, the wrong secret, a
+missing id, a malformed or empty signature all fail; the bearer compare is unchanged.
+Typecheck and lint clean on both files.
+
+## 2026-09-30 — Docs: the repo root moved into docs/, one current README, every plan with a status note
+
+**Why.** The repo root had gathered thirteen markdown files: plans, two overviews, an as-built
+spec, raw founder notes, a design reference and a roster. Most were written in late August and a
+lot has shipped since, so they read like today while describing the past. The founder asked for
+the docs to catch up and for every file to find its home without losing anything. Docs only; no
+code behaviour changed.
+
+**What.**
+
+1. **The root holds only `README.md` and `CLAUDE.md`.**
+2. **`README.md` rewritten** from the old README (June, stopped at Phase 6) and
+   `Serene-Overview.md` (12 August), merged into one current, shareable front door: what Serene
+   is, the modules, two journeys, where it runs, the stack, how it is built, the AI layer, the
+   vision, how to run it, the repository map. Every section of both has a home: the old phase
+   list is in this changelog, roles and domains are summarised with a pointer to
+   `architecture/auth-and-rbac.md`, and the old folder tree became a current repository map.
+3. **Merged:** `port-inventory.md` is now Appendix A of `docs/architecture/master-plan.md` (it was
+   that plan's Step 0 checklist).
+4. **Moved**, plan text untouched under a new note: `master-plan.md` →
+   `docs/architecture/master-plan.md`; `plan-elaya.md` → `docs/architecture/elaya-plan.md`;
+   `plan-whatsapp.md` → `docs/architecture/sia-whatsapp-plan.md`; `plan-sia-intelligence.md` →
+   `docs/architecture/sia-intelligence-plan.md`; `member-ticket-plan.md` →
+   `docs/architecture/member-ticket-plan.md`; `elaya-workflow.md` →
+   `docs/audits/2026-08-24-elaya-workflow.md`; `Apple-Design.md` → `docs/design/apple-design.md`;
+   `feature.md` → `docs/history/2026-06-founder-notes.md` (a new folder for raw inputs kept for
+   the record); `sia-agents-roster.md` → `docs/data-imports/` (still git-ignored).
+5. **Restored:** `plan-libraries.md` had been deleted from the root in the working tree (not
+   committed); it is back from HEAD as `docs/design/ux-libraries-plan.md`.
+6. **Status notes.** Each plan now opens with "Where this stands on 2026-09-30", checked that day
+   against the code, the module docs, this changelog and a read-only look at the watcher's ECS
+   service. The master plan gets a new status board above the original 2026-08-28 board, which is
+   kept as it was, and a note on what became of the port inventory.
+7. **References updated:** `docs/README.md` (the tree, a new "The plans" section with an old-name
+   map, new "I want X" rows, the reading orders), `docs/modules/sia.md` (the four Sia plans in
+   order), `docs/modules/tickets.md`, `docs/claude-project/12-sia-concierge.md`, the docs tree in
+   `CLAUDE.md` (the missing `_archive/` line replaced by `history/` and `data-imports/`), and the
+   four code comments naming `plan-sia-intelligence.md` (the profiler service, its constants, its
+   Trigger task, the pilot script). Left on purpose: applied migrations (never edited) and older
+   changelog entries keep the old names, and the index's old-name map resolves them; comments
+   citing `member-ticket-plan.md` still resolve because the name did not change.
+
+**What the status notes found** (recorded, not fixed here): the Step 0 freeze of the Node backend
+did not hold (30 to 47 action files, 44 to 109 services, 5 to 22 Trigger.dev tasks); Bedrock
+never happened (the brain calls the Anthropic API directly); there is no CI/CD for the backend;
+the voice channel is built but not deployed to AWS; the watcher runs a task definition from
+2026-08-29, so the ban-state code is not deployed; and the concierge team still works tickets in
+Freshdesk, with no human verdicts yet on intake cards.
+
+**Not done:** the knowledge graph was not refreshed (`graphify-out/` is shared with other
+sessions). `.cursorrules` claims to be identical to `CLAUDE.md` but is older and smaller; it was
+left alone.
+
+## 2026-09-29 — One lead per person per domain, and a way to read the other domain's history
+
+**Why.** A Legacy agent tried to add a person as a lead. The person already had an active lead in
+Onboarding, so Serene said "duplicate" and sent him to a lead the security rules do not let him
+open. The cause was the lead identity: one active lead per PHONE across the whole company. The
+same rule ran on campaign leads. On production, 48 enquiries meant for one domain were folded into
+another domain's lead (42 of them from paid ads); the team that paid for the ad never saw the
+lead. Two more findings on the way: the "one active lead per phone" unique index from migration
+0137 was not unique on production (it had fallen back to a plain index because of 22 old
+duplicates), and the duplicate-check function could be called with the public anon key.
+Migration 0251 is written and rehearsed, NOT applied; nothing here is deployed.
+
+**What.**
+
+1. **The identity is phone + domain.** One person can hold one active lead in each Gia domain.
+   A Legacy ad click from someone Onboarding is working becomes a Legacy lead with its own owner,
+   status, follow-up clock, deal and campaign credit. A second enquiry in the SAME domain is still
+   a duplicate and is written on the existing lead, as before.
+2. **`gia.leads.phone_key`** is a stored generated column (digits of the phone). The duplicate
+   check and the person lookup read it through two indexes: a real UNIQUE on
+   `(phone_key, domain)` for active leads, and `phone_key` for every lead of a person.
+3. **The 22 old duplicates are settled inside the migration.** In each group the lead with the
+   most work on it stays. Its twins are archived (nothing is deleted), their notes are copied to
+   the keeper, and the keeper's timeline says a duplicate was folded in.
+4. **`get_active_lead_by_phone(p_phone, p_domain)`** asks inside one domain. Only the service role
+   may call it now. `p_domain` is optional so the build that is live when the migration lands
+   keeps working until the new build is deployed.
+5. **"Also in" pills on the lead page.** The same person's other leads show as pills under the
+   title: "Also in Onboarding · In Discussion · Meghana". Admin and founder open the real lead.
+   Anyone else opens a read-only page with that lead's notes and timeline.
+6. **The security rules did not change.** No RLS policy was touched. The read-only page has one
+   gate, in one file: you can read a person's lead in another domain only through a lead of the
+   same person that you can already open. It shows notes and the timeline; never personal
+   details, the deal or the WhatsApp thread, and nothing on it can be edited.
+7. **Returning clients link inside the domain.** A new lead links to the person's last closed lead
+   in the same domain. The webhook path had stopped setting this link at all (the function it
+   read only returns active leads); both paths now use one read.
+8. **Lead links carry the domain.** A person's first lead keeps `ashish-kumar-3210`; a second
+   lead in Shop gets `ashish-kumar-3210-shop`. Old links are never rewritten.
+9. **Moves that would make a second active lead are refused with a sentence.** Changing a lead's
+   domain, or re-opening a closed lead, when the person already has an active lead there, now
+   says so (`formErrors.leadActiveTwin`). Elaya says the same in her own words.
+10. **The Add Lead form tells the truth.** On a duplicate it names who holds the lead, and shows
+    the link only when the link will open.
+11. **The rescue script.** `scripts/gia/rescue-swallowed-leads.ts` replays the stored submission
+    of each folded enquiry from the last 60 days through the normal ingestion path. Dry run by
+    default. The dry run on production lists 30 leads to create, 1 to skip and 2 that were added
+    by hand and have to be added again.
+
+**Files.** `supabase/migrations/20260929000251_lead_per_domain_identity.sql`,
+`src/lib/services/lead-identity.ts` (new), `src/lib/services/lead-ingestion.ts`,
+`src/lib/actions/leads.ts`, `src/lib/services/lead-mutations.ts`, `src/lib/elaya/access.ts`,
+`src/lib/elaya/tools/write-registry.ts`, `src/lib/constants/lead-statuses.ts`,
+`src/lib/validations/form-errors.ts`, `src/lib/types/database.ts`,
+`src/components/leads/LeadSiblingPills.tsx` + `LeadSiblingPillsAsync.tsx` (new),
+`src/components/leads/AddLeadModal.tsx`, `LeadNotesSection.tsx`, `LeadActivityLog.tsx`,
+`src/app/(dashboard)/leads/[id]/page.tsx`, `src/app/(dashboard)/leads/[id]/also/[other]/` (new),
+`scripts/gia/rescue-swallowed-leads.ts` (new).
+
+**Not in this change.** WhatsApp routing (founder's decision: agents use their own numbers).
+Elaya cannot read a lead in another domain yet; she still answers only about leads the person
+can open. A "unique people" figure next to the company-wide lead totals is not built.
+
+**To ship.** Apply 0251, deploy the app, run the rescue script dry, then with `--apply`.
+
+---
+
+## 2026-09-29 — Sia resilience: a ban is a state, a standby number, chat history from exports
+
+**Why.** At 11:21 IST WhatsApp banned the watcher number. The watcher is crash-only, so every
+refusal (code 403) ended the process and ECS started a new one: 47 login attempts with a banned
+account in 45 minutes, until the service was stopped by hand. Nothing on our side knew the
+difference between "cannot connect right now" and "this number is finished". The same day showed
+something bigger. Of 528 groups, 465 have their first stored message between June and August 2026,
+and the archive holds under 30 messages from before July. WhatsApp gives a phone only what was
+sent after it joined a group, so every member profile rests on about ten weeks of chat. The plan
+is `docs/architecture/sia-resilience-plan.md`. Migration 0249 is written and NOT applied; nothing
+here is deployed.
+
+**What.**
+
+1. **A ban is a state.** The connector counts closes in a row in its status row (`close_streak`,
+   cleared by a clean connect). Any close now pauses before the restart (5 s, doubling to 5 min).
+   A third 403 in a row writes state `banned` and the process holds for 30 minutes at a time
+   without opening a socket. "Restart watcher" in Serene asks for one more try; one more 403
+   bans again at once. The alarm has a fifth kind, `banned`, the most severe, with what to do.
+2. **Change the watcher number, keep the old session.** "Re-pair" used to delete the session.
+   It now moves it to a shelf (`sia.wag_auth_state_shelf`) in one transaction, and the console has
+   **Change watcher number** and **Restore** for any shelved session.
+3. **The standby number.** Set once in the console. A daily check (09:00 IST) finds the linked
+   member groups it is missing from, and the console shows the same line. The tech responders get
+   the whole list, each queen her own queendom's groups. In-app only.
+4. **Chat exports.** `scripts/sia/import-chat-export.ts` files a WhatsApp "Export chat" file in
+   the archive as source `export`. By default it takes only what is older than the watcher's own
+   record for that group; `--from` and `--to` fill a gap such as today.
+5. **Re-profile from history.** `runHistoryBackfill` in the profiler reads the imported
+   conversations through the same `profileWindow`, never moves a group's bookmark, stops at a spend
+   cap, and resumes where it stopped.
+6. **The harvester.** `connector/src/harvest.ts` links to one staff phone for one sitting and
+   takes the history WhatsApp hands a new linked device: real message ids and real senders, so
+   nothing is guessed from names. It keeps linked member groups only (a personal chat is dropped
+   in memory and never written), skips what the archive holds, and unlinks itself and deletes its
+   login when done. One phone covers 419 of 428 member groups.
+
+- `supabase/migrations/20260929000249_sia_watcher_resilience.sql`: state `banned`,
+  `close_streak` / `last_close_code` / `last_close_at`; `sia.wag_auth_state_shelf` with
+  `sia.shelve_auth_state(reason)` and `sia.restore_auth_state(shelved_at)` (service role only);
+  `wag_messages.source` gains `export`; `sia.wag_chat_imports`; three settings rows.
+- `connector/src/index.ts`, `connector/src/db.ts`: the streak, the pause, the ban and the hold.
+  `BAN_REFUSALS` 3, `BANNED_HOLD_MS` 30 min.
+- `src/trigger/sia-silence.ts`, `src/lib/constants/redis-keys.ts`: the `banned` alert kind.
+- `src/lib/constants/sia-watcher.ts` (new): the setting keys, shelf reasons, the jid and phone
+  helpers.
+- `src/lib/services/sia-service.ts`: `shelfSiaSession`, `listSiaSessionShelf`,
+  `restoreSiaSession`, `getStandbyCoverage`, `saveSiaStandbyJid`. `requestSiaSessionRepair` now
+  shelves. `src/lib/services/llm-providers-service.ts`: `getSiaWatcherSettings()`.
+- `src/lib/services/sia-membership.ts` (new) and `src/trigger/sia-membership.ts` (new): the
+  daily coverage check.
+- `src/lib/actions/sia.ts`: `getSiaWatcherNumberPanelAction`, `changeSiaWatcherNumberAction`,
+  `restoreSiaSessionAction`, `setSiaStandbyNumberAction`, admin and founder only. The key material
+  never leaves the server.
+- `src/components/sia/SiaWatcherNumberCard.tsx` (new), mounted in `SiaControlModal`; the banned
+  state in the console and the header dot.
+- `src/lib/utils/whatsapp-export.ts` (new): `parseWhatsAppExport`, pure. Android and iPhone
+  shapes, day and month order read from the file, system lines, media placeholders.
+- `scripts/sia/import-chat-export.ts` (new): dry run by default. Senders are matched to the
+  group's own contacts by phone or name; a name that matches nobody, or two people, is imported
+  under `export:<name>@unresolved` and listed. A second run with `--map-file` corrects the rows.
+- `src/lib/services/member-profiler.ts`: `runHistoryBackfill`. A conversation with an unresolved
+  sender is held and stops that import, because a stranger reads as member-side and a staff line
+  would be filed as the member's own words. `scripts/sia/reprofile-history.ts` (new): `--estimate`
+  is free, a dry run is not.
+
+**The same evening.** The number was unbanned. Lifting the ban signed out every linked device,
+so the watcher's first connect was answered "logged out" and the old code wiped the session; it
+was paired again by QR and connected at 17:59 IST with 496 groups. The gap (11:21 to 17:58) did
+not come back: a banned number is sent nothing, so its phone never held those messages.
+
+**Checked.** Migration 0249 was rehearsed on production inside a transaction that always rolls
+back: it applies, the new values are accepted, a wrong source is refused, the two functions are
+closed to signed-in users. The harvester's self-test replayed 75 archived messages, a private
+chat and an unknown group: 75 recognised as held, 0 to write, 2 dropped.
+Typecheck and lint clean on every touched file, app and connector. The parser was
+benched on Android and iPhone samples. The importer was dry-run against a real production group
+with a three-line sample file (reads only): it found the watcher's first message, resolved a staff
+name and a phone number, and listed the unknown name. The two constraint names the migration
+replaces were read from production and match.
+
+**Not checked.** The migration has not run anywhere (no local database was up). The ban path has
+not been exercised against WhatsApp, and must not be on the live number. The console card has not
+been opened in a browser. The re-profile has not read a real import, because there is none yet.
+The harvester has never linked to a phone: the scan, the first sync, `--deep` and the unlink are
+untested until the first dry run on a real phone.
+
+**Order to ship.** Migration 0249 first, then the app and `trigger:deploy`, then the watcher
+image. The app reads the new status columns, so an app deploy before the migration makes the
+watcher status unreadable and the alarm would call the watcher down.
+
+---
+
+## 2026-09-29 — Elaya Chats: every conversation the team has had with Elaya, with Correct on each reply
+
+**Why.** Every message sent to Elaya and every reply she gives is stored (WhatsApp, in-app and voice:
+2,092 messages from 46 people on the day this shipped), but nobody could read them. The /elaya page
+shows only your own current session, and the messages table lets a person read only their own chats.
+The founder wanted one place to read what Elaya is telling the team and to correct a wrong answer.
+
+**What.** A new door on Teach Elaya, **Chats** (`/settings/elaya-chats`, admin and founder only).
+It uses the Sia and WhatsApp layout: the people who have talked to Elaya on the left (newest first,
+with their messages per channel), one person's whole history on the right. All their sessions and
+channels sit in one thread, with a divider where a new session starts and a filter by channel.
+Under each of her replies: the time, the channel, the specialist and playbook, the tools she called,
+and a tag when the turn failed, was a scheduled brief, or has already been flagged.
+**Correct** opens a small form (what went wrong, what she should have said). It files an ordinary
+improvement request, the same row her own raise_improvement_request tool writes. So it appears in
+Requests and is folded into her prompt as a known issue until someone marks it fixed there.
+The server reads the reply and the question before it itself. The browser sends only the message
+id and the correction.
+
+- `src/lib/services/elaya-chats-service.ts`: THE admin read. `listElayaChatPeople()` is built from
+  the messages, not the sessions: opening the page starts a session, and 201 of 647 were empty.
+  It pages under the 1,000-row cap. `getElayaChatPage(userId, {before, channel})` is a keyset page of
+  60, newest page first. `getElayaReplyForCorrection(messageId)` refuses anything that is not one of
+  her replies. Admin client, so the caller gates.
+- `src/lib/actions/elaya-chats.ts`: `getElayaChatPageAction` and `flagElayaReplyAction`,
+  `requireProfile(['admin','founder'])`. The flag goes through `createImprovementRequestCore`, and
+  there is no second write path.
+- `src/lib/validations/elaya-chats-schema.ts`, and the constants in `src/lib/constants/elaya.ts`:
+  `ELAYA_CHATS_PATH`, the person param, the page size and the channel labels.
+- `src/components/settings/ElayaChatsWorkspace.tsx` (the page body, composing `SplitWorkspace`,
+  `ConversationRailRow` and `ElayaMessageBubble`) and `ElayaReplyCorrectDialog.tsx`, loaded on
+  first open.
+- `src/components/elaya/ElayaMessageBubble.tsx` gained an optional `below` line, so the chats page
+  reuses the one Elaya bubble instead of copying it.
+- `src/components/settings/TeachElayaHub.tsx`: the Chats door.
+
+**Left open.** The Requests table's channel list (0237) does not include `voice`, so a voice reply
+is filed as in-app until that CHECK is widened. A reply is matched to its request by session and
+text, because requests carry no message id. Reading someone's chats is not logged anywhere yet.
+
+---
+
+## 2026-09-28 — Eight new Sanika members added from the subscription export (data only)
+
+**What.** The founder's `new-members.csv` (567 rows, past members and new) was matched against
+production before anything was written: 553 by phone, 7 by name, so only the new people were added.
+Eight new members, all Sanika, Active, joined 16 to 26 September: Siddharth Khanna, Vishnu Agarwal,
+Akshay Arora, Abhinav Shashank, Sachin Kamath, Ramanshu Mahaur (6-month trial), Pooja Pasari and
+Saurabh S Agrawal. Laksh Agarwal already existed with no phone; his phone was filled in. Seven concierge
+groups that were already on WhatsApp are now linked (group + the member's own contact rows,
+the `updateSiaGroupMapping` shape), so the profiler and intake can read them. City and company went in
+as `import` facts at 0.9, the seeder's shape. Members 614 → 622.
+
+**Left open.** Siddharth Khanna and Pooja Pasari have no concierge group yet. Vishnu has no phone in the
+export (his group contact "Vk" has none either). Saurabh S Agrawal (+91 87999 26061) was added as his own
+member: an older expired-trial "Saurabh Agrawal" (+91 96699 52000, no queendom) exists and may be the same
+person with a new number. Merge them if a human confirms.
+
+---
+
+## 2026-09-28 — Desks step 2 built: the outbox, the sender, the alert delivery and /settings/desks (migration 0248)
+
+**Why.** Step 2 of `docs/architecture/desks-plan.md`: the founder types one line and every table's
+speaker says it; the alert sweep's member alerts reach the queendom's own table. Nothing is spoken
+until `desks_enabled` is flipped and a Voice Monkey token is set; deploying changes nothing.
+
+**What.**
+
+- **Migration 0248** `desk_devices` (the allow-list: kind alexa/tv, label, queendom, the device's
+  own profile, the Alexa device id, the Voice Monkey device name) and `desk_outbox` (the ledger:
+  kind, severity, audience `{all}|{queendom_id}|{device_id}`, title, body, spoken, source, status
+  queued/sent/failed/refused as the ONE column that changes, not_before, expires_at). RLS: admin
+  and founder read; a device profile reads the rows addressed to it (the TV board's feed);
+  `desk_outbox` is in the Realtime publication. Seeds `desks_enabled=false` and
+  `desks_quiet_hours={from:21,to:8}`.
+- **`constants/desks.ts`** the vocabulary; **`types/desks.ts`** the rows; **`validations/desks-schema.ts`**.
+- **`services/desk-speech.ts`** `speakableFor()`, the ONLY writer of a row's `spoken` and `body`:
+  money, phone, email, card and ID shapes stripped (reuses `redactSensitiveShapes` from the media
+  reader), markdown removed, one or two sentences, every line starts with who is talking. Benched on
+  hostile inputs before anything else was wired.
+- **`services/desk-mutations.ts`** `queueDeskMessageCore` (the ONLY writer of `desk_outbox`: the
+  switch, quiet hours in IST, expiry), `settleDeskMessageCore`, `upsertDeskDeviceCore`,
+  `saveDeskSettingsCore`. **`services/desks-service.ts`** the reads. **`services/desk-sender.ts`**
+  `runDeskSender()`, the ONE place a line reaches a speaker: Voice Monkey `/announce` once per
+  allow-listed device, fails closed, a 429 leaves the rest queued. **`src/trigger/desk-sender.ts`**
+  every minute.
+- **`elaya-alerts.ts`** gains a fourth delivery: an alert with a queendom (through the ticket's
+  group or the member's row) is queued for that queendom's devices with a desk-safe title and body
+  (the group's name, never the member's name or their words). `delivered.desk` records it.
+- **`/settings/desks`** (`components/settings/DesksSettingsPanel`): the switch and quiet hours, the
+  Announce box (all tables / one queendom / one device, speak on or TVs only), the devices with
+  "Say hello" (one test line on one Echo) and switch off, the ledger. `actions/desks.ts` behind it;
+  the announcement runs the sender once inside `after()` so the room hears it in seconds.
+- Env: `VOICEMONKEY_TOKEN`. Not built yet: the TV board, the Alexa skill, reminders (steps 4 and 5).
+
+---
+
 ## 2026-09-30 — Fix: the finance note reader broke the stylesheet build
 
 **Why.** Tailwind scans every source file for class names. Three patterns in the note reader

@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getCurrentProfile } from "@/lib/services/profiles-service";
 import { hasVendorAccess, hasElevatedPageAccess } from "@/lib/utils/route-access";
 import { getSiaViewerScope } from "@/lib/services/sia-access";
-import { getHandsConnectorStatus, listAllowedContacts, listHandsThreads } from "@/lib/services/hands-service";
+import { getHandsConnectorStatus, listAllowedContacts, listHandsThreads, listUnfiledByContact, type HandsUnfiled } from "@/lib/services/hands-service";
 import { getHandsSettings } from "@/lib/services/llm-providers-service";
 import { HandsWorkspace } from "@/components/hands/HandsWorkspace";
 
@@ -20,12 +20,15 @@ export default async function HandsPage({ searchParams }: { searchParams: Promis
   if (!scope) redirect("/dashboard");
   const handsScope = { queendomIds: scope.kind === "all" ? null : scope.queendomIds };
 
-  const [threads, contacts, connector, settings, params] = await Promise.all([
+  const [threads, contacts, connector, settings, params, unfiled] = await Promise.all([
     listHandsThreads(handsScope, { status: "open", limit: 200 }),
     listAllowedContacts(),
     getHandsConnectorStatus(),
     getHandsSettings(),
     searchParams,
+    // Messages an agent sent while no chat with it was open (a Talk is company-wide, not a
+    // queendom's job, so only the unscoped viewers are shown them).
+    handsScope.queendomIds === null ? listUnfiledByContact() : Promise.resolve({} as HandsUnfiled),
   ]);
   const wanted = params.thread;
   const initialThreadId = typeof wanted === "string" && threads.some((t) => t.id === wanted) ? wanted : null;
@@ -38,9 +41,11 @@ export default async function HandsPage({ searchParams }: { searchParams: Promis
         contacts={contacts}
         connector={connector}
         canConfigure={hasElevatedPageAccess(profile)}
+        canTeach={profile.role === "admin" || profile.role === "founder"}
         initialThreadId={initialThreadId}
         perJobCapInr={settings.perJobCapInr}
         viewerCanPayAbove={senior}
+        unfiled={unfiled}
       />
     </main>
   );

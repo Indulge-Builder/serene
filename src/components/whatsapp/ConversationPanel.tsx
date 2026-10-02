@@ -20,6 +20,9 @@ import { MessageBar } from "@/components/ui/MessageBar";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { DictationButton } from "@/components/ui/DictationButton";
 import { MessageBubble } from "@/components/whatsapp/MessageBubble";
+import { PublicLineBar, type PublicChatHandler } from "@/components/whatsapp/PublicLineBar";
+import { LibraryPicker } from "@/components/whatsapp/LibraryPicker";
+import { BotCorrectButton } from "@/components/whatsapp/BotCorrectButton";
 import { createClient } from "@/lib/supabase/client";
 import {
   sendWhatsAppMessage,
@@ -76,6 +79,14 @@ export function ConversationPanel({
   const [draft,          setDraft]          = useState("");
   const [isSending,      startSendTransition]     = useTransition();
   const [isUploading,    setIsUploading]          = useState(false);
+  // Who answers a chat on the public Indulge number (0252): the concierge, the team, or nobody.
+  const isPublicLine = conversation.line === "public";
+  const [handler, setHandler] = useState<PublicChatHandler>(
+    conversation.bot_state === "opted_out" ? "opted_out" : conversation.bot_active === false ? "team" : "bot",
+  );
+  const markTeam = useCallback(() => {
+    if (isPublicLine) setHandler((h) => (h === "opted_out" ? h : "team"));
+  }, [isPublicLine]);
   // The near-bottom rule the Sia and Elaya panes already follow (mobile audit
   // 2026-09-26): a reader who scrolled up is not yanked down by an arrival or a
   // delivery tick; they get a pill instead. Our own send always follows.
@@ -282,9 +293,11 @@ export function ConversationPanel({
           if (idx === -1) return prev;
           return [...prev.slice(0, idx), confirmed, ...prev.slice(idx + 1)];
         });
+        // A typed reply takes the chat over from the concierge (the action turned it off).
+        markTeam();
       }
     });
-  }, [draft, isSending, conversation.id, conversation.lead_id, callerProfile]);
+  }, [draft, isSending, conversation.id, conversation.lead_id, callerProfile, markTeam]);
 
   // ── Attach / send media ──────────────────────────────────────────────────────
   // Validate client-side for instant feedback (the action re-validates), show an
@@ -471,6 +484,15 @@ export function ConversationPanel({
         </div>
       </div>
 
+      {isPublicLine && (
+        <PublicLineBar
+          conversationId={conversation.id}
+          handler={handler}
+          handoverReason={conversation.handover_reason}
+          onHandlerChange={setHandler}
+        />
+      )}
+
       {/* ZONE B — Message list (a relative frame so the new-messages pill can float over it) */}
       <div style={{ position: "relative", flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
       <div
@@ -525,12 +547,16 @@ export function ConversationPanel({
               {/* Messages for this day */}
               <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
                 {dayMessages.map((msg) => (
-                  <MessageBubble
-                    key={msg.id}
-                    message={msg}
-                    isOptimistic={optimisticIds.current.has(msg.id)}
-                    entrance={arrivedAfterMount.current}
-                  />
+                  <div key={msg.id}>
+                    <MessageBubble
+                      message={msg}
+                      isOptimistic={optimisticIds.current.has(msg.id)}
+                      entrance={arrivedAfterMount.current}
+                    />
+                    {isPublicLine && msg.is_bot && msg.direction === "outbound" && msg.message_type === "text" && msg.content && !optimisticIds.current.has(msg.id) && (
+                      <BotCorrectButton conversationId={conversation.id} messageId={msg.id} whatSheSaid={msg.content} />
+                    )}
+                  </div>
                 ))}
               </div>
             </div>
@@ -607,6 +633,7 @@ export function ConversationPanel({
                 <Paperclip style={{ width: "18px", height: "18px", strokeWidth: 1.5 }} />
               </Button>
               </Tooltip>
+              <LibraryPicker conversationId={conversation.id} disabled={isSending || isUploading} onSent={markTeam} />
               <DictationButton
                 onTranscript={handleTranscript}
                 onError={(message) => toast.danger(message)}

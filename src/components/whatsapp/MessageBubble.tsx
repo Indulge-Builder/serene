@@ -2,6 +2,7 @@
 
 import { Check, CheckCheck, X, FileText, ImageIcon, Video, Mic } from "lucide-react";
 import { renderWaText } from "@/components/ui/WaText";
+import { LinkPreviewCard } from "@/components/ui/LinkPreviewCard";
 import { m as motion } from "framer-motion";
 import { Avatar } from "@/components/ui/Avatar";
 import { formatDate } from "@/lib/utils/dates";
@@ -316,19 +317,22 @@ export function MessageBubble({ message, isOptimistic = false, entrance = false 
             Unsupported message
           </p>
         ) : (
-          <p
-            style={{
-              fontFamily: "var(--font-sans)",
-              fontSize:   "var(--text-sm)",
-              color:      "var(--theme-text-primary)",
-              margin:     0,
-              lineHeight: "var(--leading-relaxed)",
-              wordBreak:  "break-word",
-              whiteSpace: "pre-wrap",
-            }}
-          >
-            {renderWaText(message.content ?? "")}
-          </p>
+          <>
+            {message.link_preview && <LinkPreviewCard preview={message.link_preview} />}
+            <p
+              style={{
+                fontFamily: "var(--font-sans)",
+                fontSize:   "var(--text-sm)",
+                color:      "var(--theme-text-primary)",
+                margin:     0,
+                lineHeight: "var(--leading-relaxed)",
+                wordBreak:  "break-word",
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {renderWaText(message.content ?? "")}
+            </p>
+          </>
         )}
 
         {/* Footer: timestamp + delivery status */}

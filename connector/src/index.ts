@@ -38,6 +38,8 @@ import {
   upsertReaction,
   upsertReceipt,
   upsertWatcherStatus,
+  recordConnectionClose,
+  clearConnectionCloses,
   type WagMessageRow,
   type WatcherState,
 } from "./db.js";
@@ -48,6 +50,21 @@ import { enqueueMediaDownload, setMediaSocket } from "./media.js";
 import { isGroupJid, jsonSafe, normalizeJid, normalizeMessage, reviveBuffers } from "./normalize.js";
 
 const logger = pino({ level: "warn" });
+
+// ── Failure limits (migration 0249; the 2026-09-29 ban) ──
+// A close is counted in the status row (close_streak) and survives the crash-only
+// restart, so a fresh process knows how many times in a row the last ones died.
+//   - any close: pause before exiting, doubling per close, so ECS never spins
+//   - a 403 (forbidden) close at BAN_REFUSALS in a row: WhatsApp has banned the
+//     number. State 'banned', and the process HOLDS instead of reconnecting —
+//     every further attempt with a banned account only hurts the review. A human
+//     clears it from Serene (Restart = try once more; Change watcher number).
+const BAN_REFUSALS = 3;
+const RECONNECT_PAUSE_MS = 5_000;
+const RECONNECT_PAUSE_MAX_MS = 5 * 60_000;
+const BANNED_HOLD_MS = 30 * 60_000;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // Participant objects as Baileys ships them (GroupParticipant = Contact & …):
 // `id` is the addressing id (lid in lid-addressed groups), `phoneNumber` the
@@ -402,8 +419,28 @@ async function start(): Promise<void> {
   // Inherit state_since when a restart lands in the SAME state — otherwise a
   // crash loop resets the clock every boot and the alarm's "stuck connecting /
   // unpaired for N minutes" conditions can never fire (each boot looks fresh).
-  const initialState: WatcherState = state.creds.me ? "connecting" : "pairing";
   const prior = await getWatcherStatusRow();
+
+  // Banned (0249): hold, do not open a socket. The beat keeps reading the
+  // restart stamp, so "Restart watcher" in Serene ends the hold within a minute;
+  // a stamp newer than the ban means a human asked for one more try.
+  if (prior?.state === "banned") {
+    const retryAsked =
+      !!prior.restart_requested_at && new Date(prior.restart_requested_at).getTime() > new Date(prior.state_since).getTime();
+    if (!retryAsked) {
+      watcherState = "banned";
+      stateSince = prior.state_since;
+      beat();
+      console.warn(`[watcher] number is banned since ${prior.state_since} — holding, not reconnecting`);
+      await sleep(BANNED_HOLD_MS);
+      process.exit(0);
+    }
+    // The streak is left as it stands: a clean open clears it, one more 403
+    // re-bans at once. "One more try" means exactly that.
+    console.log("[watcher] retry asked from Serene after a ban — one more attempt");
+  }
+
+  const initialState: WatcherState = state.creds.me ? "connecting" : "pairing";
   if (prior?.state === initialState && prior.state_since) {
     watcherState = initialState;
     stateSince = prior.state_since;
@@ -495,6 +532,7 @@ async function start(): Promise<void> {
       myJid = normalizeJid(sock.user?.id ?? null);
       console.log(`[watcher] connected as ${myJid}`);
       setWatcherState("connected");
+      void clearConnectionCloses();
       void upsertContact({ jid: myJid!, participant_role: "watcher", push_name: "Sia Watcher" });
       void seedGroups(sock);
       startMediaBackfill(sock);
@@ -512,8 +550,23 @@ async function start(): Promise<void> {
           .finally(() => process.exit(1));
         return;
       }
-      console.warn(`[watcher] connection closed (${code ?? "unknown"}) — exiting for a clean restart`);
-      process.exit(0); // crash-only: the supervisor restarts a pristine process
+      void (async () => {
+        const streak = await recordConnectionClose(code ?? null);
+        if (code === DisconnectReason.forbidden && streak >= BAN_REFUSALS) {
+          // WhatsApp refuses this number. Say so once, then hold: the alarm
+          // turns the state into its own alert; a human decides what is next.
+          console.error(`[watcher] WhatsApp refused the number ${streak} times in a row (403) — marking BANNED and holding`);
+          setWatcherState("banned");
+          await sleep(BANNED_HOLD_MS);
+          process.exit(0);
+        }
+        const pause = Math.min(RECONNECT_PAUSE_MS * 2 ** (streak - 1), RECONNECT_PAUSE_MAX_MS);
+        console.warn(
+          `[watcher] connection closed (${code ?? "unknown"}, ${streak} in a row) — pausing ${Math.round(pause / 1000)}s, then a clean restart`,
+        );
+        await sleep(pause);
+        process.exit(0); // crash-only: the supervisor restarts a pristine process
+      })();
     }
   });
 

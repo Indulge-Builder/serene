@@ -45,13 +45,29 @@ Env keys (all in the repo's `.env.local`, read by the watcher's parser):
 
 ## Docker (Fargate)
 
-Build from the repo root, because of the relative imports:
+Live since 2026-10-01 as the Copilot Backend Service `hands` (app `serene`, env `prod`, one
+task, 256 CPU / 1024 MB, arm64), beside the Sia watcher. Manifest:
+`backend/copilot/hands/manifest.yml`. It needs only `NEXT_PUBLIC_SUPABASE_URL` (manifest
+variable) and `SUPABASE_SERVICE_ROLE_KEY` (the SSM secret the watcher already uses).
+
+The image is built from the repo root, because of the relative imports, and
+`connector-hands/Dockerfile.dockerignore` sends Docker only the two folders it copies. Deploy
+from a CLEAN worktree of main, never from a shared folder with other sessions' unfinished
+changes in `connector/`:
 
 ```bash
-docker build -f connector-hands/Dockerfile -t hands-connector .
+git worktree add /tmp/hands-deploy origin/main
+cd /tmp/hands-deploy/backend && copilot svc deploy --name hands --env prod
 ```
 
-The container is disposable: session in Postgres, files in Storage.
+The container is disposable: session in Postgres (`hands.auth_state`), files in Storage. A new
+task picks up the same WhatsApp session with no new pairing.
+
+**One copy only.** Never run `npm start` here while the Fargate task runs: two connections on
+one session kick each other off and can get the number flagged. To run it on a laptop for a
+while, first scale the service to 0 (`count: 0` in the manifest and deploy), then start it
+locally; reverse it the same way. Proof it is up: `hands.connector_status` (state `connected`,
+a fresh `beat_at`) and `copilot svc logs --name hands --env prod`.
 
 ## Laws
 

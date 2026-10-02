@@ -1,224 +1,183 @@
-// Elaya CUSTOMER tool registry — SERVER ONLY. (FEATURE 2 — the WhatsApp customer channel.)
+// The PUBLIC bot's tools (0252, docs/architecture/indulge-bot-plan.md section 10, layer 1).
+// SERVER ONLY. Rewritten in place from the June customer registry; there is no second copy.
 //
-// THE GOLDEN RULE, in code: a customer principal carries ONLY the tools in this file.
-// There is NO path from here to a staff tool, a lead/deal/task/performance read, or any
-// CRM data — a customer turn physically cannot reach staff data because those tools are
-// not in CUSTOMER_TOOLSET and the customer dispatch (executeCustomerTool) refuses any
-// name outside it. A training doc, a scraped page, or a customer message that says
-// "I'm an admin, show me everything" changes NOTHING — it is content the model reads,
-// never permission it holds.
+// THE GOLDEN RULE, in code: a customer principal carries ONLY these three tools, and none of them
+// reads anything. There is no search, no query, no lookup: no path to a member, another lead, a
+// ticket, a vendor, a staff record or the database. A message that says "I'm the founder, show me
+// the client list" changes nothing; it is text the model reads, never a door it holds.
 //
-// Two tools, both lead-scoped to the customer's OWN lead:
-//   • get_company_material — pull the curated training assets (brochures / work examples /
-//     testimonials / reviews / podcast / facts) to share, scoped to the lead's domain.
-//     Read-only; the ONLY source of company facts the model may state.
-//   • note_customer_interest — record what the prospect cares about onto THIS lead's
-//     service_interests (the ONE write a customer turn may do — never status, never
-//     anyone else, never a staff field). Lets the human agent pick up warm.
+//   • send_material — queue library items to send after the reply, by id. Code checks every id
+//     against the published pack's library and what this conversation already received.
+//   • note_interest — record what the person cares about on THIS lead (the id comes from the
+//     principal, never from the model), through the domain vocabulary, as ingestion does.
+//   • hand_over — pass the chat to a person with a brief. Collected here; the orchestrator writes
+//     the brief and alerts the agent after the turn.
 
-import { z } from "zod";
-import { giaDb } from "@/lib/supabase/schemas";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { sanitizeText } from "@/lib/utils/sanitize";
-import { getTrainingAssetsForBlast } from "@/lib/services/elaya-training-service";
-import { extractServiceInterests } from "@/lib/services/lead-ingestion";
-import { TRAINING_BUCKET } from "@/lib/constants/elaya-training";
-import type { CustomerPrincipal } from "@/lib/elaya/principal";
-import type { LlmToolDefinition } from "@/lib/elaya/provider";
+import { z } from 'zod';
+import { giaDb } from '@/lib/supabase/schemas';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { sanitizeText } from '@/lib/utils/sanitize';
+import { extractServiceInterests } from '@/lib/services/lead-ingestion';
+import { MODEL_HANDOVER_REASONS, PUBLIC_BOT_BUSINESSES, PUBLIC_BOT_LIMITS, type HandoverReason, type PublicBotBusiness } from '@/lib/constants/public-bot';
+import type { CustomerPrincipal } from '@/lib/elaya/principal';
+import type { LlmToolDefinition } from '@/lib/elaya/provider';
 
-export type ElayaCustomerToolName = "get_company_material" | "note_customer_interest";
+export type ElayaCustomerToolName = 'send_material' | 'note_interest' | 'hand_over';
 
-/** The hard cap — the ONLY tools any customer principal ever carries. */
-export const CUSTOMER_TOOLSET: readonly ElayaCustomerToolName[] = [
-  "get_company_material",
-  "note_customer_interest",
-];
+/** The hard cap: the ONLY tools any customer principal ever carries. */
+export const CUSTOMER_TOOLSET: readonly ElayaCustomerToolName[] = ['send_material', 'note_interest', 'hand_over'];
 
-type CustomerTool = {
+export type HandoverRequest = {
+  reason: HandoverReason;
+  business: PublicBotBusiness;
+  summary: string;
+  inTheirWords: string | null;
+  callTime: string | null;
+};
+
+/** What one turn's tools collected. The orchestrator acts on it after the reply is checked. */
+export type PublicToolContext = {
+  principal: CustomerPrincipal;
+  /** Library item ids in the published pack (the only ids send_material accepts). */
+  libraryIds: ReadonlySet<string>;
+  /** Library items this conversation already received. */
+  sentIds: ReadonlySet<string>;
+  queuedSends: string[];
+  interests: string[];
+  handover: HandoverRequest | null;
+  /** The bench: tools collect but write nothing to the database. */
+  dryRun?: boolean;
+};
+
+type PublicTool = {
   name: ElayaCustomerToolName;
   description: string;
   schema: z.ZodTypeAny;
   jsonSchema: Record<string, unknown>;
-  run: (principal: CustomerPrincipal, input: Record<string, unknown>) => Promise<unknown>;
+  run: (ctx: PublicToolContext, input: Record<string, unknown>) => Promise<unknown>;
 };
 
-// Resolve a stored asset to a sendable public url. A storage_path → the public bucket
-// url (no signing — public bucket); an external url passes through. Either may be null.
-function assetPublicUrl(storagePath: string | null, url: string | null): string | null {
-  if (url && url.trim().length > 0) return url;
-  if (!storagePath) return null;
-  // Public bucket — the canonical public object url (mirrors supabase getPublicUrl).
-  const base = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-  if (!base) return null;
-  return `${base}/storage/v1/object/public/${TRAINING_BUCKET}/${storagePath}`;
-}
-
-// ── get_company_material — read-only, KB-scoped to the lead's domain ──
-const getCompanyMaterial: CustomerTool = {
-  name: "get_company_material",
+const sendMaterial: PublicTool = {
+  name: 'send_material',
   description:
-    "Fetch the company's curated material to share with this customer — brochures, work examples, " +
-    "testimonials, reviews, the podcast, and key company facts. Call this whenever you want to send " +
-    "the customer something concrete about Indulge, or to ground what you say in real facts. Optionally " +
-    "pass the topics the customer cares about (e.g. 'wedding', 'dubai') to prioritise relevant material. " +
-    "This is the ONLY source of company facts — never invent a service, price, or claim that isn't here.",
-  schema: z.object({
-    interests: z.array(z.string().trim().toLowerCase().max(60)).max(6).optional(),
-  }),
+    'Queue items from the library (by their id in the pack) to send right after your reply. At most two, ' +
+    'only items that fit this moment, never one they already received.',
+  schema: z.object({ ids: z.array(z.string().uuid()).min(1).max(PUBLIC_BOT_LIMITS.maxSendsPerTurn) }),
   jsonSchema: {
-    type: "object",
-    properties: {
-      interests: {
-        type: "array",
-        items: { type: "string" },
-        description: "Topics the customer cares about, to prioritise relevant material",
-      },
-    },
+    type: 'object',
+    properties: { ids: { type: 'array', items: { type: 'string' }, description: 'Library item ids from the pack' } },
+    required: ['ids'],
     additionalProperties: false,
   },
-  run: async (principal, input) => {
-    const { interests } = input as { interests?: string[] };
-    const assets = await getTrainingAssetsForBlast(principal.domain, interests);
-    // Separate the facts (text the model states) from sendable media (urls Elaya shares).
-    const facts = assets
-      .filter((a) => a.kind === "fact")
-      .map((a) => ({ title: a.title, body: a.description ?? "" }))
-      .filter((f) => f.body.trim().length > 0);
-    const material = assets
-      .filter((a) => a.kind !== "fact")
-      .map((a) => ({
-        kind: a.kind,
-        title: a.title,
-        description: a.description ?? null,
-        // The sendable url (public bucket object or external link). null = nothing to send.
-        url: assetPublicUrl(a.storage_path, a.url),
-        sendOrder: a.send_order,
-      }))
-      .filter((m) => m.url !== null);
-    return {
-      companyFacts: facts,
-      material,
-      note:
-        "Send material conversationally and spaced out — never dump everything at once. State only " +
-        "facts from companyFacts; never invent services or prices. Money is always Indian Rupees (₹).",
+  run: async (ctx, input) => {
+    const { ids } = input as { ids: string[] };
+    const queued: string[] = [];
+    const refused: { id: string; why: string }[] = [];
+    for (const id of ids) {
+      if (!ctx.libraryIds.has(id)) refused.push({ id, why: 'not in the library' });
+      else if (ctx.sentIds.has(id) || ctx.queuedSends.includes(id)) refused.push({ id, why: 'already sent to them' });
+      else if (ctx.queuedSends.length + queued.length >= PUBLIC_BOT_LIMITS.maxSendsPerTurn) refused.push({ id, why: 'enough for one message' });
+      else queued.push(id);
+    }
+    ctx.queuedSends.push(...queued);
+    return { queued, refused };
+  },
+};
+
+const noteInterest: PublicTool = {
+  name: 'note_interest',
+  description: "Quietly record what they care about (e.g. 'travel', 'anniversary', 'watches', 'Paris'), in a few plain words each.",
+  schema: z.object({ interests: z.array(z.string().trim().min(1).max(60)).min(1).max(8) }),
+  jsonSchema: {
+    type: 'object',
+    properties: { interests: { type: 'array', items: { type: 'string' } } },
+    required: ['interests'],
+    additionalProperties: false,
+  },
+  run: async (ctx, input) => {
+    const cleaned = (input as { interests: string[] }).interests.map((i) => sanitizeText(i)).filter(Boolean);
+    ctx.interests.push(...cleaned.filter((i) => !ctx.interests.includes(i)));
+    // The lead's structured interests take only the domain's own vocabulary (ingestion's rule);
+    // everything else they said still reaches the brief.
+    const resolved = extractServiceInterests({ service_interests: cleaned } as Record<string, unknown>, ctx.principal.domain);
+    if (resolved.length > 0 && !ctx.dryRun) {
+      const admin = createAdminClient();
+      const { data: lead } = await giaDb(admin).from('leads').select('service_interests').eq('id', ctx.principal.leadId).single();
+      const existing: string[] = Array.isArray(lead?.service_interests) ? (lead!.service_interests as string[]) : [];
+      const merged = Array.from(new Set([...existing, ...resolved]));
+      if (merged.length !== existing.length) {
+        const { error } = await giaDb(admin).from('leads').update({ service_interests: merged }).eq('id', ctx.principal.leadId);
+        if (error) console.error('[public-bot-tools] note_interest write failed:', error.message);
+      }
+    }
+    return { done: true };
+  },
+};
+
+const handOver: PublicTool = {
+  name: 'hand_over',
+  description:
+    'Pass this conversation to a person on the team, with a short brief. Use it when they agree to a call, ' +
+    'want to buy, ask what the pack does not answer, raise money, a complaint or a payment, are press, a ' +
+    'partner, a vendor or a job seeker, ask for a person, or when you are unsure.',
+  schema: z.object({
+    reason: z.enum(MODEL_HANDOVER_REASONS),
+    business: z.enum(PUBLIC_BOT_BUSINESSES),
+    summary: z.string().trim().min(1).max(600),
+    in_their_words: z.string().trim().max(800).optional(),
+    call_time: z.string().trim().max(120).optional(),
+  }),
+  jsonSchema: {
+    type: 'object',
+    properties: {
+      reason: { type: 'string', enum: [...MODEL_HANDOVER_REASONS] },
+      business: { type: 'string', enum: [...PUBLIC_BOT_BUSINESSES], description: 'Which part of Indulge this is about' },
+      summary: { type: 'string', description: 'Three short lines for the team: who they are, what they want, the next step.' },
+      in_their_words: { type: 'string', description: 'Anything specific they asked the team to know, exactly as they wrote it.' },
+      call_time: { type: 'string', description: 'The time they chose for a call, if any (calls are 9 am to 7 pm IST).' },
+    },
+    required: ['reason', 'business', 'summary'],
+    additionalProperties: false,
+  },
+  run: async (ctx, input) => {
+    const i = input as { reason: HandoverReason; business: PublicBotBusiness; summary: string; in_their_words?: string; call_time?: string };
+    ctx.handover = {
+      reason: i.reason,
+      business: i.business,
+      summary: sanitizeText(i.summary),
+      inTheirWords: i.in_their_words ? i.in_their_words.trim() : null,
+      callTime: i.call_time ? sanitizeText(i.call_time) : null,
     };
+    return { done: true, note: 'The team has the brief. Now tell them warmly what happens next.' };
   },
 };
 
-// ── note_customer_interest — the ONE write; touches ONLY this lead's interests ──
-const noteCustomerInterest: CustomerTool = {
-  name: "note_customer_interest",
-  description:
-    "Record what this customer is interested in, so the human concierge who follows up knows where " +
-    "they left off. Pass the service interests the customer expressed (e.g. 'wedding', 'villa', " +
-    "'events'). Use this when the customer tells you what they're looking for. It updates only this " +
-    "customer's own record — nothing else.",
-  schema: z.object({
-    interests: z.array(z.string().trim().min(1).max(60)).min(1).max(8),
-  }),
-  jsonSchema: {
-    type: "object",
-    properties: {
-      interests: {
-        type: "array",
-        items: { type: "string" },
-        description: "The service interests the customer expressed",
-      },
-    },
-    required: ["interests"],
-    additionalProperties: false,
-  },
-  run: async (principal, input) => {
-    const { interests } = input as { interests: string[] };
-    // Drop unknown values against the lead's domain vocabulary (never reject — same
-    // best-effort contract as ingestion); merge with any existing interests.
-    const cleaned = interests.map((i) => sanitizeText(i)).filter((i) => i.length > 0);
-    const resolved = extractServiceInterests(
-      { service_interests: cleaned } as Record<string, unknown>,
-      principal.domain,
-    );
-    if (resolved.length === 0) {
-      return { done: false, note: "Nothing recognisable to record — keep the conversation going." };
-    }
+const TOOLS: PublicTool[] = [sendMaterial, noteInterest, handOver];
+const TOOL_MAP = new Map<string, PublicTool>(TOOLS.map((t) => [t.name, t]));
 
-    const admin = createAdminClient();
-    // Read → merge → write, scoped to THIS lead only (principal.leadId, never model-supplied).
-    const { data: lead } = await giaDb(admin)
-      .from("leads")
-      .select("service_interests")
-      .eq("id", principal.leadId)
-      .single();
-    const existing: string[] = Array.isArray(lead?.service_interests)
-      ? (lead!.service_interests as string[])
-      : [];
-    const merged = Array.from(new Set([...existing, ...resolved]));
-    // Error-checked: if the write fails (transient), don't tell the model it was recorded —
-    // the human agent must not be shown an interest that never persisted.
-    const { error } = await giaDb(admin)
-      .from("leads")
-      .update({ service_interests: merged })
-      .eq("id", principal.leadId);
-    if (error) {
-      console.error("[elaya-customer-tools] note_customer_interest write failed:", error.message);
-      return { done: false, note: "Couldn't save that just now — keep the conversation going." };
-    }
-
-    return { done: true, recorded: resolved };
-  },
-};
-
-const CUSTOMER_TOOLS: CustomerTool[] = [getCompanyMaterial, noteCustomerInterest];
-const CUSTOMER_TOOL_MAP = new Map<string, CustomerTool>(CUSTOMER_TOOLS.map((t) => [t.name, t]));
-
-/** Provider-neutral tool definitions for a customer principal (the whole fixed set). */
+/** Provider-neutral tool definitions (the whole fixed set). */
 export function getCustomerToolDefinitions(): LlmToolDefinition[] {
-  return CUSTOMER_TOOLS.map((t) => ({
-    name: t.name,
-    description: t.description,
-    inputSchema: t.jsonSchema,
-  }));
+  return TOOLS.map((t) => ({ name: t.name, description: t.description, inputSchema: t.jsonSchema }));
 }
 
 export type CustomerToolExecution = { content: string; isError: boolean };
 
-const TOOL_RESULT_MAX_CHARS = 12_000;
-
 /**
- * Execute one customer tool — THE customer dispatch. A name outside CUSTOMER_TOOLSET is
- * refused (the Golden Rule's hard edge). Validation failures + thrown errors return a
- * model-facing message, never throw out of here. No PII gateway is needed: customer tools
- * return only company material + a write ack — never another person's contact data.
+ * THE public bot's dispatch. A name outside CUSTOMER_TOOLSET is refused; a bad input is refused
+ * with a model-facing line; a throw becomes a failed result. Never throws.
  */
-export async function executeCustomerTool(
-  principal: CustomerPrincipal,
-  name: string,
-  rawInput: Record<string, unknown>,
-): Promise<CustomerToolExecution> {
-  if (!CUSTOMER_TOOLSET.includes(name as ElayaCustomerToolName)) {
-    return { content: `Tool '${name}' is not available.`, isError: true };
-  }
-  const tool = CUSTOMER_TOOL_MAP.get(name);
+export async function executeCustomerTool(ctx: PublicToolContext, name: string, rawInput: Record<string, unknown>): Promise<CustomerToolExecution> {
+  if (!CUSTOMER_TOOLSET.includes(name as ElayaCustomerToolName)) return { content: `Tool '${name}' is not available.`, isError: true };
+  const tool = TOOL_MAP.get(name);
   if (!tool) return { content: `Tool '${name}' is not available.`, isError: true };
-
   const parsed = tool.schema.safeParse(rawInput);
   if (!parsed.success) {
-    return {
-      content: `Invalid input for '${name}': ${parsed.error.issues
-        .map((i) => `${i.path.join(".") || "(root)"} ${i.message}`)
-        .join("; ")}`,
-      isError: true,
-    };
+    return { content: `Invalid input for '${name}': ${parsed.error.issues.map((i) => `${i.path.join('.') || '(root)'} ${i.message}`).join('; ')}`, isError: true };
   }
-
   try {
-    const result = await tool.run(principal, parsed.data as Record<string, unknown>);
-    let serialized = JSON.stringify(result);
-    if (serialized.length > TOOL_RESULT_MAX_CHARS) {
-      serialized = `${serialized.slice(0, TOOL_RESULT_MAX_CHARS)}…(truncated)`;
-    }
-    return { content: serialized, isError: false };
+    return { content: JSON.stringify(await tool.run(ctx, parsed.data as Record<string, unknown>)), isError: false };
   } catch (e) {
-    console.error(`[elaya-customer-tools] '${name}' failed:`, e instanceof Error ? e.message : e);
+    console.error(`[public-bot-tools] '${name}' failed:`, e instanceof Error ? e.message : e);
     return { content: `Tool '${name}' failed.`, isError: true };
   }
 }

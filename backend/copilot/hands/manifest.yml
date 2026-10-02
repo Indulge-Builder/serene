@@ -1,0 +1,27 @@
+# Elaya's hands: the second WhatsApp number (docs/architecture/hands-plan.md, Layer A), as a
+# Copilot Backend Service beside the Sia watcher. No port, no load balancer, outbound only.
+# Its WhatsApp session lives in hands.auth_state (Postgres) and its files in the hands-media
+# bucket, so the container is disposable and no volume is mounted.
+#
+# ONE COPY ONLY: never run `npm start` in connector-hands/ on a laptop while this task runs.
+# Two connections on one session kick each other off and can get the number flagged.
+name: hands
+type: Backend Service
+
+image:
+  build:
+    dockerfile: ../connector-hands/Dockerfile
+    context: ..            # the repo root: the app imports the watcher's pure modules by path
+cpu: 256
+memory: 1024
+platform: linux/arm64      # Graviton, like the watcher
+count: 1
+exec: true
+deployment:
+  rolling: recreate        # stop the old task before the new one connects: never two sessions at once
+
+variables:
+  NEXT_PUBLIC_SUPABASE_URL: https://xmucqqhbupudnzderchy.supabase.co
+
+secrets:
+  SUPABASE_SERVICE_ROLE_KEY: /copilot/${COPILOT_APPLICATION_NAME}/${COPILOT_ENVIRONMENT_NAME}/secrets/SUPABASE_SERVICE_ROLE_KEY

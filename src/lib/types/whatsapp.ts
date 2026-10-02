@@ -5,6 +5,8 @@
 // No runtime values in this file. Types only.
 // No default exports.
 
+import type { LinkPreview } from "@/lib/utils/link-preview";
+
 // ─────────────────────────────────────────────
 // Meta Cloud API — inbound payload shapes
 // ─────────────────────────────────────────────
@@ -92,6 +94,12 @@ export type WhatsAppConversation = {
   bot_active:      boolean;
   bot_paused_by:   string | null;
   bot_paused_at:   string | null;
+  /** The number it arrived on (0252): 'staff' (Serene) or 'public' (Indulge). */
+  line:            'staff' | 'public';
+  /** The public bot's own state (0252). It speaks only when bot_active AND bot_state = 'active'. */
+  bot_state:       'active' | 'handed_over' | 'opted_out';
+  handed_over_at:  string | null;
+  handover_reason: string | null;
   created_at:      string;
   updated_at:      string;
   // Enrichment — present when joined in service queries
@@ -117,10 +125,14 @@ export type WhatsAppMessage = {
   status:          'sent' | 'delivered' | 'read' | 'failed' | null;
   status_at:       string | null;
   is_bot:          boolean;
+  /** The library item this message carried, when it was one (0252). */
+  training_asset_id?: string | null;
   created_at:      string;
   // Enrichment — present when joined in service queries
   sender_name?:       string;
   sender_avatar_url?: string;
+  /** The link preview the message carries (readLinkPreview), when its source keeps one: Hands does, Gupshup does not. */
+  link_preview?:      LinkPreview | null;
 };
 
 export type SendMessageInput = {

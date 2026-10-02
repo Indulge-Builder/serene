@@ -1,6 +1,6 @@
 /**
  * member-profiler.ts — the member profiler's heartbeat (migration 0215,
- * plan-sia-intelligence.md S2).
+ * sia-intelligence-plan.md S2).
  *
  * Every ten minutes: read the finished WhatsApp conversations of member-linked groups and
  * file what they teach into the twin (services/member-profiler.ts). The whole task is gated

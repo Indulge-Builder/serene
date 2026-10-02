@@ -4,7 +4,9 @@ import {
   TRAINING_LINK_KINDS,
   TRAINING_TEXT_KINDS,
   TRAINING_MEDIA_KINDS,
+  TRAINING_MESSAGE_KINDS,
 } from "@/lib/constants/elaya-training";
+import { resolveOutboundMediaType, whatsappMaxBytesFor } from "@/lib/constants/whatsapp";
 import { GIA_DOMAIN_ENUM } from "@/lib/constants/domains";
 import { uuidField } from "@/lib/validations/fields";
 
@@ -70,7 +72,16 @@ export const upsertTrainingAssetSchema = z
       .min(0, "Send order cannot be negative.")
       .max(9999, "Send order is too large."),
 
-    active: z.coerce.boolean().default(true),
+    // A form posts "true" / "false" as text; z.coerce.boolean() read the string "false" as
+    // true, so an asset could never be switched off (0252 fix).
+    active: z.preprocess((v) => v === true || v === "true" || v === "on", z.boolean()).default(true),
+
+    // 0252 — the public bot's library and pack
+    whenToSend: z.string().trim().max(300, "Keep the 'when to send' line under 300 characters.").nullable().optional(),
+    mimeType: z.string().trim().max(120).nullable().optional(),
+    byteSize: z.coerce.number().int().min(0).nullable().optional(),
+    attachments: z.array(uuidField("That attachment could not be found.")).max(8, "A ready message takes at most 8 attachments.").default([]),
+    approve: z.preprocess((v) => v === true || v === "true", z.boolean()).default(false),
   })
   // Refine 1 — a 'url' (link) kind must carry a url.
   .refine(
@@ -84,7 +95,23 @@ export const upsertTrainingAssetSchema = z
     (v) =>
       !(TRAINING_TEXT_KINDS as readonly string[]).includes(v.kind) ||
       (typeof v.description === "string" && v.description.length > 0),
-    { message: "Write the company facts before saving.", path: ["description"] },
+    { message: "Write the text before saving.", path: ["description"] },
+  )
+  // Refine 2b — a ready message must carry its text.
+  .refine(
+    (v) =>
+      !(TRAINING_MESSAGE_KINDS as readonly string[]).includes(v.kind) ||
+      (typeof v.description === "string" && v.description.length > 0),
+    { message: "Write the message before saving.", path: ["description"] },
+  )
+  // Refine 4 — an uploaded file must be one WhatsApp can send, within its size limit (0252).
+  .refine(
+    (v) => !v.storagePath || !v.mimeType || resolveOutboundMediaType(v.mimeType) !== null,
+    { message: "WhatsApp cannot send this kind of file. Use a JPEG or PNG image, an MP4 video, an MP3 or M4A audio, or a PDF.", path: ["storagePath"] },
+  )
+  .refine(
+    (v) => !v.storagePath || !v.mimeType || v.byteSize == null || v.byteSize <= whatsappMaxBytesFor(v.mimeType),
+    { message: "This file is over WhatsApp's limit (5 MB for an image, 16 MB for video, audio or a PDF). Upload a smaller version, or add it as a link instead.", path: ["storagePath"] },
   )
   // Refine 3 — a media kind needs a stored file OR an external link.
   .refine(
@@ -94,6 +121,10 @@ export const upsertTrainingAssetSchema = z
       (typeof v.url === "string" && v.url.length > 0),
     { message: "Upload a file or paste a link for this asset.", path: ["storagePath"] },
   );
+
+export const approveTrainingAssetSchema = z.object({
+  id: uuidField("That training asset could not be found."),
+});
 
 export const deleteTrainingAssetSchema = z.object({
   id: uuidField("That training asset could not be found."),

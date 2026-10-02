@@ -15,6 +15,7 @@ import { SplitRail, SplitRailHeader, SplitRailList } from "@/components/ui/Split
 import { useDebounce } from "@/hooks/useDebounce";
 import { formatRelativeTime } from "@/lib/utils/dates";
 import { WhatsAppConversationPeriodFilter } from "@/components/whatsapp/WhatsAppConversationPeriodFilter";
+import { WhatsAppLineFilter } from "@/components/whatsapp/WhatsAppLineFilter";
 import { searchConversationsAction } from "@/lib/actions/whatsapp";
 import type { WhatsAppPeriod } from "@/lib/constants/whatsapp-period";
 import { parseWhatsAppPeriodFromSearchParams } from "@/lib/utils/whatsapp-period";
@@ -108,7 +109,10 @@ export function ConversationList({
           <span className="label-micro" style={{ color: "var(--theme-text-tertiary)" }}>
             Conversations
           </span>
-          <WhatsAppConversationPeriodFilter />
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
+            <WhatsAppLineFilter />
+            <WhatsAppConversationPeriodFilter />
+          </div>
         </div>
       </SplitRailHeader>
 
@@ -129,6 +133,18 @@ export function ConversationList({
                 // The number under the name, unless the number already IS the title.
                 preview={conv.lead_name ? (conv.lead_phone ?? conv.phone) : null}
                 meta={conv.last_message_at ? formatRelativeTime(conv.last_message_at) : null}
+                // The public Indulge number's threads carry a small mark (0252).
+                metaMarker={conv.line === "public" ? (
+                  <span
+                    title="On the Indulge number"
+                    style={{
+                      fontSize: "var(--text-2xs)", padding: "0 var(--space-1)", borderRadius: "var(--radius-full)",
+                      background: "var(--theme-accent-surface)", color: "var(--neu-accent-deep)", fontWeight: "var(--weight-medium)",
+                    }}
+                  >
+                    Indulge
+                  </span>
+                ) : undefined}
                 selected={conv.id === activeConversationId}
                 unread={(conv.unread_count ?? 0) > 0}
                 index={i}

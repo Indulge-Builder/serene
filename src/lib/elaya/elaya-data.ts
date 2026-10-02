@@ -1449,7 +1449,7 @@ export async function getActivityFeedFor(principal: StaffPrincipal, opts: { doma
 
 import { getHandsThread, getHandsThreadForTicket, listHandsThreads, type HandsScope } from '@/lib/services/hands-service';
 import { draftForTicket, trustAllows, type HandsDraft } from '@/lib/services/hands-draft';
-import { getHandsSettings } from '@/lib/services/llm-providers-service';
+import { getHandsGuides, getHandsSettings } from '@/lib/services/llm-providers-service';
 import type { TicketBriefField } from '@/lib/constants/tickets';
 
 async function handsScopeFor(principal: StaffPrincipal): Promise<HandsScope | null> {
@@ -1475,7 +1475,7 @@ export async function getHandsThreadFor(principal: StaffPrincipal, ref: string) 
   if (/^[0-9a-f-]{36}$/i.test(ref.trim())) {
     // A uuid: a thread id, or a ticket id.
     const byId = await getHandsThread(ref.trim().toLowerCase(), scope);
-    if (byId) return { ok: true as const, ...byId };
+    if (byId) return { ok: true as const, ...byId, guide: (await getHandsGuides()).guide.body };
     const t = await getTicketFor(principal, ref);
     threadId = t ? (await getHandsThreadForTicket(t.ticket.id))?.id ?? null : null;
   } else {
@@ -1484,17 +1484,18 @@ export async function getHandsThreadFor(principal: StaffPrincipal, ref: string) 
     threadId = (await getHandsThreadForTicket(t.ticket.id))?.id ?? null;
   }
   if (!threadId) return { ok: false as const, reason: 'no_thread' as const };
-  const d = await getHandsThread(threadId, scope);
-  return d ? { ok: true as const, ...d } : { ok: false as const, reason: 'not_found' as const };
+  const [d, guides] = await Promise.all([getHandsThread(threadId, scope), getHandsGuides()]);
+  return d ? { ok: true as const, ...d, guide: guides.guide.body } : { ok: false as const, reason: 'not_found' as const };
 }
 
 /** The opening message the filter would send for a ticket, with what was held back; sends nothing. */
 export async function draftHandsMessageFor(principal: StaffPrincipal, ticketRef: string, opts: { tick?: TicketBriefField[]; reply?: string | null } = {}): Promise<
-  | { ok: true; ticketId: string; ticketNo: string; draft: HandsDraft; allows: ReturnType<typeof trustAllows>; enabled: boolean; hasThread: boolean; vendorIsAgent: boolean }
+  | { ok: true; ticketId: string; ticketNo: string; draft: HandsDraft; allows: ReturnType<typeof trustAllows>; enabled: boolean; hasThread: boolean; vendorIsAgent: boolean; guide: string }
   | { ok: false; reason: 'not_found' | 'no_access' }
 > {
   const t = await getTicketFor(principal, ticketRef);
   if (!t) return { ok: false, reason: 'not_found' };
-  const [draft, settings, thread] = await Promise.all([draftForTicket(t.ticket, opts), getHandsSettings(), getHandsThreadForTicket(t.ticket.id)]);
-  return { ok: true, ticketId: t.ticket.id, ticketNo: t.ticket.ticket_no, draft, allows: trustAllows(draft.trust), enabled: settings.enabled, hasThread: Boolean(thread), vendorIsAgent: Boolean(t.ticket.vendor_id) };
+  // The guide (hands_elaya_guide, edited on /settings/hands) is read per call: an edit reaches her next draft.
+  const [draft, settings, thread, guides] = await Promise.all([draftForTicket(t.ticket, opts), getHandsSettings(), getHandsThreadForTicket(t.ticket.id), getHandsGuides()]);
+  return { ok: true, ticketId: t.ticket.id, ticketNo: t.ticket.ticket_no, draft, allows: trustAllows(draft.trust), enabled: settings.enabled, hasThread: Boolean(thread), vendorIsAgent: Boolean(t.ticket.vendor_id), guide: guides.guide.body };
 }

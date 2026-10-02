@@ -18,6 +18,11 @@
   `export const maxDuration = 60` and run the work inside `after()` with the sends
   `await`-ed — see the root CLAUDE.md `after()` Pattern Note (2026-06-08 outage).
 - A future webhook (call-intelligence) composes all four rules from day one.
+- **`leads/route.ts` Framer path (2026-09-30):** a request with a `Framer-Signature` header is
+  the website form posting directly; it is verified by `verifyFramerSignature` (utils/webhook.ts,
+  HMAC over the RAW body + `Framer-Webhook-Submission-Id`, key `FRAMER_WEBHOOK_SECRET`), forced
+  to source `website`, and may take its domain from `?domain=`. The route therefore reads
+  `request.text()` then `parseJsonBody`. Without that header the bearer path is unchanged.
 - **`freshdesk/route.ts` (2026-09-15)** composes all four: `x-freshdesk-webhook-secret` via
   `safeSecretCompare` against `FRESHDESK_WEBHOOK_SECRET`, 120/60s rate limit, `readJsonBody`,
   the raw event stored in `freshdesk.webhook_events`, then `after()` → `processWebhookEvent`

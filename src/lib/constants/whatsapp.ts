@@ -38,6 +38,7 @@ export const WHATSAPP_OUTBOUND_MEDIA_MIME: Record<string, 'image' | 'video' | 'd
   'audio/ogg':        'audio',
   'audio/mp4':        'audio',
   'audio/amr':        'audio',
+  'audio/aac':        'audio',
   'application/pdf':  'document',
 };
 
@@ -50,6 +51,12 @@ export function resolveOutboundMediaType(
 
 // WhatsApp caps: image 5MB, video/audio/document 16MB. Use 16MB as the single cap.
 export const WHATSAPP_OUTBOUND_MEDIA_MAX_BYTES = 16 * 1024 * 1024;
+export const WHATSAPP_OUTBOUND_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+
+/** The largest file WhatsApp takes for a MIME type (0252: the library checks it at upload). */
+export function whatsappMaxBytesFor(mime: string): number {
+  return resolveOutboundMediaType(mime) === 'image' ? WHATSAPP_OUTBOUND_IMAGE_MAX_BYTES : WHATSAPP_OUTBOUND_MEDIA_MAX_BYTES;
+}
 
 // ─────────────────────────────────────────────
 // Conversation status

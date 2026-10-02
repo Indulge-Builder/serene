@@ -5,7 +5,7 @@
 // hands may talk to, and the connector's state. Every save is a server action; nothing here reads
 // the database.
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { SectionCard } from "@/components/ui/SectionCard";
 import { Button } from "@/components/ui/Button";
@@ -15,16 +15,20 @@ import { FormSelect } from "@/components/ui/FormSelect";
 import { Field, Input } from "@/components/ui/Field";
 import { toast } from "@/lib/toast";
 import { updateHandsSettingsAction, upsertAllowedContactAction } from "@/lib/actions/hands";
+import { searchVendorsAction } from "@/lib/actions/vendors";
 import { TICKET_CATEGORIES, type TicketCategory } from "@/lib/constants/tickets";
-import { HANDS_TRUST_LEVELS, HANDS_DEFAULT_TRUST_LEVEL, HANDS_IDENTITY_NAME, HANDS_RULEBOOK, type HandsTrustLevel } from "@/lib/constants/hands";
+import { HANDS_TRUST_LEVELS, HANDS_DEFAULT_TRUST_LEVEL, HANDS_IDENTITY_NAME, type HandsTrustLevel } from "@/lib/constants/hands";
 import { formatCurrency } from "@/lib/utils/numbers";
 import { formatRelativeTime } from "@/lib/utils/dates";
-import type { HandsAllowedContactRow, HandsConnectorStatusRow } from "@/lib/types/hands";
+import type { HandsAllowedContactRow, HandsConnectorStatusRow, HandsGuideDoc } from "@/lib/types/hands";
+import { HandsGuidesCard } from "@/components/settings/HandsGuidesCard";
 
 type Settings = { enabled: boolean; trustByCategory: Record<string, HandsTrustLevel>; perJobCapInr: number; dailyCapInr: number; monthlyCapInr: number };
 
-export function HandsSettingsPanel({ initial, contacts, connector, vendors }: {
+export function HandsSettingsPanel({ initial, contacts, connector, vendors, guides }: {
   initial: Settings;
+  /** The rulebook and Elaya's guide, live from their settings rows. */
+  guides: { rulebook: HandsGuideDoc; guide: HandsGuideDoc };
   contacts: HandsAllowedContactRow[];
   connector: HandsConnectorStatusRow | null;
   /** Agent vendors (vendors.kind = agent) an allowed number can stand for. */
@@ -35,7 +39,22 @@ export function HandsSettingsPanel({ initial, contacts, connector, vendors }: {
   const [enabled, setEnabled] = useState(initial.enabled);
   const [trust, setTrust] = useState<Record<string, HandsTrustLevel>>(initial.trustByCategory);
   const [caps, setCaps] = useState({ perJob: String(initial.perJobCapInr), daily: String(initial.dailyCapInr), monthly: String(initial.monthlyCapInr) });
-  const [contact, setContact] = useState({ jid: "", label: "", vendorId: vendors[0]?.id ?? "" });
+  const [contact, setContact] = useState<{ jid: string; label: string; vendor: { id: string; name: string } | null }>({ jid: "", label: "", vendor: null });
+  const [vendorQuery, setVendorQuery] = useState("");
+  const [vendorHits, setVendorHits] = useState<{ id: string; name: string; city: string | null }[]>([]);
+
+  // Any vendor can be linked: the one chosen becomes an outside agent on save (the vendor form has
+  // no type field). Searched by name, like the vendor list.
+  useEffect(() => {
+    const q = vendorQuery.trim();
+    if (q.length < 2) { setVendorHits([]); return; }
+    let alive = true;
+    const t = setTimeout(async () => {
+      const r = await searchVendorsAction({ query: q, limit: 6 });
+      if (alive && r.data) setVendorHits(r.data.map((v) => ({ id: v.id, name: v.name, city: v.home_city ?? null })));
+    }, 250);
+    return () => { alive = false; clearTimeout(t); };
+  }, [vendorQuery]);
 
   const save = () => start(async () => {
     const trustByCategory = Object.fromEntries(TICKET_CATEGORIES.values.map((c) => [c, trust[c] ?? HANDS_DEFAULT_TRUST_LEVEL])) as Record<TicketCategory, HandsTrustLevel>;
@@ -47,12 +66,20 @@ export function HandsSettingsPanel({ initial, contacts, connector, vendors }: {
 
   const addContact = () => start(async () => {
     const digits = contact.jid.replace(/\D/g, "");
-    const r = await upsertAllowedContactAction({ jid: `${digits}@s.whatsapp.net`, label: contact.label, vendorId: contact.vendorId || null, isActive: true });
+    const r = await upsertAllowedContactAction({ jid: `${digits}@s.whatsapp.net`, label: contact.label, vendorId: contact.vendor?.id ?? null, isActive: true });
     if (r.error) { toast.danger(r.error); return; }
-    toast.success("On the allowlist. The connector picks it up within a minute.");
-    setContact({ jid: "", label: "", vendorId: vendors[0]?.id ?? "" });
+    toast.success(contact.vendor ? `Saved. ${contact.vendor.name} is now an outside agent; the connector picks the number up within a minute.` : "On the allowlist. The connector picks it up within a minute.");
+    setContact({ jid: "", label: "", vendor: null });
+    setVendorQuery("");
     router.refresh();
   });
+
+  /** Load a saved number into the form, to link its vendor or change its label. Saving updates it. */
+  const editContact = (c: HandsAllowedContactRow) => {
+    const linked = vendors.find((v) => v.id === c.vendor_id);
+    setContact({ jid: c.jid.split("@")[0], label: c.label, vendor: linked ? { id: linked.id, name: linked.name } : null });
+    setVendorQuery("");
+  };
 
   const toggleContact = (c: HandsAllowedContactRow) => start(async () => {
     const r = await upsertAllowedContactAction({ jid: c.jid, label: c.label, vendorId: c.vendor_id, isActive: !c.is_active });
@@ -99,31 +126,48 @@ export function HandsSettingsPanel({ initial, contacts, connector, vendors }: {
             <div key={c.jid} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-3)", padding: "var(--space-2) 0", borderBottom: "1px solid var(--theme-paper-border)" }}>
               <div style={{ display: "flex", flexDirection: "column" }}>
                 <span style={{ fontSize: "var(--text-sm)", fontWeight: "var(--weight-medium)" }}>{c.label}</span>
-                <span className="type-caption" style={{ color: "var(--theme-text-tertiary)" }}>{c.jid.split("@")[0]} · {vendors.find((v) => v.id === c.vendor_id)?.name ?? "no vendor linked"}</span>
+                <span className="type-caption" style={{ color: "var(--theme-text-tertiary)" }}>+{c.jid.split("@")[0]} · {vendors.find((v) => v.id === c.vendor_id)?.name ?? "no vendor linked"}</span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
                 <Badge tone={c.is_active ? "success" : "neutral"} size="xs">{c.is_active ? "Allowed" : "Paused"}</Badge>
+                <Button size="xs" variant="ghost" disabled={pending} onClick={() => editContact(c)}>Edit</Button>
                 <Button size="xs" variant="ghost" disabled={pending} onClick={() => toggleContact(c)}>{c.is_active ? "Pause" : "Allow"}</Button>
               </div>
             </div>
           ))}
           <div className="serene-form-row" style={{ alignItems: "end" }}>
-            <Field label="WhatsApp number" htmlFor="hands-jid" hint="Digits with the country code, 91…"><Input id="hands-jid" inputMode="numeric" value={contact.jid} onChange={(e) => setContact({ ...contact, jid: e.target.value })} placeholder="9198XXXXXXXX" /></Field>
-            <Field label="Label" htmlFor="hands-label"><Input id="hands-label" value={contact.label} onChange={(e) => setContact({ ...contact, label: e.target.value })} placeholder="Instinct" /></Field>
-            <Field label="Stands for the vendor" htmlFor="hands-vendor" hint={vendors.length ? undefined : "Create a vendor with kind agent first."}>
-              <FormSelect id="hands-vendor" value={contact.vendorId} onValueChange={(v) => setContact({ ...contact, vendorId: v })}>
-                {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
-              </FormSelect>
+            <Field label="WhatsApp number" htmlFor="hands-jid" hint="With the country code. The + is optional.">
+              <Input id="hands-jid" inputMode="tel" value={contact.jid ? `+${contact.jid.replace(/\D/g, "")}` : ""} onChange={(e) => setContact({ ...contact, jid: e.target.value.replace(/\D/g, "") })} placeholder="+16508702892" />
             </Field>
-            <div><Button size="sm" disabled={pending || contact.jid.replace(/\D/g, "").length < 8 || !contact.label.trim()} loading={pending} onClick={addContact}>Add</Button></div>
+            <Field label="Label" htmlFor="hands-label"><Input id="hands-label" value={contact.label} onChange={(e) => setContact({ ...contact, label: e.target.value })} placeholder="Instinct" /></Field>
+            <Field label="Stands for the vendor" htmlFor="hands-vendor" hint={contact.vendor ? "Saving marks this vendor as an outside agent, so its tickets can use the Hands line." : "Search by the vendor's name. Optional."}>
+              {contact.vendor ? (
+                <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", minHeight: "2.25rem" }}>
+                  <Badge tone="info" size="xs">{contact.vendor.name}</Badge>
+                  <Button size="xs" variant="ghost" onClick={() => setContact({ ...contact, vendor: null })}>Change</Button>
+                </div>
+              ) : (
+                <Input id="hands-vendor" value={vendorQuery} onChange={(e) => setVendorQuery(e.target.value)} placeholder="Instinct" autoComplete="off" />
+              )}
+            </Field>
+            <div><Button size="sm" disabled={pending || contact.jid.replace(/\D/g, "").length < 8 || !contact.label.trim()} loading={pending} onClick={addContact}>Save</Button></div>
           </div>
+          {!contact.vendor && vendorHits.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", border: "1px solid var(--theme-paper-border)", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
+              {vendorHits.map((v) => (
+                <button key={v.id} type="button" className="serene-pressable" onClick={() => { setContact({ ...contact, vendor: { id: v.id, name: v.name } }); setVendorQuery(""); setVendorHits([]); }}
+                  style={{ textAlign: "left", padding: "var(--space-2) var(--space-3)", background: "transparent", border: "none", borderBottom: "1px solid var(--theme-paper-border)", cursor: "pointer", fontSize: "var(--text-sm)", color: "var(--theme-text-primary)" }}>
+                  {v.name}{v.city && <span style={{ color: "var(--theme-text-tertiary)", marginLeft: "var(--space-2)", fontSize: "var(--text-xs)" }}>{v.city}</span>}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </SectionCard>
 
-      <SectionCard title="The rulebook" description="Sent to the agent once from the hands phone (a Talk thread). Re-send it when the agent seems to have forgotten.">
-        <pre style={{ margin: 0, whiteSpace: "pre-wrap", fontFamily: "inherit", fontSize: "var(--text-sm)", color: "var(--theme-text-secondary)" }}>{HANDS_RULEBOOK}</pre>
-        <span className="type-caption" style={{ color: "var(--theme-text-tertiary)", display: "block", marginTop: "var(--space-2)" }}>Caps today: {formatCurrency(Number(caps.perJob) || 0)} a job, {formatCurrency(Number(caps.daily) || 0)} a day, {formatCurrency(Number(caps.monthly) || 0)} a month.</span>
-      </SectionCard>
+      <span className="type-caption" style={{ color: "var(--theme-text-tertiary)" }}>Caps today: {formatCurrency(Number(caps.perJob) || 0)} a job, {formatCurrency(Number(caps.daily) || 0)} a day, {formatCurrency(Number(caps.monthly) || 0)} a month.</span>
+
+      <HandsGuidesCard initial={guides} />
     </div>
   );
 }

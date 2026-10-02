@@ -7,7 +7,10 @@
 // chip shadow (--neu-shadow-chip) gives the gentle lift the soft-UI spec calls for.
 // `showGlyph` mounts Elaya's breathing mark on her charcoal disc beside her
 // bubbles (her presence, not an avatar; a static glyph = absent).
+// `below` (2026-09-29, the admin chats page) is a line under the bubble on the
+// sender's side: the time, the channel, what she called, a Correct button.
 
+import type { ReactNode } from 'react';
 import { m as motion } from 'framer-motion';
 import { ChatMarkdown } from '@/components/ui/ChatMarkdown';
 import { ElayaGlyphDisc } from '@/components/ui/elaya-glyph';
@@ -23,11 +26,14 @@ export type ElayaUiMessage = {
 export function ElayaMessageBubble({
   message,
   showGlyph = false,
+  below,
 }: {
   message: ElayaUiMessage;
   showGlyph?: boolean;
+  below?: ReactNode;
 }) {
   const isUser = message.role === 'user';
+  const width = 'max-w-[82%] md:max-w-[72%]';
   return (
     <motion.div
       initial={{ opacity: 0, y: 4 }}
@@ -41,8 +47,8 @@ export function ElayaMessageBubble({
           <ElayaGlyphDisc size={28} glyphSize={16} />
         </span>
       )}
-      <div
-        className="max-w-[82%] md:max-w-[72%]"
+      {wrapBelow(isUser, width, below, <div
+        className={below ? undefined : width}
         style={{
           // User floats on the accent wash (--neu-chat-user-bg — lifted-accent
           // wash under [data-neu="dark"]); Elaya on the raised high surface
@@ -67,7 +73,21 @@ export function ElayaMessageBubble({
         }}
       >
         {isUser ? message.content : <ChatMarkdown content={message.content} />}
-      </div>
+      </div>)}
     </motion.div>
+  );
+}
+
+/** With a `below` line, the bubble and the line share one column on the sender's side. */
+function wrapBelow(isUser: boolean, width: string, below: ReactNode, bubble: ReactNode) {
+  if (below == null) return bubble;
+  return (
+    <div
+      className={`${width} flex flex-col`}
+      style={{ gap: 'var(--space-1)', alignItems: isUser ? 'flex-end' : 'flex-start', minWidth: 0 }}
+    >
+      {bubble}
+      {below}
+    </div>
   );
 }

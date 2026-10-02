@@ -112,6 +112,17 @@ export function leakCheck(text: string, names: string[]): string[] {
   return [...found];
 }
 
+/**
+ * The same name parts leakCheck looks for, replaced before a text reaches a model ("Hotel for Mr
+ * Shah" → "Hotel for Mr the member"), so the model cannot copy a name it never saw.
+ */
+export function maskNames(text: string, names: string[]): string {
+  const parts = [...new Set(names.flatMap((n) => n.split(/[\s,.'’-]+/)).map((p) => p.trim()).filter((p) => p.length >= 4))];
+  let out = text;
+  for (const p of parts) out = out.replace(new RegExp(`(?<![\\p{L}\\p{N}])${p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "giu"), "the member");
+  return out;
+}
+
 /** The member's name and the names on their file: what must never appear in an outgoing line. */
 export async function memberNamesFor(memberId: string): Promise<string[]> {
   const admin = createAdminClient();

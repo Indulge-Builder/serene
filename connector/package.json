@@ -7,7 +7,8 @@
   "scripts": {
     "start": "trap 'echo; echo [watcher] stopped; exit 0' INT TERM; while true; do tsx src/index.ts; echo '[watcher] restarting in 2s (crash-only)'; sleep 2; done",
     "typecheck": "tsc --noEmit",
-    "once": "tsx src/index.ts"
+    "once": "tsx src/index.ts",
+    "harvest": "tsx src/harvest.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1119.0",

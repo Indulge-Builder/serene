@@ -70,18 +70,58 @@ export async function insertRawEvents(
 // read this one row instead. Non-fatal like every write here.
 // ─────────────────────────────────────────────
 
-export type WatcherState = "pairing" | "connecting" | "connected" | "logged_out";
+export type WatcherState = "pairing" | "connecting" | "connected" | "logged_out" | "banned";
+
+export type WatcherStatusRow = {
+  state: WatcherState;
+  state_since: string;
+  close_streak: number;
+  restart_requested_at: string | null;
+};
 
 /** Boot-time read so a restart in the SAME state inherits its state_since.
  *  Without this, a crash loop resets state_since every boot and the alarm's
- *  "stuck for N minutes" conditions can never fire. Non-fatal: null on error. */
-export async function getWatcherStatusRow(): Promise<{ state: WatcherState; state_since: string } | null> {
-  const { data, error } = await db.from("wag_watcher_status").select("state, state_since").eq("id", 1).limit(1);
+ *  "stuck for N minutes" conditions can never fire. Also carries the close
+ *  streak (the reconnect pause + the ban count, migration 0249) and the
+ *  restart stamp (a boot in 'banned' holds unless Serene asked for a retry).
+ *  Non-fatal: null on error. */
+export async function getWatcherStatusRow(): Promise<WatcherStatusRow | null> {
+  const { data, error } = await db
+    .from("wag_watcher_status")
+    .select("state, state_since, close_streak, restart_requested_at")
+    .eq("id", 1)
+    .limit(1);
   if (error) {
     console.error("[db] watcher status read failed:", error.message);
     return null;
   }
-  return (data?.[0] as { state: WatcherState; state_since: string } | undefined) ?? null;
+  const row = data?.[0] as Partial<WatcherStatusRow> | undefined;
+  if (!row?.state || !row.state_since) return null;
+  return {
+    state: row.state,
+    state_since: row.state_since,
+    close_streak: Number(row.close_streak ?? 0),
+    restart_requested_at: row.restart_requested_at ?? null,
+  };
+}
+
+/** One close: streak + 1, the code and the moment. Returns the new streak so
+ *  the caller can decide between a pause and a ban (migration 0249). */
+export async function recordConnectionClose(code: number | null): Promise<number> {
+  const prior = await getWatcherStatusRow();
+  const streak = (prior?.close_streak ?? 0) + 1;
+  const { error } = await db
+    .from("wag_watcher_status")
+    .update({ close_streak: streak, last_close_code: code, last_close_at: new Date().toISOString() })
+    .eq("id", 1);
+  if (error) console.error("[db] close record failed:", error.message);
+  return streak;
+}
+
+/** A clean open ends the streak. */
+export async function clearConnectionCloses(): Promise<void> {
+  const { error } = await db.from("wag_watcher_status").update({ close_streak: 0 }).eq("id", 1);
+  if (error) console.error("[db] close streak reset failed:", error.message);
 }
 
 /** Beat + read back the app→watcher control column in the SAME round trip.
@@ -271,7 +311,8 @@ export type WagMessageRow = {
   wa_timestamp: string;
   is_forwarded: boolean;
   edit_of_wa_message_id: string | null;
-  source: "live" | "history_sync" | "backfill";
+  // 'harvest' = taken from a staff phone linked for one sitting (harvest.ts, migration 0249).
+  source: "live" | "history_sync" | "backfill" | "harvest";
   raw: unknown;
 };
 

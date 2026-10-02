@@ -157,6 +157,14 @@ export const ELAYA_PLAYBOOKS_PATH = '/settings/elaya-playbooks';
 export const TEACH_ELAYA_PATH = '/settings/teach-elaya';
 /** The customer-facing content library (migration 0150). */
 export const ELAYA_TRAINING_PATH = '/admin/elaya-training';
+/** Every person's chats with Elaya, on every channel, for an admin to read and correct (2026-09-29). */
+export const ELAYA_CHATS_PATH = '/settings/elaya-chats';
+/** The chats page: the open person's query param, and how many messages one page of their history holds. */
+export const ELAYA_CHATS_PERSON_PARAM = 'person';
+export const ELAYA_CHATS_PAGE_SIZE = 60;
+/** The channels a message can arrive on, for the chats page filter (mirrors ElayaChannel; 'mcp' writes no messages). */
+export const ELAYA_CHAT_CHANNEL_LABELS = { whatsapp: 'WhatsApp', in_app: 'In-app', voice: 'Voice', mcp: 'MCP' } as const;
+export const ELAYA_CHAT_CHANNEL_FILTERS = ['whatsapp', 'in_app', 'voice'] as const;
 
 // ── Test data Elaya must not show a real user (2026-09-24) ──────────────────────────
 // The eval harness (evals/) seeds one lead, "Testak Evalson", slug `testak-evalson-eval`, and runs

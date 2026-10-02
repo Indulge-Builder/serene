@@ -10,7 +10,8 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { handsDb, HANDS_SCHEMA } from "@/lib/supabase/schemas";
 import { mapRows } from "@/lib/utils/rows";
-import type { HandsAllowedContactRow, HandsConnectorStatusRow, HandsMessageRow, HandsOutboxRow, HandsThreadRow } from "@/lib/types/hands";
+import { readLinkPreview, type WaPreviewFields } from "@/lib/utils/link-preview";
+import type { HandsAllowedContactRow, HandsChatMessage, HandsConnectorStatusRow, HandsMessageRow, HandsOutboxRow, HandsThreadRow } from "@/lib/types/hands";
 import type { HandsThreadKind, HandsThreadStatus } from "@/lib/constants/hands";
 
 const LOG = "[hands-service]";
@@ -36,7 +37,7 @@ export async function listHandsThreads(scope: HandsScope, opts: { kind?: HandsTh
 }
 
 /** One thread the viewer may see, with its messages oldest first and what is still queued. */
-export async function getHandsThread(id: string, scope: HandsScope): Promise<{ thread: HandsThreadSummary; messages: HandsMessageRow[]; outbox: HandsOutboxRow[] } | null> {
+export async function getHandsThread(id: string, scope: HandsScope): Promise<{ thread: HandsThreadSummary; messages: HandsChatMessage[]; outbox: HandsOutboxRow[] } | null> {
   const admin = createAdminClient();
   const { data: t } = await handsDb(admin).from("threads").select("*").eq("id", id).maybeSingle();
   if (!t) return null;
@@ -47,7 +48,66 @@ export async function getHandsThread(id: string, scope: HandsScope): Promise<{ t
     handsDb(admin).from("outbox").select("*").eq("thread_id", id).in("status", ["queued", "failed", "refused"]).order("requested_at", { ascending: true }),
     decorate([thread]),
   ]);
-  return { thread: summary, messages: mapRows<HandsMessageRow, HandsMessageRow>(m, (r) => r), outbox: mapRows<HandsOutboxRow, HandsOutboxRow>(o, (r) => r) };
+  return { thread: summary, messages: foldHandsChat(mapRows<HandsMessageRow, HandsMessageRow>(m, (r) => r)), outbox: mapRows<HandsOutboxRow, HandsOutboxRow>(o, (r) => r) };
+}
+
+type RawWa = {
+  key?: { fromMe?: boolean };
+  message?: {
+    extendedTextMessage?: WaPreviewFields;
+    reactionMessage?: { key?: { id?: string }; text?: string };
+    protocolMessage?: { type?: number | string; key?: { id?: string }; editedMessage?: { conversation?: string; extendedTextMessage?: { text?: string } } };
+  } & Record<string, unknown>;
+};
+
+/** Payload types that carry no line of their own (key exchange, history sync, app state). Hidden from the chat. */
+const SILENT_PAYLOADS = ["senderKeyDistributionMessage", "messageContextInfo", "protocolMessage", "reactionMessage"];
+
+/**
+ * THE fold of a hands chat (2026-10-01): WhatsApp sends a reaction, an edit and a delete as messages
+ * of their own, which the connector files as kind `other` and the chat printed as "[other]". Here a
+ * reaction lands as a chip on the message it is about (the latest per person wins, an empty one takes
+ * it back), an edit replaces the text, a delete empties the line, a link carries the preview the
+ * sender's phone made (readLinkPreview), and payloads with no line of their
+ * own are hidden. Reads `raw`, so rows filed before the fold are repaired too. Pure.
+ */
+export function foldHandsChat(rows: HandsMessageRow[]): HandsChatMessage[] {
+  const reactions = new Map<string, Map<string, string>>(); // target wa id → reactor → emoji
+  const edits = new Map<string, string | null>();          // target wa id → new text (null = deleted)
+  const hidden = new Set<string>();
+  for (const r of rows) {
+    if (r.kind !== "other") continue;
+    const raw = r.raw as RawWa;
+    const msg = raw?.message ?? {};
+    const reactor = raw?.key?.fromMe ? "me" : r.jid;
+    if (msg.reactionMessage?.key?.id) {
+      const target = msg.reactionMessage.key.id;
+      const forTarget = reactions.get(target) ?? new Map<string, string>();
+      if (msg.reactionMessage.text) forTarget.set(reactor, msg.reactionMessage.text); else forTarget.delete(reactor);
+      reactions.set(target, forTarget);
+      hidden.add(r.id);
+    } else if (msg.protocolMessage) {
+      const p = msg.protocolMessage;
+      const target = p.key?.id;
+      const edited = p.editedMessage?.conversation ?? p.editedMessage?.extendedTextMessage?.text;
+      if (target && edited) edits.set(target, edited);
+      else if (target && (p.type === 0 || p.type === "REVOKE")) edits.set(target, null);
+      hidden.add(r.id);
+    } else if (Object.keys(msg).length > 0 && Object.keys(msg).every((k) => SILENT_PAYLOADS.includes(k))) {
+      hidden.add(r.id);
+    }
+  }
+  return rows.filter((r) => !hidden.has(r.id)).map((r) => {
+    const counts = new Map<string, number>();
+    for (const emoji of reactions.get(r.wa_message_id)?.values() ?? []) counts.set(emoji, (counts.get(emoji) ?? 0) + 1);
+    const link_preview = r.kind === "text" ? readLinkPreview((r.raw as RawWa)?.message?.extendedTextMessage) : null;
+    const row: HandsChatMessage = { ...r, reactions: [...counts.entries()].map(([emoji, count]) => ({ emoji, count })), link_preview };
+    if (edits.has(r.wa_message_id)) {
+      const text = edits.get(r.wa_message_id) ?? null;
+      return { ...row, text: text ?? "This message was deleted", kind: text === null ? "text" : row.kind, media_path: text === null ? null : row.media_path };
+    }
+    return row;
+  });
 }
 
 /** The open ticket thread for a ticket, if any (the ticket page asks). */
@@ -60,6 +120,24 @@ export async function listAllowedContacts(): Promise<HandsAllowedContactRow[]> {
   const { data, error } = await handsDb(createAdminClient()).from("allowed_contacts").select("*").order("label");
   if (error) console.error(`${LOG} contacts read failed`, error.message);
   return mapRows<HandsAllowedContactRow, HandsAllowedContactRow>(data, (r) => r);
+}
+
+/**
+ * Messages an allowed contact sent while no conversation with it was open, per number. The
+ * connector files a message into the open thread of its number, so a first message, or one after
+ * a thread was closed, waits here until someone opens the chat (openTalkThreadCore adopts them).
+ */
+export type HandsUnfiled = Record<string, { count: number; lastAt: string; lastText: string | null }>;
+
+export async function listUnfiledByContact(): Promise<HandsUnfiled> {
+  const { data, error } = await handsDb(createAdminClient()).from("messages").select("jid, wa_timestamp, text, kind").is("thread_id", null).order("wa_timestamp", { ascending: false }).limit(500);
+  if (error) { console.error(`${LOG} unfiled read failed`, error.message); return {}; }
+  const out: HandsUnfiled = {};
+  mapRows<{ jid: string; wa_timestamp: string; text: string | null; kind: string }, void>(data, (r) => {
+    const cur = out[r.jid];
+    out[r.jid] = cur ? { ...cur, count: cur.count + 1 } : { count: 1, lastAt: r.wa_timestamp, lastText: r.text ?? `[${r.kind}]` };
+  });
+  return out;
 }
 
 /** The allowed contact behind an agent vendor (vendors.kind = agent). */

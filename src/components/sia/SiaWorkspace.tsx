@@ -227,7 +227,9 @@ export function SiaWorkspace({ groups: initialGroups, initialGroupJid = null, in
           ? "waiting to be paired"
           : health.watcherState === "connecting"
             ? "connecting"
-            : "watcher offline";
+            : health.watcherState === "banned"
+              ? "number banned"
+              : "watcher offline";
   const consoleLabel = watcherStatus ? `Sia console — ${watcherStatus}` : "Sia console";
 
   return (
