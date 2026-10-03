@@ -12,6 +12,22 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-10-03 — A genie's late task stays inside their own queendom
+
+**Why.** A genie's own task ran late (Rupali, "Message Mrunal Jhaveri…") and the overdue WhatsApp went
+to 11 people: both queens, Sanika, the Joker head, every bishop and four founders. Rupali has no
+direct manager set, so the escalation fell back to every manager, admin and founder in Concierge.
+
+**What.**
+- `getAssigneeManagers` (sla-service.ts): after the direct manager (`reports_to`), a concierge seat
+  escalates inside its own queendom: a genie's or joker's task goes to that queendom's bishops (else
+  its queen), a bishop's to the queen, a queen's to nobody. Only an account with no seat still falls
+  back to the domain's managers. `getTaskWithAssignee` now carries the assignee's queendom and seat.
+- Data fix: Aditya Sonde's bishop seat moved from Sanika to Ananyshree (he is Ananyshree's bishop;
+  Elaya had read the wrong seat and told him he was not in her queendom).
+
+---
+
 ## 2026-10-03 — Lead notifications go only to the lead domains, not every founder
 
 **Why.** Nine accounts carry the founder role, including the concierge founders and the finance team.

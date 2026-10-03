@@ -12,6 +12,7 @@ import { giaDb } from '@/lib/supabase/schemas';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDomainDecisionMakers } from '@/lib/services/profiles-service';
 import { GIA_DOMAINS } from '@/lib/constants/domains';
+import { getQueendomSeats } from '@/lib/services/queendom-seats';
 import { mapRows }           from '@/lib/utils/rows';
 import { isCadenceCode }     from '@/lib/constants/sla';
 import { goingColdCutoff } from '@/lib/constants/leads';
@@ -317,6 +318,8 @@ export interface TaskAssigneeContext {
     full_name:  string | null;
     domain:     string;
     reports_to: string | null; // the assignee's direct manager (profiles.id)
+    queendom_id?: string | null; // a concierge seat's queendom (escalation stays inside it)
+    sia_role?:    string | null; // genie / bishop / queen / joker / joker_head
   } | null; // null when the task has no assignee or the profile is missing
 }
 
@@ -344,7 +347,7 @@ export async function getTaskWithAssignee(taskId: string): Promise<TaskAssigneeC
 
   const { data: profile } = await admin
     .from('profiles')
-    .select('id, phone, full_name, domain, reports_to')
+    .select('id, phone, full_name, domain, reports_to, queendom_id, sia_role')
     .eq('id', assignedTo)
     .maybeSingle();
 
@@ -362,6 +365,8 @@ export async function getTaskWithAssignee(taskId: string): Promise<TaskAssigneeC
       full_name:  (profile.full_name as string | null) ?? null,
       domain:     profile.domain as string,
       reports_to: (profile.reports_to as string | null) ?? null,
+      queendom_id: (profile.queendom_id as string | null) ?? null,
+      sia_role:    (profile.sia_role as string | null) ?? null,
     },
   };
 }
@@ -375,6 +380,8 @@ export async function getTaskWithAssignee(taskId: string): Promise<TaskAssigneeC
 export async function getAssigneeManagers(assignee: {
   domain:     string;
   reports_to: string | null;
+  queendom_id?: string | null;
+  sia_role?:    string | null;
 }): Promise<Pick<Profile, 'id' | 'full_name'>[]> {
   // Prefer the direct manager.
   if (assignee.reports_to) {
@@ -389,6 +396,19 @@ export async function getAssigneeManagers(assignee: {
     if (error) console.error('[sla-service] getAssigneeManagers reports_to error:', error);
     if (data) return [data as Pick<Profile, 'id' | 'full_name'>];
     // reports_to set but inactive/missing → fall through to domain managers.
+  }
+
+  // A concierge seat escalates INSIDE its own queendom (2026-10-03): a genie's or joker's late task
+  // goes to that queendom's bishops (else its queen), a bishop's to the queen, a queen's to nobody.
+  // Never the whole domain: one genie's task once reached both queens, the Joker head, every bishop
+  // and four founders.
+  if (assignee.queendom_id && assignee.sia_role) {
+    if (assignee.sia_role === 'queen') return [];
+    const seats = await getQueendomSeats(assignee.queendom_id);
+    const ids = assignee.sia_role === 'bishop' ? (seats.queen ? [seats.queen] : []) : seats.bishops.length ? seats.bishops : seats.queen ? [seats.queen] : [];
+    if (ids.length === 0) return [];
+    const { data } = await createAdminClient().from('profiles').select('id, full_name').in('id', ids).eq('is_active', true);
+    return (data ?? []) as Pick<Profile, 'id' | 'full_name'>[];
   }
 
   return getManagersByDomain(assignee.domain);
