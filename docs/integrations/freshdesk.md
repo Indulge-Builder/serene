@@ -53,7 +53,7 @@ no user policy. Nothing outside the sync writes here, and the only CHECKs are on
 
 | Table | Posture | What |
 | --- | --- | --- |
-| `tickets` | current state, overwritten by the sync | every list field, `custom_fields` and `raw` whole, `status_label` resolved from the field choices, requester name and E.164 phone, `member_id` (resolved by `freshdesk_contact_id`, then by primary or alternate phone), the `stats` timestamps, `attachments` (0197), `conversations_synced_at` |
+| `tickets` | current state, overwritten by the sync | every list field, `custom_fields` and `raw` whole, `status_label` resolved from the field choices, requester name and E.164 phone, `member_id` (resolved by `freshdesk_contact_id`, then by primary or alternate phone), the `stats` timestamps, `attachments` (0197), `conversations_synced_at`; `is_incomplete` and `missing_info` (2026-10-03) are the team's submission check, written by that setup outside this repo and NEVER by the sync (the upsert sets only the columns it carries); Elaya reads them through `list_incomplete_tickets` |
 | `conversations` | current state | notes and replies, `private` and `incoming` flags, text and HTML, `attachments` (with our storage paths), `media_synced_at` (0197), `vendor_extracted_at` and `vendor_extract_attempts` (0214, the vendor extractor's queue) |
 | `contacts` | current state | identity, `phone_e164`, the preference fields whole, `member_id` |
 | `agents`, `groups`, `ticket_fields`, `sla_policies` | reference, refreshed every 6 hours | `ticket_fields.choices` holds the status vocabulary and the category tree |

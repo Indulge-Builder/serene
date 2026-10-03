@@ -54,6 +54,11 @@ export type FdTicketRow = {
   conversation_count: number;
   /** 0197: ticket-level files + the description's inline images. */
   attachments: FdAttachment[];
+  /** The submission check (kept by the team's own setup, 2026-10-03; the sync never writes it):
+   *  true = something is missing, false = checked and complete, null = not checked yet. */
+  is_incomplete: boolean | null;
+  /** What the check found missing, comma-separated ("Bill of Vendor", "phone number or email", ...). */
+  missing_info: string | null;
 };
 
 export type FdConversationRow = {
@@ -220,7 +225,7 @@ type Table<Row, Insert = Partial<Row>> = {
 export type FreshdeskDatabase = {
   freshdesk: {
     Tables: {
-      tickets: Table<FdTicketRow, Omit<FdTicketRow, "first_synced_at" | "synced_at" | "attachments"> & { synced_at?: string; attachments?: FdAttachment[] }>;
+      tickets: Table<FdTicketRow, Omit<FdTicketRow, "first_synced_at" | "synced_at" | "attachments" | "is_incomplete" | "missing_info"> & { synced_at?: string; attachments?: FdAttachment[] }>;
       conversations: Table<FdConversationRow, Omit<FdConversationRow, "media_synced_at" | "vendor_extracted_at" | "vendor_extract_attempts"> & { media_synced_at?: string | null; vendor_extracted_at?: string | null; vendor_extract_attempts?: number }>;
       contacts: Table<FdContactRow>;
       agents: Table<FdAgentRow>;
@@ -425,6 +430,7 @@ export type FdTicketListItem = Pick<
   | "id" | "subject" | "status" | "status_label" | "priority" | "source" | "ticket_type"
   | "category" | "sub_category" | "group_id" | "responder_id" | "requester_name" | "member_id"
   | "due_by" | "is_escalated" | "fd_created_at" | "fd_updated_at" | "resolved_at" | "conversation_count"
+  | "status_updated_at" | "is_incomplete" | "missing_info"
 > & {
   group_name: string | null;
   agent_name: string | null;
@@ -447,6 +453,8 @@ export type FdTicketListFilters = {
   /** Leave out tickets carrying this tag. A scope, not a pick: the finance view sets it (0250:
    *  "Invoice Done"), never the URL. */
   excludeTag?: string | null;
+  /** true = only tickets the submission check flagged incomplete (is_incomplete = true). */
+  incomplete?: boolean | null;
   page: number;
 };
 

@@ -331,6 +331,11 @@ block (home logistics never prove a member is home; conflicting signals are give
 `src/lib/services/member-travel.ts`. On 28 Sep the same question took four turns of keyword searches
 (193k input tokens for the first answer) and still missed people.
 
+**The incomplete scene (2026-10-03).** `list_incomplete_tickets` answers "today's incomplete score
+and scene" from the team's submission check on the Freshdesk mirror (`is_incomplete`, `missing_info`):
+the flagged tickets in the four live statuses, the score per agent and per status, the missing items
+ranked, and how many tickets the check has not looked at yet. Serene reads the check, never writes it.
+
 ---
 
 ## 7. Writes and confirmation

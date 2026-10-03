@@ -66,7 +66,7 @@ export async function getGroupAgentIds(groupId: number): Promise<Set<number> | n
   return ids;
 }
 
-async function getNameMaps(): Promise<{ groups: Map<number, string>; agents: Map<number, string> }> {
+export async function getNameMaps(): Promise<{ groups: Map<number, string>; agents: Map<number, string> }> {
   const db = freshdeskDb();
   const [g, a] = await Promise.all([
     db.from("groups").select("id, name"),
@@ -113,7 +113,7 @@ export async function getFreshdeskFilterVocab(): Promise<FdFilterVocab> {
 // ─── The list ────────────────────────────────────────────────────────────────
 
 const LIST_COLUMNS =
-  "id, subject, status, status_label, priority, source, ticket_type, category, sub_category, group_id, responder_id, requester_name, member_id, due_by, is_escalated, fd_created_at, fd_updated_at, resolved_at, conversation_count";
+  "id, subject, status, status_label, priority, source, ticket_type, category, sub_category, group_id, responder_id, requester_name, member_id, due_by, is_escalated, fd_created_at, fd_updated_at, resolved_at, conversation_count, status_updated_at, is_incomplete, missing_info";
 
 /** PostgREST `.or()` filter values cannot carry commas or parentheses. */
 function searchToken(q: string): string {
@@ -150,6 +150,7 @@ function applyTicketFilters(q: TicketSelect, filters: FdTicketListFilters, withS
   if (filters.dateFrom) out = out.gte("fd_created_at", filters.dateFrom);
   if (filters.dateTo) out = out.lte("fd_created_at", filters.dateTo);
   if (filters.member) out = out.eq("member_id", filters.member);
+  if (filters.incomplete === true) out = out.eq("is_incomplete", true);
   if (filters.excludeTag) out = out.not("tags", "cs", `{"${filters.excludeTag.replace(/["\\]/g, "")}"}`);
   if (filters.search) {
     const token = searchToken(filters.search);
@@ -232,6 +233,41 @@ export async function listFreshdeskTicketsByCategory(scope: { groupIds: readonly
     agent_name: r.responder_id != null ? (names.agents.get(r.responder_id) ?? null) : null,
   }));
   return { tickets, totalCount: Number(count ?? 0) };
+}
+
+/**
+ * THE incomplete scene (2026-10-03): the tickets the submission check flagged (is_incomplete = true,
+ * what is missing in missing_info) for the page's own filters, newest activity first, PLUS a light
+ * tally of every live ticket under the same filters (status, agent, the check's verdict) so a score
+ * can be said per agent and per status, and the tickets the check has not looked at yet are counted,
+ * never called complete. `since` narrows the flagged rows to those touched after it. null = failed.
+ */
+export type FdIncompleteTally = { id: number; status: number; responder_id: number | null; is_incomplete: boolean | null };
+export async function listIncompleteScene(filters: FdTicketListFilters, opts: { since?: string | null; limit: number }): Promise<{ tickets: FdTicketListItem[]; totalCount: number; tally: FdIncompleteTally[]; tallyCapped: boolean } | null> {
+  let q = applyTicketFilters(ticketsSelect(LIST_COLUMNS, { count: "exact" }), { ...filters, incomplete: true });
+  if (opts.since) q = q.gte("fd_updated_at", opts.since);
+  const [{ data, error, count }, names] = await Promise.all([q.order("fd_updated_at", { ascending: false }).limit(Math.min(Math.max(opts.limit, 1), 400)), getNameMaps()]);
+  if (error) { console.error("[freshdesk-service] incomplete scene failed", error.message); return null; }
+  type Row = Omit<FdTicketListItem, "group_name" | "agent_name">;
+  const tickets = mapRows<Row, FdTicketListItem>(data, (r) => ({
+    ...r,
+    status_label: r.status_label ?? fdStatusLabel(r.status),
+    group_name: r.group_id != null ? (names.groups.get(r.group_id) ?? null) : null,
+    agent_name: r.responder_id != null ? (names.agents.get(r.responder_id) ?? null) : null,
+  }));
+  // The tally: every live ticket under the same filters, four columns, paged under the 1,000-row cap.
+  const tally: FdIncompleteTally[] = [];
+  const TALLY_PAGE = 1000; const TALLY_MAX = 4000;
+  let capped = false;
+  for (let from = 0; from < TALLY_MAX; from += TALLY_PAGE) {
+    const { data: t, error: tErr } = await applyTicketFilters(ticketsSelect("id, status, responder_id, is_incomplete"), { ...filters, incomplete: null }).order("id").range(from, from + TALLY_PAGE - 1);
+    if (tErr) { console.error("[freshdesk-service] incomplete tally failed", tErr.message); return null; }
+    const page = mapRows<FdIncompleteTally, FdIncompleteTally>(t, (r) => r);
+    tally.push(...page);
+    if (page.length < TALLY_PAGE) break;
+    if (from + TALLY_PAGE >= TALLY_MAX) capped = true;
+  }
+  return { tickets, totalCount: Number(count ?? 0), tally, tallyCapped: capped };
 }
 
 /** The member a `?member=` scope points at, for the "Tickets for …" line; null when unknown. */

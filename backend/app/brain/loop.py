@@ -81,7 +81,7 @@ MAX_ITERATIONS = 10
 TOOL_RESULT_MAX_CHARS = 12_000
 # Tools that are a whole picture by design carry a larger allowance (mirrors
 # `maxResultChars` on the Node tool; Node has already fitted the result under it).
-TOOL_RESULT_MAX_CHARS_BY_TOOL: dict[str, int] = {"get_member_360": 24_000, "get_open_loops": 18_000, "list_travelling_members": 30_000}
+TOOL_RESULT_MAX_CHARS_BY_TOOL: dict[str, int] = {"get_member_360": 24_000, "get_open_loops": 18_000, "list_travelling_members": 30_000, "list_incomplete_tickets": 24_000}
 
 # ── The cost envelope (mirrors src/lib/constants/elaya-cost.ts; change both) ──
 TURN_TOOL_RESULT_BUDGET_CHARS = 90_000

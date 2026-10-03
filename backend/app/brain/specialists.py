@@ -161,7 +161,7 @@ SPECIALISTS: dict[str, Specialist] = {
                "agent (the member's name, phone, address and contact never do); send_hands_message is a "
                "proposal the user confirms. Bookings are always in the name Indulge Concierge."),
         toolset=["list_tickets", "get_ticket", "add_ticket_note", "move_ticket_status", "find_teammate",
-                 "get_open_loops",
+                 "get_open_loops", "list_incomplete_tickets",
                  "get_member_360", "search_sia_messages", "get_sia_group_messages",
                  "list_hands_jobs", "get_hands_thread", "draft_hands_message", "send_hands_message" ],
     ),
@@ -189,7 +189,7 @@ SPECIALISTS: dict[str, Specialist] = {
                "deep read with start_deep_read and tell the founder it will land in this chat in a few minutes; a keyword "
                "match presented as the count is not acceptable there."),
         toolset=["get_live_pulse", "get_open_loops", "find_member_occasions", "list_travelling_members", "describe_database", "query_database", "start_deep_read", "raise_improvement_request", "get_books_overview",
-                 "get_freshdesk_overview", "search_freshdesk_tickets", "get_member_360", "get_member_overview",
+                 "get_freshdesk_overview", "search_freshdesk_tickets", "list_incomplete_tickets", "get_member_360", "get_member_overview",
                  "search_sia_messages", "get_sia_group_messages", "list_sia_groups", "get_activity_feed", "find_teammate"],
         job="heavy",  # the deepest tier: planning and writing queries is the hardest work she does
         roles=frozenset({"admin", "founder"}),
@@ -205,10 +205,12 @@ SPECIALISTS: dict[str, Specialist] = {
         ),
         focus=("Focus for this conversation: FRESHDESK — the helpdesk as mirrored in Serene. Numbers "
                "come from get_freshdesk_overview, rows from search_freshdesk_tickets, one ticket's "
-               "story from get_freshdesk_ticket. Quote counts exactly, say which filters were applied, "
+               "story from get_freshdesk_ticket, and the INCOMPLETE scene (what the submission check says is "
+               "missing on the live tickets: the score, per agent, the items) from ONE list_incomplete_tickets "
+               "call. Quote counts exactly, say which filters were applied, "
                "and say 'showing N of M' when the list is longer than what you were given. Serene never "
                "writes to Freshdesk: you can read, never change."),
-        toolset=["get_freshdesk_overview", "search_freshdesk_tickets", "get_freshdesk_ticket",
+        toolset=["get_freshdesk_overview", "search_freshdesk_tickets", "get_freshdesk_ticket", "list_incomplete_tickets",
                  "get_open_loops", "get_member_overview", "find_teammate",
                  "get_member_360", "search_sia_messages", "get_sia_group_messages" ],
     ),
@@ -291,6 +293,7 @@ SPECIALISTS: dict[str, Specialist] = {
             "get_open_loops",
             "find_member_occasions",
             "list_travelling_members",
+            "list_incomplete_tickets",
             "describe_database",
             "query_database",
             "start_deep_read",

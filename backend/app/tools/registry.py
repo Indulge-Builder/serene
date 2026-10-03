@@ -1122,6 +1122,9 @@ BRIDGED_READ_TOOL_NAMES: frozenset[str] = frozenset({
     # Who is travelling, where and until when (2026-10-03): trips on record + Travel tickets + one
     # scan of the member groups, folded per member in Node; this brain decides WHEN.
     "list_travelling_members",
+    # The incomplete scene (2026-10-03): the submission check's verdict on the live Freshdesk tickets,
+    # scored per agent and per status in Node.
+    "list_incomplete_tickets",
 })
 
 # The ticket pair (2026-09-15) is bridged for the same reason: the sentinel's ledger and the
@@ -1165,6 +1168,7 @@ _BRIDGED_READ_ROLES: dict[str, frozenset[str]] = {
     "get_open_loops": frozenset({"agent", "manager", "admin", "founder"}),
     "find_member_occasions": frozenset({"agent", "manager", "admin", "founder"}),
     "list_travelling_members": frozenset({"agent", "manager", "admin", "founder"}),
+    "list_incomplete_tickets": frozenset({"agent", "manager", "admin", "founder"}),
 }
 
 

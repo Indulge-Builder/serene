@@ -12,6 +12,34 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-10-03 — Elaya reads the incomplete tickets (the submission check)
+
+**Why.** The team's own check now marks a Freshdesk ticket incomplete when its submission lacks
+something, and says what: a vendor bill, proof of confirmation, the client's phone or email,
+"details not shared", a list of fields. Two columns on the mirror hold it (`is_incomplete`,
+`missing_info`), written by that setup, never by the sync. A queen asking "today's incomplete score
+and scene" expects the tickets in Nudge Client, Nudge Vendor, Ongoing Delivery and Invoice Due that
+are flagged, with the ticket number, what is missing and the subject. Elaya had no way to read it.
+
+**What.**
+- `freshdesk-service.ts`: the list columns carry `is_incomplete`, `missing_info` and
+  `status_updated_at`; `applyTicketFilters` takes `incomplete: true`; `listIncompleteScene(filters,
+  {since, limit})` is THE scene read: the flagged rows plus a four-column tally of every live ticket
+  under the same filters, so a score can be said per agent and per status and the tickets the check
+  has not looked at yet are counted, never called complete. `getNameMaps` is exported.
+- `elaya-data.ts`: `getIncompleteTicketsFor(principal, {statuses, agent, group, since, limit})`,
+  scoped like every Freshdesk read (the queendom's group); the four live statuses by default; the
+  score (incomplete / complete / unchecked, overall, per agent, per status), the missing items ranked,
+  the rows with days in status, `how_to_read`. `search_freshdesk_tickets` rows and
+  `get_freshdesk_ticket` carry `incomplete` and `missing` too, and the search takes `statuses` (several
+  by name) and `incomplete: true`.
+- The tool `list_incomplete_tickets` in both brains (bridged read, every staff role; `maxResultChars`
+  24,000 mirrored in loop.py), in the freshdesk, tickets, general and analytics hot sets; the
+  Freshdesk specialist's focus names it; the shared rule lists it beside the other prepared reads.
+- Docs: the mirror contract names the two columns and who writes them (`docs/integrations/freshdesk.md`).
+
+---
+
 ## 2026-10-03 — "Who is travelling" is one read; the build gate fix
 
 **Why.** On 28 Sep a joker asked Elaya "who all is travelling right now and where and until when".

@@ -62,7 +62,7 @@ import {
   getFreshdeskOverview,
   getFreshdeskFilterVocab,
   listFreshdeskTickets,
-  getFreshdeskTicketDetail, listOverdueFreshdeskTickets, getFreshdeskSyncHealth } from '@/lib/services/freshdesk-service';
+  getFreshdeskTicketDetail, listOverdueFreshdeskTickets, getFreshdeskSyncHealth, listIncompleteScene, getNameMaps } from '@/lib/services/freshdesk-service';
 import { FD_TERMINAL_STATUSES, fdPriorityLabel, fdStatusLabel } from '@/lib/constants/freshdesk';
 import type { FdTicketListFilters } from '@/lib/types/freshdesk';
 import { canAccessMember, canSeeMemberFinance } from '@/lib/elaya/access';
@@ -836,6 +836,10 @@ export type FreshdeskAsk = {
   search?: string | null;
   only_open?: boolean;
   status?: string | null;
+  /** Several statuses by name (the incomplete scene's four); wins over `status` and `only_open`. */
+  statuses?: string[] | null;
+  /** true = only tickets the submission check flagged incomplete. */
+  incomplete?: boolean | null;
   group?: string | null;
   agent?: string | null;
   category?: string | null;
@@ -871,7 +875,15 @@ async function freshdeskFiltersFor(principal: StaffPrincipal, ask: FreshdeskAsk)
     priority: null, dateFrom: ask.created_from ?? null, dateTo: ask.created_to ?? null, member: null, page: 1,
   };
 
-  if (ask.status) {
+  if (ask.statuses?.length) {
+    const ids: number[] = []; const labels: string[] = [];
+    for (const name of ask.statuses) {
+      const s = pickByName(vocab.statuses, (x) => x.label, name);
+      if (!s) return { ok: false, reason: 'unknown', field: 'status', asked: name, choices: vocab.statuses.map((x) => x.label) };
+      ids.push(s.id); labels.push(s.label);
+    }
+    filters.status = ids; applied.status = labels.join(', ');
+  } else if (ask.status) {
     const s = pickByName(vocab.statuses, (x) => x.label, ask.status);
     if (!s) return { ok: false, reason: 'unknown', field: 'status', asked: ask.status, choices: vocab.statuses.map((x) => x.label) };
     filters.status = [s.id]; applied.status = s.label;
@@ -903,6 +915,7 @@ async function freshdeskFiltersFor(principal: StaffPrincipal, ask: FreshdeskAsk)
     if (!c) return { ok: false, reason: 'unknown', field: 'category', asked: ask.category, choices: vocab.categories };
     filters.category = c; applied.category = c;
   }
+  if (ask.incomplete) { filters.incomplete = true; applied.incomplete = 'only tickets the submission check flagged incomplete'; }
   if (filters.search) applied.search = filters.search;
   if (filters.dateFrom) applied.created_from = filters.dateFrom;
   if (filters.dateTo) applied.created_to = filters.dateTo;
@@ -957,6 +970,8 @@ export async function listFreshdeskTicketsFor(principal: StaffPrincipal, ask: Fr
       overdue: Boolean(t.due_by && !FD_TERMINAL_STATUSES.includes(t.status) && new Date(t.due_by).getTime() < now),
       escalated: t.is_escalated,
       replies: t.conversation_count,
+      incomplete: t.is_incomplete,
+      missing: missingItems(t.missing_info),
     })),
   };
 }
@@ -1004,6 +1019,8 @@ export async function getFreshdeskTicketFor(principal: StaffPrincipal, id: numbe
       resolved_at: t.resolved_at,
       closed_at: t.closed_at,
       escalated: t.is_escalated,
+      incomplete: t.is_incomplete,
+      missing: missingItems(t.missing_info),
     },
     thread_total: d.conversations.length,
     thread: notes.map((c) => ({
@@ -1722,4 +1739,88 @@ export async function findTravellingMembersFor(principal: StaffPrincipal, opts: 
   const scope = await siaScopeFor(principal);
   if (!scope) return { denied: true as const };
   return findTravellingMembersInScope(scope, opts);
+}
+
+// ─────────────────────────────────────────────
+// The incomplete scene — what the submission check says is missing on the live tickets (2026-10-03)
+//
+// The team's own check marks a Freshdesk ticket incomplete (is_incomplete) and says what it lacks
+// (missing_info: "Bill of Vendor", "Proof of Confirmation", "phone number or email", "Details not
+// shared", a list of fields). Serene reads the two columns, never writes them. ONE call answers
+// "today's incomplete score", "the incomplete scene", "what is missing on the tickets": the four live
+// statuses by default (Nudge Client, Nudge Vendor, Ongoing Delivery, Invoice Due), the score per
+// agent and per status, the missing items ranked, the rows, and how many tickets the check has not
+// looked at yet (never called complete). Scoped like every Freshdesk read (the queendom's group).
+// ─────────────────────────────────────────────
+
+/** "Client name, Description, Cost Price" → the items; null or blank → []. */
+function missingItems(v: string | null | undefined): string[] {
+  return (v ?? '').split(/,|;/).map((x) => x.trim()).filter((x) => x.length > 0).map((x) => (x.length > 60 ? x.slice(0, 60) + '…' : x));
+}
+
+export const INCOMPLETE_SCENE_STATUSES = ['Nudge Client', 'Nudge Vendor', 'Ongoing Delivery', 'Invoice Due'] as const;
+const INCOMPLETE_ROWS_DEFAULT = 40;
+const INCOMPLETE_ROWS_MAX = 100;
+
+export type IncompleteAsk = { statuses?: string[] | null; agent?: string | null; group?: string | null; since?: string | null; limit?: number | null };
+
+export async function getIncompleteTicketsFor(principal: StaffPrincipal, ask: IncompleteAsk = {}) {
+  const f = await freshdeskFiltersFor(principal, { statuses: ask.statuses?.length ? ask.statuses : [...INCOMPLETE_SCENE_STATUSES], agent: ask.agent ?? null, group: ask.group ?? null });
+  if (!f.ok) return f;
+  const limit = Math.min(Math.max(ask.limit ?? INCOMPLETE_ROWS_DEFAULT, 1), INCOMPLETE_ROWS_MAX);
+  const since = ask.since && !Number.isNaN(Date.parse(ask.since)) ? new Date(ask.since).toISOString() : null;
+  const scene = await listIncompleteScene(f.filters, { since, limit });
+  if (!scene) return { ok: false as const, reason: 'no_access' as const };
+  const [names, vocab] = await Promise.all([getNameMaps(), getFreshdeskFilterVocab()]);
+  const labelOf = (id: number) => vocab.statuses.find((x) => x.id === id)?.label ?? fdStatusLabel(id);
+  const now = Date.now();
+  const pct = (complete: number, incomplete: number) => (complete + incomplete > 0 ? Math.round((complete * 100) / (complete + incomplete)) : null);
+
+  type T = { incomplete: number; complete: number; unchecked: number };
+  const tally = (): T => ({ incomplete: 0, complete: 0, unchecked: 0 });
+  const total = tally();
+  const byStatus = new Map<number, T>();
+  const byAgent = new Map<string, T>();
+  for (const r of scene.tally) {
+    const key = r.is_incomplete === true ? 'incomplete' : r.is_incomplete === false ? 'complete' : 'unchecked';
+    total[key] += 1;
+    const st = byStatus.get(r.status) ?? tally(); st[key] += 1; byStatus.set(r.status, st);
+    const agent = r.responder_id != null ? (names.agents.get(r.responder_id) ?? `agent ${r.responder_id}`) : 'unassigned';
+    const ag = byAgent.get(agent) ?? tally(); ag[key] += 1; byAgent.set(agent, ag);
+  }
+  const items = new Map<string, number>();
+  for (const t of scene.tickets) for (const item of missingItems(t.missing_info)) items.set(item, (items.get(item) ?? 0) + 1);
+
+  return {
+    ok: true as const,
+    applied: { ...f.applied, ...(since ? { touched_since: since } : {}) },
+    as_of: new Date(now).toISOString(),
+    score: { ...total, checked: total.incomplete + total.complete, complete_pct_of_checked: pct(total.complete, total.incomplete) },
+    by_status: [...byStatus.entries()].map(([status, t]) => ({ status: labelOf(status), ...t, complete_pct_of_checked: pct(t.complete, t.incomplete) })).sort((a, b) => b.incomplete - a.incomplete),
+    by_agent: [...byAgent.entries()].map(([agent, t]) => ({ agent, ...t, complete_pct_of_checked: pct(t.complete, t.incomplete) })).sort((a, b) => b.incomplete - a.incomplete || a.agent.localeCompare(b.agent)),
+    missing_items: [...items.entries()].map(([item, count]) => ({ item, count })).sort((a, b) => b.count - a.count),
+    total_incomplete: scene.totalCount,
+    shown: Math.min(scene.tickets.length, limit),
+    tickets: scene.tickets.slice(0, limit).map((t) => ({
+      id: t.id,
+      subject: clip(t.subject, 90),
+      status: t.status_label ?? labelOf(t.status),
+      agent: t.agent_name,
+      requester: t.requester_name,
+      member_id: t.member_id,
+      missing: missingItems(t.missing_info),
+      updated_at: t.fd_updated_at?.slice(0, 10) ?? null,
+      days_in_status: t.status_updated_at ? Math.max(0, Math.round((now - Date.parse(t.status_updated_at)) / 86_400_000)) : null,
+      due_by: t.due_by?.slice(0, 10) ?? null,
+      overdue: Boolean(t.due_by && Date.parse(t.due_by) < now),
+    })),
+    warnings: scene.tallyCapped ? ['the tally stopped at 4,000 live tickets: the score is over those'] : [],
+    how_to_read: [
+      'incomplete = the check found something missing (the items are in `missing`); complete = checked and nothing missing; unchecked = the check has not looked at that ticket yet: count it, never call it complete.',
+      'The score = complete as a share of checked tickets, per agent and per status. Lead with the agents carrying the most incomplete tickets and the items missing most often.',
+      'For each ticket give the number, what is missing and the subject, grouped by agent when the user runs a team; `days_in_status` says how long it has sat where it is.',
+      'The four statuses are the live ones by default (Nudge Client, Nudge Vendor, Ongoing Delivery, Invoice Due); a resolved ticket flagged incomplete is outside the scene unless `statuses` asks for it.',
+      'Serene reads this check, it never writes it: a ticket is fixed in Freshdesk by the agent, and the check updates on its own run.',
+    ],
+  };
 }

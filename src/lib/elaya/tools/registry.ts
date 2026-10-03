@@ -102,7 +102,8 @@ export type ElayaReadToolName =
   | 'get_activity_feed'
   | 'get_open_loops'
   | 'find_member_occasions'
-  | 'list_travelling_members';
+  | 'list_travelling_members'
+  | 'list_incomplete_tickets';
 
 /** Every tool name the principal may carry — read tools (this file) + write tools. */
 export type ElayaToolName = ElayaReadToolName | ElayaWriteToolName;
@@ -1221,6 +1222,7 @@ export const BRIDGED_READ_TOOL_NAMES: ReadonlySet<string> = new Set([
   'get_open_loops',
   'find_member_occasions',
   'list_travelling_members',
+  'list_incomplete_tickets',
 ]);
 
 // ── Hands (0245) — the line to an outside agent (Instinct), read and drafted; never sent from here ──
@@ -1419,6 +1421,8 @@ const FRESHDESK_ASK_PROPS = {
   category: { type: 'string', description: 'The category of request, by name' },
   created_from: { type: 'string', description: 'ISO date or timestamp: only tickets created on or after this' },
   created_to: { type: 'string', description: 'ISO date or timestamp: only tickets created on or before this' },
+  statuses: { type: 'array', items: { type: 'string' }, description: 'Several statuses by name at once (wins over status / only_open)' },
+  incomplete: { type: 'boolean', description: 'true = only tickets the submission check flagged incomplete (something missing); for the score and the whole scene use list_incomplete_tickets' },
 } as const;
 
 const freshdeskAskSchema = z.object({
@@ -1430,6 +1434,8 @@ const freshdeskAskSchema = z.object({
   category: z.string().trim().min(2).max(80).optional(),
   created_from: z.string().trim().min(8).max(40).optional(),
   created_to: z.string().trim().min(8).max(40).optional(),
+  statuses: z.array(z.string().trim().min(2).max(60)).min(1).max(8).optional(),
+  incomplete: z.boolean().optional(),
 });
 
 /** One refusal wording for the three Freshdesk tools, so the model hears the same thing each time. */
@@ -2011,6 +2017,49 @@ const listTravellingMembers: ElayaTool = {
   },
 };
 
+// ── The incomplete scene — what the submission check says is missing on the live tickets (2026-10-03) ──
+
+const listIncompleteTickets: ElayaTool = {
+  name: 'list_incomplete_tickets',
+  description:
+    'The INCOMPLETE tickets: Freshdesk tickets the team\'s submission check flagged as missing something ' +
+    '(a vendor bill, proof of confirmation, the client\'s phone or email, "details not shared", cost or ' +
+    'selling price), in the four live statuses by default (Nudge Client, Nudge Vendor, Ongoing Delivery, ' +
+    'Invoice Due), scoped to what this user may see, in ONE call. Use for "today\'s incomplete score", "the ' +
+    'incomplete scene", "which tickets are incomplete", "what is missing on the tickets", "who has the most ' +
+    'incomplete tickets", "incomplete tickets for Yashvardhan". Returns the score (incomplete, complete and ' +
+    'unchecked, overall, per agent and per status), the missing items ranked, and the rows (ticket number, ' +
+    'subject, status, agent, what is missing, days in status). Answer with the ticket number, what is missing ' +
+    'and the subject for each, grouped by agent for a team; say how many tickets the check has not looked at ' +
+    'yet and never call those complete. `statuses` (names) narrows or widens; `agent` and `group` by name; ' +
+    '`since` (ISO) = only tickets touched after it; `limit` rows (default 40, up to 100). For one ticket\'s ' +
+    'thread call get_freshdesk_ticket; search_freshdesk_tickets also takes `incomplete: true`.',
+  schema: z.object({
+    statuses: z.array(z.string().trim().min(2).max(60)).min(1).max(8).optional(),
+    agent: z.string().trim().min(2).max(80).optional(),
+    group: z.string().trim().min(2).max(80).optional(),
+    since: z.string().trim().min(8).max(40).optional(),
+    limit: z.number().int().min(1).max(100).optional(),
+  }),
+  jsonSchema: {
+    type: 'object',
+    properties: {
+      statuses: { type: 'array', items: { type: 'string' }, description: 'Statuses by name; default Nudge Client, Nudge Vendor, Ongoing Delivery, Invoice Due' },
+      agent: { type: 'string', description: 'A Freshdesk agent by name' },
+      group: { type: 'string', description: 'A Freshdesk group by name (a queendom)' },
+      since: { type: 'string', description: 'ISO date or timestamp: only flagged tickets touched after it' },
+      limit: { type: 'integer', description: 'Rows to return, up to 100 (default 40)' },
+    },
+    additionalProperties: false,
+  },
+  maxResultChars: 24_000,
+  run: async (principal, input) => {
+    const r = await elayaData.getIncompleteTicketsFor(principal, input as elayaData.IncompleteAsk);
+    if (!r.ok) return freshdeskRefusal(r);
+    return { ...r, note: r.total_incomplete === 0 ? 'No ticket in this scope is flagged incomplete. Say exactly that, and say how many are still unchecked.' : undefined };
+  },
+};
+
 const ALL_TOOLS = [
   searchLeads,
   getColdLeads,
@@ -2054,6 +2103,7 @@ const ALL_TOOLS = [
   getOpenLoops,
   findMemberOccasions,
   listTravellingMembers,
+  listIncompleteTickets,
 ] as const;
 
 const TOOL_REGISTRY = new Map<string, ElayaTool>(ALL_TOOLS.map((t) => [t.name, t]));
