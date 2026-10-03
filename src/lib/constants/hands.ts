@@ -43,9 +43,29 @@ export const HANDS_FRAMES = defineEnum([
 ] as const);
 export type HandsFrame = (typeof HANDS_FRAMES.values)[number];
 
-/** Read the frame off a reply's first word ("DONE: booked…" → done). Case-insensitive; null when absent. */
+// ── Job codes (2026-10-03): one WhatsApp chat carries many jobs ─────────────────
+// Every line to the agent on a ticket thread starts with the ticket's code (#T42 for T-000042), the
+// rulebook asks the agent to start its replies with it, and the connector files a reply by it.
+// connector-hands/src/index.ts mirrors readHandsJobCode; change both together.
+
+/** Most jobs open with one agent at once; more wait their turn (a calmer chat, a safer number). */
+export const HANDS_MAX_OPEN_JOBS = 10;
+const HANDS_JOB_CODE_LEAD = /^\s*\*?#\s?T-?0*\d{1,6}\*?[\s:.,-]*/i;
+
+/** "T-000042" → "#T42". */
+export function handsJobCode(ticketNo: string): string {
+  const n = Number(ticketNo.replace(/\D/g, ""));
+  return `#T${Number.isFinite(n) ? n : ticketNo}`;
+}
+/** The ticket number a line names ("#T42 OPTIONS…", "re #t-42", "T-000042") → "T-000042", or null. */
+export function readHandsJobCode(text: string | null | undefined): string | null {
+  const m = (text ?? "").match(/(?:#\s?T-?|\bT-)0*(\d{1,6})\b/i);
+  return m ? `T-${m[1].padStart(6, "0")}` : null;
+}
+
+/** Read the frame off a reply's first word ("DONE: booked…" → done; a leading job code "#T42" is skipped). Case-insensitive; null when absent. */
 export function readHandsFrame(text: string | null | undefined): HandsFrame | null {
-  const word = (text ?? "").trim().match(/^([A-Za-z]+)\b/)?.[1]?.toLowerCase();
+  const word = (text ?? "").trim().replace(HANDS_JOB_CODE_LEAD, "").match(/^([A-Za-z]+)\b/)?.[1]?.toLowerCase();
   return word && (HANDS_FRAMES.values as readonly string[]).includes(word) ? (word as HandsFrame) : null;
 }
 
@@ -112,7 +132,8 @@ export const HANDS_RULEBOOK = [
   `You work for the ${HANDS_IDENTITY_NAME} desk. Bookings, orders and enquiries are always in the name ${HANDS_IDENTITY_NAME}, never another person.`,
   "Never spend without a yes from me on the exact amount. Always give the full total before asking. Prefer pay-at-venue over prepaid when both exist.",
   "Reply in short pointers.",
-  "Start every reply with one word: DONE (with the reference number and a screenshot), NEED (one question at a time, with the deadline if something is on hold), OPTIONS (numbered), FAILED (why, and the best alternative), or WAITING (what you are waiting for and when you will check).",
+  "Every job I send starts with its code, like #T42. We run many jobs at once: start every reply about a job with that same code, keep one job per message, and never mix two jobs in one reply.",
+  "After the code, start with one word: DONE (with the reference number and a screenshot), NEED (one question at a time, with the deadline if something is on hold), OPTIONS (numbered), FAILED (why, and the best alternative), or WAITING (what you are waiting for and when you will check). For example: #T42 OPTIONS 1. ...",
   "Never contact a phone number I did not give you. Never ask me for an identity document.",
 ].join("\n");
 

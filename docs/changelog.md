@@ -12,6 +12,45 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-10-03 — Smarter update alerts (Elaya tracks promises), new reply-alert timing, and many Instinct jobs at once (migration 0255)
+
+**Why.** The bishops said the first reply is fast ("Sure sir, let me check" inside a minute); the
+miss is after it. Thirty days of the 80 busiest Anishqa and Ananyshree groups (about 39,000 messages)
+showed it: half the waits after "let me check" took over 25 minutes, one in five over 3 hours, and
+members chase about 7 times a day. A word timer cannot fix that: half the bare "Sure / Noted" lines
+promise nothing, the deadline depends on the request ("by EOD", "driver details by 12 PM", "asap,
+visa tomorrow"), one group owes two or three things at once, and a mid-way vendor update keeps the
+member informed. The founder also set the reply alert to 2 minutes (genies and bishops) and 5 (queen),
+founders off for now. And with Hands on auto, hundreds of jobs share one WhatsApp chat with Instinct.
+
+**What.**
+- Reply alert (`constants/reply-clocks.ts`, `reply-alerts.ts`): the queendom's genies and bishops at
+  2 minutes, the queen at 5. Founders are off the ladder (one line to bring them back).
+- Promise tracker: migration 0255 `sia.promises` (what is owed, due, waiting on us / vendor / member,
+  open / delivered / dropped, chased, the ladder steps) + `reply_clocks.promises_read_at`.
+  `promise-reader.ts` `runPromiseSweep` reads a group once it settles after a holding line or new
+  messages in a group that owes something: the newest 45 messages through the profiler's vault (names
+  never reach the model), one routing-tier call, plain-text blocks. `src/trigger/promise-tracker.ts`
+  runs it every minute, only while `update_alerts_enabled` is on. The update alert now walks the open
+  promises (`promiseStepsFor`): the promiser at the due time, bishops 15 minutes later, the queen 30;
+  a member who chases an open promise tells the promiser and the bishops at once; waiting on the
+  member never alerts. Bench on live groups: a long forex thread read as four open items with the
+  chase; "Calling you right away" a call due in minutes; "Well noted Vinod" nothing owed.
+- Instinct job codes: every line on a job starts with its code (`#T42`, `handsJobCode`, stamped in
+  `queueHandsMessageCore`); the rulebook asks the agent to start each reply with it (the reply word
+  follows the code; `readHandsFrame` skips it). The connector files a reply by code, then the quoted
+  message, then the only open thread; otherwise `hands.messages.match_status = 'unmatched'` and the
+  Talk chat never adopts it. `hands-router.ts` (`src/trigger/hands-router.ts`, every minute while Hands
+  is on): closes the chats of finished tickets, sends jobs waiting for a slot, files a file sent right
+  after a placed line, and asks Elaya to match the rest by content (`hands_match` runs); what she is
+  unsure of waits on the new tray on /hands ("N replies need a job", `fileHandsMessageAction`).
+  At most `HANDS_MAX_OPEN_JOBS` (10) jobs open with one agent; the rest wait, the ticket card says so,
+  and a person can still send at once.
+- The rulebook changed: send it to Instinct again from the free chat so it starts using the codes.
+- Typecheck and lint clean; the code, frame and ladder checks and the promise bench were run.
+
+---
+
 ## 2026-10-01 — Reply clocks: two timers per member group, and alerts to bishops and queens (migration 0253, applied 2026-10-02)
 
 **Why.** The goal is a reply to a member inside one minute, and the five-minute alert sweep cannot

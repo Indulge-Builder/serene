@@ -130,7 +130,7 @@ export async function listAllowedContacts(): Promise<HandsAllowedContactRow[]> {
 export type HandsUnfiled = Record<string, { count: number; lastAt: string; lastText: string | null }>;
 
 export async function listUnfiledByContact(): Promise<HandsUnfiled> {
-  const { data, error } = await handsDb(createAdminClient()).from("messages").select("jid, wa_timestamp, text, kind").is("thread_id", null).order("wa_timestamp", { ascending: false }).limit(500);
+  const { data, error } = await handsDb(createAdminClient()).from("messages").select("jid, wa_timestamp, text, kind").is("thread_id", null).is("match_status", null).order("wa_timestamp", { ascending: false }).limit(500);
   if (error) { console.error(`${LOG} unfiled read failed`, error.message); return {}; }
   const out: HandsUnfiled = {};
   mapRows<{ jid: string; wa_timestamp: string; text: string | null; kind: string }, void>(data, (r) => {
@@ -188,3 +188,30 @@ async function decorate(rows: HandsThreadRow[]): Promise<HandsThreadSummary[]> {
 }
 
 export { HANDS_SCHEMA };
+
+/**
+ * The tray (2026-10-03): agent replies the connector could not place and Elaya could not match,
+ * newest first, each with the open jobs of its number to choose from. Unscoped viewers only (the
+ * CALLER gates): a reply may belong to any queendom's job.
+ */
+export type HandsUnmatched = {
+  message: Pick<HandsMessageRow, "id" | "jid" | "kind" | "text" | "wa_timestamp" | "media_path">;
+  jobs: { threadId: string; label: string }[];
+};
+export async function listUnmatchedHands(limit = 50): Promise<HandsUnmatched[]> {
+  const db = handsDb(createAdminClient());
+  const { data, error } = await db.from("messages").select("id, jid, kind, text, wa_timestamp, media_path").eq("match_status", "unmatched").is("thread_id", null)
+    .order("wa_timestamp", { ascending: false }).limit(limit);
+  if (error) { console.error(`${LOG} unmatched read failed`, error.message); return []; }
+  const msgs = mapRows<HandsUnmatched["message"], HandsUnmatched["message"]>(data, (r) => r);
+  if (msgs.length === 0) return [];
+  const { data: t } = await db.from("threads").select("*").in("jid", [...new Set(msgs.map((m) => m.jid))]).eq("status", "open");
+  const threads = await decorate(mapRows<HandsThreadRow, HandsThreadRow>(t, (r) => r));
+  return msgs.map((message) => ({
+    message,
+    jobs: threads.filter((th) => th.jid === message.jid).map((th) => ({
+      threadId: th.id,
+      label: th.kind === "talk" ? `Free chat with ${th.contact_label}` : `${th.ticket_no ?? "Ticket"} · ${th.ticket_title ?? ""}`.trim(),
+    })),
+  }));
+}

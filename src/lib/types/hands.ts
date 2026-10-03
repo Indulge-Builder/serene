@@ -58,6 +58,8 @@ export type HandsMessageRow = {
   outbox_id: string | null;
   raw: Record<string, unknown>;
   created_at: string;
+  /** How an inbound reply found its thread (0255): code | quote | only_thread | content | human; unmatched = waiting; null = the old way. */
+  match_status: "code" | "quote" | "only_thread" | "unmatched" | "content" | "human" | null;
 };
 
 /** A hands message as a chat shows it: reactions folded onto it (hands-service foldHandsChat). */

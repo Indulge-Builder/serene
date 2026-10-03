@@ -27,8 +27,8 @@ import { config } from "./config.js";
 import { usePostgresAuthState, wipeAuthState } from "../../connector/src/auth-postgres.js";
 import { normalizeJid } from "../../connector/src/normalize.js";
 import {
-  claimQueuedOutbox, findOpenThread, getThread, handsDb, insertRawEvent, loadAllowlist, publishQr, settleOutbox,
-  storeMedia, touchThread, upsertMessage, upsertStatus, writeTicketEvent, type Frame, type Payment,
+  claimQueuedOutbox, existingFiling, findOpenThread, getThread, handsDb, insertRawEvent, listOpenThreads, loadAllowlist, publishQr, settleOutbox,
+  storeMedia, threadOfMessage, ticketIdForNo, touchThread, upsertMessage, upsertStatus, writeTicketEvent, type Frame, type Payment, type ThreadRow,
 } from "./db.js";
 
 const logger = pino({ level: "warn" });
@@ -38,8 +38,15 @@ const LOG = "[hands]";
 const FRAMES: readonly Frame[] = ["done", "need", "options", "failed", "waiting"];
 const QR_LIFETIME_MS = 9 * 60_000;
 
+// Job codes (mirrors readHandsJobCode / HANDS_JOB_CODE_LEAD in src/lib/constants/hands.ts).
+const JOB_CODE_LEAD = /^\s*\*?#\s?T-?0*\d{1,6}\*?[\s:.,-]*/i;
+function readJobCode(text: string | null): string | null {
+  const m = (text ?? "").match(/(?:#\s?T-?|\bT-)0*(\d{1,6})\b/i);
+  return m ? `T-${m[1].padStart(6, "0")}` : null;
+}
+
 function readFrame(text: string | null): Frame | null {
-  const word = (text ?? "").trim().match(/^([A-Za-z]+)\b/)?.[1]?.toLowerCase();
+  const word = (text ?? "").trim().replace(JOB_CODE_LEAD, "").match(/^([A-Za-z]+)\b/)?.[1]?.toLowerCase();
   return word && (FRAMES as readonly string[]).includes(word) ? (word as Frame) : null;
 }
 
@@ -107,6 +114,36 @@ async function phoneJidFor(msg: WAMessage, remote: string): Promise<string> {
   return normalizeJid(remote);
 }
 
+// ─── Which thread a message belongs to (2026-10-03) ─────────────────────────
+// One WhatsApp chat carries many jobs. In order: a message already filed keeps its thread (a
+// redelivery never undoes a filing); the job code it carries (#T42); the message it quotes; the only
+// open thread. With several open threads and none of those, an inbound reply is 'unmatched' and waits
+// for Elaya's content match or a person (the tray on /hands). A line typed on the hands phone itself
+// falls back to the most recently active thread, as before.
+type Routed = { thread: ThreadRow | null; match: string | null };
+async function routeMessage(msg: WAMessage, jid: string, direction: "in" | "out", text: string | null, waMessageId: string): Promise<Routed> {
+  const filed = await existingFiling(jid, waMessageId);
+  if (filed?.thread_id) return { thread: await getThread(filed.thread_id), match: filed.match_status };
+  const open = await listOpenThreads(jid);
+  if (open.length === 0) return { thread: null, match: null };
+  const code = readJobCode(text);
+  if (code) {
+    const ticketId = await ticketIdForNo(code);
+    const t = ticketId ? open.find((x) => x.ticket_id === ticketId) : undefined;
+    if (t) return { thread: t, match: "code" };
+  }
+  const m = msg.message as Record<string, { contextInfo?: { stanzaId?: string } } | undefined> | undefined;
+  const quoted = m ? Object.values(m).map((v) => v?.contextInfo?.stanzaId).find(Boolean) : undefined;
+  if (quoted) {
+    const threadId = await threadOfMessage(jid, quoted);
+    const t = threadId ? open.find((x) => x.id === threadId) : undefined;
+    if (t) return { thread: t, match: "quote" };
+  }
+  if (open.length === 1) return { thread: open[0], match: "only_thread" };
+  if (direction === "out") return { thread: await findOpenThread(jid), match: null };
+  return { thread: null, match: "unmatched" };
+}
+
 // ─── Inbound: raw → parse → allowlist → message row → thread → ticket event ──
 async function handleMessage(msg: WAMessage): Promise<void> {
   const remote = msg.key?.remoteJid ?? null;
@@ -128,7 +165,8 @@ async function handleMessage(msg: WAMessage): Promise<void> {
     }
   }
 
-  const thread = await findOpenThread(jid);
+  const routed = await routeMessage(msg, jid, direction, parsed.text, waMessageId);
+  const thread = routed.thread;
   const recent = lastInboundText.get(jid);
   const frame = direction === "in" ? readFrame(parsed.text) : null;
   const payment = direction === "in" ? readPayment(parsed.kind, parsed.text, recent && Date.now() - recent.at < 120_000 ? recent.text : null, at) : null;
@@ -136,7 +174,7 @@ async function handleMessage(msg: WAMessage): Promise<void> {
 
   const id = await upsertMessage({
     thread_id: thread?.id ?? null, jid, wa_message_id: waMessageId, direction, kind: parsed.kind, text: parsed.text,
-    media_path: mediaPath, media_mime: parsed.mime, wa_timestamp: at, frame, payment, outbox_id: null,
+    media_path: mediaPath, media_mime: parsed.mime, wa_timestamp: at, frame, payment, outbox_id: null, match_status: routed.match,
     raw: JSON.parse(JSON.stringify(msg, (_k, v) => (v instanceof Uint8Array ? { _bytes: v.length } : v))),
   });
   if (!id || !thread) return;

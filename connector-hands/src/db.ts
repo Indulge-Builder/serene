@@ -39,6 +39,30 @@ export async function findOpenThread(jid: string): Promise<ThreadRow | null> {
   return ((data as ThreadRow[] | null)?.[0]) ?? null;
 }
 
+/** Every open thread of a contact (the job routing, 2026-10-03). */
+export async function listOpenThreads(jid: string): Promise<ThreadRow[]> {
+  const { data } = await handsDb.from("threads").select("id, jid, kind, ticket_id, status, last_message_at").eq("jid", jid).eq("status", "open");
+  return (data as ThreadRow[] | null) ?? [];
+}
+
+/** The ticket id behind a ticket number ("T-000042"), or null. */
+export async function ticketIdForNo(ticketNo: string): Promise<string | null> {
+  const { data } = await siaDb.from("tickets").select("id").eq("ticket_no", ticketNo).maybeSingle();
+  return (data as { id: string } | null)?.id ?? null;
+}
+
+/** The thread of a message we already hold (the one a reply quotes), or null. */
+export async function threadOfMessage(jid: string, waMessageId: string): Promise<string | null> {
+  const { data } = await handsDb.from("messages").select("thread_id").eq("jid", jid).eq("wa_message_id", waMessageId).maybeSingle();
+  return (data as { thread_id: string | null } | null)?.thread_id ?? null;
+}
+
+/** A message already filed (a redelivery after a restart must not undo a filing). */
+export async function existingFiling(jid: string, waMessageId: string): Promise<{ thread_id: string | null; match_status: string | null } | null> {
+  const { data } = await handsDb.from("messages").select("thread_id, match_status").eq("jid", jid).eq("wa_message_id", waMessageId).maybeSingle();
+  return (data as { thread_id: string | null; match_status: string | null } | null) ?? null;
+}
+
 export async function getThread(id: string): Promise<ThreadRow | null> {
   const { data } = await handsDb.from("threads").select("id, jid, kind, ticket_id, status, last_message_at").eq("id", id).maybeSingle();
   return (data as ThreadRow | null) ?? null;
@@ -47,6 +71,8 @@ export async function getThread(id: string): Promise<ThreadRow | null> {
 export type MessageInsert = {
   thread_id: string | null; jid: string; wa_message_id: string; direction: "in" | "out"; kind: string; text: string | null;
   media_path: string | null; media_mime: string | null; wa_timestamp: string; frame: Frame | null; payment: Payment | null; outbox_id: string | null; raw: unknown;
+  /** How the reply found its thread (0255): code | quote | only_thread | unmatched; null = the old way. */
+  match_status?: string | null;
 };
 
 /** Idempotent on (jid, wa_message_id): a redelivery lands once. Returns the row id (existing or new). */

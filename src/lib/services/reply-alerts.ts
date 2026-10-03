@@ -2,9 +2,12 @@
 // keeps the clocks; this file only reads the RUNNING ones and walks each up its ladder
 // (constants/reply-clocks.ts):
 //
-//   reply  (member waiting for any reply):  bishops at 1 min → queen at 1.5 min → founders at 1 h
-//   update (a "noted, checking" owes the answer): the person who promised at the due time
-//          → bishops 15 min later → queen 30 min later
+//   reply  (member waiting for any reply):  genies + bishops at 2 min → queen at 5 min
+//   update (since 2026-10-03: a PROMISE Elaya read from the chat, sia.promises, promise-reader.ts):
+//          the person who promised at its due time → bishops 15 min later → queen 30 min later;
+//          a member who chases an open promise tells the promiser and the bishops at once. A
+//          promise waiting on the member never alerts. The word-based hold clock is still kept by
+//          the trigger (Elaya's open loops read it) but no longer alerts.
 //
 // Each step is CLAIMED on the clock row before anything is sent (a conditional update on the same
 // started_at, so a clock a staff reply already stopped is never alerted), recorded in elaya_alerts
@@ -22,6 +25,7 @@ import { recordAlert, sendElayaAlertWhatsApp, type Alert, type AlertPerson } fro
 import { mapRows } from '@/lib/utils/rows';
 import { formatIstClock } from '@/lib/utils/ist';
 import { siaGroupHref } from '@/lib/constants/sia-roles';
+import { listOpenPromises, type PromiseRow } from '@/lib/services/promise-reader';
 import {
   REPLY_CLOCKS_READ_LIMIT, REPLY_LADDER, REPLY_STEP_MAX_LATE_SECONDS, UPDATE_LADDER, updateDueAt,
   type ReplyClock, type ReplyStep,
@@ -100,6 +104,21 @@ async function claimSteps(row: ClockRow, clock: ReplyClock, startedAt: string, s
   return Array.isArray(data) && data.length > 0;
 }
 
+/**
+ * THE read of every running clock (a member waiting, or a holding reply owing an answer), for the
+ * alert pass below and for Elaya's open-loops read (elaya-data.ts). Admin client; the CALLER scopes
+ * the rows to the queendoms it may see. null = the read failed (never an empty list that reads as
+ * "nobody is waiting").
+ */
+export async function listRunningReplyClocks(limit = REPLY_CLOCKS_READ_LIMIT): Promise<ClockRow[] | null> {
+  const { data, error } = await admin().schema('sia').from('reply_clocks')
+    .select('group_jid, member_id, wait_started_at, wait_text, wait_steps, hold_started_at, hold_text, hold_by, hold_promised_minutes, hold_steps')
+    .or('wait_started_at.not.is.null,hold_started_at.not.is.null')
+    .limit(limit);
+  if (error) { console.error(`${LOG} clocks read failed:`, error.message); return null; }
+  return mapRows<ClockRow, ClockRow>(data, (r) => r);
+}
+
 export async function runReplyAlertPass(opts: { apply: boolean }): Promise<ReplyAlertPassResult> {
   const switches = await getReplyAlertSwitches();
   const empty: ReplyAlertPassResult = { switches, running: 0, fired: 0, silenced: 0, nextDueAt: null };
@@ -116,11 +135,20 @@ export async function runReplyAlertPass(opts: { apply: boolean }): Promise<Reply
   let nextDueAt: number | null = null;
   const work: { row: ClockRow; steps: DueStep[] }[] = [];
   for (const row of rows) {
-    const { due, next } = stepsFor(row, now, switches);
+    const { due, next } = stepsFor(row, now, { reply: switches.reply, update: false });
     if (next !== null) nextDueAt = nextDueAt === null ? next : Math.min(nextDueAt, next);
     if (due.length) work.push({ row, steps: due });
   }
-  const result: ReplyAlertPassResult = { ...empty, running: rows.length, nextDueAt };
+  // Promises (the update alert): their own ladder from each promise's due time.
+  const promises = switches.update ? (await listOpenPromises()) ?? [] : [];
+  const promiseWork: { p: PromiseRow; steps: PromiseDue[] }[] = [];
+  for (const p of promises) {
+    const { due, next } = promiseStepsFor(p, now);
+    if (next !== null) nextDueAt = nextDueAt === null ? next : Math.min(nextDueAt, next);
+    if (due.length) promiseWork.push({ p, steps: due });
+  }
+  const result: ReplyAlertPassResult = { ...empty, running: rows.length + promises.length, nextDueAt };
+  if (opts.apply && promiseWork.length) await firePromiseAlerts(promiseWork, now, result);
   if (!opts.apply) {
     result.due = work.flatMap((w) => w.steps.map((s) => ({ group: w.row.group_jid, clock: s.clock, step: s.step.id })));
     return result;
@@ -209,7 +237,7 @@ async function loadContext(rows: ClockRow[]): Promise<Ctx> {
     seats.set(q, await getQueendomSeats(q));
   }
   const ids = new Set<string>();
-  for (const s of seats.values()) { s.bishops.forEach((b) => ids.add(b)); if (s.queen) ids.add(s.queen); }
+  for (const s of seats.values()) { s.bishops.forEach((b) => ids.add(b)); s.genies.forEach((g) => ids.add(g)); if (s.queen) ids.add(s.queen); }
   rows.forEach((r) => { if (r.hold_by) ids.add(r.hold_by); });
   const people = new Map<string, AlertPerson>();
   if (ids.size) {
@@ -225,7 +253,7 @@ function recipientsFor(row: ClockRow, s: DueStep, ctx: Ctx): AlertPerson[] {
   const q = row.member_id ? ctx.members.get(row.member_id)?.queendom_id : null;
   const seats = q ? ctx.seats.get(q) : undefined;
   if (!seats) return [];
-  const ids = s.step.to === 'bishops' ? seats.bishops : seats.queen ? [seats.queen] : [];
+  const ids = s.step.to === 'bishops' ? seats.bishops : s.step.to === 'genies' ? seats.genies : seats.queen ? [seats.queen] : [];
   return ids.map((id) => ctx.people.get(id)).filter((p): p is AlertPerson => Boolean(p));
 }
 
@@ -252,4 +280,92 @@ function buildAlert(row: ClockRow, s: DueStep, ctx: Ctx, now: number): Alert {
   }
   const promiser = row.hold_by ? ctx.people.get(row.hold_by)?.full_name : null;
   return { ...base, kind: 'update_owed', title: `${who} is still waiting on an update, ${waited}`, body: `${promiser ?? 'The team'} wrote ${quote(row.hold_text)} at ${at} in ${subject}. No answer since.` };
+}
+
+// ── Promises: the update alert (sia.promises, read by Elaya; 0255) ───────────
+
+export type PromiseDue = { id: string; to: 'promiser' | 'bishops' | 'queen'; severity: 1 | 2 | 3; dueAt: number; stale: boolean; chased: boolean };
+
+/**
+ * The steps of one open promise that are due at `now`, and the earliest still ahead. Pure. The
+ * ladder runs from the promise's due time (UPDATE_LADDER). A chase (the member asked for an update
+ * after the last thing we told them) is its own step: the promiser and the bishops, at once.
+ */
+export function promiseStepsFor(p: PromiseRow, now: number): { due: PromiseDue[]; next: number | null } {
+  const due: PromiseDue[] = [];
+  let next: number | null = null;
+  if (p.status !== 'open' || p.waiting_on === 'member') return { due, next };
+  const done = p.steps ?? [];
+  const lastTold = Math.max(new Date(p.promised_at).getTime(), p.last_update_at ? new Date(p.last_update_at).getTime() : 0);
+  if (p.chased_at && new Date(p.chased_at).getTime() > lastTold && !done.includes('chased')) {
+    const at = new Date(p.chased_at).getTime();
+    for (const to of ['promiser', 'bishops'] as const) due.push({ id: 'chased', to, severity: 2, dueAt: at, stale: now - at > REPLY_STEP_MAX_LATE_SECONDS * 1000, chased: true });
+  }
+  if (p.due_at) {
+    const base = new Date(p.due_at).getTime();
+    for (const step of UPDATE_LADDER) {
+      if (done.includes(step.id)) continue;
+      const at = base + step.afterSeconds * 1000;
+      const to = step.to === 'promiser' ? 'promiser' : step.to === 'queen' ? 'queen' : 'bishops';
+      if (at <= now) due.push({ id: step.id, to, severity: step.severity, dueAt: at, stale: now - at > REPLY_STEP_MAX_LATE_SECONDS * 1000, chased: false });
+      else next = next === null ? at : Math.min(next, at);
+    }
+  }
+  return { due, next };
+}
+
+async function firePromiseAlerts(work: { p: PromiseRow; steps: PromiseDue[] }[], now: number, result: ReplyAlertPassResult): Promise<void> {
+  // Claim: one update per promise, only while it is still open.
+  const claimed: { p: PromiseRow; step: PromiseDue }[] = [];
+  for (const { p, steps } of work) {
+    const ids = [...new Set(steps.map((s) => s.id))];
+    const { data, error } = await admin().schema('sia').from('promises')
+      .update({ steps: [...new Set([...(p.steps ?? []), ...ids])] }).eq('id', p.id).eq('status', 'open').select('id');
+    if (error || !Array.isArray(data) || data.length === 0) continue;
+    for (const s of steps) { if (s.stale) result.silenced++; else claimed.push({ p, step: s }); }
+  }
+  if (claimed.length === 0) return;
+
+  const ctx = await loadContext(claimed.map(({ p }) => ({
+    group_jid: p.group_jid, member_id: p.member_id, wait_started_at: null, wait_text: null, wait_steps: [],
+    hold_started_at: null, hold_text: null, hold_by: p.promiser_profile_id, hold_promised_minutes: null, hold_steps: [],
+  })));
+  const byPerson = new Map<string, { person: AlertPerson; alerts: { id: string; title: string; body: string }[] }>();
+  for (const { p, step } of claimed) {
+    const q = p.queendom_id ?? (p.member_id ? ctx.members.get(p.member_id)?.queendom_id : null) ?? null;
+    const seats = q ? ctx.seats.get(q) : undefined;
+    const promiser = p.promiser_profile_id ? ctx.people.get(p.promiser_profile_id) : undefined;
+    const ids = step.to === 'promiser' ? (promiser ? [promiser.id] : seats?.genies ?? []) : step.to === 'bishops' ? seats?.bishops ?? [] : seats?.queen ? [seats.queen] : [];
+    const people = ids.map((id) => ctx.people.get(id)).filter((x): x is AlertPerson => Boolean(x));
+    if (people.length === 0) continue;
+    const member = p.member_id ? ctx.members.get(p.member_id) : undefined;
+    const subject = ctx.subjects.get(p.group_jid) ?? 'their group';
+    const who = member?.full_name ?? subject;
+    const said = `"${(p.promised_text ?? '').replace(/\s+/g, ' ').trim().slice(0, 140)}"`;
+    const late = p.due_at ? waitLabel(now - new Date(p.due_at).getTime()) : null;
+    const title = step.chased
+      ? `${who} is chasing: ${p.what}`
+      : step.to === 'promiser' ? `${who} is still waiting: ${p.what}` : `${who} is still waiting, ${late} past due: ${p.what}`;
+    const body = step.chased
+      ? `The member asked for an update in ${subject}. ${promiser?.full_name ?? 'The team'} had said ${said}${p.due_at ? `, due ${formatIstClock(new Date(p.due_at))} IST` : ''}.`
+      : `${promiser?.full_name ?? 'The team'} said ${said} at ${formatIstClock(new Date(p.promised_at))} IST in ${subject}; it was due ${p.due_at ? `${formatIstClock(new Date(p.due_at))} IST` : 'by now'}${p.waiting_on === 'vendor' ? ' (waiting on a vendor: an update to the member helps)' : ''}.`;
+    const alert: Alert = {
+      kind: 'update_owed', severity: step.severity, dedupeKey: `promise:${p.id}:${step.id}:${step.to}:${p.due_at ?? ''}`,
+      groupJid: p.group_jid, memberId: p.member_id, actionUrl: siaGroupHref(p.group_jid), audience: 'seats', title, body,
+    };
+    const id = await recordAlert(alert);
+    if (!id) continue;
+    for (const person of people) {
+      await createNotification({ recipient_id: person.id, type: 'system', action_url: alert.actionUrl, title: alert.title, body: alert.body.slice(0, 240) });
+      const entry = byPerson.get(person.id) ?? { person, alerts: [] };
+      entry.alerts.push({ id, title, body });
+      byPerson.set(person.id, entry);
+    }
+    result.fired++;
+  }
+  for (const { person, alerts } of byPerson.values()) {
+    const title = alerts.length === 1 ? alerts[0].title : `${alerts.length} promises to members are overdue`;
+    const body = alerts.length === 1 ? alerts[0].body : alerts.map((a) => `- ${a.title}`).join('\n');
+    await sendElayaAlertWhatsApp(person, title, body);
+  }
 }

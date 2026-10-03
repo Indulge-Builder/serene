@@ -65,6 +65,7 @@ export function HandsTicketCard({ ticketId, initial, live, canWrite }: { ticketI
     if (r.error || !r.data) { toast.danger(r.error ?? "Elaya could not read this ticket."); return; }
     if (r.data.status === "sent") toast.success(`Elaya sent it to ${agent}. The reply shows here.`);
     else if (r.data.status === "drafted") toast.success("Elaya wrote the message. Check it, then send.");
+    else if (r.data.status === "queued") toast.info(`Elaya wrote it; it goes out when ${agent} has a free slot.`);
     else if (r.data.status === "not_suitable") toast.info(`Elaya thinks ${agent} cannot help: ${r.data.reason ?? ""}`);
     await refresh();
   });
@@ -127,7 +128,9 @@ export function HandsTicketCard({ ticketId, initial, live, canWrite }: { ticketI
                 <Button size="sm" disabled={pending || !draft.trim()} loading={pending} onClick={() => send(draft, true)}><Send className="w-3.5 h-3.5" strokeWidth={1.5} /> Send to {agent}</Button>
               </div>
             )}
-            {!view.sendsOnHerOwn && <p style={{ ...NOTE, color: "var(--theme-text-tertiary)" }}>Elaya sends on her own for this category once its level in Hands settings is Open.</p>}
+            {view.sendsOnHerOwn
+              ? <p style={{ ...NOTE, color: "var(--theme-text-tertiary)" }}>Waiting for a free slot: {agent} already has its most jobs open at once. Elaya sends this the moment one finishes, or send it now.</p>
+              : <p style={{ ...NOTE, color: "var(--theme-text-tertiary)" }}>Elaya sends on her own for this category once its level in Hands settings is Open.</p>}
           </>
         ) : view.plan && !view.dismissed && !view.plan.helps ? (
           <>

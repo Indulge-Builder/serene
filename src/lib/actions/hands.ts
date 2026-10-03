@@ -17,12 +17,12 @@ import { formErrors } from "@/lib/validations/form-errors";
 import {
   DraftHandsMessageSchema, HandsThreadIdSchema, MarkHandsPaymentSchema, OpenHandsThreadSchema, OpenTalkThreadSchema,
   SendHandsMessageSchema, UpdateHandsSettingsSchema, UpsertAllowedContactSchema,
-  SaveHandsGuideSchema, RestoreHandsGuideSchema, ImproveHandsGuidesSchema, WriteHandsLineSchema, StartHandsForTicketSchema, SendHandsTicketLineSchema,
+  SaveHandsGuideSchema, RestoreHandsGuideSchema, ImproveHandsGuidesSchema, WriteHandsLineSchema, StartHandsForTicketSchema, SendHandsTicketLineSchema, FileHandsMessageSchema,
 } from "@/lib/validations/hands-schema";
-import { getHandsThread, listHandsThreads, listUnfiledByContact, signHandsMedia, type HandsScope, type HandsThreadSummary, type HandsUnfiled } from "@/lib/services/hands-service";
+import { getHandsThread, listHandsThreads, listUnfiledByContact, listUnmatchedHands, signHandsMedia, type HandsUnmatched, type HandsScope, type HandsThreadSummary, type HandsUnfiled } from "@/lib/services/hands-service";
 import {
   closeHandsThreadCore, markHandsPaymentCore, openHandsThreadCore, openTalkThreadCore, queueHandsMessageCore, saveHandsSettingsCore, upsertAllowedContactCore,
-  saveHandsGuideCore, restoreHandsGuideCore,
+  saveHandsGuideCore, restoreHandsGuideCore, fileHandsMessageCore,
 } from "@/lib/services/hands-mutations";
 import { improveHandsGuides } from "@/lib/services/hands-guide-writer";
 import { writeHandsLine } from "@/lib/services/hands-line-writer";
@@ -360,4 +360,28 @@ export async function dismissHandsTicketDraftAction(input: unknown): Promise<Act
   if (!gate.ok) return gate.result;
   await dismissHandsTicketDraftCore(parsed.data.ticketId, actorFromProfile(gate.profile));
   return { data: { ok: true }, error: null };
+}
+
+// ─── The tray: replies that need a job (2026-10-03) ──────────────────────────
+
+/** Unmatched agent replies with the jobs each could belong to (unscoped viewers; a seated teammate sees none). */
+export async function listHandsUnmatchedAction(): Promise<ActionResult<(HandsUnmatched & { media_url: string | null })[]>> {
+  const auth = await requireHands(false);
+  if (!auth.ok) return auth.result;
+  if (auth.scope.queendomIds !== null) return { data: [], error: null };
+  const rows = await listUnmatchedHands();
+  return { data: await Promise.all(rows.map(async (r) => ({ ...r, media_url: r.message.media_path ? await signHandsMedia(r.message.media_path) : null }))), error: null };
+}
+
+/** A person puts an unmatched reply on its job; the ticket sees it as the agent's message. */
+export async function fileHandsMessageAction(input: unknown): Promise<ActionResult<{ threadId: string }>> {
+  const parsed = parseActionInput(FileHandsMessageSchema, input);
+  if (!parsed.ok) return { data: null, error: handsIssue(parsed.error) };
+  const auth = await requireHands(true);
+  if (!auth.ok) return auth.result;
+  if (auth.scope.queendomIds !== null) return { data: null, error: formErrors.handsNoAccess };
+  const core = await fileHandsMessageCore(parsed.data.messageId, parsed.data.threadId, "human", actorFromProfile(auth.profile));
+  if (core.data === null) return { data: null, error: core.error };
+  revalidatePath(HANDS_PATH);
+  return { data: core.data, error: null };
 }

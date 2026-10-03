@@ -22,7 +22,8 @@ import { getHandsThread, getHandsThreadForTicket, listAllowedContacts, signHands
 import { openHandsThreadCore, queueHandsMessageCore } from "@/lib/services/hands-mutations";
 import { buildHandsMessage, leakCheck, maskNames, memberNamesFor, trustAllows } from "@/lib/services/hands-draft";
 import { ticketsAdminDb } from "@/lib/services/tickets-service";
-import { HANDS_DEFAULT_TRUST_LEVEL, HANDS_IDENTITY_NAME, type HandsTrustLevel } from "@/lib/constants/hands";
+import { HANDS_DEFAULT_TRUST_LEVEL, HANDS_IDENTITY_NAME, HANDS_MAX_OPEN_JOBS, type HandsTrustLevel } from "@/lib/constants/hands";
+import { handsDb } from "@/lib/supabase/schemas";
 import { TICKET_CATEGORIES, type TicketCategory } from "@/lib/constants/tickets";
 import type { MutationActor } from "@/lib/services/lead-mutations";
 import type { HandsAllowedContactRow, HandsChatLine, HandsOutboxRow } from "@/lib/types/hands";
@@ -60,7 +61,7 @@ export type HandsTicketView = {
   autoEligible: boolean;
 };
 
-export type HandsTicketStart = { status: "sent" | "drafted" | "not_suitable" | "skipped" | "failed"; reason?: string };
+export type HandsTicketStart = { status: "sent" | "drafted" | "queued" | "not_suitable" | "skipped" | "failed"; reason?: string };
 
 /** The agent a ticket talks to: its vendor when that vendor is an allow-listed agent, else the first active agent contact. */
 export async function agentContactFor(ticket: Pick<TicketRow, "vendor_id">): Promise<HandsAllowedContactRow | null> {
@@ -217,8 +218,52 @@ export async function startHandsForTicket(ticketId: string, opts: { actor: Mutat
   if (!plan.helps) return { status: "not_suitable", reason: plan.why };
   const trust = settings.trustByCategory[ticket.category] ?? HANDS_DEFAULT_TRUST_LEVEL;
   if (!trustAllows(trust).openOnHerOwn) return { status: "drafted" };
+  // At most HANDS_MAX_OPEN_JOBS jobs open with one agent: the rest wait, and the hands-router job
+  // sends each the moment a slot frees (a person can still press Send on the card at any time).
+  if ((await openJobCount(agent.jid)) >= HANDS_MAX_OPEN_JOBS) return { status: "queued", reason: `${agent.label} already has ${HANDS_MAX_OPEN_JOBS} jobs open.` };
   const sent = await sendHandsTicketLineCore(ticket.id, plan.text, opts.actor, { source: "elaya", disclosure: { from_draft: true, auto: true, run_id: plan.runId, sent: plan.sent, held_back: plan.heldBack, trust } });
   return sent.data ? { status: "sent" } : { status: "failed", reason: sent.error ?? "Could not queue the message." };
+}
+
+/** Open ticket threads with one agent (the jobs-at-once limit). */
+export async function openJobCount(jid: string): Promise<number> {
+  const { count } = await handsDb(createAdminClient()).from("threads").select("id", { count: "exact", head: true }).eq("jid", jid).eq("kind", "ticket").eq("status", "open");
+  return Number(count ?? 0);
+}
+
+/**
+ * Plans waiting for a slot: Elaya said the agent can help, the category sends on its own, no chat is
+ * open, nobody pressed Not now, the ticket is live. Oldest first (the hands-router job releases them).
+ */
+export async function listQueuedPlans(sinceHours = 72): Promise<{ ticket: TicketRow; plan: HandsTicketPlan }[]> {
+  const since = new Date(Date.now() - sinceHours * 3_600_000).toISOString();
+  const { data } = await createAdminClient().schema("sia").from("extraction_runs")
+    .select("id, kind, started_at, finished_at, ok, input_ref, output").in("kind", [RUN_KIND, DISMISS_KIND]).gt("started_at", since)
+    .order("started_at", { ascending: true }).limit(1000);
+  const runs = (data ?? []) as RunRow[];
+  const latest = new Map<string, RunRow>();
+  const dismissedAt = new Map<string, string>();
+  for (const r of runs) {
+    const id = r.input_ref.ticket_id as string | undefined;
+    if (!id) continue;
+    if (r.kind === DISMISS_KIND) dismissedAt.set(id, r.started_at); else latest.set(id, r);
+  }
+  const settings = await getHandsSettings();
+  const out: { ticket: TicketRow; plan: HandsTicketPlan }[] = [];
+  for (const [ticketId, run] of latest) {
+    const plan = planFrom(run);
+    if (!plan?.helps || !plan.text) continue;
+    const d = dismissedAt.get(ticketId);
+    if (d && d > run.started_at) continue;
+    const ticket = await loadTicket(ticketId);
+    if (!ticket || CLOSED.has(ticket.status)) continue;
+    if (!trustAllows(settings.trustByCategory[ticket.category] ?? HANDS_DEFAULT_TRUST_LEVEL).openOnHerOwn) continue;
+    // Any thread at all, open or closed: a job someone already closed is never re-sent.
+    const { count } = await handsDb(createAdminClient()).from("threads").select("id", { count: "exact", head: true }).eq("ticket_id", ticket.id);
+    if (Number(count ?? 0) > 0) continue;
+    out.push({ ticket, plan });
+  }
+  return out;
 }
 
 /** "Not now" on the card: the draft is set aside (an append-only row; the next read replaces it). */

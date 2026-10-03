@@ -8,14 +8,18 @@
 // up its ladder. A step fires once per clock; a staff message stops the clock before the next.
 
 export type ReplyClock = "reply" | "update";
-export type ReplyStepTarget = "bishops" | "queen" | "founders" | "promiser";
+export type ReplyStepTarget = "genies" | "bishops" | "queen" | "founders" | "promiser";
 export type ReplyStep = { id: string; to: ReplyStepTarget; afterSeconds: number; severity: 1 | 2 | 3 };
 
-/** Clock 1, seconds after the member's first unanswered message. Around the clock, no quiet hours. */
+/**
+ * Clock 1, seconds after the member's first unanswered message. Around the clock, no quiet hours.
+ * The founder's ladder (2026-10-03): the queendom's genies and bishops at 2 minutes, the queen at 5.
+ * Founders are not on it for now ("someday, when needed"): add { to: "founders" } back to bring them in.
+ */
 export const REPLY_LADDER: readonly ReplyStep[] = [
-  { id: "bishops", to: "bishops", afterSeconds: 60, severity: 1 },
-  { id: "queen", to: "queen", afterSeconds: 90, severity: 2 },
-  { id: "founders", to: "founders", afterSeconds: 60 * 60, severity: 3 },
+  { id: "genies", to: "genies", afterSeconds: 2 * 60, severity: 1 },
+  { id: "bishops", to: "bishops", afterSeconds: 2 * 60, severity: 1 },
+  { id: "queen", to: "queen", afterSeconds: 5 * 60, severity: 2 },
 ];
 
 /** Clock 2, seconds after the promise falls DUE (see updateDueAt). */

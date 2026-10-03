@@ -85,3 +85,8 @@ export const SendHandsTicketLineSchema = z.object({
   /** True when the text is Elaya's draft (edited or not), for the disclosure record. */
   fromDraft: z.boolean().default(false),
 });
+
+export const FileHandsMessageSchema = z.object({
+  messageId: uuidField("handsMessageInvalid"),
+  threadId: uuidField("handsThreadInvalid"),
+});

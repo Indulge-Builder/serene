@@ -15,7 +15,7 @@ import { getAllowedContactForVendor, getHandsThreadForTicket } from "@/lib/servi
 import { sanitizeText } from "@/lib/utils/sanitize";
 import type { MutationActor } from "@/lib/services/lead-mutations";
 import type { HandsOutboxRow, HandsThreadRow, HandsMessageRow, HandsPayment, HandsGuideDoc, HandsGuideVersion } from "@/lib/types/hands";
-import type { HandsGuideKind, HandsOutboxSource } from "@/lib/constants/hands";
+import { handsJobCode, readHandsJobCode, type HandsGuideKind, type HandsOutboxSource } from "@/lib/constants/hands";
 import type { TicketRow } from "@/lib/types/ticket";
 
 const LOG = "[hands-mutations]";
@@ -72,7 +72,7 @@ export async function openTalkThreadCore(jid: string, actor: MutationActor): Pro
  */
 async function adoptUnfiled(thread: HandsThreadRow): Promise<HandsThreadRow> {
   const db = handsDb(createAdminClient());
-  const { data, error } = await db.from("messages").update({ thread_id: thread.id }).eq("jid", thread.jid).is("thread_id", null).select("wa_timestamp, direction, text, kind");
+  const { data, error } = await db.from("messages").update({ thread_id: thread.id }).eq("jid", thread.jid).is("thread_id", null).is("match_status", null).select("wa_timestamp, direction, text, kind");
   if (error) { console.error(`${LOG} adopting unfiled messages failed`, error.message); return thread; }
   const rows = (data ?? []) as { wa_timestamp: string; direction: "in" | "out"; text: string | null; kind: string }[];
   if (rows.length === 0) return thread;
@@ -104,8 +104,16 @@ export async function queueHandsMessageCore(
   if (thread.status !== "open") return fail("This thread is closed.");
   const { data: contact } = await db.from("allowed_contacts").select("is_active").eq("jid", thread.jid).maybeSingle();
   if (!(contact as { is_active: boolean } | null)?.is_active) return fail("That number is no longer on the hands allowlist.");
+  // A job's every line carries its code (#T42): the agent answers with it and the connector files the
+  // reply on the right ticket, however many jobs share the chat (2026-10-03).
+  let line = clean;
+  if (thread.kind === "ticket" && thread.ticket_id) {
+    const { data: tk } = await ticketsAdminDb().from("tickets").select("ticket_no").eq("id", thread.ticket_id).maybeSingle();
+    const no = (tk as { ticket_no: string } | null)?.ticket_no;
+    if (no && readHandsJobCode(line) !== no) line = `${handsJobCode(no)} ${line}`;
+  }
   const { data, error } = await db.from("outbox").insert({
-    thread_id: thread.id, jid: thread.jid, text: clean, requested_by: actor.userId, source: opts.source, disclosure: opts.disclosure ?? {},
+    thread_id: thread.id, jid: thread.jid, text: line, requested_by: actor.userId, source: opts.source, disclosure: opts.disclosure ?? {},
   }).select("*").single();
   if (error || !data) return fail("Could not queue the message.", error);
   return { data: data as HandsOutboxRow, error: null };
@@ -229,4 +237,42 @@ export async function restoreHandsGuideCore(actor: MutationActor, kind: HandsGui
   const found = doc.history.find((h) => h.version === version);
   if (!found) return fail("That version is no longer kept.");
   return saveHandsGuideCore(actor, kind, found.body, { note: `Restored version ${version}`, source: "restore" });
+}
+
+// ─── Filing a reply on its job (2026-10-03) ─────────────────────────────────
+
+/**
+ * Put an inbound reply the connector could not place (match_status 'unmatched') on the job it is
+ * about: by Elaya's content match ('content') or a person on the /hands tray ('human'). The thread
+ * moves, and the ticket sees the line as a hands_message, exactly as if it had carried its code.
+ */
+export async function fileHandsMessageCore(messageId: string, threadId: string, how: "content" | "human", actor: MutationActor | null): Promise<HandsResult<{ threadId: string }>> {
+  const db = handsDb(createAdminClient());
+  const [{ data: m }, { data: t }] = await Promise.all([
+    db.from("messages").select("*").eq("id", messageId).maybeSingle(),
+    db.from("threads").select("*").eq("id", threadId).maybeSingle(),
+  ]);
+  const msg = m as HandsMessageRow | null;
+  const thread = t as HandsThreadRow | null;
+  if (!msg || !thread) return fail("That reply or job could not be found.");
+  if (msg.jid !== thread.jid) return fail("That reply came from a different number.");
+  if (thread.status !== "open") return fail("That job is closed.");
+  const { data: moved, error } = await db.from("messages").update({ thread_id: thread.id, match_status: how })
+    .eq("id", msg.id).is("thread_id", null).select("id");
+  if (error) return fail("Could not file the reply.", error);
+  if (!Array.isArray(moved) || moved.length === 0) return fail("That reply was already filed.");
+  if (!thread.last_message_at || msg.wa_timestamp > thread.last_message_at) {
+    await db.from("threads").update({ last_message_at: msg.wa_timestamp, last_direction: msg.direction, last_preview: (msg.text ?? `[${msg.kind}]`).slice(0, 160) }).eq("id", thread.id);
+  }
+  if (thread.ticket_id) {
+    const { error: e } = await ticketsAdminDb().rpc("apply_ticket_change", {
+      p_ticket_id: thread.ticket_id, p_patch: {},
+      p_event: {
+        actor_kind: actor ? "human" : "system", actor_id: actor?.userId ?? "", event_type: msg.payment ? "payment_request" : "hands_message",
+        body: msg.text ?? `[${msg.kind}]`, meta: { message_id: msg.id, kind: msg.kind, frame: msg.frame, payment: msg.payment, media_path: msg.media_path, filed_by: how },
+      },
+    });
+    if (e) console.error(`${LOG} filed reply event failed`, e.message);
+  }
+  return { data: { threadId: thread.id }, error: null };
 }

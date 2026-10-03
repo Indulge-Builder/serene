@@ -23,6 +23,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Input, Textarea } from "@/components/ui/Field";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { FormSelect } from "@/components/ui/FormSelect";
 import { PageControls } from "@/components/layout/PageControls";
 import { TOP_BAR_ENABLED } from "@/lib/constants/feature-flags";
 import { HandsChatLines } from "@/components/hands/HandsChatLines";
@@ -33,11 +34,11 @@ import { formatCurrency } from "@/lib/utils/numbers";
 import { scrollToBottom } from "@/lib/utils/scroll";
 import { HANDS_QR_LIFETIME_MS } from "@/lib/constants/hands";
 import {
-  closeHandsThreadAction, draftHandsMessageAction, getHandsGuidesAction, getHandsThreadAction, improveHandsGuidesAction, listHandsThreadsAction, listHandsUnfiledAction, markHandsPaymentAction,
-  openTalkThreadAction, sendHandsMessageAction, writeHandsLineAction,
+  closeHandsThreadAction, draftHandsMessageAction, fileHandsMessageAction, getHandsGuidesAction, getHandsThreadAction, improveHandsGuidesAction, listHandsThreadsAction, listHandsUnfiledAction,
+  listHandsUnmatchedAction, markHandsPaymentAction, openTalkThreadAction, sendHandsMessageAction, writeHandsLineAction,
   type HandsThreadView,
 } from "@/lib/actions/hands";
-import type { HandsThreadSummary, HandsUnfiled } from "@/lib/services/hands-service";
+import type { HandsThreadSummary, HandsUnfiled, HandsUnmatched } from "@/lib/services/hands-service";
 import type { HandsDraft } from "@/lib/services/hands-draft";
 import type { HandsAllowedContactRow, HandsConnectorStatusRow, HandsMessageRow } from "@/lib/types/hands";
 
@@ -73,11 +74,14 @@ export function HandsWorkspace({ initialThreads, contacts, connector, canConfigu
   const [opening, startOpening] = useTransition();
   const isMobile = useMediaQuery(MQ.mobile);
 
+  const [unmatched, setUnmatched] = useState<(HandsUnmatched & { media_url: string | null })[]>([]);
   const refreshList = useCallback(async () => {
-    const [r, u] = await Promise.all([listHandsThreadsAction({ status: "open" }), listHandsUnfiledAction()]);
+    const [r, u, x] = await Promise.all([listHandsThreadsAction({ status: "open" }), listHandsUnfiledAction(), listHandsUnmatchedAction()]);
     if (r.data) setThreads(r.data);
     if (u.data) setUnfiled(u.data);
+    if (x.data) setUnmatched(x.data);
   }, []);
+  useEffect(() => { void listHandsUnmatchedAction().then((x) => { if (x.data) setUnmatched(x.data); }); }, []);
 
   const loadThread = useCallback(async (id: string, quiet = false) => {
     if (!quiet) setLoadingThread(true);
@@ -139,6 +143,8 @@ export function HandsWorkspace({ initialThreads, contacts, connector, canConfigu
           {TOP_BAR_ENABLED && <PageControls isPrivileged={false} />}
         </div>
       </div>
+
+      {unmatched.length > 0 && <UnmatchedTray items={unmatched} onFiled={() => { void refreshList(); if (selectedId) void loadThread(selectedId, true); }} />}
 
       <SplitWorkspace>
         {(!isMobile || !selectedId) && (
@@ -418,6 +424,50 @@ function PaymentCard({ m, perJobCapInr, viewerCanPayAbove, onPaid }: { m: HandsM
         {blocked && <span className="type-caption" style={{ color: "var(--color-danger-text)" }}>Above your cap. A bishop, admin or founder must mark this one.</span>}
         <span className="type-caption" style={{ color: "var(--theme-text-tertiary)" }}>Scan with the Indulge UPI phone. The agent never sees our account; we only ever scan its QR.</span>
       </div>
+    </div>
+  );
+}
+
+// ─── The tray: replies that need a job (2026-10-03) ──────────────────────────
+
+/**
+ * Replies the agent sent without a job code that Elaya could not place with confidence. A person
+ * picks the job; the ticket then sees the line as the agent's message. Hidden when empty.
+ */
+function UnmatchedTray({ items, onFiled }: { items: (HandsUnmatched & { media_url: string | null })[]; onFiled: () => void }) {
+  const [choice, setChoice] = useState<Record<string, string>>({});
+  const [pending, start] = useTransition();
+  const file = (messageId: string) => start(async () => {
+    const threadId = choice[messageId];
+    if (!threadId) { toast.warning("Choose the job first."); return; }
+    const r = await fileHandsMessageAction({ messageId, threadId });
+    if (r.error) { toast.danger(r.error); return; }
+    toast.success("Filed on the job.");
+    onFiled();
+  });
+  return (
+    <div className="mb-4" style={{ padding: "var(--space-3) var(--space-4)", borderRadius: "var(--neu-radius-card)", border: "1px solid var(--theme-paper-border)", background: "var(--theme-paper)", boxShadow: "var(--shadow-1)", display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+      <span style={{ fontSize: "var(--text-sm)", fontWeight: "var(--weight-medium)" }}>
+        {items.length} {items.length === 1 ? "reply needs" : "replies need"} a job
+        <span className="type-caption" style={{ color: "var(--theme-text-tertiary)", marginLeft: "var(--space-2)" }}>The agent wrote without a job code and Elaya was not sure which job it was about.</span>
+      </span>
+      {items.slice(0, 8).map(({ message: m, jobs, media_url }) => (
+        <div key={m.id} style={{ display: "flex", gap: "var(--space-3)", alignItems: "center", flexWrap: "wrap", paddingTop: "var(--space-2)", borderTop: "1px solid var(--theme-paper-border)" }}>
+          <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+            <div style={{ fontSize: "var(--text-sm)", whiteSpace: "pre-wrap", overflow: "hidden", textOverflow: "ellipsis", maxHeight: 60 }}>
+              {m.text ?? (media_url ? <a href={media_url} target="_blank" rel="noreferrer" style={{ color: "var(--neu-accent-deep)" }}>Open the {m.kind}</a> : `[${m.kind}]`)}
+            </div>
+            <span className="type-caption" style={{ color: "var(--theme-text-tertiary)" }}>{formatRelativeTime(m.wa_timestamp)}</span>
+          </div>
+          <div style={{ minWidth: 220, flex: "0 1 280px" }}>
+            <FormSelect value={choice[m.id] ?? ""} onValueChange={(v) => setChoice((c) => ({ ...c, [m.id]: v }))} aria-label="The job this reply is about">
+              <option value="" disabled>Choose the job</option>
+              {jobs.map((j) => <option key={j.threadId} value={j.threadId}>{j.label}</option>)}
+            </FormSelect>
+          </div>
+          <Button size="sm" variant="control" disabled={pending || !choice[m.id]} onClick={() => file(m.id)}>File it</Button>
+        </div>
+      ))}
     </div>
   );
 }
