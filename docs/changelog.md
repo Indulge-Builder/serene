@@ -23,8 +23,12 @@ direct manager set, so the escalation fell back to every manager, admin and foun
   escalates inside its own queendom: a genie's or joker's task goes to that queendom's bishops (else
   its queen), a bishop's to the queen, a queen's to nobody. Only an account with no seat still falls
   back to the domain's managers. `getTaskWithAssignee` now carries the assignee's queendom and seat.
-- Data fix: Aditya Sonde's bishop seat moved from Sanika to Ananyshree (he is Ananyshree's bishop;
-  Elaya had read the wrong seat and told him he was not in her queendom).
+- Aditya Sonde (Sanika's bishop) was told by Elaya that "Sanika's queendom" was not his: she was told
+  only "the bishop of ONE queendom", never which one. The Python brain now names it
+  (`StaffPrincipal.queendom_name`, principal.py; the reach hint in persona.py: "Their queendom is
+  Sanika Queendom: when they name it or say 'my queendom', they mean this one"). The Node brain
+  (off on both channels) still says only "ONE queendom". His seat is unchanged (a brief move to
+  Ananyshree the same day was reverted).
 
 ---
 

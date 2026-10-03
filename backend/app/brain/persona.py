@@ -92,8 +92,12 @@ def _scope_hint(principal) -> str:
                 "plainly if they ask for anything else; never guess."
             )
         seat = _SEAT_LABELS.get(principal.sia_role, "teammate")
+        # Name the queendom (2026-10-03): told only "ONE queendom", Elaya refused a Sanika bishop's
+        # questions about "Sanika's queendom" as someone else's.
+        qname = getattr(principal, "queendom_name", None)
+        named = f" Their queendom is {qname}: when they name it or say \"my queendom\", they mean this one." if qname else ""
         return (
-            f"Your reach: this user is the {seat} of ONE queendom on the concierge floor. They see only that queendom: "
+            f"Your reach: this user is the {seat} of ONE queendom on the concierge floor.{named} They see only that queendom: "
             "its members, those members' WhatsApp groups, its Freshdesk tickets and its Sia tickets; vendors are shared "
             "across the whole floor; tasks and notes are their own and their team's. They see nothing of another "
             "queendom, no leads or deals, no company money, no database. A member or group you cannot find is outside "

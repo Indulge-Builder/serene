@@ -43,6 +43,9 @@ class StaffPrincipal:
     # every bridged tool re-reads the queendom in Node at call time. None outside Concierge.
     sia_role: str | None = None
     queendom_id: str | None = None
+    # Its name ("Sanika Queendom"): the reach hint names the user's own queendom, so a bishop asking
+    # about "Sanika's queendom" is understood to mean their own (2026-10-03).
+    queendom_name: str | None = None
 
 
 async def resolve_staff_principal(user_id: str) -> StaffPrincipal | None:
@@ -54,6 +57,13 @@ async def resolve_staff_principal(user_id: str) -> StaffPrincipal | None:
     role = profile["role"]
     if not has_elaya_access(role, profile["domain"]):
         return None
+    queendom_name = None
+    if profile.get("queendom_id"):
+        try:
+            rows = await supa.select("queendoms", {"select": "name", "id": f"eq.{profile['queendom_id']}"}, schema="sia")
+            queendom_name = rows[0]["name"] if rows else None
+        except Exception:  # the name is a hint only; never refuse a turn over it
+            queendom_name = None
     return StaffPrincipal(
         user_id=profile["id"],
         role=role,
@@ -62,4 +72,5 @@ async def resolve_staff_principal(user_id: str) -> StaffPrincipal | None:
         toolset=TOOLSET_BY_ROLE.get(role, frozenset()),
         sia_role=profile.get("sia_role"),
         queendom_id=profile.get("queendom_id"),
+        queendom_name=queendom_name,
     )
