@@ -115,6 +115,7 @@ export async function runCustomerTurn(args: {
 
     for (let call = 0; call < PUBLIC_BOT_LIMITS.maxModelCalls; call += 1) {
       const result = await llm.adapter.complete({
+        usage: { feature: 'public_bot' },
         model: llm.model,
         maxTokens: llm.maxTokens,
         system,

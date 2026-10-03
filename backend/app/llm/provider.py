@@ -67,10 +67,24 @@ class CompleteRequest:
     # turn (no timestamps/UUIDs in system or tools) — same contract as the
     # Node provider.ts.
     cache_prefix: bool = False
+    # The PER-USER system block (2026-10-02, cost audit P1 "shared prompt content is mixed with
+    # personal content"): who the user is, their reach, the specialist focus, their style overlay,
+    # notes, memory. Delivered as a SECOND cached block after `system`, so the shared block in
+    # `system` is byte-identical across users (and cached across them) while this one is cached
+    # across the calls of one turn. None = everything is in `system`.
+    system_user: str | None = None
     # A VOLATILE trailing system block (the per-turn time anchor) delivered
     # AFTER the cache_control breakpoint — it changes every request without
     # busting the cached prefix. None = no tail.
     system_tail: str | None = None
+    # How hard the model should think ("low" | "medium" | "high"), the Node adapter's control:
+    # thinking is on by default on the Claude 5 family and counts against max_tokens. None = the
+    # provider's default. Ignored for a model that rejects the field (Haiku).
+    effort: str | None = None
+    # What this call is for, for the usage ledger (migration 0254): feature, channel, user_id,
+    # conversation_id, message_id, job_id, prompt_version, behaviour_version. The registry writes
+    # one llm_usage_events row per request with it; None = the job type alone.
+    usage_ctx: dict[str, Any] | None = None
     on_text_delta: Callable[[str], Awaitable[None]] | None = None
     # Give the model the provider's tool-search tool so it can discover deferred tools by
     # describing what it needs. The adapter adds the provider-native search tool; the
@@ -83,8 +97,17 @@ class CompleteResult:
     text: str
     tool_calls: list[ToolCall]
     stop_reason: StopReason
+    # Uncached input, billed at the full rate (the provider's input_tokens).
     input_tokens: int
     output_tokens: int
+    # The cache counters (2026-10-02): what the prompt cache wrote and read on this call.
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    cache_write_1h_tokens: int = 0
+    # The model the provider says answered, its own id for the request, and the wall-clock.
+    model: str = ""
+    request_id: str | None = None
+    latency_ms: int = 0
     # The assistant turn's content blocks as the provider returned them (see
     # ChatMessage.raw_blocks). Empty when the adapter has nothing to preserve.
     raw_content: list[dict[str, Any]] = field(default_factory=list)

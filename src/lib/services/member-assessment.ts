@@ -225,7 +225,7 @@ export async function assessMember(memberId: string, opts: { force?: boolean; br
 
   try {
     const llm = await resolveLlmForJob("reasoning");
-    const result = await llm.adapter.complete({ model: llm.model, maxTokens: ASSESSMENT_MAX_OUTPUT_TOKENS, effort: "low", timeoutMs: ASSESSMENT_TIMEOUT_MS, system: SYSTEM, messages: [{ role: "user", content: userContent }] });
+    const result = await llm.adapter.complete({ usage: { feature: 'assessment' }, model: llm.model, maxTokens: ASSESSMENT_MAX_OUTPUT_TOKENS, effort: "low", cachePrefix: true, timeoutMs: ASSESSMENT_TIMEOUT_MS, system: SYSTEM, messages: [{ role: "user", content: userContent }] });
     const usage = { model: llm.model, tokens_in: result.usage.inputTokens, tokens_out: result.usage.outputTokens };
     if (result.stopReason === "max_tokens") { await finish(false, { ...usage, error: "answer cut off at the token limit" }); return { status: "failed", error: "cut off" }; }
     const parsed = parseAnswer(result.text);

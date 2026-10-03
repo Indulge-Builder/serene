@@ -6,7 +6,9 @@ Revised on 1 October after checking the supplied independent AI analysis against
 
 The broader [reliable agent architecture plan](../architecture/elaya-reliable-agent-plan.md) defines the tool/evidence contracts, freshness policy, action safety, schema responsibilities and rollout gates for future growth. This audit remains the source for measured cost findings; the architecture plan adds implementation detail without declaring those changes shipped.
 
-This is an audit and implementation plan. No production settings, application behavior, prompts, or models were changed. Existing uncommitted work was left intact.
+The subsequent [Indulge behaviour contract](../architecture/elaya-behaviour-contract.md) translates the complete founder tone review into a compact shared policy and selective evidence-backed interventions. It explicitly avoids injecting the full source document into every call or adding a mandatory model rewrite chain, so the personality change preserves this plan's efficiency goals.
+
+This is an audit and implementation plan. No production settings, application behavior, prompts, or models were changed by the audit itself. **Sequence steps 1 to 3 were built on 2 October 2026** (the 2026-10-02 changelog entry): the per-request usage ledger and exact pricing in both runtimes (P0), reaction gating (P0), same-turn caching and the shared/personal prompt split (P0/P1), the three background caches (P1), `analytics` off the Opus tier with a per-specialist override switch (P1), the turn budgets and non-progress guards (P1), and the aggregate tools for the two costliest question families (P0). Migration 0254 is not applied and the Python service is not deployed yet, so the ledger has no rows until both happen.
 
 ## Evidence and limits
 

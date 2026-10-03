@@ -162,7 +162,7 @@ export async function planForTicket(ticket: TicketRow, agentLabel: string, actor
 
   try {
     const llm = await resolveLlmForJob("routing");
-    const result = await llm.adapter.complete({ model: llm.model, maxTokens: MAX_TOKENS, timeoutMs: TIMEOUT_MS, system, messages: [{ role: "user", content: userContent }] });
+    const result = await llm.adapter.complete({ usage: { feature: 'hands_ticket' }, model: llm.model, maxTokens: MAX_TOKENS, timeoutMs: TIMEOUT_MS, system, messages: [{ role: "user", content: userContent }] });
     const usage = { model: llm.model, tokens_in: result.usage.inputTokens, tokens_out: result.usage.outputTokens };
     const parsed = parseTicketPlan(result.text);
     if (result.stopReason === "max_tokens" || parsed.helps === null || (parsed.helps && !parsed.message)) {

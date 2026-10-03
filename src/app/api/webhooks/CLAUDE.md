@@ -94,7 +94,9 @@ BOTH the Elaya gate and the lead pipeline see the real type. **Never re-flatten 
 | `text` | `text` (body = `inner.text`) | — (preserved byte-identically) |
 | `image` / `video` / `audio` | same type | direct CDN url `inner.url` + `inner.contentType` + `inner.caption` |
 | `file` | `document` | same (Gupshup calls it `file`, Meta calls it `document`) |
-| sticker/location/contact/reaction/button_reply/list_reply, or a media type with no `url` | `text` with a **label** (`[Location]`, `[Contact card]`, … or `[Unsupported message]`) | — (never stored blank) |
+| `reaction` | `reaction` (`{ emoji, message_id }`) — the Elaya staff gate runs NO turn and persists nothing (2026-10-02); the public bot ignores it; the lead pipeline stores `[Reaction] 👍` as a text row | — |
+| `button_reply` / `list_reply` | `interactive` (`{ kind, id, title }`) — the chosen option's title IS the message to both gates (a "Yes" button confirms a proposal); the lead pipeline stores the title as a text row | — |
+| sticker/location/contact, or a media type with no `url` | `unsupported` (`{ subtype, label }`) — the staff gate answers "text only"; the lead pipeline stores the **label** (`[Location]`, `[Contact card]`, … or `[Unsupported message]`, `WHATSAPP_UNSUPPORTED_LABELS` in `constants/whatsapp.ts`) | — (never stored blank) |
 
 - Gupshup media carries a **direct, time-limited CDN url** (not a Meta media-id), so the media
   object sets `url`; `getMediaDownloadUrl` (Meta media-id fetch) only runs on the dormant Meta path.

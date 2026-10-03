@@ -59,6 +59,7 @@ export async function draftPlaybookFromNotes(principal: StaffPrincipal, notes: s
   try {
     const llm = await resolveLlmForJob('reasoning');
     const result = await llm.adapter.complete({
+      usage: { feature: 'playbook_drafter' },
       model: llm.model,
       maxTokens: Math.min(llm.maxTokens, 2500),
       effort: 'low',

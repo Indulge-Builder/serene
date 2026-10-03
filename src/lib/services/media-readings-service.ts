@@ -163,22 +163,26 @@ async function saveOutcome(row: MediaReadingRow, outcome: MediaReadOutcome, star
       language: r.language, confidence: r.confidence, model: r.model, prompt_version: r.prompt_version, input_tokens: r.tokens.in, output_tokens: r.tokens.out,
       cost_usd: r.cost_usd, duration_ms: durationMs, read_at: new Date().toISOString(), last_error: null,
     }).eq("id", row.id);
-    await sia().from("extraction_runs").insert({
+    // The run row is the media ledger's witness (cost audit 2026-10-01: media runs were missing from
+    // the ledger and nothing said why); an insert that fails is logged, never swallowed.
+    const { error: runErr } = await sia().from("extraction_runs").insert({
       kind: MEDIA_RUN_KIND, model: r.model, prompt_version: r.prompt_version, started_at: startedAt, finished_at: new Date().toISOString(), ok: true,
       client_id: row.context.member_id ?? null, tokens_in: r.tokens.in, tokens_out: r.tokens.out, cost_usd: r.cost_usd,
       input_ref: { reading_id: row.id, source: row.source, source_ref: row.source_ref, kind: row.kind, tier: r.tier },
       output: { class: r.class, sensitive: r.sensitive, summary: r.summary, confidence: r.confidence, raw: r.sensitive ? "(sensitive: not kept)" : r.raw.slice(0, 3000) },
     });
+    if (runErr) console.error("[media-readings] run row insert failed:", runErr.message);
     return;
   }
   const dead = !outcome.skip && row.attempts >= MEDIA_MAX_ATTEMPTS;
   const status = outcome.skip ? "skipped" : dead ? "dead" : "queued";
   await d.from("media_readings").update({ status, last_error: outcome.error.slice(0, 500), read_at: new Date().toISOString(), duration_ms: durationMs }).eq("id", row.id);
   if (!outcome.skip) {
-    await sia().from("extraction_runs").insert({
+    const { error: runErr } = await sia().from("extraction_runs").insert({
       kind: MEDIA_RUN_KIND, started_at: startedAt, finished_at: new Date().toISOString(), ok: false, client_id: row.context.member_id ?? null,
       input_ref: { reading_id: row.id, source: row.source, source_ref: row.source_ref, kind: row.kind, attempt: row.attempts }, error: outcome.error.slice(0, 500),
     });
+    if (runErr) console.error("[media-readings] run row insert failed:", runErr.message);
   }
 }
 

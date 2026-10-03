@@ -8,7 +8,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { memberDb } from "@/lib/supabase/schemas";
 import { mapRows } from "@/lib/utils/rows";
 import { toISTMidnight } from "@/lib/utils/ist";
-import { FD_GROUP_AGENT_WINDOW_DAYS, FD_STATUS_LABELS, FRESHDESK_LIST_PAGE_SIZE, FD_SYNC_KEYS, fdStatusLabel, fdComparable } from "@/lib/constants/freshdesk";
+import { FD_GROUP_AGENT_WINDOW_DAYS, FD_STATUS_LABELS, FRESHDESK_LIST_PAGE_SIZE, FD_SYNC_KEYS, fdStatusLabel, fdComparable, FD_TERMINAL_STATUSES } from "@/lib/constants/freshdesk";
 import { freshdeskDb } from "@/lib/services/freshdesk-sync";
 import { signFreshdeskAttachments } from "@/lib/services/freshdesk-media";
 import { getReadingsForFreshdeskConversations } from "@/lib/services/media-readings-service";
@@ -178,6 +178,29 @@ export async function listFreshdeskTickets(
     console.error("[freshdesk-service] list failed", error.message);
     return { tickets: [], totalCount: 0 };
   }
+  type Row = Omit<FdTicketListItem, "group_name" | "agent_name">;
+  const tickets = mapRows<Row, FdTicketListItem>(data, (r) => ({
+    ...r,
+    status_label: r.status_label ?? fdStatusLabel(r.status),
+    group_name: r.group_id != null ? (names.groups.get(r.group_id) ?? null) : null,
+    agent_name: r.responder_id != null ? (names.agents.get(r.responder_id) ?? null) : null,
+  }));
+  return { tickets, totalCount: Number(count ?? 0) };
+}
+
+/**
+ * The open tickets past their due date, most overdue first, for Elaya's open-loops read
+ * (elaya-data.ts). `groupIds` is the viewer's reach (null = every group; [] = nothing). Admin
+ * client behind the caller's scope, like every read here. null = the read failed.
+ */
+export async function listOverdueFreshdeskTickets(scope: { groupIds: readonly number[] | null; limit: number; now?: Date }): Promise<{ tickets: FdTicketListItem[]; totalCount: number } | null> {
+  if (scope.groupIds && scope.groupIds.length === 0) return { tickets: [], totalCount: 0 };
+  const nowIso = (scope.now ?? new Date()).toISOString();
+  let q = ticketsSelect(LIST_COLUMNS, { count: "exact" }).eq("deleted", false).eq("spam", false)
+    .not("status", "in", `(${FD_TERMINAL_STATUSES.join(",")})`).lt("due_by", nowIso);
+  if (scope.groupIds) q = q.in("group_id", [...scope.groupIds]);
+  const [{ data, error, count }, names] = await Promise.all([q.order("due_by", { ascending: true }).limit(Math.min(Math.max(scope.limit, 1), 200)), getNameMaps()]);
+  if (error) { console.error("[freshdesk-service] overdue list failed", error.message); return null; }
   type Row = Omit<FdTicketListItem, "group_name" | "agent_name">;
   const tickets = mapRows<Row, FdTicketListItem>(data, (r) => ({
     ...r,

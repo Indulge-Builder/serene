@@ -16,6 +16,7 @@ import {
   ELAYA_TONE_OPTIONS,
   ELAYA_DEPTH_OPTIONS,
   ELAYA_LENGTH_OPTIONS,
+  ELAYA_EMOJI_OPTIONS,
   ELAYA_PERSONA_DEFAULTS,
   ELAYA_PERSONA_NOTE_MAX,
   type ElayaPersonaPrefs,
@@ -23,6 +24,7 @@ import {
   type ElayaTonePref,
   type ElayaDepthPref,
   type ElayaLengthPref,
+  type ElayaEmojiPref,
 } from "@/lib/constants/elaya-persona";
 
 type Props = { initialPersona: ElayaPersonaPrefs };
@@ -43,15 +45,37 @@ export function ElayaPersonaSettings({ initialPersona }: Props) {
   const [length, setLength] = useState<ElayaLengthPref>(
     initialPersona.length ?? ELAYA_PERSONA_DEFAULTS.length,
   );
+  const [emojis, setEmojis] = useState<ElayaEmojiPref>(
+    initialPersona.emojis ?? ELAYA_PERSONA_DEFAULTS.emojis,
+  );
   const [note, setNote] = useState<string>(initialPersona.note ?? "");
 
   function handleSave() {
     startTransition(async () => {
-      const res = await updateElayaPersonaAction({ language, tone, depth, length, note });
+      const res = await updateElayaPersonaAction({ language, tone, depth, length, emojis, note });
       if (res.error) {
         toast.danger(res.error);
       } else {
         toast.success("Elaya will remember how you like to talk.");
+      }
+    });
+  }
+
+  // Reset to Elaya's shared defaults (the behaviour contract's "reset-to-default path"): every
+  // chip back to its default and the note cleared, saved at once so the next message uses them.
+  function handleReset() {
+    setLanguage(ELAYA_PERSONA_DEFAULTS.language);
+    setTone(ELAYA_PERSONA_DEFAULTS.tone);
+    setDepth(ELAYA_PERSONA_DEFAULTS.depth);
+    setLength(ELAYA_PERSONA_DEFAULTS.length);
+    setEmojis(ELAYA_PERSONA_DEFAULTS.emojis);
+    setNote("");
+    startTransition(async () => {
+      const res = await updateElayaPersonaAction({ ...ELAYA_PERSONA_DEFAULTS, note: "" });
+      if (res.error) {
+        toast.danger(res.error);
+      } else {
+        toast.success("Back to Elaya's defaults.");
       }
     });
   }
@@ -99,6 +123,13 @@ export function ElayaPersonaSettings({ initialPersona }: Props) {
           onChange={setLength}
           disabled={isPending}
         />
+        <ChipField
+          label="Emojis"
+          options={ELAYA_EMOJI_OPTIONS}
+          value={emojis}
+          onChange={setEmojis}
+          disabled={isPending}
+        />
 
         {/* Free-text note */}
         <div>
@@ -144,7 +175,16 @@ export function ElayaPersonaSettings({ initialPersona }: Props) {
         </div>
       </div>
 
-      <div style={{ marginTop: "var(--space-5)", display: "flex", justifyContent: "flex-end" }}>
+      <div style={{ marginTop: "var(--space-5)", display: "flex", justifyContent: "flex-end", gap: "var(--space-3)" }}>
+        <Button
+          variant="ghost"
+          type="button"
+          onClick={handleReset}
+          disabled={isPending}
+          className="serene-pressable"
+        >
+          Reset to defaults
+        </Button>
         <Button
           variant="primary"
           type="button"

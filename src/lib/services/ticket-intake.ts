@@ -195,7 +195,7 @@ export async function readBurst(groupJid: string, memberId: string, context: Msg
 
   try {
     const llm = await resolveLlmForJob("routing");
-    const result = await llm.adapter.complete({ model: llm.model, maxTokens: 1500, effort: "low", timeoutMs: 30_000, cachePrefix: true, system: SYSTEM + lesson.block, messages: [{ role: "user", content: userContent }] });
+    const result = await llm.adapter.complete({ usage: { feature: 'intake' }, model: llm.model, maxTokens: 1500, effort: "low", timeoutMs: 30_000, cachePrefix: true, system: SYSTEM + lesson.block, messages: [{ role: "user", content: userContent }] });
     const usage = { model: llm.model, tokens_in: result.usage.inputTokens, tokens_out: result.usage.outputTokens };
     const raw = result.stopReason === "max_tokens" ? null : parseJson(result.text);
     if (!raw) { await finish(false, { ...usage, error: "no json", output: { text: result.text.slice(0, 1500) } }); return { ...base, error: "no json" }; }

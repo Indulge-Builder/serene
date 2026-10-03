@@ -94,6 +94,7 @@ export async function improveHandsGuides(actor: MutationActor, feedback: string,
   try {
     const llm = await resolveLlmForJob("reasoning");
     const result = await llm.adapter.complete({
+      usage: { feature: 'hands_guide' },
       model: llm.model, maxTokens: HANDS_GUIDE_WRITER_MAX_TOKENS, timeoutMs: HANDS_GUIDE_WRITER_TIMEOUT_MS, system: SYSTEM,
       messages: [{ role: "user", content: userContent }],
     });

@@ -1116,6 +1116,9 @@ BRIDGED_READ_TOOL_NAMES: frozenset[str] = frozenset({
     "list_members",
     # Hands (0245): the thread with the outside agent and the disclosure drafter live in Node.
     "list_hands_jobs", "get_hands_thread", "draft_hands_message",
+    # The two prepared reads (2026-10-02): who is waiting on us, and whose occasion is coming. The
+    # clocks, the cards, the tickets and the date facts all live in Node; this brain decides WHEN.
+    "get_open_loops", "find_member_occasions",
 })
 
 # The ticket pair (2026-09-15) is bridged for the same reason: the sentinel's ledger and the
@@ -1155,6 +1158,9 @@ _BRIDGED_READ_ROLES: dict[str, frozenset[str]] = {
     "get_activity_feed": frozenset({"manager", "admin", "founder"}),
     # The members roster with filters (city, company, tier, status), scoped to the seat in Node.
     "list_members": frozenset({"agent", "manager", "admin", "founder"}),
+    # Every staff role may carry the two prepared reads; Node scopes them to the seat.
+    "get_open_loops": frozenset({"agent", "manager", "admin", "founder"}),
+    "find_member_occasions": frozenset({"agent", "manager", "admin", "founder"}),
 }
 
 

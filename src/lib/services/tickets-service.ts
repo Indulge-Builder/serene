@@ -272,6 +272,51 @@ export async function listTicketsForElaya(scope: { queendomId: string | null; wi
   }));
 }
 
+export type LateTicketForElaya = ElayaTicketSummary & { due_kind: "first_response" | "next_update" | "resolve"; due_at: string; late_minutes: number };
+
+/**
+ * The ACTIVE tickets past one of their clocks (first response not given, next update owed, resolve
+ * date passed), most late first, for Elaya's open-loops read (elaya-data.ts). Admin client; the
+ * CALLER passes the queendom ids it may see (null = every queendom; an empty list = nothing).
+ * A ticket with no queendom is never listed for a scoped caller.
+ */
+export async function listLateTicketsForElaya(scope: { queendomIds: readonly string[] | null; limit: number; now?: Date }): Promise<LateTicketForElaya[] | null> {
+  const now = scope.now ?? new Date();
+  const nowIso = now.toISOString();
+  const db = ticketsAdminDb();
+  let q = db.from("tickets").select("*").in("status", [...TICKET_ACTIVE_STATUSES]);
+  if (scope.queendomIds) {
+    if (scope.queendomIds.length === 0) return [];
+    q = q.in("queendom_id", [...scope.queendomIds]);
+  }
+  q = q.or(`resolve_due_at.lt.${nowIso},next_update_due_at.lt.${nowIso},and(first_responded_at.is.null,first_response_due_at.lt.${nowIso})`);
+  const { data, error } = await q.order("resolve_due_at", { ascending: true, nullsFirst: false }).limit(Math.min(Math.max(scope.limit, 1), 200));
+  if (error) { console.error("[tickets-service] late tickets read failed", error.message); return null; }
+  const rows = mapRows<TicketRow, TicketRow>(data, (r) => r);
+  const names = await nameMaps(rows.map((r) => r.member_id), rows.map((r) => r.assignee_id).filter((x): x is string => Boolean(x)), createAdminClient());
+  const t = now.getTime();
+  const out: LateTicketForElaya[] = [];
+  for (const r of rows) {
+    // The most consequential clock first: a resolve date passed beats an update owed beats a first response.
+    let due_kind: LateTicketForElaya["due_kind"] | null = null;
+    let due_at: string | null = null;
+    if (r.resolve_due_at && Date.parse(r.resolve_due_at) < t) { due_kind = "resolve"; due_at = r.resolve_due_at; }
+    else if (r.next_update_due_at && Date.parse(r.next_update_due_at) < t) { due_kind = "next_update"; due_at = r.next_update_due_at; }
+    else if (!r.first_responded_at && r.first_response_due_at && Date.parse(r.first_response_due_at) < t) { due_kind = "first_response"; due_at = r.first_response_due_at; }
+    if (!due_kind || !due_at) continue;
+    out.push({
+      id: r.id, ticket_no: r.ticket_no, title: r.title, status: r.status, priority: r.priority, category: r.category, sub_category: r.sub_category,
+      requested_for: r.requested_for, resolve_due_at: r.resolve_due_at, first_response_due_at: r.first_response_due_at, first_responded_at: r.first_responded_at,
+      updated_at: r.updated_at, created_at: r.created_at, tags: r.tags ?? [],
+      member_name: names.members.get(r.member_id) ?? "Member",
+      assignee_name: r.assignee_id ? (names.profiles.get(r.assignee_id) ?? null) : null,
+      queendom_name: r.queendom_id ? (names.queendoms.get(r.queendom_id) ?? null) : null,
+      due_kind, due_at, late_minutes: Math.max(0, Math.round((t - Date.parse(due_at)) / 60_000)),
+    });
+  }
+  return out.sort((a, b) => b.late_minutes - a.late_minutes).slice(0, scope.limit);
+}
+
 /** One ticket by number (T-000042) or id, with its member, its last events and its policy. Admin member; the caller gates. */
 export async function getTicketByRefForElaya(ref: string): Promise<{ ticket: TicketRow; member_name: string; assignee_name: string | null; events: TicketEventRow[]; policy: TicketSlaPolicyRow | null } | null> {
   const db = ticketsAdminDb();

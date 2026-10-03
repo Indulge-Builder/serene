@@ -4,10 +4,16 @@
 //
 // Adding a provider: write lib/elaya/adapters/<name>.ts implementing
 // LlmProviderAdapter, add one case below, insert/update the llm_providers row.
+//
+// Metering (migration 0254, cost audit 2026-10-01 P0): the adapter every caller gets back is
+// wrapped once here, so EVERY model request in the Node runtime writes one usage row, with the
+// caller's `usage` context when it set one and the job type alone when it did not. The adapter
+// itself stays a pure transport (it never touches the database); the ledger is this seam's job.
 
 import { anthropicAdapter } from '@/lib/elaya/adapters/anthropic';
-import type { LlmProviderAdapter } from '@/lib/elaya/provider';
+import type { LlmCompleteRequest, LlmCompleteResult, LlmProviderAdapter } from '@/lib/elaya/provider';
 import { getLlmJobConfig } from '@/lib/services/llm-providers-service';
+import { recordLlmUsage } from '@/lib/services/llm-usage-service';
 import type { LlmJobType, LlmProviderName } from '@/lib/types/elaya';
 
 export type ResolvedLlm = {
@@ -28,10 +34,41 @@ function adapterFor(provider: LlmProviderName): LlmProviderAdapter {
   }
 }
 
+function toolResultChars(req: LlmCompleteRequest): number {
+  let n = 0;
+  for (const m of req.messages) if (m.role === 'tool') n += m.content.length;
+  return n;
+}
+
+/** The same adapter, with one ledger row per request. Failures are recorded too, then re-thrown. */
+function metered(base: LlmProviderAdapter, jobType: LlmJobType): LlmProviderAdapter {
+  return {
+    name: base.name,
+    async complete(req: LlmCompleteRequest): Promise<LlmCompleteResult> {
+      const common = {
+        provider: base.name,
+        modelRequested: req.model,
+        jobType,
+        ctx: req.usage,
+        toolsOffered: req.tools?.length ?? 0,
+        toolResultChars: toolResultChars(req),
+      };
+      try {
+        const result = await base.complete(req);
+        await recordLlmUsage({ ...common, usage: result.usage, stopReason: result.stopReason, ok: true });
+        return result;
+      } catch (err) {
+        await recordLlmUsage({ ...common, usage: null, stopReason: null, ok: false, error: err instanceof Error ? err.message : String(err) });
+        throw err;
+      }
+    },
+  };
+}
+
 export async function resolveLlmForJob(jobType: LlmJobType): Promise<ResolvedLlm> {
   const config = await getLlmJobConfig(jobType);
   return {
-    adapter: adapterFor(config.provider),
+    adapter: metered(adapterFor(config.provider), jobType),
     model: config.model,
     maxTokens: config.max_tokens,
   };

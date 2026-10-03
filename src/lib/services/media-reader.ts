@@ -137,6 +137,7 @@ export async function readMediaFile(input: MediaReadInput, opts: { tier?: "routi
   try {
     const llm = await resolveLlmForJob(tier);
     const result = await llm.adapter.complete({
+      usage: { feature: 'media_read' },
       model: llm.model, maxTokens: MEDIA_MAX_OUTPUT_TOKENS, timeoutMs: MEDIA_CALL_TIMEOUT_MS, cachePrefix: true,
       system: SYSTEM_PROMPT, messages: [{ role: "user", content: userText, files: [file] }],
     });

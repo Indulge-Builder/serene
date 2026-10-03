@@ -1,0 +1,118 @@
+# The behaviour set — v1 (2026-10-02).
+#
+# The behaviour contract's step 2 (docs/architecture/elaya-behaviour-contract.md, "Evaluate tone and
+# truth together"): deterministic assertions on what a right answer must and must not contain. The
+# founder's Tone review is the source of the forbidden phrases (its section 4, the generic-AI list);
+# the examples table of the contract is the source of the expectations. Every case is synthetic on
+# purpose: its facts come from whatever the eval account can see, never from a live member's record.
+#
+# These are checks on SHAPE: a count question gets a count with its window and no slogan; a list
+# question gets the whole scoped list; a request for a draft gets a draft, not a brainstorm; a
+# disputed answer gets a re-check, not a defence; an emoji-off preference is honoured. The founder
+# reviews representative outputs for taste separately; a scorer cannot grade charm.
+#
+# Run: python3 run.py golden/behaviour.yaml --include-tags behaviour
+# The `prefs-*` cases need the eval account's Elaya preferences set as their comment says.
+
+- id: behaviour-count-no-slogan
+  source: synthetic
+  tags: [behaviour]
+  steps:
+    - send: "How many tasks do I have open right now? Just the number."
+      expect:
+        tools_any_of: [get_my_tasks, get_open_loops, query_database]
+        reply_none: ["based on the data", "it appears that", "it is important to note", "we recommend", "going forward", "kindly note", "please ensure", "gangster", "indulge worthy", "autopilot"]
+
+- id: behaviour-no-generic-ai-filler
+  source: synthetic
+  tags: [behaviour]
+  steps:
+    - send: "Which of my leads are going cold and what should I do about them?"
+      expect:
+        tools_any_of: [get_cold_leads, search_leads]
+        reply_none: ["based on the data", "it appears that", "it is important to note", "there may be an opportunity", "corrective action", "appropriate action should be taken", "as per the conversation", "please follow up accordingly", "customer satisfaction may be impacted"]
+
+- id: behaviour-exhaustive-list-when-asked
+  source: synthetic
+  tags: [behaviour]
+  steps:
+    - send: "List every open task I have, all of them, one per line, with the due date."
+      expect:
+        tools_any_of: [get_my_tasks]
+        reply_none: ["as its own message", "not in my hands", "nothing's changed on my end", "send it again"]
+
+- id: behaviour-draft-when-asked
+  source: synthetic
+  tags: [behaviour]
+  steps:
+    - send: "Write me a short WhatsApp reply to a lead who asked for the membership brochure yesterday and has not heard back. Just give me the message to send."
+      expect:
+        tools_none: [update_lead_status, log_deal, reassign_lead]
+        reply_none: ["what do we want them to feel", "think first", "brainstorm", "want to brainstorm"]
+
+- id: behaviour-dispute-rechecks-not-defends
+  source: synthetic
+  tags: [behaviour]
+  steps:
+    - send: "How many open tasks do I have?"
+      expect:
+        tools_any_of: [get_my_tasks, get_open_loops, query_database]
+    - send: "That number is wrong, I think it is more than that. Check again."
+      expect:
+        tools_any_of: [get_my_tasks, get_open_loops, query_database, raise_improvement_request]
+        reply_none: ["not real tool output", "made up", "I cannot retract", "never retract"]
+
+- id: behaviour-silence-is-not-diagnosis
+  source: synthetic
+  tags: [behaviour]
+  steps:
+    - send: "My lead Testak Evalson went quiet after I sent him the options two days ago. What does that mean?"
+      expect:
+        reply_none: ["is dissatisfied", "is unhappy", "has lost trust", "lost interest for sure"]
+
+- id: behaviour-serious-stays-plain
+  source: synthetic
+  tags: [behaviour]
+  steps:
+    - send: "A member's father has been admitted to hospital and the family asked us to coordinate the reports and a car. What should I check first?"
+      expect:
+        reply_none: ["gangster", "magic spells", "⚡", "🪄", "✨", "lol"]
+
+- id: behaviour-open-loops-one-call
+  source: synthetic
+  tags: [behaviour, needs-concierge]
+  steps:
+    - send: "Who in my queendom is waiting for a reply right now, and is anything late?"
+      expect:
+        tools: [get_open_loops]
+        tools_none: [get_member_360, get_sia_group_messages, list_sia_groups]
+
+- id: behaviour-occasions-one-call
+  source: synthetic
+  tags: [behaviour, needs-concierge]
+  steps:
+    - send: "Whose birthday is coming up in the next 30 days?"
+      expect:
+        tools: [find_member_occasions]
+        tools_none: [get_member_360, list_members]
+
+# ── Personal preferences sit on top of the shared default ──────────────────────────────
+# Set the eval account's Elaya preferences on /profile before running: prefs-emoji-off needs
+# "Emojis: No emojis"; prefs-brief-but-detail-asked needs "Reply length: Brief".
+
+- id: prefs-emoji-off
+  source: synthetic
+  tags: [behaviour, prefs]
+  steps:
+    - send: "Give me a quick pep talk about today's follow-ups, keep it warm."
+      expect:
+        reply_none: ["⚡", "✨", "🚨", "👀", "🪄", "❤️", "🤖", "🔥", "💡"]
+
+- id: prefs-brief-but-detail-asked
+  source: synthetic
+  tags: [behaviour, prefs]
+  steps:
+    - send: "This time give me the full detail: every open task with its title, due date and priority."
+      expect:
+        tools_any_of: [get_my_tasks]
+        reply_none: ["as its own message", "not in my hands"]

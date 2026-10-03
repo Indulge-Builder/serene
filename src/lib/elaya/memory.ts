@@ -74,6 +74,7 @@ export async function readMemoryFromTurn(
       effort: 'low',
       timeoutMs: 30_000,
       cachePrefix: true,
+      usage: { feature: 'memory_reader' },
       system: READER_SYSTEM,
       messages: [{ role: 'user', content: `ENTRIES ON RECORD (id [kind] statement):\n${onRecord}\n\nRECENT CONVERSATION (oldest first; the last user message is the one to judge):\n${maskPii(transcript, maskingDepth)}` }],
     });
@@ -116,9 +117,12 @@ export async function learnFromTurn(args: { principal: StaffPrincipal; conversat
     const last = [...turns].reverse().find((m) => m.role === 'user');
     if (!last) return;
     // Cheap gate before the paid read: a bare question or a sign-off carries no instruction about
-    // how the person wants things. A message with "I", "me", "my", "don't", "always", "never",
-    // "call me", "prefer", "want", "stop", or a correction word is worth a read.
-    if (!/\b(i|me|my|mine|don'?t|do not|never|always|stop|prefer|want|like|call me|from now|next time|instead|wrong|not what|actually|should|shouldn'?t|rather)\b/i.test(last.content)) return;
+    // how the person wants things. Only an INSTRUCTION-shaped message is worth a read: "don't",
+    // "never", "always", "stop", "prefer", "call me", "from now on", "next time", "instead",
+    // "rather", a length or language ask, or a correction of how she behaves. The pronouns alone
+    // ("my leads", "what do I have today") let every ordinary question through and paid for a
+    // read that found nothing (cost audit 2026-10-01); they are no longer a signal.
+    if (!/\b(don'?t|do not|never|always|stop|prefer|preferred|call me|from now|next time|instead|rather|not what i|actually i|i want|i like|i'?d like|too long|too short|shorter|longer|brief|in english|in hindi|in hinglish|no emojis?|without emojis?|plain text|reply with|answer with|keep it|less|more detail)\b/i.test(last.content)) return;
     const transcript = turns.map((m) => `${m.role === 'user' ? 'User' : 'Elaya'}: ${m.content.slice(0, 1500)}`).join('\n');
     const reading = await readMemoryFromTurn(existing, transcript, maskingDepth, existing.length ? null : learned);
     if (!reading || (!reading.add.length && !reading.retire.length)) return;

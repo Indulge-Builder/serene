@@ -106,6 +106,10 @@ async function transcribeWhatsAppAudio(url: string, mimeType: string): Promise<s
 /** The words of an inbound message: text, a caption, or a voice note transcribed in memory. */
 async function wordsOf(message: MetaInboundMessage): Promise<string | null> {
   if (message.type === 'text') return typeof message.text.body === 'string' && message.text.body.trim() ? message.text.body : null;
+  // A button or list reply is the option the person chose; a reaction, a sticker, a location or a
+  // contact card carries no words and never starts a paid turn (2026-10-02).
+  if (message.type === 'interactive') return message.interactive.title.trim() ? message.interactive.title : null;
+  if (message.type === 'reaction' || message.type === 'unsupported') return null;
   if (message.type === 'audio' && message.audio.url) {
     try {
       const t = await transcribeWhatsAppAudio(message.audio.url, message.audio.mime_type);

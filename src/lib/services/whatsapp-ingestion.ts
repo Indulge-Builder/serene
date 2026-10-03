@@ -11,6 +11,7 @@ import { normalizeWaPhone } from '@/lib/utils/phone';
 import { sanitizeText } from '@/lib/utils/sanitize';
 import { getMediaDownloadUrl } from '@/lib/services/whatsapp-api';
 import { storeInboundMedia } from '@/lib/services/whatsapp-media';
+import { WHATSAPP_UNSUPPORTED_LABELS } from '@/lib/constants/whatsapp';
 import { createLeadFromWhatsApp } from '@/lib/services/lead-ingestion';
 import { invalidateLeadCaches } from '@/lib/services/lead-cache';
 import { notifyLeadAssigned } from '@/lib/services/lead-assignment-notify';
@@ -435,10 +436,21 @@ async function insertInboundMessage(
 
   let content:       string | null = null;
   let mediaMimeType: string | null = null;
+  // The row's type is one of the six the CHECK knows; an event that is not words (a reaction, a
+  // button press, a sticker) is stored as a labelled text row, as it always was, while the EVENT
+  // keeps its real type for the routing gates (2026-10-02).
+  let rowType: 'text' | 'image' | 'video' | 'document' | 'audio' = 'text';
 
   if (message.type === 'text') {
     content = sanitizeText(message.text.body);
+  } else if (message.type === 'reaction') {
+    content = sanitizeText(`${WHATSAPP_UNSUPPORTED_LABELS.reaction} ${message.reaction.emoji}`.trim());
+  } else if (message.type === 'interactive') {
+    content = sanitizeText(message.interactive.title || WHATSAPP_UNSUPPORTED_LABELS[message.interactive.kind]);
+  } else if (message.type === 'unsupported') {
+    content = sanitizeText(message.label);
   } else {
+    rowType = message.type;
     const mediaObj = resolveMediaObject(message);
     if (mediaObj) {
       mediaMimeType = mediaObj.mime_type;
@@ -455,7 +467,7 @@ async function insertInboundMessage(
     sender_type:     'lead',
     sender_id:       null,
     wa_message_id:   message.id,
-    message_type:    message.type,
+    message_type:    rowType,
     content,
     media_url:       mediaUrl ?? null,
     media_mime_type: mediaMimeType,

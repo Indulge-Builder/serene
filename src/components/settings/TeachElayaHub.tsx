@@ -5,9 +5,10 @@
 // Display-only (A-06): a server component of links and copy; every door's page owns its own
 // data and its own gate. Tokens only.
 import Link from "next/link";
-import { GraduationCap, BookOpen, ClipboardCheck, MessageSquareWarning, MessagesSquare, ChevronRight, type LucideIcon } from "lucide-react";
+import { GraduationCap, BookOpen, ClipboardCheck, MessageSquareWarning, MessagesSquare, Radar, ChevronRight, type LucideIcon } from "lucide-react";
 import { ELAYA_CHATS_PATH, ELAYA_PLAYBOOKS_PATH, ELAYA_TRAINING_PATH } from "@/lib/constants/elaya";
 import { ELAYA_REQUESTS_PATH } from "@/lib/constants/elaya-memory";
+import { ELAYA_TEAMMATE_PATH } from "@/lib/constants/elaya-teammate";
 
 type Door = {
   icon: LucideIcon;
@@ -55,6 +56,18 @@ const DOORS: Door[] = [
     ],
     who: "Admin and founder.",
     href: ELAYA_CHATS_PATH,
+  },
+  {
+    icon: Radar,
+    title: "Teammate",
+    oneLine: "What Elaya says first, before anyone asks.",
+    does: [
+      "Every five minutes she looks for a last-mile check a ticket still owes, silence after options, a request on no ticket, and the week's occasions.",
+      "Shadow mode writes what she would have sent and sends nothing; live sends it to the queendoms you name, waits for a reply, and brings it back up the ladder when nobody answers.",
+      "Mark a row seen, snoozed, resolved or dismissed here; a short reply on WhatsApp does the same.",
+    ],
+    who: "Admin and founder.",
+    href: ELAYA_TEAMMATE_PATH,
   },
   {
     icon: MessageSquareWarning,

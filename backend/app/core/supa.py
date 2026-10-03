@@ -296,3 +296,61 @@ async def get_active_playbooks() -> list[dict[str, Any]]:
         rows = _playbooks_cache[1] if _playbooks_cache else []
     _playbooks_cache = (now, rows)
     return rows
+
+
+# ── The cost switches and the spend read (migration 0254, 2026-10-02) ──────────────
+# Mirrors src/lib/constants/elaya-cost.ts: the settings keys and the chat features.
+_SPECIALIST_TIERS_KEY = "elaya_specialist_tiers"
+_CHAT_DAILY_CAP_KEY = "elaya_chat_daily_cap_usd"
+CHAT_USAGE_FEATURES = ("chat_turn", "chat_closing", "chat_router", "memory_reader")
+_TIERS = ("routing", "reasoning", "heavy")
+_tiers_cache: tuple[float, dict[str, str]] | None = None
+_TIERS_TTL_S = 60.0
+
+
+async def get_specialist_tiers() -> dict[str, str]:
+    """{specialist id: tier}: a founder's per-specialist model tier override, cached one minute.
+    Unknown tiers are dropped; a failed read keeps the last value or {}."""
+    global _tiers_cache
+    import time as _t
+
+    now = _t.monotonic()
+    if _tiers_cache and now - _tiers_cache[0] < _TIERS_TTL_S:
+        return _tiers_cache[1]
+    out: dict[str, str] = {}
+    try:
+        row = await select_one("elaya_settings", {"select": "value", "key": f"eq.{_SPECIALIST_TIERS_KEY}"})
+        value = (row or {}).get("value")
+        if isinstance(value, dict):
+            out = {str(k): str(v) for k, v in value.items() if isinstance(v, str) and v in _TIERS}
+    except Exception as exc:  # noqa: BLE001
+        print(f"[supa] specialist tiers read failed: {exc}")
+        out = _tiers_cache[1] if _tiers_cache else {}
+    _tiers_cache = (now, out)
+    return out
+
+
+async def get_chat_daily_cap_usd() -> float | None:
+    """The day's dollar ceiling for the chat features; None (the seed) = no ceiling."""
+    try:
+        row = await select_one("elaya_settings", {"select": "value", "key": f"eq.{_CHAT_DAILY_CAP_KEY}"})
+        value = (row or {}).get("value")
+        return float(value) if isinstance(value, (int, float)) and value >= 0 else None
+    except Exception as exc:  # noqa: BLE001
+        print(f"[supa] chat daily cap read failed: {exc}")
+        return None
+
+
+async def get_chat_spend_today_usd() -> float | None:
+    """Dollars the chat features spent since IST midnight (the ledger's llm_spend_usd); None when
+    the read failed, so a ledger outage never locks the team out."""
+    from datetime import datetime, timedelta, timezone
+
+    ist = timezone(timedelta(hours=5, minutes=30))
+    midnight = datetime.now(ist).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+    try:
+        value = await rpc("llm_spend_usd", {"p_since": midnight.isoformat(), "p_features": list(CHAT_USAGE_FEATURES)})
+        return float(value) if isinstance(value, (int, float, str)) else None
+    except Exception as exc:  # noqa: BLE001
+        print(f"[supa] chat spend read failed: {exc}")
+        return None

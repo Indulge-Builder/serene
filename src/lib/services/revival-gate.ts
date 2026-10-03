@@ -102,6 +102,7 @@ export async function judgeNotesForRevival(
 
     const llm = await resolveLlmForJob("routing");
     const result = await llm.adapter.complete({
+      usage: { feature: 'revival_gate' },
       model: llm.model,
       maxTokens: Math.min(llm.maxTokens, 300),
       system: GATE_SYSTEM_PROMPT,

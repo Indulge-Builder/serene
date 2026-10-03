@@ -53,8 +53,8 @@ import { getCampaignMetrics } from '@/lib/services/leads-service';
 import { getBudgetSummary, type BudgetCampaignRow } from '@/lib/services/ad-spend-service';
 import { rankVendorsForRequest, getVendorDetail, resolveMergedVendorId } from '@/lib/services/vendors-service';
 import { hasVendorActionAccess } from '@/lib/utils/route-access';
-import { listTicketsForElaya, getTicketByRefForElaya } from '@/lib/services/tickets-service';
-import { getSiaGroupForMember, getSiaGroups, getSiaMessages, searchSiaMessages, getSiaSenderRoles, type SiaGroupKind } from '@/lib/services/sia-service';
+import { listTicketsForElaya, getTicketByRefForElaya, listLateTicketsForElaya } from '@/lib/services/tickets-service';
+import { getSiaGroupForMember, getSiaGroups, getSiaMessages, searchSiaMessages, getSiaSenderRoles, type SiaGroupKind, getSiaWatcherStatus } from '@/lib/services/sia-service';
 import { foldReadingLine, getReadingsForFreshdeskConversations } from '@/lib/services/media-readings-service';
 import type { MediaReadingBrief } from '@/lib/types/media';
 import { getSiaViewerScope, getQueendomGroupJids, pinnedFreshdeskGroup, pinnedGroupFilter, type SiaViewerScope } from '@/lib/services/sia-access';
@@ -62,8 +62,7 @@ import {
   getFreshdeskOverview,
   getFreshdeskFilterVocab,
   listFreshdeskTickets,
-  getFreshdeskTicketDetail,
-} from '@/lib/services/freshdesk-service';
+  getFreshdeskTicketDetail, listOverdueFreshdeskTickets, getFreshdeskSyncHealth } from '@/lib/services/freshdesk-service';
 import { FD_TERMINAL_STATUSES, fdPriorityLabel, fdStatusLabel } from '@/lib/constants/freshdesk';
 import type { FdTicketListFilters } from '@/lib/types/freshdesk';
 import { canAccessMember, canSeeMemberFinance } from '@/lib/elaya/access';
@@ -72,7 +71,11 @@ import { getMemberDetailAsAdmin } from '@/lib/services/members-service';
 import { getMemberFinance, getBooksOverview } from '@/lib/services/zoho-service';
 import { runElayaQuery, logElayaQuery, getElayaCatalog, ELAYA_EXPORT_MAX_ROWS } from '@/lib/services/elaya-query-service';
 import { listLabelSets } from '@/lib/services/elaya-jobs-service';
-import { getLivePulse } from '@/lib/services/pulse-service';
+import { getLivePulse, getWaitingGroups } from '@/lib/services/pulse-service';
+import { listOpenIntakeProposalsForScope } from '@/lib/services/intake-cards';
+import { listRunningReplyClocks } from '@/lib/services/reply-alerts';
+import { updateDueAt } from '@/lib/constants/reply-clocks';
+import { findMemberOccasionsInScope, queendomNames, type MemberOccasionsOptions, type MemberOccasionKind } from '@/lib/services/member-occasions';
 import { isOnlyAcknowledgement } from '@/lib/services/ticket-intake';
 import { getLeadWhatsAppThreadForElaya } from '@/lib/services/whatsapp-service';
 import { getSubscriptionsForElaya } from '@/lib/services/subscriptions-service';
@@ -1498,4 +1501,206 @@ export async function draftHandsMessageFor(principal: StaffPrincipal, ticketRef:
   // The guide (hands_elaya_guide, edited on /settings/hands) is read per call: an edit reaches her next draft.
   const [draft, settings, thread, guides] = await Promise.all([draftForTicket(t.ticket, opts), getHandsSettings(), getHandsThreadForTicket(t.ticket.id), getHandsGuides()]);
   return { ok: true, ticketId: t.ticket.id, ticketNo: t.ticket.ticket_no, draft, allows: trustAllows(draft.trust), enabled: settings.enabled, hasThread: Boolean(thread), vendorIsAgent: Boolean(t.ticket.vendor_id), guide: guides.guide.body };
+}
+
+
+// ─────────────────────────────────────────────
+// The open loops — who is waiting on us, right now, in ONE read (2026-10-02)
+//
+// The reliable-agent plan's first vertical: "who needs an update in my queendom?" used to be an
+// 18-to-20-call scan (groups, member 360s, Freshdesk searches; 300k input tokens a turn in the cost
+// audit). This composes the reads that already exist, scoped once by sia-access: the reply clocks
+// (0253), the 0224 waiting scan, the open intake cards, the Sia tickets past a clock, the Freshdesk
+// tickets past their due date. Every section reports its own coverage (a read that failed is `null`
+// with a warning, never an empty list that reads as "nobody is waiting"), and the envelope names
+// the freshness of each source, so the answer can say what it stands on.
+// ─────────────────────────────────────────────
+
+export type OpenLoopsOptions = { limit?: number; since?: string | null; sections?: readonly OpenLoopSection[] | null };
+export type OpenLoopSection = 'waiting' | 'owing_update' | 'untracked_requests' | 'sia_tickets_late' | 'freshdesk_overdue';
+const OPEN_LOOP_SECTIONS: readonly OpenLoopSection[] = ['waiting', 'owing_update', 'untracked_requests', 'sia_tickets_late', 'freshdesk_overdue'];
+const OPEN_LOOPS_DEFAULT_LIMIT = 12;
+const OPEN_LOOPS_MAX_LIMIT = 40;
+/** A member whose last word has stood this long is "waiting" for the scan (the clocks are exact from the first second). */
+const OPEN_LOOPS_WAITING_MIN_MINUTES = 15;
+const OPEN_LOOPS_WAITING_MAX_HOURS = 24 * 30;
+
+async function memberNamesAndQueendoms(ids: string[]): Promise<Map<string, { name: string; queendom_id: string | null }>> {
+  const out = new Map<string, { name: string; queendom_id: string | null }>();
+  const admin = createAdminClient();
+  for (let i = 0; i < ids.length; i += 150) {
+    const { data } = await memberDb(admin).from('members').select('id, full_name, queendom_id').in('id', ids.slice(i, i + 150));
+    mapRows<{ id: string; full_name: string; queendom_id: string | null }, void>(data, (m) => { out.set(m.id, { name: m.full_name, queendom_id: m.queendom_id }); });
+  }
+  return out;
+}
+
+async function groupSubjects(jids: string[]): Promise<Map<string, string | null>> {
+  const out = new Map<string, string | null>();
+  const admin = createAdminClient();
+  for (let i = 0; i < jids.length; i += 150) {
+    const { data } = await admin.schema('sia').from('wag_groups').select('group_jid, subject').in('group_jid', jids.slice(i, i + 150));
+    mapRows<{ group_jid: string; subject: string | null }, void>(data, (g) => { out.set(g.group_jid, g.subject); });
+  }
+  return out;
+}
+
+export async function getOpenLoopsFor(principal: StaffPrincipal, opts: OpenLoopsOptions = {}) {
+  const scope = await siaScopeFor(principal);
+  if (!scope) return { denied: true as const };
+  const now = new Date();
+  const t = now.getTime();
+  const limit = Math.min(Math.max(opts.limit ?? OPEN_LOOPS_DEFAULT_LIMIT, 1), OPEN_LOOPS_MAX_LIMIT);
+  const wanted = new Set<OpenLoopSection>(opts.sections?.length ? opts.sections : OPEN_LOOP_SECTIONS);
+  const since = opts.since && !Number.isNaN(Date.parse(opts.since)) ? new Date(opts.since).toISOString() : null;
+  const queendomIds = scope.kind === 'all' ? null : scope.queendomIds;
+  const fdGroupIds = scope.kind === 'all' ? null : scope.freshdeskGroupIds;
+  const inScope = (memberQueendom: string | null | undefined) => !queendomIds || (Boolean(memberQueendom) && queendomIds.includes(memberQueendom as string));
+  const warnings: string[] = [];
+
+  const [clocks, scanned, intake, lateTickets, fdOverdue, fdHealth, watcher, qNames] = await Promise.all([
+    wanted.has('waiting') || wanted.has('owing_update') ? listRunningReplyClocks() : Promise.resolve([]),
+    wanted.has('waiting') ? getWaitingGroups(OPEN_LOOPS_WAITING_MIN_MINUTES, OPEN_LOOPS_WAITING_MAX_HOURS) : Promise.resolve([]),
+    wanted.has('untracked_requests') ? listOpenIntakeProposalsForScope(queendomIds, { since, limit }) : Promise.resolve({ proposals: [], total: 0 }),
+    wanted.has('sia_tickets_late') ? listLateTicketsForElaya({ queendomIds, limit, now }) : Promise.resolve([]),
+    wanted.has('freshdesk_overdue') ? listOverdueFreshdeskTickets({ groupIds: fdGroupIds, limit, now }) : Promise.resolve({ tickets: [], totalCount: 0 }),
+    getFreshdeskSyncHealth().catch(() => null),
+    getSiaWatcherStatus().catch(() => null),
+    queendomNames(),
+  ]);
+  if (clocks === null) warnings.push('the reply clocks could not be read: the waiting and owing-update lists may be incomplete');
+  if (scanned === null) warnings.push('the waiting scan could not be read: the waiting list rests on the reply clocks alone');
+  if (intake === null) warnings.push('the request cards could not be read');
+  if (lateTickets === null) warnings.push('the Sia tickets could not be read');
+  if (fdOverdue === null) warnings.push('the Freshdesk mirror could not be read');
+
+  // Names and queendoms for every member touched, once.
+  const clockRows = clocks ?? [];
+  const scanRows = scanned ?? [];
+  const memberIds = [...new Set([...clockRows.map((c) => c.member_id), ...scanRows.map((w) => w.member_id)].filter((x): x is string => Boolean(x)))];
+  const members = await memberNamesAndQueendoms(memberIds);
+  const subjects = await groupSubjects([...new Set(clockRows.map((c) => c.group_jid))]);
+  const holders = [...new Set(clockRows.map((c) => c.hold_by).filter((x): x is string => Boolean(x)))];
+  const holderNames = new Map<string, string>();
+  if (holders.length) {
+    const { data } = await createAdminClient().from('profiles').select('id, full_name').in('id', holders);
+    mapRows<{ id: string; full_name: string }, void>(data, (r) => { holderNames.set(r.id, r.full_name); });
+  }
+  const memberOf = (id: string | null) => (id ? members.get(id) : undefined);
+
+  // Waiting: the clocks are exact; the scan covers groups whose wait started before the clocks existed.
+  type Waiting = { member: string | null; group: string | null; waiting_minutes: number; since: string; last_text: string | null; alerts_sent: string[]; source: 'clock' | 'scan' };
+  const waiting = new Map<string, Waiting>();
+  for (const c of clockRows) {
+    if (!c.wait_started_at) continue;
+    const m = memberOf(c.member_id);
+    if (!inScope(m?.queendom_id)) continue;
+    waiting.set(c.group_jid, {
+      member: m?.name ?? null, group: subjects.get(c.group_jid) ?? null,
+      waiting_minutes: Math.max(0, Math.round((t - Date.parse(c.wait_started_at)) / 60_000)), since: c.wait_started_at,
+      last_text: c.wait_text ? clip(c.wait_text, 160) : null, alerts_sent: c.wait_steps ?? [], source: 'clock',
+    });
+  }
+  for (const w of scanRows) {
+    if (waiting.has(w.group_jid)) continue;
+    const m = memberOf(w.member_id);
+    if (!inScope(m?.queendom_id ?? null) || !w.member_id) continue;
+    waiting.set(w.group_jid, {
+      member: w.member ?? m?.name ?? null, group: w.subject, waiting_minutes: w.waiting_minutes, since: w.last_message_at,
+      last_text: w.last_text ? clip(w.last_text, 160) : null, alerts_sent: [], source: 'scan',
+    });
+  }
+  const waitingRows = [...waiting.values()].sort((a, b) => b.waiting_minutes - a.waiting_minutes);
+
+  // Owing an update: a holding reply ("noted, checking") whose promise has fallen due or is about to.
+  const owing = clockRows
+    .filter((c) => c.hold_started_at && inScope(memberOf(c.member_id)?.queendom_id))
+    .map((c) => {
+      const dueAt = updateDueAt(c.hold_started_at as string, c.hold_promised_minutes);
+      return {
+        member: memberOf(c.member_id)?.name ?? null, group: subjects.get(c.group_jid) ?? null,
+        promised_by: c.hold_by ? (holderNames.get(c.hold_by) ?? null) : null, promised_minutes: c.hold_promised_minutes,
+        holding_line: c.hold_text ? clip(c.hold_text, 160) : null, held_since: c.hold_started_at as string,
+        due_at: new Date(dueAt).toISOString(), overdue_minutes: Math.round((t - dueAt) / 60_000), alerts_sent: c.hold_steps ?? [],
+      };
+    })
+    .sort((a, b) => b.overdue_minutes - a.overdue_minutes);
+
+  const untracked = (intake?.proposals ?? []).map((r) => ({
+    proposal_id: r.id, member: r.member_name, member_id: r.member_id, queendom: r.queendom_id ? (qNames.get(r.queendom_id) ?? null) : null,
+    summary: clip(r.summary, 220), confidence: r.confidence, tone: r.tone, first_message_at: r.first_message_at, last_message_at: r.last_message_at,
+    age_hours: Math.round((t - Date.parse(r.first_message_at)) / 3_600_000),
+  }));
+
+  const siaLate = (lateTickets ?? []).map((x) => ({
+    ticket_no: x.ticket_no, ticket_id: x.id, member: x.member_name, title: clip(x.title, 140), status: x.status, priority: x.priority, category: x.category,
+    assignee: x.assignee_name, queendom: x.queendom_name, due_kind: x.due_kind, due_at: x.due_at, late_minutes: x.late_minutes,
+  }));
+
+  const fdRows = (fdOverdue?.tickets ?? []).map((x) => ({
+    id: x.id, subject: clip(x.subject, 140), status: x.status_label ?? fdStatusLabel(x.status), priority: fdPriorityLabel(x.priority), group: x.group_name,
+    agent: x.agent_name, requester: x.requester_name, member_id: x.member_id, due_by: x.due_by,
+    overdue_hours: x.due_by ? Math.max(0, Math.round((t - Date.parse(x.due_by)) / 3_600_000)) : null, escalated: x.is_escalated,
+  }));
+
+  const scopeNames = queendomIds ? queendomIds.map((id) => qNames.get(id) ?? id) : null;
+  return {
+    ok: true as const,
+    computed_at: now.toISOString(),
+    scope: { kind: scope.kind, queendoms: scopeNames ?? 'every queendom' },
+    window: { since: since ?? null, waiting_scan_min_minutes: OPEN_LOOPS_WAITING_MIN_MINUTES, waiting_scan_max_days: OPEN_LOOPS_WAITING_MAX_HOURS / 24 },
+    counts: {
+      waiting: waitingRows.length,
+      owing_update: owing.length,
+      untracked_requests: intake?.total ?? null,
+      sia_tickets_late: lateTickets ? lateTickets.length : null,
+      freshdesk_overdue: fdOverdue ? fdOverdue.totalCount : null,
+    },
+    waiting: wanted.has('waiting') ? waitingRows.slice(0, limit) : undefined,
+    owing_update: wanted.has('owing_update') ? owing.slice(0, limit) : undefined,
+    untracked_requests: wanted.has('untracked_requests') ? untracked.slice(0, limit) : undefined,
+    sia_tickets_late: wanted.has('sia_tickets_late') ? siaLate.slice(0, limit) : undefined,
+    freshdesk_overdue: wanted.has('freshdesk_overdue') ? fdRows.slice(0, limit) : undefined,
+    coverage: {
+      whatsapp: watcher ? { state: watcher.state, connected: watcher.connected, last_beat_at: watcher.beat_at } : 'unknown',
+      reply_clocks: clocks === null ? 'unavailable' : 'live (kept by the message trigger since 2026-10-02)',
+      freshdesk: fdHealth ? { last_sync_at: fdHealth.lastPollAt, last_sync_ok: fdHealth.lastPollOk, last_error: fdHealth.lastError, last_webhook_at: fdHealth.lastWebhookAt } : 'unknown',
+    },
+    warnings,
+    note:
+      'Waiting = a member whose last real message has no staff reply yet (sign-offs excluded), longest first. Owing an update = a holding reply ("noted, checking") past the time it promised. ' +
+      'Untracked requests = requests Serene found in the groups that are on no ticket yet. Late tickets = Sia tickets past a clock; Freshdesk overdue = open tickets past their due date. ' +
+      'A count of null means that source could not be read just now. Lead with the longest wait and the most late; a list cut at the limit says so in counts.',
+  };
+}
+
+// ─────────────────────────────────────────────
+// Member occasions — whose birthday, anniversary, renewal or trip is coming, in ONE read (2026-10-02)
+//
+// The cost audit's second family: "birthday / anniversary follow-up" ran list_members plus 27
+// get_member_360 calls (283k input tokens). This reads the scope's members once, their date facts
+// (identity.birthday / anniversary / dating_anniversary and the occasion facet, parsed by the one
+// occasion-date reader), their anticipations and their membership end, and returns the dates inside
+// the window with the member they belong to. It also says how many members have NO date on record,
+// so "nobody has a birthday this month" is never claimed over missing data.
+// ─────────────────────────────────────────────
+
+
+export type { MemberOccasionsOptions, MemberOccasionKind };
+
+export async function findMemberOccasionsFor(principal: StaffPrincipal, opts: MemberOccasionsOptions = {}) {
+  const seat = await seatedPrincipal(principal);
+  const head = isCompanyWideSeat(seat);
+  const scopeAll = principal.role === 'admin' || principal.role === 'founder' || head;
+  const { queendom_id } = seat;
+  if (!scopeAll && !queendom_id) return { denied: true as const, reason: 'no_seat' as const };
+
+  const qNames = await queendomNames();
+  let wantQueendom: string | null = null;
+  if (opts.queendom) {
+    const needle = opts.queendom.toLowerCase().replace(/'s queendom|queendom/g, '').trim();
+    wantQueendom = [...qNames.entries()].find(([, n]) => n.toLowerCase().includes(needle))?.[0] ?? null;
+    if (!wantQueendom) return { ok: true as const, occasions: [], total: 0, note: `No queendom named "${opts.queendom}". Known: ${[...qNames.values()].join(', ')}.` };
+  }
+  return findMemberOccasionsInScope({ scopeAll, head, queendomId: scopeAll ? wantQueendom : (queendom_id as string) }, opts, qNames);
 }

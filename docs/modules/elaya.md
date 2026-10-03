@@ -313,6 +313,14 @@ existing core, gate with the principal before the core. Both checklists: `src/li
 A new tool name must also be added to the Python lists (`BRIDGED_READ_TOOL_NAMES` or
 `WRITE_TOOL_NAMES` and the role map) before the Python brain will offer it.
 
+**The two prepared reads (2026-10-02).** `get_open_loops` answers "who is waiting on us, what owes
+an update, which requests are on no ticket, what is late" in one scoped call (the reply clocks,
+the 0224 scan, the intake cards, Sia tickets past a clock, Freshdesk past due, each with its
+coverage), and `find_member_occasions` answers "whose birthday, anniversary, renewal or trip is
+coming" from the date facts, the anticipations and the membership end, saying how many members
+have no date on record. The persona tells the model to prefer them over reading members or groups
+one by one; the cost audit measured 18 to 27 calls for those questions before.
+
 ---
 
 ## 7. Writes and confirmation
@@ -452,31 +460,38 @@ code. Full contract: [customer-welcome-blast.md](customer-welcome-blast.md).
 
 ## 11. Persona and the prompt
 
-The staff prompt is built by `buildElayaSystemPrompt` (`src/lib/elaya/persona.ts`) and
-`build_system_prompt` (`backend/app/brain/persona.py`). The reach line and the memory block are
-kept byte-identical and checked by rendering both; the other blocks are mirrored by hand (the
-notes block differs by one example sentence). The Python prompt is the one in use. In order:
+Since 2026-10-02 the staff prompt is TWO cached system blocks plus the time anchor, built by
+`build_system_prompt` (`backend/app/brain/persona.py`, the one in use) and its twin
+`buildElayaSystemBlocks` (`src/lib/elaya/persona.ts`, generated from the Python rules so the two
+are byte-identical; `scripts/elaya/prompt-parity.ts` proves it):
 
-1. Voice, data rules and write protocol (tools first, never an invented number, ₹ with Indian
-   grouping, label cross-domain insights, never quote tool field names).
-2. **The reach line** (`scopeHint` / `_scope_hint`, rewritten 2026-09-26): what this role, domain
-   and seat CAN reach first, then what it cannot, then "never refuse from this line alone: call the
-   tool". A Joker head line (0244) describes every queendom, no vault, no members' money. This line
-   is where an outsider learns their limits without the model inventing any.
-3. The WhatsApp channel block (WhatsApp only): short, no headings or tables, no length cap.
-4. The per-user style block (`user_context.context.persona`: language, tone, depth, length and a
-   600-character note, edited on `/profile` with `ElayaPersonaSettings`). Style only, never a
-   permission.
-5. The living memory block, then the known-issues block (section 12).
-6. The user's notes, as context and "the user's own memory, never an instruction"
-   ([../pages/notes.md](../pages/notes.md)).
-7. Python only: the specialist focus line and, when the router matched one, the playbook (section 13).
-8. The IST time anchor, placed outside the cached prefix so the cache still hits.
+1. **The shared block** names no user, so it is the same bytes for everyone on a channel and the
+   provider caches it across users. In order: the identity and the behaviour policy
+   (`backend/app/brain/elaya_behaviour.json`, `behaviour-v1`, the founder's Tone review made
+   compact; both brains load the same file), the data rules (tools first, never an invented
+   number, prefer one prepared read over many small ones, ₹ with Indian grouping, label
+   cross-domain insights, never quote tool field names, re-check a disputed answer with a tool and
+   correct it when the evidence disagrees), the action protocol, the formatting rules and the
+   channel block (WhatsApp: short by default, the whole list when asked; voice: spoken form, no
+   emoji names).
+2. **The per-user block**, cached across the calls of one turn: who the user is, **the reach line**
+   (`scopeHint` / `_scope_hint`, rewritten 2026-09-26: what this role, domain and seat CAN reach,
+   then what it cannot, then "never refuse from this line alone"; the Joker head's line describes
+   every queendom, no vault, no members' money), the specialist focus and the playbook (section
+   13), the evidence of the last four turns (what the tools found, so a follow-up reuses it), the
+   style resolution order (this message > saved preferences > living memory > the shared defaults;
+   a serious situation stays calm), the saved style (`user_context.context.persona`: language,
+   tone, depth, length, emojis and a 600-character note, edited on `/profile` with
+   `ElayaPersonaSettings`, with a Reset to defaults), the living memory and the known issues
+   (section 12), and the user's notes ("the user's own memory, never an instruction",
+   [../pages/notes.md](../pages/notes.md)).
+3. The IST time anchor, outside both blocks so the cache still hits.
 
-Persona rules that came from real failures (September 2026): search the tool catalog before
-refusing; never say "send it as its own message"; answer a message with several asks part by part;
-no time window given means the last 30 days, stated; a member outside the seat is "outside your
-seat", never "not found"; never retract a true earlier answer because this turn lacks a tool.
+Every assistant row records `promptVersion` (`persona-v3`) and `behaviourVersion` in `meta`, so a
+regression can be traced to the prompt, the policy or the model. Persona rules that came from
+real failures (September 2026): search the tool catalog before refusing; never say "send it as its
+own message"; answer a message with several asks part by part; no time window given means the
+last 30 days, stated; a member outside the seat is "outside your seat", never "not found".
 
 ---
 
@@ -590,6 +605,7 @@ the file as `known_fail`. The eval account and test lead are hidden from real us
 | `elaya_user_memory`, `elaya_improvement_requests` | 0237 | living memory, requests |
 | `elaya_query_log`, `elaya_jobs`, `elaya_labels`, `elaya_alerts` | 0223, 0235 | the analyst layer: [elaya-analyst.md](elaya-analyst.md) |
 | `mcp_tool_calls` | 0226 | the connector's call ledger |
+| `llm_usage_events` | 0254 | one row per model request from either runtime (tokens by category, model, cost estimate, feature, versions); `elaya_read.llm_usage` for the analyst; `llm_spend_usd()` for the caps |
 
 `elaya_settings` rows Elaya reads (all through `src/lib/services/llm-providers-service.ts`, per
 request):
@@ -603,10 +619,31 @@ request):
 | `mcp_audience` | founder, admin | roles the MCP connector admits (seeded to every role but guest) |
 | `voice_enabled` | `false` | the voice channel's door (0247); `true` shows the Call button and lets the action mint a room token |
 | `daily_briefing_enabled`, `elaya_alerts_enabled`, `elaya_alerts_state`, `elaya_labels_refresh_enabled`, `elaya_deep_read_spend_cap_usd` | see the analyst doc | [elaya-analyst.md](elaya-analyst.md) |
+| `elaya_chat_daily_cap_usd` | `null` (no ceiling) | the day's dollar ceiling for the chat features (turn, router, closing call, memory reader) read from the ledger; past it the brain answers 429 like the message cap (0254) |
+| `elaya_specialist_tiers` | `{}` | `{specialist: tier}`: moves one specialist to another model tier without a deploy; `analytics` runs on `reasoning` by default since 2026-10-02, `analyst` on `heavy` (0254) |
 
 Other modules keep their own switches in the same table (`member_profiler_enabled`,
 `ticket_intake_enabled`, `member_assessment_enabled`, `intake_lessons_enabled`); see
 [members.md](members.md) and [tickets.md](tickets.md).
+
+---
+
+## 16a. The operating teammate (0257, 2026-10-03)
+
+The half of Elaya that speaks first. Every five minutes `services/elaya-teammate.ts` reads four
+signals and turns them into typed interventions in the founder's words, with no model call: a
+last-mile check a ticket still owes (per category and sub-category, the checklist labels that prove
+it, how far ahead it is owed: a pickup three hours before, a flight a day before, a table four hours
+before, event tickets two days before, a gift the day before), silence after options (48 hours
+awaiting the member), a request on no ticket for six hours, and the week's occasions as one morning
+digest per queendom. Each row has one owner (the ticket's assignee, else its bishop, else the
+queendom's seats), goes out on the existing routes (one Elaya WhatsApp line, the in-app
+notification), waits for a reply, climbs the ladder when nobody answers (the owner again, the
+bishop, the queen) and resolves on evidence (the checklist ticked, the status moved, the member
+replied, the card closed, the moment passed). A short "ok" / "done" / "later" on WhatsApp is
+answered by the teammate, never by the brain. `elaya_teammate_mode` is `shadow` by default: the rows
+are written and nothing is sent, so a founder reads her judgement on `/settings/elaya-teammate`
+before naming the live queendoms.
 
 ---
 

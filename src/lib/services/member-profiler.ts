@@ -396,7 +396,7 @@ export async function profileWindow(w: ProfilerWindow, deps: ProfilerDeps): Prom
 
   try {
     const llm = await resolveLlmForJob("reasoning");
-    const result = await llm.adapter.complete({ model: llm.model, maxTokens: PROFILER_MAX_OUTPUT_TOKENS, effort: "low", timeoutMs: PROFILER_CALL_TIMEOUT_MS, system: SYSTEM_PROMPT, messages: [{ role: "user", content: userContent }] });
+    const result = await llm.adapter.complete({ usage: { feature: 'profiler' }, model: llm.model, maxTokens: PROFILER_MAX_OUTPUT_TOKENS, effort: "low", cachePrefix: true, timeoutMs: PROFILER_CALL_TIMEOUT_MS, system: SYSTEM_PROMPT, messages: [{ role: "user", content: userContent }] });
     const tokens = { in: result.usage.inputTokens, out: result.usage.outputTokens };
     const cost = (tokens.in * PROFILER_COST_PER_MTOK.input + tokens.out * PROFILER_COST_PER_MTOK.output) / 1_000_000;
     if (result.stopReason === "max_tokens") {

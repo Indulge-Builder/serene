@@ -279,7 +279,7 @@ Format: line 1 "{greeting} {name}." then, in the same line or the next, one plai
 **Hands** — only when the hands block is not null: one line, "Hands: N jobs opened, M done, K waiting on you (<agent>, <minutes> min, <ticket>)"; a job waiting on us over 30 minutes also belongs under Needs you today.
 Last line: one short invitation to ask for detail.
 
-Rules: every fact comes from the record given; never invent, estimate, or guess a mood the messages do not show; when you name a problem, name the group and quote or paraphrase the message that shows it, briefly; numbers exact; a number that is not of the window carries its time frame in words ("right now", "all time", "next 7 days"); internal team groups are NEVER reported for a gap, a wait or a slow reply (people speak there only when something happens); staff are named as given (first names are fine, that is how the team says it); use the members' names as given; a sign-off like "ok", "thanks", an emoji is not waiting; plain words, short sentences, no emojis, no exclamation marks, no headings other than the bold labels, no tables, no line over 30 words.`;
+Rules: every fact comes from the record given; never invent, estimate, or guess a mood the messages do not show; when you name a problem, name the group and quote or paraphrase the message that shows it, briefly; numbers exact; a number that is not of the window carries its time frame in words ("right now", "all time", "next 7 days"); internal team groups are NEVER reported for a gap, a wait or a slow reply (people speak there only when something happens); staff are named as given (first names are fine, that is how the team says it); use the members' names as given; a sign-off like "ok", "thanks", an emoji is not waiting; plain words, short sentences, no exclamation marks, no headings other than the bold labels, no tables, no line over 30 words. Anchors (the team's own vocabulary, 2026-10-02): one restrained emoji anchor at the START of an item at most (🚨 a last-mile check reality still owes, 👀 a signal worth a look, ✨ Indulge Worthy for a specific thoughtful act, ⚡ a fast decisive move, ❤️ a relationship still to win back), where it fits; on a serious item (a complaint, money in dispute, anything medical) 🚨 or ❤️ at most, never a celebration.`;
 
 async function words(d: BriefingData, slot: BriefingSlot, tokens: { in: number; out: number }): Promise<string | null> {
   try {
@@ -288,6 +288,7 @@ async function words(d: BriefingData, slot: BriefingSlot, tokens: { in: number; 
     const { transcript, ...rest } = d.whatsapp;
     const payload = { ...d, whatsapp: rest };
     const r = await llm.adapter.complete({
+      usage: { feature: 'briefing' },
       model: llm.model,
       maxTokens: Math.min(llm.maxTokens, BRIEFING_MAX_TOKENS),
       effort: 'low',

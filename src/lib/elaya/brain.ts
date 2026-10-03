@@ -20,6 +20,7 @@ import { getModelContextMessages, getUserPersona } from '@/lib/services/elaya-se
 import { getNotesForElaya } from '@/lib/services/elaya-notes-service';
 import { getMemoryBlock, getKnownIssuesBlock } from '@/lib/services/elaya-memory-service';
 import { getPiiMaskingDepth } from '@/lib/services/llm-providers-service';
+import { ELAYA_BEHAVIOUR_VERSION, ELAYA_PROMPT_VERSION } from '@/lib/constants/elaya-behaviour';
 import type { ElayaChannel, ElayaMessageRow, ElayaToolCallRecord } from '@/lib/types/elaya';
 
 /** Hard ceiling on tool round-trips per turn — a runaway-loop backstop. Raised 5 → 10
@@ -166,6 +167,11 @@ export async function runElayaTurn(args: {
       // tools+system — calls 2..n read it at ~0.1x. See provider.ts cachePrefix.
       cachePrefix: true,
       onTextDelta: (delta) => emit({ type: 'delta', text: delta }),
+      // The usage ledger (0254): what paid and which prompt and policy ran.
+      usage: {
+        feature: 'chat_turn', channel, userId: principal.userId, conversationId,
+        promptVersion: ELAYA_PROMPT_VERSION, behaviourVersion: ELAYA_BEHAVIOUR_VERSION,
+      },
     });
 
     fullText += result.text;
@@ -233,6 +239,8 @@ export async function runElayaTurn(args: {
       usage: { inputTokens, outputTokens },
       toolIterations: iterations,
       turnError,
+      promptVersion: ELAYA_PROMPT_VERSION,
+      behaviourVersion: ELAYA_BEHAVIOUR_VERSION,
     },
   };
 }

@@ -138,6 +138,7 @@ export async function readVendorRequest(phrase: string): Promise<VendorSearchInt
   try {
     const llm = await resolveLlmForJob("routing");
     const result = await llm.adapter.complete({
+      usage: { feature: 'vendor_intent' },
       model: llm.model,
       // A JSON object with four small fields — 300 is generous. Capping it keeps
       // the per-search cost at roughly ₹0.03 even if the model gets chatty.

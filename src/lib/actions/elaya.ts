@@ -64,6 +64,7 @@ export async function updateElayaPersonaAction(
     ...(parsed.data.tone     ? { tone:     parsed.data.tone }     : {}),
     ...(parsed.data.depth    ? { depth:    parsed.data.depth }    : {}),
     ...(parsed.data.length   ? { length:   parsed.data.length }   : {}),
+    ...(parsed.data.emojis   ? { emojis:   parsed.data.emojis }   : {}),
     ...(cleanNote.length > 0 ? { note: cleanNote } : {}),
   };
 

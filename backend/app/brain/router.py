@@ -115,9 +115,12 @@ async def route(
     role: str | None = None,
     history: list[dict] | None = None,
     playbooks: list[dict] | None = None,
+    *,
+    usage_ctx: dict | None = None,
 ) -> tuple[str, int, dict | None]:
     """→ (specialist_id, latency_ms, playbook_row | None). Fail-open to 'general' and no playbook on
-    any error — a routing hiccup must degrade to a broader brain, never to a dead turn."""
+    any error — a routing hiccup must degrade to a broader brain, never to a dead turn.
+    `usage_ctx` names the turn for the usage ledger (feature chat_router)."""
     started = time.monotonic()
     offered = set(_offered(role))
     pbs = playbooks or []
@@ -131,6 +134,7 @@ async def route(
                 max_tokens=16,
                 system=_system(role) + _playbook_menu(pbs),
                 messages=[ChatMessage(role="user", content=_context_block(history, message))],
+                usage_ctx={**(usage_ctx or {}), "feature": "chat_router"},
             )
         )
         parts = result.text.strip().lower().replace(",", " ").split()

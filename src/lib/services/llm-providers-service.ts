@@ -370,3 +370,24 @@ export async function getPublicBotSettings(): Promise<{ enabled: boolean; dailyC
     return { enabled: false, dailyCapUsd: PUBLIC_BOT_DAILY_CAP_USD_DEFAULT, testPhones: [] };
   }
 }
+
+/**
+ * THE read of the teammate's switches (0257, constants/elaya-teammate.ts): the mode (off / shadow /
+ * live; a missing or malformed row is SHADOW, never live) and the queendoms live delivery is on for.
+ * Read per sweep, never cached.
+ */
+export async function getTeammateSettings(): Promise<{ mode: import('@/lib/constants/elaya-teammate').TeammateMode; queendomIds: string[] }> {
+  const { TEAMMATE_SETTING_KEYS, TEAMMATE_MODES } = await import('@/lib/constants/elaya-teammate');
+  try {
+    const { data } = await createAdminClient().from('elaya_settings').select('key, value').in('key', Object.values(TEAMMATE_SETTING_KEYS));
+    const rows = new Map(((data ?? []) as { key: string; value: unknown }[]).map((r) => [r.key, r.value]));
+    const mode = rows.get(TEAMMATE_SETTING_KEYS.mode);
+    const qs = rows.get(TEAMMATE_SETTING_KEYS.queendoms);
+    return {
+      mode: typeof mode === 'string' && (TEAMMATE_MODES as readonly string[]).includes(mode) ? (mode as import('@/lib/constants/elaya-teammate').TeammateMode) : 'shadow',
+      queendomIds: Array.isArray(qs) ? qs.filter((q): q is string => typeof q === 'string') : [],
+    };
+  } catch {
+    return { mode: 'shadow', queendomIds: [] };
+  }
+}

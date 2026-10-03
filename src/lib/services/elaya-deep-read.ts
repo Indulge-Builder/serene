@@ -148,6 +148,7 @@ async function planDeepRead(question: string, sets: ElayaLabelSetSummary[], conf
   const catalogText = catalog.map((v) => `${v.view}${v.about ? ' — ' + v.about : ''}\n  ${v.columns}`).join('\n');
   const llm = await resolveLlmForJob('reasoning');
   const r = await llm.adapter.complete({
+    usage: { feature: 'deep_read_plan' },
     model: llm.model,
     maxTokens: 3000,
     effort: 'low',
@@ -353,7 +354,7 @@ async function judgeBatch(ctx: JudgeCtx, items: { n: number; text: string }[], t
   const user = items.map((b) => `${b.n}|${maskPii(b.text, ctx.depth)}`).join('\n');
   let text: string;
   try {
-    const r = await llm.adapter.complete({ model: llm.model, maxTokens: 1800, effort: 'low', timeoutMs: 60_000, cachePrefix: true, system: ctx.system, messages: [{ role: 'user', content: user }] });
+    const r = await llm.adapter.complete({ usage: { feature: 'deep_read_judge' }, model: llm.model, maxTokens: 1800, effort: 'low', timeoutMs: 60_000, cachePrefix: true, system: ctx.system, messages: [{ role: 'user', content: user }] });
     ctx.tokens.in += r.usage.inputTokens;
     ctx.tokens.out += r.usage.outputTokens;
     ctx.gate.ok();
@@ -399,6 +400,7 @@ const ANSWER_SYSTEM = `You are Elaya, the analyst inside Indulge's operating sys
 async function writeAnswer(question: string, plan: DeepReadPlan, stats: Record<string, unknown>, samples: Record<string, string[]>, tokens: { in: number; out: number }): Promise<string> {
   const llm = await resolveLlmForJob('reasoning');
   const r = await llm.adapter.complete({
+    usage: { feature: 'deep_read_answer' },
     model: llm.model,
     maxTokens: 2500,
     effort: 'low',

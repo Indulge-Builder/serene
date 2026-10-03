@@ -123,7 +123,10 @@ SPECIALISTS: dict[str, Specialist] = {
             "get_freshdesk_overview", "search_freshdesk_tickets",
             "get_member_360", "search_sia_messages", "get_sia_group_messages",
         ],
-        job="heavy",  # the Opus tier — deep reasoning turns (DB-switchable)
+        # The reasoning tier since 2026-10-02 (cost audit P1: "route by task complexity, not the word
+        # analytics"; the heavy route carried 38% of recorded input for counts and routine reports).
+        # A founder moves it back with elaya_specialist_tiers {"analytics": "heavy"}, no deploy.
+        job="reasoning",
     ),
     "vendors": Specialist(
         id="vendors",
@@ -158,6 +161,7 @@ SPECIALISTS: dict[str, Specialist] = {
                "agent (the member's name, phone, address and contact never do); send_hands_message is a "
                "proposal the user confirms. Bookings are always in the name Indulge Concierge."),
         toolset=["list_tickets", "get_ticket", "add_ticket_note", "move_ticket_status", "find_teammate",
+                 "get_open_loops",
                  "get_member_360", "search_sia_messages", "get_sia_group_messages",
                  "list_hands_jobs", "get_hands_thread", "draft_hands_message", "send_hands_message" ],
     ),
@@ -184,7 +188,7 @@ SPECIALISTS: dict[str, Specialist] = {
                "TEXT of thousands of rows read and judged (a theme no column holds, a mood across all groups), start a "
                "deep read with start_deep_read and tell the founder it will land in this chat in a few minutes; a keyword "
                "match presented as the count is not acceptable there."),
-        toolset=["get_live_pulse", "describe_database", "query_database", "start_deep_read", "raise_improvement_request", "get_books_overview",
+        toolset=["get_live_pulse", "get_open_loops", "find_member_occasions", "describe_database", "query_database", "start_deep_read", "raise_improvement_request", "get_books_overview",
                  "get_freshdesk_overview", "search_freshdesk_tickets", "get_member_360", "get_member_overview",
                  "search_sia_messages", "get_sia_group_messages", "list_sia_groups", "get_activity_feed", "find_teammate"],
         job="heavy",  # the deepest tier: planning and writing queries is the hardest work she does
@@ -205,7 +209,7 @@ SPECIALISTS: dict[str, Specialist] = {
                "and say 'showing N of M' when the list is longer than what you were given. Serene never "
                "writes to Freshdesk: you can read, never change."),
         toolset=["get_freshdesk_overview", "search_freshdesk_tickets", "get_freshdesk_ticket",
-                 "get_member_overview", "find_teammate",
+                 "get_open_loops", "get_member_overview", "find_teammate",
                  "get_member_360", "search_sia_messages", "get_sia_group_messages" ],
     ),
     "groups": Specialist(
@@ -233,14 +237,15 @@ SPECIALISTS: dict[str, Specialist] = {
                "list_sia_groups before saying so. Answer only from returned messages, cite dates, name the "
                "group each line came from, and never invent a group."),
         toolset=["list_sia_groups", "get_sia_group_messages", "search_sia_messages",
-                 "get_member_overview", "find_teammate"],
+                 "get_open_loops", "get_member_overview", "find_teammate"],
     ),
     "members": Specialist(
         id="members",
         description=(
             "a member of Indulge, named: 'tell me about X', 'brief me on X before I call', 'is X happy', "
             "a LIST of members by city, company, profession, tier or status ('all clients from Mumbai', "
-            "'members in Sanika's queendom', 'who renews next month'), "
+            "'members in Sanika's queendom', 'who renews next month'), WHOSE birthday, anniversary, renewal or "
+            "trip is coming ('birthdays this month', 'who is travelling in October'), "
             "'what should I know about X'; what we know about them (preferences, dislikes, dietary, family, the "
             "people around them, their genie and queendom, their health score, their open requests, their "
             "renewal), what they said in their WhatsApp group (asked for lately, ever mentioned a topic, "
@@ -262,7 +267,7 @@ SPECIALISTS: dict[str, Specialist] = {
                "nothing is on record — never fill the gap from memory, and never describe a member the tool "
                "did not return."),
         # Founders and admins also carry the analyst's SQL here (the role gate cuts it for everyone else).
-        toolset=["get_member_360", "get_member_overview", "list_members", "get_member_profile", "get_member_recent_messages",
+        toolset=["get_member_360", "get_member_overview", "list_members", "find_member_occasions", "get_open_loops", "get_member_profile", "get_member_recent_messages",
                  "search_member_history", "get_member_finance", "find_teammate", "describe_database", "query_database"],
     ),
     "general": Specialist(
@@ -283,6 +288,8 @@ SPECIALISTS: dict[str, Specialist] = {
             "get_sia_group_messages",
             "get_freshdesk_overview",
             "get_live_pulse",
+            "get_open_loops",
+            "find_member_occasions",
             "describe_database",
             "query_database",
             "start_deep_read",

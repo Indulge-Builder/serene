@@ -194,7 +194,7 @@ async function toneAlerts(since: string, settleUntil: string, deadline: number, 
     if (!ctx.ok || ctx.rows.length === 0) return;
     const lines = [...ctx.rows].reverse().map((m) => `${m.at} ${m.is_staff ? 'S' : 'M'} ${m.sender_name ?? '?'}: ${m.text ?? (m.type ? `[${m.type}]` : '')}`).join('\n');
     try {
-      const res = await llm.adapter.complete({ model: llm.model, maxTokens: 400, timeoutMs: 40_000, cachePrefix: true, system: TONE_SYSTEM, messages: [{ role: 'user', content: maskPii(lines, depth) }] });
+      const res = await llm.adapter.complete({ usage: { feature: 'alerts_tone' }, model: llm.model, maxTokens: 400, timeoutMs: 40_000, cachePrefix: true, system: TONE_SYSTEM, messages: [{ role: 'user', content: maskPii(lines, depth) }] });
       judged.n++;
       const a = res.text.indexOf('{'), b = res.text.lastIndexOf('}');
       if (a < 0 || b <= a) return;

@@ -86,6 +86,25 @@ export const ELAYA_LENGTH_PROMPT: Record<ElayaLengthPref, string> = {
   detailed: 'Fuller replies are fine when the topic warrants — the user likes thoroughness.',
 };
 
+// ── Emojis (2026-10-02, the behaviour contract) ──
+// The one typed control the contract asked for: "no emojis" is resolved in code at assembly
+// time, never left for the model to arbitrate against the shared default. Mirrors
+// backend/app/brain/persona.py _EMOJI_PROMPT — change both together.
+const EMOJI_DEF = defineEnum([
+  { id: 'default', label: 'Light, when earned' },
+  { id: 'none',    label: 'No emojis' },
+]);
+export const ELAYA_EMOJI_VALUES  = EMOJI_DEF.values;
+export const ELAYA_EMOJI_LABELS  = EMOJI_DEF.labels;
+export const ELAYA_EMOJI_OPTIONS = EMOJI_DEF.options;
+export const ELAYA_EMOJI_ENUM    = EMOJI_DEF.zodEnum;
+export type ElayaEmojiPref = (typeof EMOJI_DEF.zodEnum)[number];
+
+export const ELAYA_EMOJI_PROMPT: Record<ElayaEmojiPref, string> = {
+  default: 'Emojis as the shared defaults say: light anchors from the team\'s vocabulary, never flooding (the default).',
+  none:    'No emojis with this user, ever: plain text only, whatever the shared defaults say.',
+};
+
 /** Free-text note cap — small, because it rides the CACHED prompt prefix (a big
  *  note would re-bill the whole prefix and grow per user forever). */
 export const ELAYA_PERSONA_NOTE_MAX = 600;
@@ -100,6 +119,7 @@ export type ElayaPersonaPrefs = {
   tone?:     ElayaTonePref;
   depth?:    ElayaDepthPref;
   length?:   ElayaLengthPref;
+  emojis?:   ElayaEmojiPref;
   /** Free-text "anything Elaya should know about how I like to work". */
   note?:     string;
 };
@@ -110,6 +130,7 @@ export const ELAYA_PERSONA_DEFAULTS: Required<Omit<ElayaPersonaPrefs, 'note'>> =
   tone:     'warm',
   depth:    'standard',
   length:   'standard',
+  emojis:   'default',
 };
 
 /**
@@ -142,6 +163,9 @@ export function buildPersonaPromptBlock(
   }
   if (persona?.length && persona.length !== ELAYA_PERSONA_DEFAULTS.length) {
     lines.push(`- ${ELAYA_LENGTH_PROMPT[persona.length]}`);
+  }
+  if (persona?.emojis && persona.emojis !== ELAYA_PERSONA_DEFAULTS.emojis && persona.emojis in ELAYA_EMOJI_PROMPT) {
+    lines.push(`- ${ELAYA_EMOJI_PROMPT[persona.emojis]}`);
   }
 
   const note = persona?.note?.trim();

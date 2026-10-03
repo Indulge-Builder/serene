@@ -9,6 +9,7 @@ import { parseWebhookPayload, processInboundMessage, processStatusUpdate } from 
 import { tryHandleElayaWhatsAppMessage } from '@/lib/services/elaya-whatsapp';
 import type { MetaInboundMessage, MetaMediaObject, MetaWebhookPayload } from '@/lib/types/whatsapp';
 import { WHATSAPP_LINE_ENV, type WhatsAppLine } from '@/lib/constants/whatsapp-lines';
+import { WHATSAPP_UNSUPPORTED_FALLBACK_LABEL, WHATSAPP_UNSUPPORTED_LABELS } from '@/lib/constants/whatsapp';
 
 // ─────────────────────────────────────────────
 // Gupshup secret — resolved once at module load
@@ -107,26 +108,32 @@ function buildGupshupMessage(
     return { type: 'text', id: messageId, from: waId, timestamp, text: { body: typeof inner.text === 'string' ? inner.text : '' } };
   }
 
-  // Un-renderable type (sticker/location/contact/reaction/button/list reply) or a
-  // media type that arrived without a url: store a human label so the bubble is
-  // never blank and Elaya's empty-content guard isn't hit accidentally.
+  // An event that is not words keeps its REAL type (2026-10-02): a reaction is an event the
+  // routing gates must never hand to a model (eight "[Reaction]" rows in the cost audit each
+  // bought a paid turn), and a button or list reply carries the option the person chose, not a
+  // placeholder. The lead pipeline still stores a labelled text row (insertInboundMessage).
+  if (innerType === 'reaction') {
+    const emoji = typeof inner.emoji === 'string' ? inner.emoji : '';
+    const target = typeof inner.gsId === 'string' ? inner.gsId : typeof inner.msgId === 'string' ? inner.msgId : null;
+    return { type: 'reaction', id: messageId, from: waId, timestamp, reaction: { emoji, message_id: target } };
+  }
+  if (innerType === 'button_reply' || innerType === 'list_reply') {
+    const title = [inner.title, inner.reply, inner.text].find((v): v is string => typeof v === 'string' && v.trim().length > 0) ?? '';
+    const optionId = typeof inner.id === 'string' ? inner.id : typeof inner.postbackText === 'string' ? inner.postbackText : null;
+    return { type: 'interactive', id: messageId, from: waId, timestamp, interactive: { kind: innerType, id: optionId, title: title.trim() } };
+  }
+
+  // Un-renderable type (sticker/location/contact) or a media type that arrived without a url:
+  // a typed event with the human label the row and the bubble will carry.
   return {
-    type:      'text',
+    type:      'unsupported',
     id:        messageId,
     from:      waId,
     timestamp,
-    text:      { body: GUPSHUP_TYPE_LABELS[innerType] ?? '[Unsupported message]' },
+    subtype:   innerType,
+    label:     WHATSAPP_UNSUPPORTED_LABELS[innerType] ?? WHATSAPP_UNSUPPORTED_FALLBACK_LABEL,
   };
 }
-
-const GUPSHUP_TYPE_LABELS: Record<string, string> = {
-  sticker:      '[Sticker]',
-  location:     '[Location]',
-  contact:      '[Contact card]',
-  reaction:     '[Reaction]',
-  button_reply: '[Button reply]',
-  list_reply:   '[List reply]',
-};
 
 // ─────────────────────────────────────────────
 // GET — Meta hub challenge (unchanged for both BSPs)

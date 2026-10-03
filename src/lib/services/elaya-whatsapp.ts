@@ -42,6 +42,7 @@ import { resolveStaffPrincipal, type StaffPrincipal } from '@/lib/elaya/principa
 import { runElayaTurn } from '@/lib/elaya/brain';
 import { learnFromTurn } from '@/lib/elaya/memory';
 import { isPythonBrainConfigured, runPythonBrainTurn } from '@/lib/elaya/python-brain';
+import { acknowledgeInterventionByReply } from '@/lib/services/elaya-teammate';
 import {
   countUserMessagesToday,
   getOrCreateActiveConversation,
@@ -156,6 +157,15 @@ async function handleStaffMessage(
   let rawText: string;
   if (message.type === 'text') {
     rawText = typeof message.text.body === 'string' ? message.text.body : '';
+  } else if (message.type === 'reaction') {
+    // A thumbs-up on her last reply is an event, not a question (cost audit 2026-10-01: eight
+    // "[Reaction]" rows each bought a paid turn, some mid-investigation). Nothing is persisted,
+    // nothing is sent, no cap is burned; the staff gate still swallows it so it never mints a lead.
+    return;
+  } else if (message.type === 'interactive') {
+    // A button or list reply carries the option the person chose: that text IS the message, so a
+    // "Yes" button can confirm a proposal exactly like a typed yes.
+    rawText = message.interactive.title;
   } else if (message.type === 'audio' && message.audio.url) {
     rawText = await transcribeWhatsAppAudio(message.audio.url, message.audio.mime_type);
     // Empty / non-speech transcript: nudge and stop BEFORE the cap, the model,
@@ -186,6 +196,15 @@ async function handleStaffMessage(
   const content = sanitizeText(rawText).slice(0, MAX_INBOUND_CHARS);
   if (content.trim().length === 0) {
     await sendElayaWhatsAppReply(normalizedPhone, REPLY_TEXT_ONLY, profile.id);
+    return;
+  }
+
+  // A short reply to a nudge Elaya sent (0257: "ok", "done", "later") is the teammate's business,
+  // not the brain's: it marks the row seen / resolved / snoozed and answers in one line. Nothing is
+  // persisted as a chat turn and no model runs. A real message passes through untouched.
+  const nudgeReply = await acknowledgeInterventionByReply(profile.id, content);
+  if (nudgeReply) {
+    await sendElayaWhatsAppReply(normalizedPhone, nudgeReply, profile.id);
     return;
   }
 

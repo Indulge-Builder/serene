@@ -49,7 +49,14 @@ export type MetaInboundMessage =
   | { type: 'image';    id: string; from: string; timestamp: string; image:    MetaMediaObject }
   | { type: 'video';    id: string; from: string; timestamp: string; video:    MetaMediaObject }
   | { type: 'document'; id: string; from: string; timestamp: string; document: MetaMediaObject }
-  | { type: 'audio';    id: string; from: string; timestamp: string; audio:    MetaMediaObject };
+  | { type: 'audio';    id: string; from: string; timestamp: string; audio:    MetaMediaObject }
+  // The event types that are NOT words (2026-10-02, cost audit P0 "reactions become paid
+  // instructions"): they keep their real type to the routing gate, so a thumbs-up never runs a
+  // brain turn, and a button press carries the option the person actually chose. The lead
+  // pipeline stores them as a labelled text row (insertInboundMessage), as it always did.
+  | { type: 'reaction';    id: string; from: string; timestamp: string; reaction: { emoji: string; message_id: string | null } }
+  | { type: 'interactive'; id: string; from: string; timestamp: string; interactive: { kind: 'button_reply' | 'list_reply'; id: string | null; title: string } }
+  | { type: 'unsupported'; id: string; from: string; timestamp: string; subtype: string; label: string };
 
 export type MetaMediaObject = {
   id:        string;

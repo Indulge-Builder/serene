@@ -58,6 +58,34 @@ export type LlmUsage = {
   cacheReadTokens?: number;
   /** Prompt-cache writes, when the provider caches. */
   cacheWriteTokens?: number;
+  /** The part of the cache writes with a one-hour lifetime (billed 2x, not 1.25x). 0 when none. */
+  cacheWrite1hTokens?: number;
+  /** The model the provider says answered (it can differ from the configured id on a fallback). */
+  model?: string;
+  /** The provider's own id for the request, for reconciliation against its usage export. */
+  requestId?: string;
+  /** Wall-clock of the call as the adapter saw it. */
+  latencyMs?: number;
+};
+
+/**
+ * Who is paying for a call and why (the usage ledger, migration 0254). Set by the CALLER in
+ * code; the registry's metering wrapper records one `llm_usage_events` row per request with
+ * it. `feature` names what paid ('chat_turn', 'profiler', 'media_read' ...); it defaults to the
+ * job type when a caller sets nothing, so every call is counted even before it is named.
+ */
+export type LlmUsageContext = {
+  feature?: string;
+  channel?: string;
+  userId?: string | null;
+  conversationId?: string | null;
+  messageId?: string | null;
+  jobId?: string | null;
+  /** A sia.extraction_runs id, when the caller keeps one. */
+  runId?: string | null;
+  attempt?: number;
+  promptVersion?: string | null;
+  behaviourVersion?: string | null;
 };
 
 /**
@@ -104,6 +132,8 @@ export type LlmCompleteRequest = {
   onTextDelta?: (delta: string) => void;
   /** The account the call is billed to. Absent = `internal`. */
   credential?: LlmCredential;
+  /** What this call is for, for the usage ledger (see LlmUsageContext). Absent = the job type alone. */
+  usage?: LlmUsageContext;
 };
 
 export type LlmCompleteResult = {

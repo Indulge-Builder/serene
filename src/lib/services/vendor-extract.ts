@@ -251,6 +251,7 @@ export async function extractVendorsFromNote(input: ExtractInput): Promise<Extra
 
     const llm = await resolveLlmForJob("routing");
     const result = await llm.adapter.complete({
+      usage: { feature: 'vendor_extract' },
       model: llm.model,
       maxTokens: EXTRACT_MAX_OUTPUT_TOKENS,
       system: SYSTEM,

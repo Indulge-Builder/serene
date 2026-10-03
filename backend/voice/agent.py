@@ -48,7 +48,6 @@ from livekit.agents import (
     AgentServer,
     AgentSession,
     JobContext,
-    TurnHandlingOptions,
     inference,
     llm,
     room_io,
@@ -190,6 +189,9 @@ class _BrainTurnStream(LLMStream):
             "message": text,
             "channel": CHANNEL,
             "conversation_id": self._brain.conversation_id,
+            # One key per utterance (0254): a transport retry of this stream can never run
+            # a second brain turn (the brain answers 409 and we say nothing twice).
+            "turn_key": f"voice-{chunk_id}",
         }
         started = time.monotonic()
         spoke = False
@@ -292,7 +294,15 @@ async def elaya_voice(ctx: JobContext) -> None:
         stt=inference.STT(model=STT_MODEL, language=STT_LANGUAGE),
         llm=brain,
         tts=inference.TTS(model=TTS_MODEL, voice=TTS_VOICE or None, language=TTS_LANGUAGE),
-        turn_handling=TurnHandlingOptions(turn_detection=_turn_detection()),
+        # Preemptive generation OFF (cost audit 2026-10-01): the framework would otherwise
+        # start a brain turn on a provisional transcript, up to three times per sentence,
+        # and this brain's turn is STATEFUL (it persists rows and can execute a confirmed
+        # action). Until a read-only speculative protocol exists, one finished sentence =
+        # one turn. The dict form is the documented one (reference/agents/turn-handling-options).
+        turn_handling={
+            "turn_detection": _turn_detection(),
+            "preemptive_generation": {"enabled": False},
+        },
     )
 
     async def hang_up_when_time_is_up() -> None:

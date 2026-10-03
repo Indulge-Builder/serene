@@ -81,7 +81,7 @@ export async function writeHandsLine(input: {
 
   try {
     const llm = await resolveLlmForJob("routing");
-    const result = await llm.adapter.complete({ model: llm.model, maxTokens: MAX_TOKENS, timeoutMs: TIMEOUT_MS, system, messages: [{ role: "user", content: userContent }] });
+    const result = await llm.adapter.complete({ usage: { feature: 'hands_line' }, model: llm.model, maxTokens: MAX_TOKENS, timeoutMs: TIMEOUT_MS, system, messages: [{ role: "user", content: userContent }] });
     const usage = { model: llm.model, tokens_in: result.usage.inputTokens, tokens_out: result.usage.outputTokens };
     const text = result.text.trim().replace(/^["“]|["”]$/g, "").trim();
     if (result.stopReason === "max_tokens" || !text) {

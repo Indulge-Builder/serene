@@ -8,6 +8,7 @@ import {
   ELAYA_TONE_ENUM,
   ELAYA_DEPTH_ENUM,
   ELAYA_LENGTH_ENUM,
+  ELAYA_EMOJI_ENUM,
   ELAYA_PERSONA_NOTE_MAX,
 } from '@/lib/constants/elaya-persona';
 
@@ -16,6 +17,7 @@ export const UpdateElayaPersonaSchema = z.object({
   tone:     z.enum(ELAYA_TONE_ENUM).optional(),
   depth:    z.enum(ELAYA_DEPTH_ENUM).optional(),
   length:   z.enum(ELAYA_LENGTH_ENUM).optional(),
+  emojis:   z.enum(ELAYA_EMOJI_ENUM).optional(),
   // Empty string is allowed (clears the note); trimmed + capped. sanitizeText runs
   // server-side in the action before persisting.
   note:     z.string().trim().max(ELAYA_PERSONA_NOTE_MAX, 'note_too_long').optional(),

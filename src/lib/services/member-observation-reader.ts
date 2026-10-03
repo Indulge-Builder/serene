@@ -117,6 +117,7 @@ export async function readMemberObservation(original: string): Promise<Observati
   try {
     const [depth, llm] = await Promise.all([getPiiMaskingDepth(), resolveLlmForJob("routing")]);
     const result = await llm.adapter.complete({
+      usage: { feature: 'observation_reader' },
       model: llm.model,
       // 900 cut the JSON short on a long note (a bio, a page of preferences): 257 of 1,059 Freshdesk
       // notes came back unparseable on 2026-09-24. The routing tier does not think, so this is cheap.

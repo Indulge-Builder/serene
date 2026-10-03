@@ -22,6 +22,23 @@ export const WHATSAPP_MESSAGE_TYPES = [
   'template',
 ] as const;
 
+/**
+ * What an inbound event that is not words is stored and shown as (the lead pipeline's
+ * `whatsapp_messages.content` for a sticker, a location, a contact card, a reaction; the
+ * message_type CHECK knows only the six above, so these rows are `text` with a label). The
+ * webhook keeps the REAL type on the event itself (MetaInboundMessage) so the routing gates can
+ * refuse to run a model on them; this is only the label the row and the bubble carry.
+ */
+export const WHATSAPP_UNSUPPORTED_LABELS: Record<string, string> = {
+  sticker:      '[Sticker]',
+  location:     '[Location]',
+  contact:      '[Contact card]',
+  reaction:     '[Reaction]',
+  button_reply: '[Button reply]',
+  list_reply:   '[List reply]',
+};
+export const WHATSAPP_UNSUPPORTED_FALLBACK_LABEL = '[Unsupported message]';
+
 // ─────────────────────────────────────────────
 // Outbound media (staff → lead, composer attach flow)
 // MIME allowlist → message_type + per-type size caps mirror WhatsApp's limits.

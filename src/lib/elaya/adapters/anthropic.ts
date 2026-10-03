@@ -153,6 +153,18 @@ export const anthropicAdapter: LlmProviderAdapter = {
         ? [{ type: 'text', text: req.system, cache_control: { type: 'ephemeral' } }]
         : req.system;
 
+    // Same-turn incremental caching (cost audit 2026-10-01, P0 "tool-result replay is the large
+    // uncached tail"): with the prefix cached, the LAST block of the LAST user turn carries a
+    // breakpoint too. Call 1 of a turn writes [tools | system | history + question]; call 2 reads
+    // all of it and writes only the new tool results; call n reads n-1 of the transcript. The
+    // provider looks back from the newest breakpoint to find the earlier entries, so moving it
+    // forward each call is exactly the incremental pattern. Correctness is identical with or
+    // without it; only the bill changes. Four breakpoints is the provider's maximum: tools, two
+    // system blocks at most, and this one.
+    const messages = toAnthropicMessages(req.messages);
+    if (req.cachePrefix) markLastUserBlock(messages);
+
+    const startedAt = Date.now();
     const stream = getClient(req.credential).messages.stream(
       {
         model: req.model,
@@ -163,7 +175,7 @@ export const anthropicAdapter: LlmProviderAdapter = {
         // field, so it is only sent to models that take it.
         ...(req.effort && !/haiku/i.test(req.model) ? { output_config: { effort: req.effort } } : {}),
         system,
-        messages: toAnthropicMessages(req.messages),
+        messages,
         ...(req.tools && req.tools.length > 0
           ? {
               tools: req.tools.map((t) => ({
@@ -202,6 +214,10 @@ export const anthropicAdapter: LlmProviderAdapter = {
       }
     }
 
+    // The 1 h share of the cache writes rides a nested object the SDK types may or may not
+    // declare at this version; read it defensively (absent = every write was a 5-minute one).
+    const cacheCreation = (final.usage as { cache_creation?: { ephemeral_1h_input_tokens?: number | null } | null }).cache_creation;
+
     return {
       text,
       toolCalls,
@@ -211,7 +227,27 @@ export const anthropicAdapter: LlmProviderAdapter = {
         outputTokens: final.usage.output_tokens,
         cacheReadTokens: final.usage.cache_read_input_tokens ?? 0,
         cacheWriteTokens: final.usage.cache_creation_input_tokens ?? 0,
+        cacheWrite1hTokens: cacheCreation?.ephemeral_1h_input_tokens ?? 0,
+        model: final.model,
+        requestId: final.id,
+        latencyMs: Date.now() - startedAt,
       },
     };
   },
 };
+
+/**
+ * Put the same-turn cache breakpoint on the last block of the last user turn (a plain string
+ * becomes one text block). Nothing happens when the transcript does not end on a user turn,
+ * which the provider would refuse anyway.
+ */
+function markLastUserBlock(messages: Anthropic.MessageParam[]): void {
+  const last = messages[messages.length - 1];
+  if (!last || last.role !== 'user') return;
+  if (typeof last.content === 'string') {
+    last.content = [{ type: 'text', text: last.content, cache_control: { type: 'ephemeral' } }];
+    return;
+  }
+  const block = last.content[last.content.length - 1];
+  if (block) (block as { cache_control?: { type: 'ephemeral' } }).cache_control = { type: 'ephemeral' };
+}

@@ -357,7 +357,7 @@ export async function readNewText(t: TicketRow, input: NonNullable<WakePlan["rea
       `Ticket ${t.ticket_no}: ${t.title}\nCategory: ${t.category}${t.sub_category ? ` / ${t.sub_category}` : ""} · status ${t.status} · priority ${t.priority}\nRequested for: ${t.requested_for ?? "not set"}\nLEGAL NEXT STATUSES from ${t.status}: ${legalNext.join(", ") || "(none)"}\nBrief: ${JSON.stringify(t.brief)}\nMoney so far: ${JSON.stringify(t.money)}\nChecklist:\n${checklist || "(none)"}\nSummary so far: ${t.summary ?? "(none)"}\n\nNEW TEAM NOTES:\n${clip(input.notes) || "(none)"}\n\nNEW CLIENT MESSAGES:\n${clip(input.memberMessages) || "(none)"}\n\nNEW STAFF REPLIES TO THE CLIENT:\n${clip(input.staffMessages) || "(none)"}\n\nReturn the JSON.`,
       depth,
     );
-    const result = await llm.adapter.complete({ model: llm.model, maxTokens: Math.min(llm.maxTokens, 900), system: READ_SYSTEM + lesson.block, messages: [{ role: "user", content: user }], cachePrefix: true });
+    const result = await llm.adapter.complete({ usage: { feature: 'sentinel_read' }, model: llm.model, maxTokens: Math.min(llm.maxTokens, 900), system: READ_SYSTEM + lesson.block, messages: [{ role: "user", content: user }], cachePrefix: true });
     state.reads += 1;
     state.tokens_in += result.usage.inputTokens;
     state.tokens_out += result.usage.outputTokens;

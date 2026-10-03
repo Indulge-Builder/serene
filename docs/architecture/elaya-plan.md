@@ -1,5 +1,11 @@
 # The Elaya Plan. The AI layer, from today to the beast.
 
+> **Founder behaviour direction, 2026-10-02:** [Indulge behaviour contract](elaya-behaviour-contract.md) translates `Elaya Tone.txt` into proposed voice, last-mile checkpoints, coaching and follow-through requirements. It includes audience-specific prompt conflicts and eval gates; no runtime change is implied.
+
+> **Priority clarification, 2026-10-02:** this tranche builds a proactive operating teammate, not just a new tone. The behaviour contract now specifies event-to-outcome work packages, role-specific delivery, natural emojis and supported message reactions, separate cost/attention budgets, personal preference preservation, and an end-to-end last-mile pilot with failure and rollback criteria.
+
+> **Built 2026-10-02:** the ledger, the caching, the cost envelope, the shared behaviour policy and the two prepared reads (the changelog entry of that day); migration 0254 pending.
+>
 > **Proposed reliability and efficiency tranche, 2026-10-01:** use [Elaaya reliable agent architecture](elaya-reliable-agent-plan.md) for the new execution paths, freshness/evidence contracts, action receipts and incremental rollout. Its measured basis is the [October cost audit](../audits/2026-10-01-elaya-cost-architecture.md). These are planned changes, not a replacement of the shipped-status history below or a restart of the full Python migration.
 
 > **Where this stands on 2026-09-30.** Moved here from the repo root (`plan-elaya.md`) on

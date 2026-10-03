@@ -8,11 +8,17 @@
 ## File map
 
 ```text
-provider.ts            ← the ONE provider-neutral complete() contract
+provider.ts            ← the ONE provider-neutral complete() contract (+ `usage`: LlmUsageContext, what a call is FOR,
+                          for the ledger; the result's usage carries every cache counter, the model that answered, the
+                          request id and the latency since 2026-10-02)
                           (optional `effort` low/medium/high: the Claude 5 models think by default and the
                           thinking counts against maxTokens, so a single structured judgement passes `low` and a
                           real allowance; the Anthropic adapter leaves it off for Haiku, which rejects it)
-adapters/anthropic.ts  ← the ONLY file allowed to import @anthropic-ai/sdk
+registry.ts            ← resolveLlmForJob(jobType) — the llm_providers row → adapter, WRAPPED ONCE so every Node model
+                          call writes a public.llm_usage_events row (0254) through services/llm-usage-service.ts;
+                          the adapter never touches the database
+adapters/anthropic.ts  ← the ONLY file allowed to import @anthropic-ai/sdk (same-turn cache breakpoint on the last user
+                          block since 2026-10-02: call n reads what call n-1 sent)
 elaya-data.ts          ← THE single data seam every READ tool fetches through (parity rule, below)
 registry.ts (tools/)   ← the 12 READ-only tools + THE single executeTool dispatch (read ∪ write)
                           + TOOLSET_BY_ROLE + getToolDefinitionsForPrincipal. READ tools are now
@@ -263,6 +269,41 @@ line as her reply (`meta.turnError`) and delivers it as a normal delta + done, s
 speak it and the transcript shows it. Node's `REPLY_UNAVAILABLE` (elaya-whatsapp.ts) is only for a
 failure BEFORE the brain answered (brain unreachable). Never surface a raw provider string.
 
+## The prompt in two blocks and the behaviour policy (2026-10-02)
+
+`persona.py` (the live brain) returns `SystemPrompt(shared, user)`; `persona.ts` builds the same two
+texts (its rules literal is GENERATED from `persona.py`; `scripts/elaya/prompt-parity.ts` proves
+byte-identity) and joins them for the Node adapter. The SHARED block names no user (identity +
+`backend/app/brain/elaya_behaviour.json` + the rules + the channel block) so the provider caches it
+across users; the USER block (who, reach, focus, playbook, the evidence of the last turns, the style
+resolution order, saved style, memory, notes, known issues) is cached across one turn's calls; the
+time anchor rides outside both. The policy JSON is the ONE source of Elaya's voice; `version` is
+recorded on every turn's row with `promptVersion`. The typed `emojis` preference (constants/
+elaya-persona.ts) is resolved in code, never left to the model; the resolution order is explicit
+(this message > saved preferences > living memory > the shared defaults; serious stays calm).
+
+## The cost envelope and the evidence (2026-10-02)
+
+`backend/app/brain/loop.py` (numbers in `constants/elaya-cost.ts`): an identical read in one turn is
+answered from the first result; a tool failing TURN_REPEATED_ERRORS_MAX times in a row ends the
+gathering; the serialized results stop at TURN_TOOL_RESULT_BUDGET_CHARS, the billed input at
+TURN_INPUT_TOKENS_CAP, one request's context at TURN_CONTEXT_TOKENS_CAP; every stop records why
+(`meta.stop`) and the tools-withheld closing call says what was not checked. The first eight calls
+of a turn are kept on the row (`meta.evidence`) and the next four turns fold them into the user
+block. `backend/app/api/chat.py`: one turn at a time per conversation (an in-process lease; the api
+service runs one task), the day's spend ceiling (`elaya_chat_daily_cap_usd`), `turn_key` idempotency
+on any channel, the founder's per-specialist tier override (`elaya_specialist_tiers`).
+
+## The operating teammate (2026-10-03, migration 0257)
+
+Elaya's proactive half lives in `services/elaya-teammate.ts`, not in the brains: typed rules
+(`constants/elaya-teammate.ts`) over persisted signals, no model call, one row per logical issue
+(`public.elaya_interventions`), delivery through the EXISTING routes, a ladder, resolution on
+evidence. The staff WhatsApp gate asks `acknowledgeInterventionByReply` before the brain, so a short
+"ok" / "done" / "later" to a nudge never runs a turn. Shadow by default; live per queendom by the
+founder's switch on /settings/elaya-teammate. Recognition and outbound reactions are deliberately
+not in it yet (no evidence of the member's reaction; the provider's reaction support is unverified).
+
 ## Ticket tools (Sia, 2026-09-15)
 
 | Tool | Tier | Roles | What it wraps |
@@ -293,6 +334,8 @@ failure BEFORE the brain answered (brain unreachable). Never surface a raw provi
 | `get_hands_thread` | read (bridged) | same | `elayaData.getHandsThreadFor(principal, ref)` → by ticket number, ticket id or threadId; every line each way with the agent's reply word (DONE / NEED / OPTIONS / FAILED / WAITING), payment requests and whether a person marked them paid, the queued lines |
 | `draft_hands_message` | read (bridged) | same | `elayaData.draftHandsMessageFor` → `draftForTicket` (hands-draft.ts): the opening line through the disclosure table, what was sent, what was held back, any leak; `tickDeliveryAddress` only when the user said so. Sends nothing |
 | `send_hands_message` | **propose** | all staff | the resolver (`executeProposedHandsSend`) re-gates the ticket, re-runs the leak check, opens the thread (`openHandsThreadCore`) when it is the first line, and queues ONE outbox row through `queueHandsMessageCore` (source `elaya`); the connector sends it. The text is the drafter's or the user's follow-up; a member's name, phone, email or address is refused at propose AND execute time |
+| `get_open_loops` | read (bridged) | all staff (sia-access scope; no seat = a plain line) | `elayaData.getOpenLoopsFor` (2026-10-02): members WAITING for a reply (`listRunningReplyClocks` + `getWaitingGroups`), holding replies OWING an update (the hold clocks + `updateDueAt`), requests on no ticket (`listOpenIntakeProposalsForScope`), Sia tickets past a clock (`listLateTicketsForElaya`), Freshdesk past due (`listOverdueFreshdeskTickets`); counts, coverage (watcher state, clocks, Freshdesk sync), warnings. `maxResultChars: 18_000` (mirrored in loop.py). ONE call replaces the 18-call scans |
+| `find_member_occasions` | read (bridged) | all staff (the seat's members) | `elayaData.findMemberOccasionsFor`: birthdays / anniversaries / dating anniversaries / renewals / trips / noted occasions in a window (default the next 30 days, IST) from the date facts (`utils/occasion-dates.ts`), the anticipations and the membership end; each row names its source and days away; `missing.birthday_missing` says how many members have no date on record |
 | `start_deep_read` | write, inline | admin / founder | `createElayaJob` + `startDeepReadJob` (0235): queues a background read for a question no column answers ("how many tickets are health and wellness"); the answer lands in the same chat a minute or so later, the labels are saved (elaya_read.labels, topped up nightly) so the follow-up is a quick query, and a repeat of the same question reuses every saved verdict and judges only new rows. No size limit: a whole-history question reads the whole history across continuation runs; above the founders' spend cap it stops and asks first, and `confirm_spend: true` (only after the user agreed) runs it. Every answer ends with what it cost. An `executed` ledger row with an `ElayaJobTarget`. Never for what query_database can compute |
 | `raise_improvement_request` | write, inline | all staff | `createImprovementRequestCore` (0237): the user said Elaya was WRONG about the system (wrong data / time frame / a missing tool / a wrong answer / behaviour). Called in the SAME turn; she then answers the corrected question and says in one line it is logged. Pings the tech responders (Sia alert template + in-app, the silent-turn posture), writes an `executed` ledger row with an `ElayaRequestTarget`. Reviewed on /settings/elaya-requests; open ones are folded into every prompt as known issues. Never for how the user likes things (that is the living memory, learned on its own) |
 | `add_ticket_note` | write, inline | all staff | `addTicketNoteCore`; an `executed` ledger row with an `ElayaTicketTarget` |

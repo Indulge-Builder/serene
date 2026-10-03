@@ -200,7 +200,7 @@ export async function writeLessonDraft(kind: LessonKind, opts: { force?: boolean
 
   try {
     const llm = await resolveLlmForJob("reasoning");
-    const result = await llm.adapter.complete({ model: llm.model, maxTokens: LESSON_MAX_OUTPUT_TOKENS, timeoutMs: LESSON_TIMEOUT_MS, system: SYSTEM, messages: [{ role: "user", content: userContent }] });
+    const result = await llm.adapter.complete({ usage: { feature: 'lesson_writer' }, model: llm.model, maxTokens: LESSON_MAX_OUTPUT_TOKENS, timeoutMs: LESSON_TIMEOUT_MS, system: SYSTEM, messages: [{ role: "user", content: userContent }] });
     const usage = { model: llm.model, tokens_in: result.usage.inputTokens, tokens_out: result.usage.outputTokens };
     if (result.stopReason === "max_tokens") { await finish(false, { ...usage, error: "answer cut off at the token limit" }); return { status: "failed", error: "cut off", reviews: reviews.length }; }
     const { summary, body } = parseReply(result.text);

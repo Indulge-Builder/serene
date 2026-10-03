@@ -2,10 +2,21 @@
 (the same law as lib/elaya/adapters/anthropic.ts). Streams internally, emits
 prose deltas through on_text_delta, resolves the normalized CompleteResult.
 
-Prompt caching: with cache_prefix=True the system block and the last tool
-definition carry cache_control breakpoints, so iterations 2..n of a tool loop
-re-read the stable prefix at ~0.1x input rate. Correctness is identical with
-or without — caching changes billing/latency, never what the model sees.
+Prompt caching (the shape since 2026-10-02): with cache_prefix=True the request
+carries up to four breakpoints, the provider's maximum, in render order:
+  1. the last tool definition that loads up front (tools are rendered first);
+  2. the SHARED system block (req.system): identical for every user of a role
+     and specialist, so it is read from the cache across users;
+  3. the PER-USER system block (req.system_user), when the caller sends one:
+     read from the cache across the calls of one turn;
+  4. the last block of the last user turn: the same-turn incremental pattern.
+     Call 1 of a turn writes the history and the question, call 2 reads them and
+     writes only the new tool results, call n reads n-1 of the transcript. The
+     provider looks back from the newest breakpoint for the earlier entries, so
+     moving it forward each call is exactly what the pattern wants.
+The volatile tail (req.system_tail, the time anchor) rides after the system
+breakpoints, uncached. Correctness is identical with or without caching; only
+the bill and the latency change.
 
 Tool search (2026-09-24): a ToolDefinition with defer_loading=True is sent in the
 tools array but stays OUT of the model's context until the model finds it through
@@ -17,13 +28,18 @@ are replayed untouched from ChatMessage.raw_blocks: the search-result blocks are
 what keep a discovered tool loaded on the next iteration, and thinking blocks
 carry a signature the API checks.
 
-No extended thinking here on purpose: the flip is eval-gated against the Node
-brain, which runs without it. Thinking is a post-flip experiment measured by
-the same exam, not a silent difference between the two brains.
+Effort (2026-10-02): req.effort is sent as output_config.effort to a model that
+takes it (never Haiku). No extended-thinking configuration here on purpose: the
+Claude 5 family thinks adaptively by default and effort is the one control.
+
+Usage: every counter the provider bills separately comes back on the result
+(uncached input, cache writes with their 1 h share, cache reads, output), with the
+model that answered, the request id and the wall-clock, for the usage ledger.
 """
 
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from anthropic import AsyncAnthropic
@@ -80,6 +96,20 @@ def _to_anthropic_messages(messages: list[ChatMessage]) -> list[dict[str, Any]]:
     return out
 
 
+def _mark_last_user_block(messages: list[dict[str, Any]]) -> None:
+    """The same-turn breakpoint: on the last block of the last user turn (a plain string
+    becomes one text block). Nothing happens when the transcript does not end on a user
+    turn, which the provider would refuse anyway."""
+    if not messages or messages[-1].get("role") != "user":
+        return
+    last = messages[-1]
+    content = last.get("content")
+    if isinstance(content, str):
+        last["content"] = [{"type": "text", "text": content, "cache_control": {"type": "ephemeral"}}]
+    elif isinstance(content, list) and content:
+        content[-1]["cache_control"] = {"type": "ephemeral"}
+
+
 def _map_stop(reason: str | None) -> StopReason:
     if reason in ("end_turn", "stop_sequence"):
         return "end_turn"
@@ -107,11 +137,11 @@ async def complete(req: CompleteRequest) -> CompleteResult:
         tools.insert(0, dict(TOOL_SEARCH_TOOL))
     system: Any
     if req.cache_prefix:
-        # The breakpoint sits on the FROZEN persona block; the volatile tail
-        # (time anchor) follows it uncached — the Node brain's exact cache shape.
         blocks: list[dict[str, Any]] = [
             {"type": "text", "text": req.system, "cache_control": {"type": "ephemeral"}}
         ]
+        if req.system_user:
+            blocks.append({"type": "text", "text": req.system_user, "cache_control": {"type": "ephemeral"}})
         if req.system_tail:
             blocks.append({"type": "text", "text": req.system_tail})
         system = blocks
@@ -122,17 +152,29 @@ async def complete(req: CompleteRequest) -> CompleteResult:
                 d["cache_control"] = {"type": "ephemeral"}
                 break
     else:
-        system = req.system + ("\n\n" + req.system_tail if req.system_tail else "")
+        parts = [req.system]
+        if req.system_user:
+            parts.append(req.system_user)
+        if req.system_tail:
+            parts.append(req.system_tail)
+        system = "\n\n".join(p for p in parts if p)
+
+    messages = _to_anthropic_messages(req.messages)
+    if req.cache_prefix:
+        _mark_last_user_block(messages)
 
     kwargs: dict[str, Any] = {
         "model": req.model,
         "max_tokens": req.max_tokens,
         "system": system,
-        "messages": _to_anthropic_messages(req.messages),
+        "messages": messages,
     }
     if tools:
         kwargs["tools"] = tools
+    if req.effort and "haiku" not in req.model.lower():
+        kwargs["output_config"] = {"effort": req.effort}
 
+    started = time.monotonic()
     text_parts: list[str] = []
     async with _sdk().messages.stream(**kwargs) as stream:
         async for event in stream:
@@ -141,6 +183,7 @@ async def complete(req: CompleteRequest) -> CompleteResult:
                 if req.on_text_delta:
                     await req.on_text_delta(event.delta.text)
         final = await stream.get_final_message()
+    latency_ms = int((time.monotonic() - started) * 1000)
 
     tool_calls = [
         ToolCall(id=block.id, name=block.name, input=dict(block.input or {}))
@@ -156,11 +199,21 @@ async def complete(req: CompleteRequest) -> CompleteResult:
     except Exception as exc:  # noqa: BLE001 — a replay aid, never a turn failure
         print(f"[anthropic] could not keep raw content blocks: {exc}")
 
+    usage = final.usage
+    cache_creation = getattr(usage, "cache_creation", None)
+    write_1h = int(getattr(cache_creation, "ephemeral_1h_input_tokens", 0) or 0) if cache_creation else 0
+
     return CompleteResult(
         text="".join(text_parts),
         tool_calls=tool_calls,
         stop_reason=_map_stop(final.stop_reason),
-        input_tokens=final.usage.input_tokens,
-        output_tokens=final.usage.output_tokens,
+        input_tokens=usage.input_tokens,
+        output_tokens=usage.output_tokens,
+        cache_read_tokens=int(getattr(usage, "cache_read_input_tokens", 0) or 0),
+        cache_write_tokens=int(getattr(usage, "cache_creation_input_tokens", 0) or 0),
+        cache_write_1h_tokens=write_1h,
+        model=str(getattr(final, "model", "") or ""),
+        request_id=str(getattr(final, "id", "") or "") or None,
+        latency_ms=latency_ms,
         raw_content=raw_content,
     )

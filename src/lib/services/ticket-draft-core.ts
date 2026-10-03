@@ -125,7 +125,7 @@ export async function draftTicketCore(input: DraftCoreInput, broad?: Set<string>
     if (leaked.length) { await finish(false, { error: `vault leak (${leaked.length})` }); return null; }
 
     const llm = await resolveLlmForJob("reasoning");
-    const result = await llm.adapter.complete({ model: llm.model, maxTokens: DRAFT_MAX_OUTPUT_TOKENS, effort: "low", timeoutMs: DRAFT_TIMEOUT_MS, system: SYSTEM + lesson.block, messages: [{ role: "user", content: userContent }] });
+    const result = await llm.adapter.complete({ usage: { feature: 'ticket_draft' }, model: llm.model, maxTokens: DRAFT_MAX_OUTPUT_TOKENS, effort: "low", cachePrefix: true, timeoutMs: DRAFT_TIMEOUT_MS, system: SYSTEM + lesson.block, messages: [{ role: "user", content: userContent }] });
     const usage = { model: llm.model, tokens_in: result.usage.inputTokens, tokens_out: result.usage.outputTokens };
     if (result.stopReason === "max_tokens") { await finish(false, { ...usage, error: "answer cut off at the token limit" }); return null; }
     const raw = extractJson(result.text);

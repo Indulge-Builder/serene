@@ -99,7 +99,9 @@ export type ElayaReadToolName =
   // The lead WhatsApp line, subscriptions, the live activity feed (2026-09-19)
   | 'get_lead_whatsapp_chat'
   | 'get_subscriptions'
-  | 'get_activity_feed';
+  | 'get_activity_feed'
+  | 'get_open_loops'
+  | 'find_member_occasions';
 
 /** Every tool name the principal may carry — read tools (this file) + write tools. */
 export type ElayaToolName = ElayaReadToolName | ElayaWriteToolName;
@@ -1214,6 +1216,9 @@ export const BRIDGED_READ_TOOL_NAMES: ReadonlySet<string> = new Set([
   'list_hands_jobs',
   'get_hands_thread',
   'draft_hands_message',
+  // The two prepared reads (2026-10-02): the clocks, the cards, the tickets and the facts all live in Node.
+  'get_open_loops',
+  'find_member_occasions',
 ]);
 
 // ── Hands (0245) — the line to an outside agent (Instinct), read and drafted; never sent from here ──
@@ -1875,6 +1880,88 @@ const getActivityFeedTool: ElayaTool = {
   },
 };
 
+// ── The open loops — who is waiting on us, in ONE read (2026-10-02) ──
+
+const getOpenLoops: ElayaTool = {
+  name: 'get_open_loops',
+  description:
+    'Who needs us RIGHT NOW, in one call, scoped to what this user may see: members WAITING for a reply ' +
+    'in their WhatsApp group (longest first, with how long and their last words), holding replies that ' +
+    'OWE an update ("noted, checking" past the time it promised, with who promised), REQUESTS Serene ' +
+    'found in the groups that are on no ticket yet, Sia tickets past a clock (first response, next ' +
+    'update, resolve), and Freshdesk tickets past their due date. Use for "who is waiting", "what needs ' +
+    'a reply", "anything pending in my queendom", "new requests since this morning", "requests we have ' +
+    'not ticketed", "what is late", "who needs an update". ONE call replaces reading groups or members ' +
+    'one by one: never rebuild this by hand. `since` (ISO) narrows the untracked requests to those that ' +
+    'started after it; `sections` picks a subset; `limit` rows per section (default 12, up to 40). ' +
+    'Answer from the rows, lead with the longest wait and the most late, name people and groups as ' +
+    'given, and say the coverage: a count of null means that source could not be read just now, and ' +
+    '`warnings` says what was missing. Counts are the true totals; a list cut at the limit says so.',
+  schema: z.object({
+    limit: z.number().int().min(1).max(40).optional(),
+    since: z.string().trim().min(10).max(40).optional(),
+    sections: z.array(z.enum(['waiting', 'owing_update', 'untracked_requests', 'sia_tickets_late', 'freshdesk_overdue'])).min(1).max(5).optional(),
+  }),
+  jsonSchema: {
+    type: 'object',
+    properties: {
+      limit: { type: 'integer', description: 'Rows per section, up to 40 (default 12)' },
+      since: { type: 'string', description: 'ISO instant: only untracked requests that started after it ("since this morning")' },
+      sections: { type: 'array', items: { type: 'string', enum: ['waiting', 'owing_update', 'untracked_requests', 'sia_tickets_late', 'freshdesk_overdue'] }, description: 'A subset of the sections; default all five' },
+    },
+    additionalProperties: false,
+  },
+  maxResultChars: 18_000,
+  run: async (principal, input) => {
+    const r = await elayaData.getOpenLoopsFor(principal, input as Parameters<typeof elayaData.getOpenLoopsFor>[1]);
+    if ('denied' in r) return { error: 'This user has no queendom seat, so no member groups, requests or tickets are visible to them. Say that an admin can seat them on their page in Serene.' };
+    return r;
+  },
+};
+
+// ── Member occasions — whose birthday, anniversary, renewal or trip is coming, in ONE read ──
+
+const findMemberOccasions: ElayaTool = {
+  name: 'find_member_occasions',
+  description:
+    'Whose BIRTHDAY, ANNIVERSARY, RENEWAL, TRIP or other noted occasion falls in a window, across every ' +
+    'member this user may see, in one call: "birthdays this month", "anniversaries next week", "who ' +
+    'renews in the next 30 days", "who is travelling in October", "anything coming up for my members". ' +
+    'ONE call replaces reading members one by one: never do that for a date question. Dates come from ' +
+    'saved facts, from what the profiler or the team filed as coming up, and from the membership end; ' +
+    'each row says its source and how many days away it is. `kinds` picks a subset (birthday, ' +
+    'anniversary, dating_anniversary, renewal, trip, occasion, follow_up); `from` and `to` are ' +
+    'YYYY-MM-DD on the India calendar (default today and the next 30 days, at most a year); `queendom` ' +
+    'narrows by name; `status` defaults to Active ("any" for all). `missing.birthday_missing` is how ' +
+    'many members have NO birthday on record: say it when the question is "who has a birthday", and ' +
+    'never claim nobody does. Each row carries member_id for get_member_360 when one member matters.',
+  schema: z.object({
+    kinds: z.array(z.string().trim().min(3).max(30)).min(1).max(9).optional(),
+    from: z.string().trim().min(10).max(40).optional(),
+    to: z.string().trim().min(10).max(40).optional(),
+    queendom: z.string().trim().min(2).max(60).optional(),
+    status: z.string().trim().min(2).max(30).optional(),
+    limit: z.number().int().min(1).max(100).optional(),
+  }),
+  jsonSchema: {
+    type: 'object',
+    properties: {
+      kinds: { type: 'array', items: { type: 'string', enum: ['birthday', 'anniversary', 'dating_anniversary', 'renewal', 'trip', 'occasion', 'follow_up'] }, description: 'A subset of kinds; default all' },
+      from: { type: 'string', description: 'First day, YYYY-MM-DD (default today, India)' },
+      to: { type: 'string', description: 'Last day, YYYY-MM-DD (default 30 days after from; at most a year)' },
+      queendom: { type: 'string', description: "A queendom's name" },
+      status: { type: 'string', description: 'Membership status; default Active; "any" for all' },
+      limit: { type: 'integer', description: 'Rows to return, up to 100 (default 50)' },
+    },
+    additionalProperties: false,
+  },
+  run: async (principal, input) => {
+    const r = await elayaData.findMemberOccasionsFor(principal, input as Parameters<typeof elayaData.findMemberOccasionsFor>[1]);
+    if ('denied' in r) return { error: 'This user has no queendom seat, so no member list is visible to them. Say that an admin can seat them on their page in Serene.' };
+    return r;
+  },
+};
+
 const ALL_TOOLS = [
   searchLeads,
   getColdLeads,
@@ -1915,6 +2002,8 @@ const ALL_TOOLS = [
   getLeadWhatsAppChat,
   getSubscriptionsTool,
   getActivityFeedTool,
+  getOpenLoops,
+  findMemberOccasions,
 ] as const;
 
 const TOOL_REGISTRY = new Map<string, ElayaTool>(ALL_TOOLS.map((t) => [t.name, t]));
