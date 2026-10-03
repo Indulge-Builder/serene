@@ -321,6 +321,16 @@ coming" from the date facts, the anticipations and the membership end, saying ho
 have no date on record. The persona tells the model to prefer them over reading members or groups
 one by one; the cost audit measured 18 to 27 calls for those questions before.
 
+**The third prepared read (2026-10-03).** `list_travelling_members` answers "who is travelling right
+now, where and until when" (or was, on a day: `as_of`) in one scoped call: the trips on record
+(what the profiler filed, with the member's words), the Freshdesk Travel tickets touched in the
+window, and ONE vocabulary scan of the member groups, folded per member with the member's own lines
+first, ranked by evidence and never decided; every name reaches the answer (the detailed rows, then
+`more_with_signals`, then `team_mention_only`), with the coverage it rests on and a `how_to_read`
+block (home logistics never prove a member is home; conflicting signals are given both). The core is
+`src/lib/services/member-travel.ts`. On 28 Sep the same question took four turns of keyword searches
+(193k input tokens for the first answer) and still missed people.
+
 ---
 
 ## 7. Writes and confirmation

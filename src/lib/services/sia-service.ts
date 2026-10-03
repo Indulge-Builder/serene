@@ -285,30 +285,59 @@ export function anyOfQuery(terms: string[]): string {
   return clean.map((t) => (t.includes(" ") ? `"${t}"` : t)).join(" OR ");
 }
 
-export async function searchSiaMessages(query: string, groupJid?: string, anyOf?: string[]): Promise<SiaSearchHit[]> {
+/**
+ * A scan's shape (2026-10-03, the travel read): many groups at once, a time window, a bigger
+ * cap. `query` is then a ready websearch string (OR-joined words and "phrases") and `anyOf`
+ * is ignored. Groups are read in chunks so a queendom's 150 jids never make one URL.
+ */
+export type SiaSearchScan = { groupJids?: readonly string[] | null; since?: string | null; until?: string | null; limit?: number };
+const SCAN_JID_CHUNK = 120;
+const SCAN_MAX_LIMIT = 2000;
+
+export async function searchSiaMessages(query: string, groupJid?: string, anyOf?: string[], scan?: SiaSearchScan): Promise<SiaSearchHit[]> {
   // With `anyOf` the caller has already chosen the words (elaya-data buildSearchWords); splitting
   // the raw query here again put "and" / "meet" into an OR search with no stop-words, which
   // matched nearly every message (2026-09-21, the Nadal search returned unrelated chatter).
-  const wide = anyOf && anyOf.length ? anyOfQuery([query, ...anyOf]) : "";
+  const wide = scan ? query.trim() : anyOf && anyOf.length ? anyOfQuery([query, ...anyOf]) : "";
   const term = wide || query.trim();
   if (term.length < 2) return [];
   const db = siaDb();
+  const limit = scan ? Math.min(Math.max(scan.limit ?? SEARCH_LIMIT, 1), SCAN_MAX_LIMIT) : SEARCH_LIMIT;
+  if (scan?.groupJids && scan.groupJids.length === 0) return [];
 
-  let q = db
-    .from("wag_messages")
-    .select(`${MESSAGE_SELECT}, chat_jid`)
-    .textSearch("text", term, { type: wide ? "websearch" : "plain", config: "simple" })
-    .order("wa_timestamp", { ascending: false })
-    .limit(SEARCH_LIMIT);
-  if (groupJid) q = q.eq("chat_jid", groupJid);
+  const runChunk = async (jids: readonly string[] | null) => {
+    let q = db
+      .from("wag_messages")
+      .select(`${MESSAGE_SELECT}, chat_jid`)
+      .textSearch("text", term, { type: wide ? "websearch" : "plain", config: "simple" })
+      .order("wa_timestamp", { ascending: false })
+      .limit(limit);
+    if (groupJid) q = q.eq("chat_jid", groupJid);
+    if (jids) q = q.in("chat_jid", [...jids]);
+    if (scan?.since) q = q.gte("wa_timestamp", scan.since);
+    if (scan?.until) q = q.lte("wa_timestamp", scan.until);
+    const { data, error } = await q;
+    if (error || !data) {
+      if (error) console.error("[sia-service] searchSiaMessages failed:", error.message);
+      return null;
+    }
+    return data as (BareMessage & { chat_jid: string })[];
+  };
 
-  const { data, error } = await q;
-  if (error || !data) {
-    if (error) console.error("[sia-service] searchSiaMessages failed:", error.message);
-    return [];
+  let rows: (BareMessage & { chat_jid: string })[];
+  if (scan?.groupJids) {
+    const chunks: (readonly string[])[] = [];
+    for (let i = 0; i < scan.groupJids.length; i += SCAN_JID_CHUNK) chunks.push(scan.groupJids.slice(i, i + SCAN_JID_CHUNK));
+    const parts = await Promise.all(chunks.map(runChunk));
+    if (parts.some((p) => p === null)) return [];
+    rows = (parts as (BareMessage & { chat_jid: string })[][]).flat()
+      .sort((a, b) => b.wa_timestamp.localeCompare(a.wa_timestamp))
+      .slice(0, limit);
+  } else {
+    const data = await runChunk(null);
+    if (!data) return [];
+    rows = data;
   }
-
-  const rows = data as (BareMessage & { chat_jid: string })[];
   const withNames = await attachSenderNames(db, rows);
   // Resolve group subjects for the hits (batched).
   const chatJids = [...new Set(rows.map((d) => d.chat_jid))];
@@ -1065,16 +1094,18 @@ async function attachSenderNames<T extends { sender_jid: string }>(
  *  staff link). Elaya's member-history tools label each message member / staff / other with it. */
 export async function getSiaSenderRoles(
   jids: string[],
-): Promise<Map<string, { role: string; is_staff: boolean }>> {
-  const out = new Map<string, { role: string; is_staff: boolean }>();
+): Promise<Map<string, { role: string; is_staff: boolean; member_id: string | null }>> {
+  const out = new Map<string, { role: string; is_staff: boolean; member_id: string | null }>();
   const unique = [...new Set(jids)];
   if (unique.length === 0) return out;
   const { data } = await siaDb()
     .from("wag_contacts")
-    .select("jid, participant_role, staff_profile_id")
+    .select("jid, participant_role, staff_profile_id, member_id")
     .in("jid", unique);
-  for (const c of (data ?? []) as { jid: string; participant_role: string; staff_profile_id: string | null }[]) {
-    out.set(c.jid, { role: c.participant_role, is_staff: Boolean(c.staff_profile_id) });
+  for (const c of (data ?? []) as { jid: string; participant_role: string; staff_profile_id: string | null; member_id: string | null }[]) {
+    // participant_role is 'unknown' for most contacts (2026-10-03: 7,773 of 8,250); the two links
+    // (staff_profile_id by phone, member_id by the profiler) are what actually say who someone is.
+    out.set(c.jid, { role: c.participant_role, is_staff: Boolean(c.staff_profile_id), member_id: c.member_id ?? null });
   }
   return out;
 }

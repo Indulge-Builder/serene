@@ -188,7 +188,7 @@ SPECIALISTS: dict[str, Specialist] = {
                "TEXT of thousands of rows read and judged (a theme no column holds, a mood across all groups), start a "
                "deep read with start_deep_read and tell the founder it will land in this chat in a few minutes; a keyword "
                "match presented as the count is not acceptable there."),
-        toolset=["get_live_pulse", "get_open_loops", "find_member_occasions", "describe_database", "query_database", "start_deep_read", "raise_improvement_request", "get_books_overview",
+        toolset=["get_live_pulse", "get_open_loops", "find_member_occasions", "list_travelling_members", "describe_database", "query_database", "start_deep_read", "raise_improvement_request", "get_books_overview",
                  "get_freshdesk_overview", "search_freshdesk_tickets", "get_member_360", "get_member_overview",
                  "search_sia_messages", "get_sia_group_messages", "list_sia_groups", "get_activity_feed", "find_teammate"],
         job="heavy",  # the deepest tier: planning and writing queries is the hardest work she does
@@ -237,7 +237,7 @@ SPECIALISTS: dict[str, Specialist] = {
                "list_sia_groups before saying so. Answer only from returned messages, cite dates, name the "
                "group each line came from, and never invent a group."),
         toolset=["list_sia_groups", "get_sia_group_messages", "search_sia_messages",
-                 "get_open_loops", "get_member_overview", "find_teammate"],
+                 "get_open_loops", "list_travelling_members", "get_member_overview", "find_teammate"],
     ),
     "members": Specialist(
         id="members",
@@ -267,7 +267,7 @@ SPECIALISTS: dict[str, Specialist] = {
                "nothing is on record — never fill the gap from memory, and never describe a member the tool "
                "did not return."),
         # Founders and admins also carry the analyst's SQL here (the role gate cuts it for everyone else).
-        toolset=["get_member_360", "get_member_overview", "list_members", "find_member_occasions", "get_open_loops", "get_member_profile", "get_member_recent_messages",
+        toolset=["get_member_360", "get_member_overview", "list_members", "find_member_occasions", "list_travelling_members", "get_open_loops", "get_member_profile", "get_member_recent_messages",
                  "search_member_history", "get_member_finance", "find_teammate", "describe_database", "query_database"],
     ),
     "general": Specialist(
@@ -290,6 +290,7 @@ SPECIALISTS: dict[str, Specialist] = {
             "get_live_pulse",
             "get_open_loops",
             "find_member_occasions",
+            "list_travelling_members",
             "describe_database",
             "query_database",
             "start_deep_read",

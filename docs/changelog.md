@@ -12,6 +12,48 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-10-03 — "Who is travelling" is one read; the build gate fix
+
+**Why.** On 28 Sep a joker asked Elaya "who all is travelling right now and where and until when".
+The old brain ran four turns of keyword searches over the groups (193,807 input tokens for the
+first answer alone, 60 to 80 seconds a turn), missed members on every pass until she named them,
+and still mis-read one: a trip filed as 20 to 28 Sep was called "wrapped up" because the member's
+group talked about a delivery to her house. The data was all there. The profiler files trips as
+`member_anticipations` of kind trip with the member's words, every journey has a Freshdesk Travel
+ticket, and the groups hold the member's own "we are in Korea". Nothing composed them.
+
+**What.**
+- `src/lib/services/member-travel.ts` (new): `findTravellingMembersInScope(scope, {as_of, days,
+  limit, queendom, status})`, THE "who is travelling" read. The scope's members once, their trips
+  on record (a 21-day lookback), the Freshdesk Travel tickets touched in the window (flight, hotel
+  booking, car transfer, airport assistance, visa; "Experiences" left out, it is mostly a class or a
+  doctor), and ONE full-text scan of the member groups with a fixed travel vocabulary
+  (`TRAVEL_SIGNAL_TERMS`), folded per member. The member's own lines come first: a sender in a
+  member group who is not staff is member-side (`participant_role` is 'unknown' for 94% of
+  contacts, so the staff link, the seat roles and an "at Indulge" push name decide). A line the
+  team posted in three or more groups is a broadcast and is dropped. Rows are ranked by evidence,
+  never decided, and every name reaches the answer: the detailed rows, then `more_with_signals`
+  with a one-line why, then `team_mention_only`. A coverage block (window, newest message seen,
+  watcher state, whether the cap was hit, Freshdesk sync) and a `how_to_read` block (home
+  logistics never prove a member is home; conflicting signals are given both; no return date is
+  said, never guessed).
+- `searchSiaMessages` gains a scan shape (`groupJids` in chunks of 120, `since`, `until`, a cap
+  of 2,000 lines); `listFreshdeskTicketsByCategory` (freshdesk-service); `getSiaSenderRoles`
+  returns the contact's `member_id` too.
+- The tool `list_travelling_members` in both brains: a bridged read for every staff role, scoped
+  by sia-access, `maxResultChars` 30,000 mirrored in loop.py, in the members, groups, general and
+  analytics hot sets; the shared rule names it beside the two other prepared reads;
+  `find_member_occasions` points to it for "right now".
+- Replayed as the joker's own seat as of 28 Sep 15:30 IST: all ten members she had to drag out
+  of Elaya turned up in one call, in 1.3 seconds. A live run takes about 1.5 s; the founder view
+  over every queendom stays under the cap. Bench: `scripts/.probe/travel-bench.ts` (git-excluded,
+  read-only against production).
+- The production build of dba8d2dd failed on the token gate: `ElayaTeammatePanel.tsx` referenced
+  `--theme-accent-deep`, which no sheet defines (it is `--neu-accent-deep`). Fixed;
+  `node scripts/check-tokens.mjs` passes. Until this is pushed, Vercel serves the build before it.
+
+---
+
 ## 2026-10-03 — A genie's late task stays inside their own queendom
 
 **Why.** A genie's own task ran late (Rupali, "Message Mrunal Jhaveri…") and the overdue WhatsApp went

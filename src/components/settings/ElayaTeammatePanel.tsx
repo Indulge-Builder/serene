@@ -100,7 +100,7 @@ function Card({ r }: { r: InterventionForPage }) {
           {shadow && sent.length === 0 && <> · <em>shadow: not sent</em></>}
           {sent.length > 0 && <> · <strong>Sent:</strong> {sent.map((d) => `${d.channel} ${formatDate(d.at, 'dd MMM HH:mm')}`).join(', ')}</>}
           {r.resolution && <> · <strong>Ended:</strong> {r.resolution.replace(/_/g, ' ').replace('evidence:', 'evidence, ')}</>}
-          {actionUrl && <> · <a href={actionUrl} style={{ color: 'var(--theme-accent-deep)' }}>Open</a></>}
+          {actionUrl && <> · <a href={actionUrl} style={{ color: 'var(--neu-accent-deep)' }}>Open</a></>}
         </div>
         {liveRow && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-2)', paddingTop: 'var(--space-2)', borderTop: '1px solid var(--theme-paper-border)' }}>

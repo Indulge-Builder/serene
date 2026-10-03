@@ -211,6 +211,29 @@ export async function listOverdueFreshdeskTickets(scope: { groupIds: readonly nu
   return { tickets, totalCount: Number(count ?? 0) };
 }
 
+/**
+ * The tickets of ONE category touched since a moment (2026-10-03, the travel read): "every Travel
+ * ticket updated in the last 14 days" for the groups a viewer may see, newest activity first.
+ * Any status: a resolved flight ticket still says where the member went. null = the read failed.
+ */
+export async function listFreshdeskTicketsByCategory(scope: { groupIds: readonly number[] | null; category: string; since: string; limit: number; until?: string | null }): Promise<{ tickets: FdTicketListItem[]; totalCount: number } | null> {
+  if (scope.groupIds && scope.groupIds.length === 0) return { tickets: [], totalCount: 0 };
+  let q = ticketsSelect(LIST_COLUMNS, { count: "exact" }).eq("deleted", false).eq("spam", false)
+    .ilike("category", scope.category).gte("fd_updated_at", scope.since);
+  if (scope.until) q = q.lte("fd_updated_at", scope.until);
+  if (scope.groupIds) q = q.in("group_id", [...scope.groupIds]);
+  const [{ data, error, count }, names] = await Promise.all([q.order("fd_updated_at", { ascending: false }).limit(Math.min(Math.max(scope.limit, 1), 400)), getNameMaps()]);
+  if (error) { console.error("[freshdesk-service] category list failed", error.message); return null; }
+  type Row = Omit<FdTicketListItem, "group_name" | "agent_name">;
+  const tickets = mapRows<Row, FdTicketListItem>(data, (r) => ({
+    ...r,
+    status_label: r.status_label ?? fdStatusLabel(r.status),
+    group_name: r.group_id != null ? (names.groups.get(r.group_id) ?? null) : null,
+    agent_name: r.responder_id != null ? (names.agents.get(r.responder_id) ?? null) : null,
+  }));
+  return { tickets, totalCount: Number(count ?? 0) };
+}
+
 /** The member a `?member=` scope points at, for the "Tickets for …" line; null when unknown. */
 export async function getFreshdeskMemberScope(clientId: string): Promise<{ id: string; full_name: string } | null> {
   const { data } = await memberDb(createAdminClient()).from("members").select("id, full_name").eq("id", clientId).maybeSingle();

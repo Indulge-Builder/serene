@@ -76,6 +76,7 @@ import { listOpenIntakeProposalsForScope } from '@/lib/services/intake-cards';
 import { listRunningReplyClocks } from '@/lib/services/reply-alerts';
 import { updateDueAt } from '@/lib/constants/reply-clocks';
 import { findMemberOccasionsInScope, queendomNames, type MemberOccasionsOptions, type MemberOccasionKind } from '@/lib/services/member-occasions';
+import { findTravellingMembersInScope, type TravellingMembersOptions } from '@/lib/services/member-travel';
 import { isOnlyAcknowledgement } from '@/lib/services/ticket-intake';
 import { getLeadWhatsAppThreadForElaya } from '@/lib/services/whatsapp-service';
 import { getSubscriptionsForElaya } from '@/lib/services/subscriptions-service';
@@ -1703,4 +1704,22 @@ export async function findMemberOccasionsFor(principal: StaffPrincipal, opts: Me
     if (!wantQueendom) return { ok: true as const, occasions: [], total: 0, note: `No queendom named "${opts.queendom}". Known: ${[...qNames.values()].join(', ')}.` };
   }
   return findMemberOccasionsInScope({ scopeAll, head, queendomId: scopeAll ? wantQueendom : (queendom_id as string) }, opts, qNames);
+}
+
+// ─────────────────────────────────────────────
+// Who is travelling — where and until when, in ONE read (2026-10-03)
+//
+// The third family: "who is travelling right now" ran four turns of keyword searches (193k input
+// tokens on 2026-09-28), missed members on every pass and mis-read one. member-travel.ts composes
+// the trips on record, the Travel tickets and one scan of the member groups with the travel
+// vocabulary, per member, ranked by evidence, with the coverage it rests on. The scope is the
+// viewer's sia-access answer (every queendom, or the seat's lists); the model never supplies one.
+// ─────────────────────────────────────────────
+
+export type { TravellingMembersOptions };
+
+export async function findTravellingMembersFor(principal: StaffPrincipal, opts: TravellingMembersOptions = {}) {
+  const scope = await siaScopeFor(principal);
+  if (!scope) return { denied: true as const };
+  return findTravellingMembersInScope(scope, opts);
 }

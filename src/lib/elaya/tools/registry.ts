@@ -101,7 +101,8 @@ export type ElayaReadToolName =
   | 'get_subscriptions'
   | 'get_activity_feed'
   | 'get_open_loops'
-  | 'find_member_occasions';
+  | 'find_member_occasions'
+  | 'list_travelling_members';
 
 /** Every tool name the principal may carry — read tools (this file) + write tools. */
 export type ElayaToolName = ElayaReadToolName | ElayaWriteToolName;
@@ -1219,6 +1220,7 @@ export const BRIDGED_READ_TOOL_NAMES: ReadonlySet<string> = new Set([
   // The two prepared reads (2026-10-02): the clocks, the cards, the tickets and the facts all live in Node.
   'get_open_loops',
   'find_member_occasions',
+  'list_travelling_members',
 ]);
 
 // ── Hands (0245) — the line to an outside agent (Instinct), read and drafted; never sent from here ──
@@ -1932,7 +1934,8 @@ const findMemberOccasions: ElayaTool = {
     'each row says its source and how many days away it is. `kinds` picks a subset (birthday, ' +
     'anniversary, dating_anniversary, renewal, trip, occasion, follow_up); `from` and `to` are ' +
     'YYYY-MM-DD on the India calendar (default today and the next 30 days, at most a year); `queendom` ' +
-    'narrows by name; `status` defaults to Active ("any" for all). `missing.birthday_missing` is how ' +
+    'narrows by name; `status` defaults to Active ("any" for all). For who is travelling RIGHT NOW (or was, on ' +
+    'a day) use list_travelling_members instead: this one lists trips by their start date. `missing.birthday_missing` is how ' +
     'many members have NO birthday on record: say it when the question is "who has a birthday", and ' +
     'never claim nobody does. Each row carries member_id for get_member_360 when one member matters.',
   schema: z.object({
@@ -1958,6 +1961,52 @@ const findMemberOccasions: ElayaTool = {
   run: async (principal, input) => {
     const r = await elayaData.findMemberOccasionsFor(principal, input as Parameters<typeof elayaData.findMemberOccasionsFor>[1]);
     if ('denied' in r) return { error: 'This user has no queendom seat, so no member list is visible to them. Say that an admin can seat them on their page in Serene.' };
+    return r;
+  },
+};
+
+// ── Who is travelling — where and until when, in ONE read (2026-10-03) ──
+
+const listTravellingMembers: ElayaTool = {
+  name: 'list_travelling_members',
+  description:
+    'Who is TRAVELLING right now (or was, on a given day), where and until when, across every member this ' +
+    'user may see, in ONE call: "who all is travelling right now", "who is away this week", "who is out of ' +
+    'the country", "where is everyone", "who was travelling on the 28th". It folds three sources per member: ' +
+    'the trips on record (what the profiler or the team filed, with the member\'s own words and dates), the ' +
+    'Freshdesk Travel tickets touched lately (flight, hotel, car transfer, airport assistance, visa) and ONE ' +
+    'scan of the member WhatsApp groups with the travel vocabulary over the window, member-side lines first. ' +
+    'ONE call replaces searching groups or reading members one by one: never rebuild this by hand, and never ' +
+    'answer from a keyword search alone. Rows are ranked by evidence, not decided: say where and until when ' +
+    'only from the lines, trips and tickets shown, with their dates; with no return date anywhere say so. ' +
+    'Follow `how_to_read` (home logistics never prove a member is home; conflicting signals are given both, ' +
+    'never picked silently). Say the coverage: the chat window, the newest message seen, the watcher state, ' +
+    'and whether the scan hit its cap. `days` = the chat window (default 7, up to 30); `as_of` (ISO) replays a ' +
+    'past day; `queendom` narrows by name (admin/founder); `status` defaults to Active ("any" for all); ' +
+    '`limit` detailed rows (default 18, up to 50); the names beyond it come back in more_with_signals. Each row ' +
+    'carries member_id for get_member_360 when one member matters. For trips AHEAD use find_member_occasions.',
+  schema: z.object({
+    as_of: z.string().trim().min(10).max(40).optional(),
+    days: z.number().int().min(1).max(30).optional(),
+    limit: z.number().int().min(1).max(50).optional(),
+    queendom: z.string().trim().min(2).max(60).optional(),
+    status: z.string().trim().min(2).max(30).optional(),
+  }),
+  jsonSchema: {
+    type: 'object',
+    properties: {
+      as_of: { type: 'string', description: 'ISO instant to replay the read as of ("who was travelling on 28 Sep"); default now' },
+      days: { type: 'integer', description: 'The chat window in days, up to 30 (default 7)' },
+      limit: { type: 'integer', description: 'Detailed rows, up to 50 (default 18); every further name still comes back in more_with_signals' },
+      queendom: { type: 'string', description: "A queendom's name, to narrow an all-queendoms view" },
+      status: { type: 'string', description: 'Membership status; default Active; "any" for all' },
+    },
+    additionalProperties: false,
+  },
+  maxResultChars: 30_000,
+  run: async (principal, input) => {
+    const r = await elayaData.findTravellingMembersFor(principal, input as Parameters<typeof elayaData.findTravellingMembersFor>[1]);
+    if ('denied' in r) return { error: 'This user has no queendom seat, so no member groups or tickets are visible to them. Say that an admin can seat them on their page in Serene.' };
     return r;
   },
 };
@@ -2004,6 +2053,7 @@ const ALL_TOOLS = [
   getActivityFeedTool,
   getOpenLoops,
   findMemberOccasions,
+  listTravellingMembers,
 ] as const;
 
 const TOOL_REGISTRY = new Map<string, ElayaTool>(ALL_TOOLS.map((t) => [t.name, t]));
