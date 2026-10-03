@@ -12,6 +12,24 @@ All notable changes to the Serene platform are recorded here in reverse chronolo
 
 ---
 
+## 2026-10-03 — Lead notifications go only to the lead domains, not every founder
+
+**Why.** Nine accounts carry the founder role, including the concierge founders and the finance team.
+Every lead SLA escalation ("SLA escalation — <lead>", 48 today and growing) and every new-lead
+WhatsApp alert went to all of them. The founder's rule: lead management notifications are for the
+people of the lead domains (Onboarding, House, Shop, Legacy) only.
+
+**What.**
+- `getActiveFounders` (sla-service.ts, the SLA-01C founder escalation) and the recipients of
+  `sendFounderLeadNotification` (whatsapp-api.ts, the new-lead alert) now take only founders whose
+  own domain is in `GIA_DOMAINS` (today: one, Onboarding). Concierge and finance founders no longer
+  get lead notifications. The domain-scoped ones (task overdue, lead won) were already per domain.
+- The member alerts (reply / update, 0253 / 0255) were switched OFF the same day: the reply alert's
+  "genies" step reached every genie in the queendom, about 160 WhatsApp messages in an hour. They
+  stay off until the step reaches only the genie handling that member.
+
+---
+
 ## 2026-10-03 — Smarter update alerts (Elaya tracks promises), new reply-alert timing, and many Instinct jobs at once (migration 0255)
 
 **Why.** The bishops said the first reply is fast ("Sure sir, let me check" inside a minute); the

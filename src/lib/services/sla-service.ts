@@ -11,6 +11,7 @@ import { createClient }      from '@/lib/supabase/server';
 import { giaDb } from '@/lib/supabase/schemas';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getDomainDecisionMakers } from '@/lib/services/profiles-service';
+import { GIA_DOMAINS } from '@/lib/constants/domains';
 import { mapRows }           from '@/lib/utils/rows';
 import { isCadenceCode }     from '@/lib/constants/sla';
 import { goingColdCutoff } from '@/lib/constants/leads';
@@ -226,9 +227,10 @@ export async function getOpenGiaFollowupTask(
 }
 
 /**
- * Returns all active founders. Used by SLA-01C (founder escalation) —
- * founders are org-wide, never domain-filtered (matches the founder-alert
- * convention in whatsapp-api.ts).
+ * Returns the active founders who sit in a LEAD domain (GIA_DOMAINS: onboarding, house, shop,
+ * legacy). Used by SLA-01C (founder escalation). Founders in concierge or finance do not get lead
+ * notifications (the founder's rule, 2026-10-03); the new-lead WhatsApp alert in whatsapp-api.ts
+ * follows the same rule.
  */
 export async function getActiveFounders(): Promise<Pick<Profile, 'id' | 'full_name'>[]> {
   const admin = createAdminClient();
@@ -236,6 +238,7 @@ export async function getActiveFounders(): Promise<Pick<Profile, 'id' | 'full_na
     .from('profiles')
     .select('id, full_name')
     .eq('role', 'founder')
+    .in('domain', [...GIA_DOMAINS])
     .eq('is_active', true);
 
   if (error) {

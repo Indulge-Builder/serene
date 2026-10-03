@@ -35,6 +35,7 @@ import {
 } from '@/lib/services/notification-prefs-service';
 import type { MetaApiResponse } from '@/lib/types/whatsapp';
 import type { AppDomain } from '@/lib/types/database';
+import { GIA_DOMAINS } from '@/lib/constants/domains';
 
 // ─────────────────────────────────────────────
 // Env var guard — deferred to first send (NOT module load)
@@ -531,10 +532,14 @@ export async function sendFounderLeadNotification(
 ): Promise<void> {
   try {
     const admin = createAdminClient();
+    // Lead notifications reach only founders in a LEAD domain (GIA_DOMAINS), never concierge or
+    // finance (the founder's rule, 2026-10-03; getActiveFounders in sla-service.ts matches).
     const { data: founders } = await admin
       .from('profiles')
       .select('id, phone, full_name')
-      .eq('role', 'founder');
+      .eq('role', 'founder')
+      .in('domain', [...GIA_DOMAINS])
+      .eq('is_active', true);
 
     if (!founders || founders.length === 0) return;
 
