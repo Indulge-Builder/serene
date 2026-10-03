@@ -2,7 +2,8 @@
 // keeps the clocks; this file only reads the RUNNING ones and walks each up its ladder
 // (constants/reply-clocks.ts):
 //
-//   reply  (member waiting for any reply):  genies + bishops at 2 min → queen at 5 min
+//   reply  (member waiting for any reply):  bishops at 2 min → queen at 5 min (never the genies,
+//          the founder's rule of 2026-10-03)
 //   update (since 2026-10-03: a PROMISE Elaya read from the chat, sia.promises, promise-reader.ts):
 //          the person who promised at its due time → bishops 15 min later → queen 30 min later;
 //          a member who chases an open promise tells the promiser and the bishops at once. A

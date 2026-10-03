@@ -13,11 +13,12 @@ export type ReplyStep = { id: string; to: ReplyStepTarget; afterSeconds: number;
 
 /**
  * Clock 1, seconds after the member's first unanswered message. Around the clock, no quiet hours.
- * The founder's ladder (2026-10-03): the queendom's genies and bishops at 2 minutes, the queen at 5.
+ * The founder's ladder (2026-10-03): the queendom's bishops at 2 minutes, the queen at 5. NEVER the
+ * genies: the founder's rule that evening, after one two-minute wait pinged nine people. A member
+ * waiting is the bishops' and the queen's alert; the genie learns it from them.
  * Founders are not on it for now ("someday, when needed"): add { to: "founders" } back to bring them in.
  */
 export const REPLY_LADDER: readonly ReplyStep[] = [
-  { id: "genies", to: "genies", afterSeconds: 2 * 60, severity: 1 },
   { id: "bishops", to: "bishops", afterSeconds: 2 * 60, severity: 1 },
   { id: "queen", to: "queen", afterSeconds: 5 * 60, severity: 2 },
 ];

@@ -477,7 +477,7 @@ are byte-identical; `scripts/elaya/prompt-parity.ts` proves it):
 
 1. **The shared block** names no user, so it is the same bytes for everyone on a channel and the
    provider caches it across users. In order: the identity and the behaviour policy
-   (`backend/app/brain/elaya_behaviour.json`, `behaviour-v1`, the founder's Tone review made
+   (`backend/app/brain/elaya_behaviour.json`, with `src/lib/constants/elaya-behaviour.json` as the app's byte-identical copy since 2026-10-03 because Vercel strips `backend/`; `behaviour-v1`, the founder's Tone review made
    compact; both brains load the same file), the data rules (tools first, never an invented
    number, prefer one prepared read over many small ones, ₹ with Indian grouping, label
    cross-domain insights, never quote tool field names, re-check a disputed answer with a tool and

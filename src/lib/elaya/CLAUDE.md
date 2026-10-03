@@ -274,7 +274,7 @@ failure BEFORE the brain answered (brain unreachable). Never surface a raw provi
 `persona.py` (the live brain) returns `SystemPrompt(shared, user)`; `persona.ts` builds the same two
 texts (its rules literal is GENERATED from `persona.py`; `scripts/elaya/prompt-parity.ts` proves
 byte-identity) and joins them for the Node adapter. The SHARED block names no user (identity +
-`backend/app/brain/elaya_behaviour.json` + the rules + the channel block) so the provider caches it
+`src/lib/constants/elaya-behaviour.json`, the app's byte-identical copy of `backend/app/brain/elaya_behaviour.json`, + the rules + the channel block) so the provider caches it
 across users; the USER block (who, reach, focus, playbook, the evidence of the last turns, the style
 resolution order, saved style, memory, notes, known issues) is cached across one turn's calls; the
 time anchor rides outside both. The policy JSON is the ONE source of Elaya's voice; `version` is

@@ -48,6 +48,15 @@ ticket, and the groups hold the member's own "we are in Korea". Nothing composed
   of Elaya turned up in one call, in 1.3 seconds. A live run takes about 1.5 s; the founder view
   over every queendom stays under the cap. Bench: `scripts/.probe/travel-bench.ts` (git-excluded,
   read-only against production).
+- Reply-wait alerts (the "Mahir Gupta is waiting for a reply, 2 min" kind) go to the queendom's
+  bishops at 2 minutes and the queen at 5, never the genies: the founder's rule this evening, after
+  one two-minute wait pinged nine people. `REPLY_LADDER` in `constants/reply-clocks.ts`; the
+  promise ladder (the person who promised, then bishops, then queen) is unchanged.
+- The second Vercel failure, hidden behind the first: `.vercelignore` drops `backend/`, so the
+  TypeScript loader could not import the Tone policy from `backend/app/brain/elaya_behaviour.json`.
+  The policy is now ONE policy in TWO byte-identical copies (`src/lib/constants/elaya-behaviour.json`
+  for the app, the backend file for the Python image, which copies only `backend/app`); the parity
+  bench fails the moment they differ. Edit both together.
 - The production build of dba8d2dd failed on the token gate: `ElayaTeammatePanel.tsx` referenced
   `--theme-accent-deep`, which no sheet defines (it is `--neu-accent-deep`). Fixed;
   `node scripts/check-tokens.mjs` passes. Until this is pushed, Vercel serves the build before it.

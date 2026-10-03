@@ -1,16 +1,19 @@
 // elaya-behaviour.ts — THE loader of Elaya's shared behaviour policy (2026-10-02).
 //
-// The policy itself lives in ONE file both brains read: backend/app/brain/elaya_behaviour.json
-// (it has to sit under backend/app because the Python service's Docker build copies only that
-// folder). This module turns it into the prompt block and the constants the Node side folds; the
-// Python twin is backend/app/brain/behaviour.py, and both build the block with the same join so
-// the shared cached prefix is byte-identical. Never paste the policy text into a prompt file.
+// The policy itself is ONE policy in TWO byte-identical copies: src/lib/constants/elaya-behaviour.json
+// (this side: Vercel strips backend/ from the build through .vercelignore, so src/ cannot import
+// across) and backend/app/brain/elaya_behaviour.json (the Python service's Docker build copies only
+// backend/app). scripts/elaya/prompt-parity.ts fails the moment the two differ: edit both together
+// and bump `version`. This module turns the policy into the prompt block and the constants the Node
+// side folds; the Python twin is backend/app/brain/behaviour.py, and both build the block with the
+// same join so the shared cached prefix is byte-identical. Never paste the policy text into a prompt
+// file.
 //
 // Version bookkeeping: ELAYA_BEHAVIOUR_VERSION comes from the JSON; ELAYA_PROMPT_VERSION is the
 // persona builder's own version. Every turn records both on its message row (meta), so a
 // regression can be traced to the policy, the prompt or the model.
 
-import policy from '../../../backend/app/brain/elaya_behaviour.json';
+import policy from './elaya-behaviour.json';
 
 type BehaviourPolicy = {
   version: string;

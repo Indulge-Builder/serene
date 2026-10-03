@@ -8,6 +8,7 @@
  *   npx tsx --tsconfig tsconfig.json scripts/elaya/prompt-parity.ts
  */
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { buildElayaSystemBlocks } from '@/lib/elaya/persona';
 import { buildPersonaPromptBlock } from '@/lib/constants/elaya-persona';
 import { ELAYA_BEHAVIOUR_VERSION, ELAYA_FORBIDDEN_PHRASES, ELAYA_PROMPT_VERSION, buildBehaviourBlock } from '@/lib/constants/elaya-behaviour';
@@ -37,6 +38,7 @@ const ours = buildElayaSystemBlocks(principal, 'whatsapp', { personaCtx: { perso
 let failed = 0;
 const check = (name: string, ok: boolean, detail = '') => { console.log(`${ok ? '✓' : '✗'} ${name}${detail ? '  ' + detail : ''}`); if (!ok) failed += 1; };
 const firstDiff = (a: string, b: string) => { let i = 0; while (i < a.length && i < b.length && a[i] === b[i]) i += 1; return `first difference at ${i}: ts "${a.slice(i, i + 60)}" vs py "${b.slice(i, i + 60)}"`; };
+check('policy copies are byte-identical (src/lib/constants ↔ backend/app/brain)', readFileSync('src/lib/constants/elaya-behaviour.json', 'utf8') === readFileSync('backend/app/brain/elaya_behaviour.json', 'utf8'));
 check('behaviour version agrees', theirs.behaviour === ELAYA_BEHAVIOUR_VERSION, `${theirs.behaviour} / ${ELAYA_BEHAVIOUR_VERSION}`);
 check('prompt version agrees', theirs.prompt === ELAYA_PROMPT_VERSION, `${theirs.prompt} / ${ELAYA_PROMPT_VERSION}`);
 check('behaviour block is byte-identical', theirs.block === buildBehaviourBlock(), theirs.block === buildBehaviourBlock() ? '' : firstDiff(buildBehaviourBlock(), theirs.block));
